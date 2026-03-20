@@ -29,4 +29,4 @@ parking_lot = "0.12"
 base64 = "0.22"
 notify = { version = "7", features = ["macos_kqueue"] }
 ogg = "0.9"
-opus-decoder = "0.1"
+opus-decoder = { path = "opus-decoder-patch" }
