@@ -300,13 +300,6 @@
 		background: var(--color-text-primary);
 		border-radius: 50%;
 		cursor: pointer;
-		opacity: 0;
-		transition: opacity 0.15s;
-	}
-
-	.seek-slider:hover::-webkit-slider-thumb,
-	.volume-slider:hover::-webkit-slider-thumb {
-		opacity: 1;
 	}
 
 	.controls-right {
