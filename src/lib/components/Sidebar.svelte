@@ -41,7 +41,27 @@
 						'kss',
 						'ay',
 						'sap',
-						'gym'
+						'gym',
+						'bcstm',
+						'bfstm',
+						'brstm',
+						'bcwav',
+						'bfwav',
+						'brwav',
+						'adx',
+						'hca',
+						'dsp',
+						'idsp',
+						'fsb',
+						'wem',
+						'xma',
+						'at3',
+						'at9',
+						'nus3bank',
+						'lopus',
+						'acb',
+						'awb',
+						'ktss'
 					]
 				}
 			]

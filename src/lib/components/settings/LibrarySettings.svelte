@@ -1,11 +1,38 @@
 <script lang="ts">
+	import { invoke } from '@tauri-apps/api/core';
+	import { listen } from '@tauri-apps/api/event';
 	import { open } from '@tauri-apps/plugin-dialog';
+	import { onMount } from 'svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { libraryStore } from '$lib/stores/library.svelte';
+
+	let isResyncing = $state(false);
+
+	onMount(() => {
+		const unlisten = listen('scan-complete', () => {
+			isResyncing = false;
+		});
+		return () => {
+			unlisten.then((fn) => fn());
+		};
+	});
 
 	async function handleAddFolder() {
 		const selected = await open({ directory: true, multiple: false });
 		if (selected) {
 			await settingsStore.addMonitoredFolder(selected as string);
+		}
+	}
+
+	async function handleResync() {
+		isResyncing = true;
+		libraryStore.isScanning = true;
+		try {
+			await invoke('resync_library');
+		} catch (e) {
+			console.error('Failed to resync library:', e);
+			isResyncing = false;
+			libraryStore.isScanning = false;
 		}
 	}
 </script>
@@ -66,6 +93,23 @@
 		</svg>
 		Add Folder
 	</button>
+
+	<div class="resync-section">
+		<h3 class="section-title">Resync Library</h3>
+		<p class="section-desc">
+			Clear the database and rescan all monitored folders. Use this if new formats aren't showing up.
+		</p>
+		<button
+			class="resync-btn"
+			onclick={handleResync}
+			disabled={isResyncing || libraryStore.isScanning}
+		>
+			<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+				<path d="M13.451 5.609l-.579-.939-1.068.812-.076.094c-.335.415-.927 1.146-1.26 1.468a4.07 4.07 0 00-2.466-.817 4.07 4.07 0 00-4.076 4.076 4.07 4.07 0 004.076 4.076 4.07 4.07 0 003.98-3.226h-1.15a2.94 2.94 0 01-2.83 2.076 2.94 2.94 0 01-2.926-2.926 2.94 2.94 0 012.926-2.926c.896 0 1.694.41 2.228 1.05L9.478 9.09l-.074.1-.035.16.01.17.09.15.15.09.17.01h4.036l.16-.04.1-.09.09-.15.01-.17V5.289l-.04-.16-.09-.1-.15-.09-.17-.01-.16.04-.1.074-.463.57z" />
+			</svg>
+			{isResyncing ? 'Resyncing...' : 'Resync Library'}
+		</button>
+	</div>
 </div>
 
 <style>
@@ -199,5 +243,37 @@
 
 	.add-folder-btn:hover {
 		background-color: var(--color-bg-hover);
+	}
+
+	.resync-section {
+		margin-top: 16px;
+		padding-top: 16px;
+		border-top: 1px solid var(--color-border);
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.resync-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 12px;
+		background-color: var(--color-bg-tertiary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-primary);
+		cursor: pointer;
+		font-size: 12px;
+		align-self: flex-start;
+	}
+
+	.resync-btn:hover:not(:disabled) {
+		background-color: var(--color-bg-hover);
+	}
+
+	.resync-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 </style>

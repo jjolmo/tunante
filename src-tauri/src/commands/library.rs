@@ -12,13 +12,38 @@ pub const AUDIO_EXTENSIONS: &[&str] = &[
     "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",
     // GME chiptune
     "nsf", "nsfe", "spc", "gbs", "vgm", "vgz", "hes", "kss", "ay", "sap", "gym",
+    // vgmstream (Nintendo, common game audio)
+    "bcstm", "bfstm", "brstm", "bcwav", "bfwav", "brwav",
+    "adx", "hca", "aax", "scd", "at3", "at9",
+    "dsp", "idsp", "bfsar", "bars",
+    "fsb", "bnk", "wem", "mus",
+    "xma", "xma2", "xwb",
+    "genh", "txth", "txtp",
+    "nub", "nus3bank", "lopus",
+    "rwsd", "rwar", "rwav",
+    "sad", "sgd", "sab",
+    "acb", "awb",
+    "ktss", "kvs",
+    "csmp", "cstm",
 ];
 
 pub fn is_audio_file(path: &std::path::Path) -> bool {
-    path.extension()
+    let ext_match = path
+        .extension()
         .and_then(|e| e.to_str())
         .map(|e| AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-        .unwrap_or(false)
+        .unwrap_or(false);
+
+    if ext_match {
+        return true;
+    }
+
+    // Also check vgmstream's dynamic extension list for formats not in our static list
+    if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
+        return vgmstream_rs::Vgmstream::is_valid(filename);
+    }
+
+    false
 }
 
 #[tauri::command]
@@ -115,6 +140,36 @@ pub fn add_files(paths: Vec<String>, state: State<'_, Arc<AppState>>) -> Result<
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn resync_library(state: State<'_, Arc<AppState>>, app: tauri::AppHandle) {
+    let state = state.inner().clone();
+    let app = app.clone();
+
+    std::thread::spawn(move || {
+        // Clear all tracks
+        {
+            let db = state.db.lock();
+            if let Err(e) = db.clear_all_tracks() {
+                log::error!("Failed to clear tracks: {}", e);
+                return;
+            }
+        }
+
+        // Get monitored folders
+        let folders = {
+            let db = state.db.lock();
+            db.get_monitored_folders().unwrap_or_default()
+        };
+
+        // Re-scan all monitored folders
+        for folder in &folders {
+            scan_folder_sync(&state, &app, &folder.path);
+        }
+
+        let _ = app.emit("scan-complete", ());
+    });
 }
 
 #[tauri::command]
