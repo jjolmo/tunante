@@ -13,6 +13,7 @@ pub struct PlayQueue {
     shuffle: bool,
     repeat: RepeatMode,
     shuffle_order: Vec<usize>,
+    user_queue: Vec<Track>,
 }
 
 impl PlayQueue {
@@ -23,6 +24,7 @@ impl PlayQueue {
             shuffle: false,
             repeat: RepeatMode::Off,
             shuffle_order: Vec::new(),
+            user_queue: Vec::new(),
         }
     }
 
@@ -55,6 +57,11 @@ impl PlayQueue {
     }
 
     pub fn next(&mut self) -> Option<Track> {
+        // User queue takes priority
+        if !self.user_queue.is_empty() {
+            return Some(self.user_queue.remove(0));
+        }
+
         if self.tracks.is_empty() {
             return None;
         }
@@ -150,6 +157,26 @@ impl PlayQueue {
             let j = (seed as usize) % (i + 1);
             self.shuffle_order.swap(i, j);
         }
+    }
+
+    pub fn enqueue_track(&mut self, track: Track) {
+        self.user_queue.push(track);
+    }
+
+    pub fn dequeue_track(&mut self, track_id: &str) {
+        self.user_queue.retain(|t| t.id != track_id);
+    }
+
+    pub fn get_user_queue(&self) -> &[Track] {
+        &self.user_queue
+    }
+
+    pub fn is_in_user_queue(&self, track_id: &str) -> bool {
+        self.user_queue.iter().any(|t| t.id == track_id)
+    }
+
+    pub fn clear_user_queue(&mut self) {
+        self.user_queue.clear();
     }
 
     fn next_shuffle_index(&self, current_real_index: usize) -> usize {

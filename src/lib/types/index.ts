@@ -36,8 +36,34 @@ export interface PlayerState {
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
-export type SortColumn = 'title' | 'artist' | 'album' | 'duration_ms' | 'codec' | 'track_number';
+export type SortColumn =
+	| 'title'
+	| 'artist'
+	| 'album'
+	| 'album_artist'
+	| 'duration_ms'
+	| 'codec'
+	| 'track_number'
+	| 'disc_number'
+	| 'sample_rate'
+	| 'channels'
+	| 'bitrate'
+	| 'file_size'
+	| 'path';
 export type SortDirection = 'asc' | 'desc';
+
+export interface ColumnDef {
+	id: string;
+	label: string;
+	field: SortColumn;
+	width?: string;
+	flex?: number;
+	minWidth?: string;
+	align?: 'left' | 'right' | 'center';
+	sortable: boolean;
+	visible: boolean;
+	format?: (track: Track) => string;
+}
 
 export interface SortConfig {
 	column: SortColumn;
