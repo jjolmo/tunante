@@ -10,6 +10,8 @@ class PlayerStore {
 	volume = $state(0.8);
 	shuffle = $state(false);
 	repeat = $state<RepeatMode>('off');
+	userQueue = $state<Track[]>([]);
+	private _queuedIds = $state<Set<string>>(new Set());
 	private _initialized = false;
 
 	get progress(): number {
@@ -137,6 +139,37 @@ class PlayerStore {
 		const modes: RepeatMode[] = ['off', 'all', 'one'];
 		const idx = modes.indexOf(this.repeat);
 		this.repeat = modes[(idx + 1) % modes.length];
+	}
+
+	isInQueue(trackId: string): boolean {
+		return this._queuedIds.has(trackId);
+	}
+
+	async enqueueTracks(trackIds: string[]) {
+		try {
+			await invoke('enqueue_tracks', { trackIds });
+			await this.loadQueue();
+		} catch (e) {
+			console.error('Failed to enqueue tracks:', e);
+		}
+	}
+
+	async dequeueTracks(trackIds: string[]) {
+		try {
+			await invoke('dequeue_tracks', { trackIds });
+			await this.loadQueue();
+		} catch (e) {
+			console.error('Failed to dequeue tracks:', e);
+		}
+	}
+
+	async loadQueue() {
+		try {
+			this.userQueue = await invoke<Track[]>('get_queue');
+			this._queuedIds = new Set(this.userQueue.map((t) => t.id));
+		} catch (e) {
+			console.error('Failed to load queue:', e);
+		}
 	}
 }
 

@@ -3,19 +3,30 @@
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { formatDuration } from '$lib/types';
-	import type { Track, SortColumn } from '$lib/types';
+	import type { Track, SortColumn, ColumnDef } from '$lib/types';
+	import type { ContextMenuItem } from './ContextMenu.svelte';
+	import ContextMenu from './ContextMenu.svelte';
 	import SearchBar from './SearchBar.svelte';
 
 	const ROW_HEIGHT = 26;
 	const BUFFER = 10;
 
 	let container: HTMLDivElement | undefined = $state();
+	let wrapperEl: HTMLDivElement | undefined = $state();
 	let scrollTop = $state(0);
 	let containerHeight = $state(600);
+
+	// Context menu state
+	let contextMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
+
+	// Drag state
+	let dragImageEl: HTMLDivElement | undefined = $state();
 
 	let tracks = $derived(
 		playlistsStore.activePlaylistId ? playlistsStore.playlistTracks : libraryStore.filteredTracks
 	);
+
+	let visibleColumns = $derived(libraryStore.visibleColumns);
 
 	let totalHeight = $derived(tracks.length * ROW_HEIGHT);
 	let startIndex = $derived(Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - BUFFER));
@@ -35,17 +46,118 @@
 		libraryStore.setSort(column);
 	}
 
-	function handleTrackClick(track: Track, event: MouseEvent) {
-		libraryStore.selectTrack(track.id, event.ctrlKey || event.metaKey);
+	function handleTrackClick(track: Track, event: MouseEvent, idx: number) {
+		libraryStore.selectTrack(track.id, event.ctrlKey || event.metaKey, event.shiftKey, idx);
 	}
 
 	function handleTrackDblClick(track: Track) {
 		playerStore.playTrack(track);
 	}
 
+	function handleMiddleClick(track: Track, event: MouseEvent) {
+		if (event.button === 1) {
+			event.preventDefault();
+			playerStore.enqueueTracks([track.id]);
+		}
+	}
+
+	function handleTrackContextMenu(track: Track, event: MouseEvent) {
+		event.preventDefault();
+		// If right-clicked track is not in selection, select it alone
+		if (!libraryStore.selectedTrackIds.has(track.id)) {
+			libraryStore.selectTrack(track.id);
+		}
+
+		const selectedIds = [...libraryStore.selectedTrackIds];
+		const inQueue = selectedIds.length === 1 && playerStore.isInQueue(track.id);
+		const count = selectedIds.length;
+
+		const items: ContextMenuItem[] = [];
+
+		if (inQueue) {
+			items.push({
+				label: 'Remove from queue',
+				action: () => playerStore.dequeueTracks(selectedIds)
+			});
+		} else {
+			items.push({
+				label: count > 1 ? `Add ${count} tracks to queue` : 'Add to queue',
+				action: () => playerStore.enqueueTracks(selectedIds)
+			});
+		}
+
+		contextMenu = { items, x: event.clientX, y: event.clientY };
+	}
+
+	function buildHeaderMenuItems(): ContextMenuItem[] {
+		return libraryStore.columns.map((c) => ({
+			label: c.label,
+			checked: c.visible,
+			action: () => {
+				libraryStore.toggleColumn(c.id);
+				if (contextMenu) {
+					contextMenu = { ...contextMenu, items: buildHeaderMenuItems() };
+				}
+			}
+		}));
+	}
+
+	function handleHeaderContextMenu(event: MouseEvent) {
+		event.preventDefault();
+		contextMenu = { items: buildHeaderMenuItems(), x: event.clientX, y: event.clientY };
+	}
+
 	function sortIndicator(column: SortColumn): string {
 		if (libraryStore.sortConfig.column !== column) return '';
 		return libraryStore.sortConfig.direction === 'asc' ? ' ▲' : ' ▼';
+	}
+
+	function getCellValue(track: Track, col: ColumnDef): string {
+		if (col.format) return col.format(track);
+		const val = track[col.field as keyof Track];
+		if (val === null || val === undefined) return '';
+		if (col.field === 'duration_ms') return formatDuration(val as number);
+		return String(val);
+	}
+
+	function getColumnStyle(col: ColumnDef): string {
+		const parts: string[] = [];
+		if (col.width) {
+			parts.push(`width: ${col.width}; min-width: ${col.width}`);
+		} else if (col.flex) {
+			parts.push(`flex: ${col.flex}`);
+			if (col.minWidth) parts.push(`min-width: ${col.minWidth}`);
+		}
+		if (col.align === 'right') parts.push('text-align: right');
+		else if (col.align === 'center') parts.push('text-align: center');
+		return parts.join('; ');
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+			e.preventDefault();
+			libraryStore.selectAll();
+		}
+	}
+
+	// Drag to playlist
+	function handleDragStart(e: DragEvent, track: Track) {
+		if (!libraryStore.selectedTrackIds.has(track.id)) {
+			libraryStore.selectTrack(track.id);
+		}
+		const ids = [...libraryStore.selectedTrackIds];
+		e.dataTransfer!.setData('application/x-tunante-tracks', JSON.stringify(ids));
+		e.dataTransfer!.effectAllowed = 'copy';
+
+		// Custom drag image
+		if (dragImageEl) {
+			dragImageEl.textContent = `♫ ${ids.length} track${ids.length > 1 ? 's' : ''}`;
+			dragImageEl.style.display = 'block';
+			e.dataTransfer!.setDragImage(dragImageEl, 0, 0);
+			requestAnimationFrame(() => {
+				if (dragImageEl) dragImageEl.style.display = 'none';
+			});
+		}
 	}
 
 	$effect(() => {
@@ -59,25 +171,20 @@
 	});
 </script>
 
-<div class="tracklist-wrapper">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="tracklist-wrapper" bind:this={wrapperEl} onkeydown={handleKeydown} tabindex="-1">
 	<SearchBar />
-	<div class="tracklist-header">
-		<div class="col col-num">#</div>
-		<button class="col col-title" onclick={() => handleSort('title')}>
-			Title{sortIndicator('title')}
-		</button>
-		<button class="col col-artist" onclick={() => handleSort('artist')}>
-			Artist{sortIndicator('artist')}
-		</button>
-		<button class="col col-album" onclick={() => handleSort('album')}>
-			Album{sortIndicator('album')}
-		</button>
-		<button class="col col-duration" onclick={() => handleSort('duration_ms')}>
-			Duration{sortIndicator('duration_ms')}
-		</button>
-		<button class="col col-codec" onclick={() => handleSort('codec')}>
-			Codec{sortIndicator('codec')}
-		</button>
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="tracklist-header" oncontextmenu={handleHeaderContextMenu}>
+		{#each visibleColumns as col (col.id)}
+			{#if col.sortable}
+				<button class="col" style={getColumnStyle(col)} onclick={() => handleSort(col.field)}>
+					{col.label}{sortIndicator(col.field)}
+				</button>
+			{:else}
+				<div class="col" style={getColumnStyle(col)}>{col.label}</div>
+			{/if}
+		{/each}
 	</div>
 
 	<div class="tracklist-body" bind:this={container} onscroll={handleScroll}>
@@ -89,23 +196,25 @@
 						class="track-row"
 						class:selected={libraryStore.selectedTrackIds.has(track.id)}
 						class:playing={playerStore.currentTrack?.id === track.id}
-						onclick={(e) => handleTrackClick(track, e)}
+						class:queued={playerStore.isInQueue(track.id)}
+						onclick={(e) => handleTrackClick(track, e, idx)}
 						ondblclick={() => handleTrackDblClick(track)}
+						onauxclick={(e) => handleMiddleClick(track, e)}
+						oncontextmenu={(e) => handleTrackContextMenu(track, e)}
+						draggable={libraryStore.selectedTrackIds.has(track.id)}
+						ondragstart={(e) => handleDragStart(e, track)}
 					>
-						<div class="col col-num">
-							{#if playerStore.currentTrack?.id === track.id && playerStore.isPlaying}
-								<span class="playing-icon">▶</span>
-							{:else}
-								{idx + 1}
-							{/if}
-						</div>
-						<div class="col col-title" title={track.title}>{track.title || 'Unknown'}</div>
-						<div class="col col-artist" title={track.artist}>
-							{track.artist || 'Unknown Artist'}
-						</div>
-						<div class="col col-album" title={track.album}>{track.album || 'Unknown Album'}</div>
-						<div class="col col-duration">{formatDuration(track.duration_ms)}</div>
-						<div class="col col-codec">{track.codec}</div>
+						{#each visibleColumns as col, colIdx (col.id)}
+							<div class="col" style={getColumnStyle(col)}>
+								{#if colIdx === 0 && playerStore.currentTrack?.id === track.id && playerStore.isPlaying}
+									<span class="playing-icon">▶ </span>
+								{/if}
+								{#if playerStore.isInQueue(track.id) && colIdx === 0}
+									<span class="queue-badge">Q</span>
+								{/if}
+								<span class="cell-text" title={getCellValue(track, col)}>{getCellValue(track, col)}</span>
+							</div>
+						{/each}
 					</button>
 				{/each}
 			</div>
@@ -122,7 +231,19 @@
 			{/if}
 		</div>
 	{/if}
+
+	<!-- Drag image element (hidden) -->
+	<div class="drag-image" bind:this={dragImageEl}></div>
 </div>
+
+{#if contextMenu}
+	<ContextMenu
+		items={contextMenu.items}
+		x={contextMenu.x}
+		y={contextMenu.y}
+		onclose={() => (contextMenu = null)}
+	/>
+{/if}
 
 <style>
 	.tracklist-wrapper {
@@ -131,6 +252,7 @@
 		flex-direction: column;
 		min-width: 0;
 		overflow: hidden;
+		outline: none;
 	}
 
 	.tracklist-header {
@@ -175,42 +297,6 @@
 		white-space: nowrap;
 	}
 
-	.col-num {
-		width: 45px;
-		min-width: 45px;
-		text-align: right;
-		color: var(--color-text-muted);
-	}
-
-	.col-title {
-		flex: 3;
-		min-width: 150px;
-	}
-
-	.col-artist {
-		flex: 2;
-		min-width: 100px;
-	}
-
-	.col-album {
-		flex: 2;
-		min-width: 100px;
-	}
-
-	.col-duration {
-		width: 70px;
-		min-width: 70px;
-		text-align: right;
-		font-family: var(--font-mono);
-	}
-
-	.col-codec {
-		width: 60px;
-		min-width: 60px;
-		text-align: center;
-		font-size: 11px;
-	}
-
 	.track-row {
 		display: flex;
 		align-items: center;
@@ -241,9 +327,35 @@
 		color: var(--color-accent-hover);
 	}
 
+	.track-row.queued {
+		border-left: 2px solid var(--color-accent);
+	}
+
 	.playing-icon {
 		color: var(--color-accent);
 		font-size: 10px;
+		flex-shrink: 0;
+	}
+
+	.queue-badge {
+		display: inline-block;
+		background-color: var(--color-accent);
+		color: var(--color-bg-primary);
+		font-size: 9px;
+		font-weight: 700;
+		width: 14px;
+		height: 14px;
+		line-height: 14px;
+		text-align: center;
+		border-radius: 2px;
+		margin-right: 4px;
+		flex-shrink: 0;
+	}
+
+	.cell-text {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.empty-state {
@@ -261,5 +373,21 @@
 	.empty-state .hint {
 		font-size: 12px;
 		margin-top: 8px;
+	}
+
+	.drag-image {
+		position: fixed;
+		top: -100px;
+		left: -100px;
+		display: none;
+		background-color: var(--color-accent);
+		color: white;
+		padding: 4px 10px;
+		border-radius: 12px;
+		font-size: 12px;
+		font-weight: 600;
+		white-space: nowrap;
+		pointer-events: none;
+		z-index: 9999;
 	}
 </style>

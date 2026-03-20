@@ -6,6 +6,7 @@
 
 	let newPlaylistName = $state('');
 	let showNewPlaylistInput = $state(false);
+	let dragOverPlaylistId = $state<string | null>(null);
 
 	async function handleAddFolder() {
 		const selected = await open({ directory: true, multiple: false });
@@ -65,6 +66,28 @@
 		if (e.key === 'Escape') {
 			showNewPlaylistInput = false;
 			newPlaylistName = '';
+		}
+	}
+
+	function handlePlaylistDragOver(e: DragEvent, playlistId: string) {
+		if (e.dataTransfer?.types.includes('application/x-tunante-tracks')) {
+			e.preventDefault();
+			e.dataTransfer.dropEffect = 'copy';
+			dragOverPlaylistId = playlistId;
+		}
+	}
+
+	function handlePlaylistDragLeave() {
+		dragOverPlaylistId = null;
+	}
+
+	async function handlePlaylistDrop(e: DragEvent, playlistId: string) {
+		e.preventDefault();
+		dragOverPlaylistId = null;
+		const data = e.dataTransfer?.getData('application/x-tunante-tracks');
+		if (data) {
+			const trackIds: string[] = JSON.parse(data);
+			await playlistsStore.addTracksToPlaylist(playlistId, trackIds);
 		}
 	}
 </script>
@@ -135,7 +158,11 @@
 				<button
 					class="sidebar-item"
 					class:active={playlistsStore.activePlaylistId === playlist.id}
+					class:drag-over={dragOverPlaylistId === playlist.id}
 					onclick={() => handleSelectPlaylist(playlist.id)}
+					ondragover={(e) => handlePlaylistDragOver(e, playlist.id)}
+					ondragleave={handlePlaylistDragLeave}
+					ondrop={(e) => handlePlaylistDrop(e, playlist.id)}
 				>
 					<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 						<path d="M14 1H3v1h10.5l.5.5V13h1V1.5L14 1zM1 3.5l.5-.5h10l.5.5v11l-.5.5h-10l-.5-.5v-11zM2 4v10h9V4H2z" />
@@ -257,6 +284,13 @@
 
 	.sidebar-item.active {
 		background-color: var(--color-bg-selected);
+	}
+
+	.sidebar-item.drag-over {
+		background-color: var(--color-accent);
+		color: white;
+		outline: 2px solid var(--color-accent);
+		outline-offset: -2px;
 	}
 
 	.sidebar-item .track-count {
