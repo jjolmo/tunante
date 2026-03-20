@@ -1,6 +1,7 @@
 use crate::audio::vgm_path::is_gme_file;
 use crate::db::models::Track;
 use crate::metadata::gme_reader;
+use crate::metadata::vgmstream_reader;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
@@ -16,12 +17,45 @@ pub enum MetadataError {
     Io(#[from] std::io::Error),
     #[error("GME error: {0}")]
     Gme(String),
+    #[error("Vgmstream error: {0}")]
+    Vgmstream(String),
+}
+
+/// Check if a file is a vgmstream-only format (not handled by GME or standard decoders)
+fn is_vgmstream_file(path: &Path) -> bool {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+
+    // Standard audio formats handled by symphonia/lofty
+    let standard = [
+        "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",
+    ];
+    if standard.contains(&ext.as_str()) {
+        return false;
+    }
+    // GME formats handled by game-music-emu
+    if is_gme_file(path) {
+        return false;
+    }
+    // Check if vgmstream recognizes this extension
+    let filename = path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or("");
+    vgmstream_rs::Vgmstream::is_valid(filename)
 }
 
 /// Read metadata, returning potentially multiple tracks for multi-track VGM files.
 pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
     if is_gme_file(path) {
         return gme_reader::read_gme_metadata(path).map_err(MetadataError::Gme);
+    }
+    if is_vgmstream_file(path) {
+        return vgmstream_reader::read_vgmstream_metadata(path)
+            .map_err(MetadataError::Vgmstream);
     }
     // Standard format: single track
     read_metadata(path).map(|t| vec![t])

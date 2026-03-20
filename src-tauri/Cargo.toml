@@ -31,3 +31,4 @@ notify = { version = "7", features = ["macos_kqueue"] }
 ogg = "0.9"
 opus-decoder = { path = "opus-decoder-patch" }
 game-music-emu = { path = "game-music-emu-patch" }
+vgmstream-rs = { path = "vgmstream-rs" }
