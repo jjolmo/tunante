@@ -44,4 +44,20 @@ CREATE TABLE IF NOT EXISTS playlist_tracks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position);
+
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS monitored_folders (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL UNIQUE,
+    watching_enabled INTEGER NOT NULL DEFAULT 1,
+    last_scanned_at INTEGER NOT NULL DEFAULT 0,
+    added_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_monitored_folders_path ON monitored_folders(path);
 "#;

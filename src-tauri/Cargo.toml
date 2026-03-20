@@ -27,3 +27,4 @@ log = "0.4"
 thiserror = "2"
 parking_lot = "0.12"
 base64 = "0.22"
+notify = { version = "7", features = ["macos_kqueue"] }

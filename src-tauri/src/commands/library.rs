@@ -6,11 +6,11 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 use walkdir::WalkDir;
 
-const AUDIO_EXTENSIONS: &[&str] = &[
+pub const AUDIO_EXTENSIONS: &[&str] = &[
     "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",
 ];
 
-fn is_audio_file(path: &std::path::Path) -> bool {
+pub fn is_audio_file(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
@@ -33,53 +33,56 @@ struct ScanProgress {
     current_path: String,
 }
 
+pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &str) {
+    let scan_path = PathBuf::from(path);
+
+    let audio_files: Vec<PathBuf> = WalkDir::new(&scan_path)
+        .follow_links(true)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file() && is_audio_file(e.path()))
+        .map(|e| e.into_path())
+        .collect();
+
+    let total = audio_files.len();
+
+    for (i, file_path) in audio_files.iter().enumerate() {
+        let _ = app.emit(
+            "scan-progress",
+            ScanProgress {
+                scanned: i + 1,
+                total,
+                current_path: file_path.to_string_lossy().to_string(),
+            },
+        );
+
+        match metadata::read_metadata(file_path) {
+            Ok(track) => {
+                let db = state.db.lock();
+                if let Err(e) = db.insert_track(&track) {
+                    log::error!("Failed to insert track {}: {}", file_path.display(), e);
+                }
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to read metadata for {}: {}",
+                    file_path.display(),
+                    e
+                );
+            }
+        }
+    }
+
+    let _ = app.emit("scan-complete", ());
+}
+
 #[tauri::command]
 pub fn scan_folder(path: String, state: State<'_, Arc<AppState>>, app: tauri::AppHandle) {
     let state = state.inner().clone();
     let app = app.clone();
 
     std::thread::spawn(move || {
-        let scan_path = PathBuf::from(&path);
-
-        // First pass: count audio files
-        let audio_files: Vec<PathBuf> = WalkDir::new(&scan_path)
-            .follow_links(true)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file() && is_audio_file(e.path()))
-            .map(|e| e.into_path())
-            .collect();
-
-        let total = audio_files.len();
-
-        for (i, file_path) in audio_files.iter().enumerate() {
-            let _ = app.emit(
-                "scan-progress",
-                ScanProgress {
-                    scanned: i + 1,
-                    total,
-                    current_path: file_path.to_string_lossy().to_string(),
-                },
-            );
-
-            match metadata::read_metadata(file_path) {
-                Ok(track) => {
-                    let db = state.db.lock();
-                    if let Err(e) = db.insert_track(&track) {
-                        log::error!("Failed to insert track {}: {}", file_path.display(), e);
-                    }
-                }
-                Err(e) => {
-                    log::warn!(
-                        "Failed to read metadata for {}: {}",
-                        file_path.display(),
-                        e
-                    );
-                }
-            }
-        }
-
-        let _ = app.emit("scan-complete", ());
+        scan_folder_sync(&state, &app, &path);
     });
 }
 

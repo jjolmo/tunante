@@ -52,3 +52,20 @@ body {
 ::-webkit-scrollbar-thumb:hover {
 	background: var(--color-scrollbar-hover);
 }
+
+/* Light theme overrides */
+html.light {
+	--color-bg-primary: #ffffff;
+	--color-bg-secondary: #f3f3f3;
+	--color-bg-tertiary: #e8e8e8;
+	--color-bg-hover: #d4d4d4;
+	--color-bg-selected: #cce5ff;
+	--color-text-primary: #1e1e1e;
+	--color-text-secondary: #616161;
+	--color-text-muted: #a0a0a0;
+	--color-accent: #007acc;
+	--color-accent-hover: #005999;
+	--color-border: #d4d4d4;
+	--color-scrollbar: #c1c1c1;
+	--color-scrollbar-hover: #a8a8a8;
+}
