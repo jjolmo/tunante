@@ -113,3 +113,36 @@ pub fn add_files(paths: Vec<String>, state: State<'_, Arc<AppState>>) -> Result<
 pub fn get_artwork(track_path: String) -> Result<Option<String>, String> {
     metadata::extract_artwork_base64(&PathBuf::from(track_path)).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn open_containing_folder(path: String) -> Result<(), String> {
+    let file_path = PathBuf::from(&path);
+    let folder = file_path.parent().unwrap_or(&file_path);
+
+    #[cfg(target_os = "linux")]
+    {
+        // Try xdg-open first, fall back to nautilus/dolphin/thunar
+        std::process::Command::new("xdg-open")
+            .arg(folder)
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(["/select,", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to open folder: {}", e))?;
+    }
+
+    Ok(())
+}
