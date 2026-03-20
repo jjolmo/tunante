@@ -1,9 +1,11 @@
 use ogg::reading::PacketReader;
 use opus_decoder::OpusDecoder;
+use rodio::source::SeekError;
 use rodio::Source;
 use std::io::{Read, Seek, SeekFrom};
 use std::num::NonZeroU16;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Streaming Ogg Opus decoder that implements rodio::Source.
@@ -16,6 +18,7 @@ pub struct OggOpusSource<R: Read + Seek> {
     buffer: Vec<f32>,
     buf_pos: usize,
     skip_remaining: usize,
+    pre_skip: u64,
     total_duration: Option<Duration>,
     finished: bool,
 }
@@ -133,6 +136,7 @@ impl<R: Read + Seek> OggOpusSource<R> {
             buffer: Vec::new(),
             buf_pos: 0,
             skip_remaining: pre_skip as usize * channel_count,
+            pre_skip,
             total_duration,
             finished: false,
         })
@@ -221,5 +225,23 @@ impl<R: Read + Seek + Send> Source for OggOpusSource<R> {
 
     fn total_duration(&self) -> Option<Duration> {
         self.total_duration
+    }
+
+    fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
+        // Convert target position to Ogg granule position (48kHz + pre_skip offset)
+        let target_granule = (pos.as_secs_f64() * 48000.0) as u64 + self.pre_skip;
+
+        self.packet_reader
+            .seek_absgp(None, target_granule)
+            .map_err(|e| SeekError::Other(Arc::new(e)))?;
+
+        // Reset decoder state after seeking
+        self.decoder.reset();
+        self.buffer.clear();
+        self.buf_pos = 0;
+        self.skip_remaining = 0;
+        self.finished = false;
+
+        Ok(())
     }
 }
