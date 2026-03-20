@@ -176,6 +176,9 @@
 	<SearchBar />
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="tracklist-header" oncontextmenu={handleHeaderContextMenu}>
+		<div class="col col-status">
+			<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 15,8 3,15"/></svg>
+		</div>
 		{#each visibleColumns as col (col.id)}
 			{#if col.sortable}
 				<button class="col" style={getColumnStyle(col)} onclick={() => handleSort(col.field)}>
@@ -196,7 +199,6 @@
 						class="track-row"
 						class:selected={libraryStore.selectedTrackIds.has(track.id)}
 						class:playing={playerStore.currentTrack?.id === track.id}
-						class:queued={playerStore.isInQueue(track.id)}
 						onclick={(e) => handleTrackClick(track, e, idx)}
 						ondblclick={() => handleTrackDblClick(track)}
 						onauxclick={(e) => handleMiddleClick(track, e)}
@@ -204,14 +206,15 @@
 						draggable={libraryStore.selectedTrackIds.has(track.id)}
 						ondragstart={(e) => handleDragStart(e, track)}
 					>
-						{#each visibleColumns as col, colIdx (col.id)}
+						<div class="col col-status">
+							{#if playerStore.currentTrack?.id === track.id && playerStore.isPlaying}
+								<span class="playing-icon">▶</span>
+							{:else if playerStore.isInQueue(track.id)}
+								<span class="queue-pos">{playerStore.queuePosition(track.id)}</span>
+							{/if}
+						</div>
+						{#each visibleColumns as col (col.id)}
 							<div class="col" style={getColumnStyle(col)}>
-								{#if colIdx === 0 && playerStore.currentTrack?.id === track.id && playerStore.isPlaying}
-									<span class="playing-icon">▶ </span>
-								{/if}
-								{#if playerStore.isInQueue(track.id) && colIdx === 0}
-									<span class="queue-badge">Q</span>
-								{/if}
 								<span class="cell-text" title={getCellValue(track, col)}>{getCellValue(track, col)}</span>
 							</div>
 						{/each}
@@ -327,29 +330,30 @@
 		color: var(--color-accent-hover);
 	}
 
-	.track-row.queued {
-		border-left: 2px solid var(--color-accent);
+	.col-status {
+		width: 28px;
+		min-width: 28px;
+		text-align: center;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		padding: 0 4px;
+	}
+
+	.tracklist-header .col-status {
+		color: var(--color-text-muted);
 	}
 
 	.playing-icon {
 		color: var(--color-accent);
 		font-size: 10px;
-		flex-shrink: 0;
 	}
 
-	.queue-badge {
-		display: inline-block;
-		background-color: var(--color-accent);
-		color: var(--color-bg-primary);
-		font-size: 9px;
+	.queue-pos {
+		font-size: 10px;
 		font-weight: 700;
-		width: 14px;
-		height: 14px;
-		line-height: 14px;
-		text-align: center;
-		border-radius: 2px;
-		margin-right: 4px;
-		flex-shrink: 0;
+		color: var(--color-accent);
 	}
 
 	.cell-text {
