@@ -8,6 +8,12 @@ pub mod db;
 pub mod metadata;
 pub mod watcher;
 
+#[derive(Clone, serde::Serialize)]
+struct PlaybackErrorPayload {
+    message: String,
+    path: String,
+}
+
 pub struct AppState {
     pub audio: parking_lot::Mutex<audio::AudioEngine>,
     pub db: parking_lot::Mutex<db::Database>,
@@ -23,7 +29,59 @@ struct PlayerStatePayload {
     volume: f32,
 }
 
+fn setup_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        // Call default hook first (prints to stderr)
+        default_hook(info);
+
+        let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "Unknown panic".to_string()
+        };
+
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_else(|| "unknown location".to_string());
+
+        let crash_text = format!(
+            "Tunante crashed!\n\nError: {}\nLocation: {}\n\nPlease report this bug.",
+            message, location
+        );
+
+        // Write crash log next to the executable or in /tmp
+        if let Ok(home) = std::env::var("HOME") {
+            let crash_path = std::path::PathBuf::from(home)
+                .join(".local/share/com.tunante.app/crash.log");
+            let _ = std::fs::write(&crash_path, &crash_text);
+        } else {
+            let _ = std::fs::write("/tmp/tunante-crash.log", &crash_text);
+        }
+
+        // Show dialog via zenity/kdialog (works even if Tauri event loop is dead)
+        let _ = std::process::Command::new("zenity")
+            .args(["--error", "--title=Tunante Crash", "--text", &crash_text, "--width=500"])
+            .status()
+            .or_else(|_| {
+                std::process::Command::new("kdialog")
+                    .args(["--error", &crash_text, "--title", "Tunante Crash"])
+                    .status()
+            })
+            .or_else(|_| {
+                std::process::Command::new("xmessage")
+                    .args(["-center", &crash_text])
+                    .status()
+            });
+    }));
+}
+
 pub fn run() {
+    setup_panic_hook();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -104,10 +162,25 @@ pub fn run() {
                             let path = next_track.path.clone();
                             drop(queue);
                             let mut audio = state.audio.lock();
-                            if let Err(e) = audio.play_file(&std::path::PathBuf::from(&path)) {
-                                log::error!("Failed to auto-advance: {}", e);
+                            match audio.play_file(&std::path::PathBuf::from(&path)) {
+                                Ok(()) => {
+                                    let _ = handle.emit("track-changed", next_track);
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to play {}: {}", path, e);
+                                    let _ = handle.emit(
+                                        "playback-error",
+                                        PlaybackErrorPayload {
+                                            message: e.to_string(),
+                                            path: path.clone(),
+                                        },
+                                    );
+                                    // Reset state so we don't loop on the same error
+                                    audio.stop();
+                                    drop(audio);
+                                    let _ = handle.emit("playback-stopped", ());
+                                }
                             }
-                            let _ = handle.emit("track-changed", next_track);
                         }
                     }
                 }
