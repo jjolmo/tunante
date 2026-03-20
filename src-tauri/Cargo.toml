@@ -1,0 +1,29 @@
+[package]
+name = "tunante"
+version = "0.1.0"
+edition = "2021"
+description = "Cross-platform music player for video game music and standard audio formats"
+license = "MIT"
+
+[lib]
+name = "tunante_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rodio = { version = "0.19", features = ["symphonia-all"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+lofty = "0.21"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+log = "0.4"
+thiserror = "2"
+parking_lot = "0.12"
+base64 = "0.22"

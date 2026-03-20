@@ -1,0 +1,3 @@
+[env]
+PKG_CONFIG_PATH = { value = "/var/lib/flatpak/runtime/org.gnome.Sdk/x86_64/49/e149c2a59900baa8ccab58837702bb821c9293e42186c0ee97b67ff8f1836752/files/lib/x86_64-linux-gnu/pkgconfig:/var/lib/flatpak/runtime/org.gnome.Sdk/x86_64/49/e149c2a59900baa8ccab58837702bb821c9293e42186c0ee97b67ff8f1836752/files/lib/pkgconfig:/var/lib/flatpak/runtime/org.gnome.Sdk/x86_64/49/e149c2a59900baa8ccab58837702bb821c9293e42186c0ee97b67ff8f1836752/files/share/pkgconfig", force = false }
+C_INCLUDE_PATH = { value = "/var/lib/flatpak/runtime/org.gnome.Sdk/x86_64/49/e149c2a59900baa8ccab58837702bb821c9293e42186c0ee97b67ff8f1836752/files/include", force = false }
