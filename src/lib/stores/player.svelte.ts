@@ -11,8 +11,10 @@ class PlayerStore {
 	shuffle = $state(false);
 	repeat = $state<RepeatMode>('off');
 	userQueue = $state<Track[]>([]);
+	errorMessage = $state<string | null>(null);
 	private _queuedIds = $state<Set<string>>(new Set());
 	private _initialized = false;
+	private _errorTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	get progress(): number {
 		return this.durationMs > 0 ? this.positionMs / this.durationMs : 0;
@@ -60,6 +62,27 @@ class PlayerStore {
 			this.positionMs = 0;
 			this.durationMs = 0;
 		});
+
+		await listen<{ message: string; path: string }>('playback-error', (event) => {
+			const filename = event.payload.path.split('/').pop() || event.payload.path;
+			this.showError(`Failed to play "${filename}": ${event.payload.message}`);
+		});
+	}
+
+	showError(message: string) {
+		this.errorMessage = message;
+		if (this._errorTimeout) clearTimeout(this._errorTimeout);
+		this._errorTimeout = setTimeout(() => {
+			this.errorMessage = null;
+		}, 8000);
+	}
+
+	dismissError() {
+		this.errorMessage = null;
+		if (this._errorTimeout) {
+			clearTimeout(this._errorTimeout);
+			this._errorTimeout = null;
+		}
 	}
 
 	async playTrack(track: Track) {
@@ -68,7 +91,8 @@ class PlayerStore {
 			this.currentTrack = track;
 			this.isPlaying = true;
 		} catch (e) {
-			console.error('Failed to play track:', e);
+			const msg = e instanceof Error ? e.message : String(e);
+			this.showError(`Failed to play "${track.title || track.path}": ${msg}`);
 		}
 	}
 

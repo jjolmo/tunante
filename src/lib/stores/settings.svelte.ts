@@ -6,7 +6,8 @@ class SettingsStore {
 	theme = $state<Theme>('dark');
 	monitoredFolders = $state<MonitoredFolder[]>([]);
 	isSettingsOpen = $state(false);
-	activeCategory = $state('library');
+	activeCategory = $state('general');
+	showTrackInTitlebar = $state(true);
 
 	async init() {
 		try {
@@ -17,6 +18,15 @@ class SettingsStore {
 			this.applyTheme(this.theme);
 		} catch (e) {
 			console.error('Failed to load theme setting:', e);
+		}
+
+		try {
+			const val = await invoke<string | null>('get_setting', { key: 'show_track_in_titlebar' });
+			if (val !== null) {
+				this.showTrackInTitlebar = val === 'true';
+			}
+		} catch (e) {
+			console.error('Failed to load titlebar setting:', e);
 		}
 
 		await this.loadMonitoredFolders();
@@ -81,6 +91,15 @@ class SettingsStore {
 
 	closeSettings() {
 		this.isSettingsOpen = false;
+	}
+
+	async setShowTrackInTitlebar(enabled: boolean) {
+		this.showTrackInTitlebar = enabled;
+		try {
+			await invoke('set_setting', { key: 'show_track_in_titlebar', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save titlebar setting:', e);
+		}
 	}
 }
 
