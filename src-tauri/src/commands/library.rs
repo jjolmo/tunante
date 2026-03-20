@@ -1,3 +1,4 @@
+use crate::audio::vgm_path::parse_vgm_path;
 use crate::db::models::Track;
 use crate::metadata;
 use crate::AppState;
@@ -7,7 +8,10 @@ use tauri::{Emitter, State};
 use walkdir::WalkDir;
 
 pub const AUDIO_EXTENSIONS: &[&str] = &[
+    // Standard audio
     "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",
+    // GME chiptune
+    "nsf", "nsfe", "spc", "gbs", "vgm", "vgz", "hes", "kss", "ay", "sap", "gym",
 ];
 
 pub fn is_audio_file(path: &std::path::Path) -> bool {
@@ -56,11 +60,13 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
             },
         );
 
-        match metadata::read_metadata(file_path) {
-            Ok(track) => {
+        match metadata::read_metadata_all(file_path) {
+            Ok(tracks) => {
                 let db = state.db.lock();
-                if let Err(e) = db.insert_track(&track) {
-                    log::error!("Failed to insert track {}: {}", file_path.display(), e);
+                for track in tracks {
+                    if let Err(e) = db.insert_track(&track) {
+                        log::error!("Failed to insert track {}: {}", track.path, e);
+                    }
                 }
             }
             Err(e) => {
@@ -93,10 +99,12 @@ pub fn add_files(paths: Vec<String>, state: State<'_, Arc<AppState>>) -> Result<
     for path_str in paths {
         let path = PathBuf::from(&path_str);
         if is_audio_file(&path) {
-            match metadata::read_metadata(&path) {
-                Ok(track) => {
-                    if let Err(e) = db.insert_track(&track) {
-                        log::error!("Failed to insert track {}: {}", path.display(), e);
+            match metadata::read_metadata_all(&path) {
+                Ok(tracks) => {
+                    for track in tracks {
+                        if let Err(e) = db.insert_track(&track) {
+                            log::error!("Failed to insert track {}: {}", track.path, e);
+                        }
                     }
                 }
                 Err(e) => {
@@ -111,12 +119,15 @@ pub fn add_files(paths: Vec<String>, state: State<'_, Arc<AppState>>) -> Result<
 
 #[tauri::command]
 pub fn get_artwork(track_path: String) -> Result<Option<String>, String> {
-    metadata::extract_artwork_base64(&PathBuf::from(track_path)).map_err(|e| e.to_string())
+    let (actual_path, _) = parse_vgm_path(&track_path);
+    metadata::extract_artwork_base64(&PathBuf::from(actual_path)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn open_containing_folder(path: String) -> Result<(), String> {
-    let file_path = PathBuf::from(&path);
+    // Strip virtual path suffix (#N) for multi-track VGM files
+    let (actual_path, _) = parse_vgm_path(&path);
+    let file_path = PathBuf::from(actual_path);
     let folder = file_path.parent().unwrap_or(&file_path);
 
     #[cfg(target_os = "linux")]
@@ -131,7 +142,7 @@ pub fn open_containing_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .args(["-R", &path])
+            .args(["-R", actual_path])
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }
@@ -139,7 +150,7 @@ pub fn open_containing_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
-            .args(["/select,", &path])
+            .args(["/select,", actual_path])
             .spawn()
             .map_err(|e| format!("Failed to open folder: {}", e))?;
     }

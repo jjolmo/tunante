@@ -416,4 +416,14 @@ impl Database {
             .execute("DELETE FROM tracks WHERE path = ?1", params![path])?;
         Ok(())
     }
+
+    /// Remove all tracks whose path matches the given base path or has #N suffix.
+    /// This handles both single-track files and multi-track VGM files.
+    pub fn remove_tracks_by_base_path(&self, base_path: &str) -> Result<(), DbError> {
+        self.conn.execute(
+            "DELETE FROM tracks WHERE path = ?1 OR path LIKE ?2",
+            params![base_path, format!("{}#%", base_path)],
+        )?;
+        Ok(())
+    }
 }

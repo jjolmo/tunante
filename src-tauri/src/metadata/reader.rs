@@ -1,4 +1,6 @@
+use crate::audio::vgm_path::is_gme_file;
 use crate::db::models::Track;
+use crate::metadata::gme_reader;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
 use lofty::tag::Accessor;
@@ -12,6 +14,17 @@ pub enum MetadataError {
     Lofty(#[from] lofty::error::LoftyError),
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("GME error: {0}")]
+    Gme(String),
+}
+
+/// Read metadata, returning potentially multiple tracks for multi-track VGM files.
+pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
+    if is_gme_file(path) {
+        return gme_reader::read_gme_metadata(path).map_err(MetadataError::Gme);
+    }
+    // Standard format: single track
+    read_metadata(path).map(|t| vec![t])
 }
 
 pub fn read_metadata(path: &Path) -> Result<Track, MetadataError> {

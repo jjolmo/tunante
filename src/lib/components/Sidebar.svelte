@@ -31,11 +31,17 @@
 						'wma',
 						'm4a',
 						'opus',
-						'spc',
 						'nsf',
+						'nsfe',
+						'spc',
+						'gbs',
 						'vgm',
 						'vgz',
-						'gbs'
+						'hes',
+						'kss',
+						'ay',
+						'sap',
+						'gym'
 					]
 				}
 			]

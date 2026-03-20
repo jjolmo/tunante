@@ -118,17 +118,15 @@ impl FolderWatcher {
 
         match kind {
             EventKind::Create(_) | EventKind::Modify(_) => {
-                match metadata::read_metadata(path) {
-                    Ok(track) => {
+                match metadata::read_metadata_all(path) {
+                    Ok(tracks) => {
                         let db = state.db.lock();
-                        if let Ok(Some(existing)) = db.get_track_by_path(&path_str) {
-                            let mut updated = track;
-                            updated.id = existing.id;
-                            if let Err(e) = db.insert_track(&updated) {
-                                log::error!("Failed to update track {}: {}", path_str, e);
+                        // Remove old entries for this file (handles multi-track cleanup)
+                        let _ = db.remove_tracks_by_base_path(&path_str);
+                        for track in tracks {
+                            if let Err(e) = db.insert_track(&track) {
+                                log::error!("Failed to insert track {}: {}", track.path, e);
                             }
-                        } else if let Err(e) = db.insert_track(&track) {
-                            log::error!("Failed to insert track {}: {}", path_str, e);
                         }
                         drop(db);
 
@@ -147,8 +145,9 @@ impl FolderWatcher {
             }
             EventKind::Remove(_) => {
                 let db = state.db.lock();
-                if let Err(e) = db.remove_track_by_path(&path_str) {
-                    log::error!("Failed to remove track {}: {}", path_str, e);
+                // Remove all tracks for this base path (handles #N suffixes)
+                if let Err(e) = db.remove_tracks_by_base_path(&path_str) {
+                    log::error!("Failed to remove tracks {}: {}", path_str, e);
                 }
                 drop(db);
 
