@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import GeneralSettings from './GeneralSettings.svelte';
 	import LibrarySettings from './LibrarySettings.svelte';
 	import ThemeSettings from './ThemeSettings.svelte';
 
@@ -10,6 +11,11 @@
 	}
 
 	const categories: Category[] = [
+		{
+			id: 'general',
+			label: 'General',
+			icon: 'M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.2.7-2.4.5v1.2l2.4.5.3.7-1.3 2 .8.8 2-1.3.7.3.5 2.4h1.2l.5-2.4.7-.3 2 1.3.8-.8-1.3-2 .3-.7 2.4-.5V7.4l-2.4-.5-.3-.7 1.3-2-.8-.8-2 1.3-.7-.3zM8 10a2 2 0 110-4 2 2 0 010 4z'
+		},
 		{
 			id: 'library',
 			label: 'Library',
@@ -71,7 +77,9 @@
 				{/each}
 			</nav>
 			<div class="settings-content">
-				{#if settingsStore.activeCategory === 'library'}
+				{#if settingsStore.activeCategory === 'general'}
+					<GeneralSettings />
+				{:else if settingsStore.activeCategory === 'library'}
 					<LibrarySettings />
 				{:else if settingsStore.activeCategory === 'theme'}
 					<ThemeSettings />

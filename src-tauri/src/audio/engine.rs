@@ -1,6 +1,7 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::fs::File;
 use std::io::BufReader;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -109,7 +110,21 @@ impl AudioEngine {
         }
 
         let file = BufReader::new(File::open(path)?);
-        let source = Decoder::new(file).map_err(|e| AudioError::DecoderError(e.to_string()))?;
+
+        // Wrap decoder creation in catch_unwind because rodio/symphonia can panic
+        // on certain malformed or unsupported files instead of returning an error
+        let source = catch_unwind(AssertUnwindSafe(|| Decoder::new(file)))
+            .map_err(|panic| {
+                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    s.to_string()
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "Unknown decoder panic".to_string()
+                };
+                AudioError::DecoderError(format!("Decoder crashed: {}", msg))
+            })?
+            .map_err(|e| AudioError::DecoderError(e.to_string()))?;
 
         // Get duration from source if available
         let duration = source.total_duration();
