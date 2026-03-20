@@ -95,6 +95,38 @@ impl Database {
         Ok(tracks)
     }
 
+    pub fn get_track_by_id(&self, id: &str) -> Result<Option<Track>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork
+             FROM tracks WHERE id = ?1",
+        )?;
+
+        let mut tracks = stmt
+            .query_map(params![id], |row| {
+                Ok(Track {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    title: row.get(2)?,
+                    artist: row.get(3)?,
+                    album: row.get(4)?,
+                    album_artist: row.get(5)?,
+                    track_number: row.get(6)?,
+                    disc_number: row.get(7)?,
+                    duration_ms: row.get(8)?,
+                    sample_rate: row.get(9)?,
+                    channels: row.get(10)?,
+                    bitrate: row.get(11)?,
+                    codec: row.get(12)?,
+                    file_size: row.get(13)?,
+                    has_artwork: row.get(14)?,
+                    modified_at: 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(tracks.pop())
+    }
+
     pub fn get_track_by_path(&self, path: &str) -> Result<Option<Track>, DbError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork

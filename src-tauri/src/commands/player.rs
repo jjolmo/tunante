@@ -1,3 +1,4 @@
+use crate::db::models::Track;
 use crate::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -103,4 +104,43 @@ pub fn get_player_state(state: State<'_, Arc<AppState>>) -> Result<serde_json::V
         "volume": audio.volume(),
         "current_track": queue.current(),
     }))
+}
+
+#[tauri::command]
+pub fn enqueue_tracks(
+    track_ids: Vec<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let db = state.db.lock();
+    let mut queue = state.queue.lock();
+    for id in track_ids {
+        if let Ok(Some(track)) = db.get_track_by_id(&id) {
+            queue.enqueue_track(track);
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn dequeue_tracks(
+    track_ids: Vec<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let mut queue = state.queue.lock();
+    for id in track_ids {
+        queue.dequeue_track(&id);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_queue(state: State<'_, Arc<AppState>>) -> Result<Vec<Track>, String> {
+    let queue = state.queue.lock();
+    Ok(queue.get_user_queue().to_vec())
+}
+
+#[tauri::command]
+pub fn is_in_queue(track_id: String, state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+    let queue = state.queue.lock();
+    Ok(queue.is_in_user_queue(&track_id))
 }
