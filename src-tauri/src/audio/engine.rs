@@ -1,5 +1,7 @@
+use super::opus::OggOpusSource;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
+use std::io::BufReader;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -105,21 +107,34 @@ impl AudioEngine {
         // Stop current playback
         self.player.stop();
 
-        let file = File::open(path)?;
+        let is_opus = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("opus"))
+            .unwrap_or(false);
 
-        // Decoder::try_from(File) properly sets byte_len from file metadata,
-        // which prevents symphonia's isomp4 demuxer from panicking with
-        // "Seek errors should not occur during initialization".
-        let source = Decoder::try_from(file)
-            .map_err(|e| AudioError::DecoderError(e.to_string()))?;
+        if is_opus {
+            // Use our custom Opus decoder (symphonia doesn't support Opus)
+            let file = BufReader::new(File::open(path)?);
+            let source = OggOpusSource::new(file)
+                .map_err(|e| AudioError::DecoderError(e))?;
+            let duration = source.total_duration();
+            self.player.append(source);
+            self.player.play();
+            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+        } else {
+            // Decoder::try_from(File) properly sets byte_len from file metadata,
+            // which prevents symphonia's isomp4 demuxer from panicking with
+            // "Seek errors should not occur during initialization".
+            let file = File::open(path)?;
+            let source = Decoder::try_from(file)
+                .map_err(|e| AudioError::DecoderError(e.to_string()))?;
+            let duration = source.total_duration();
+            self.player.append(source);
+            self.player.play();
+            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+        }
 
-        // Get duration from source if available
-        let duration = source.total_duration();
-
-        self.player.append(source);
-        self.player.play();
-
-        self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
         self.timer.start();
         self.was_playing = true;
         self.has_source = true;
