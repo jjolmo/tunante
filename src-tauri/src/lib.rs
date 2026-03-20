@@ -35,6 +35,13 @@ fn setup_panic_hook() {
         // Call default hook first (prints to stderr)
         default_hook(info);
 
+        // Only show crash dialog for the main thread - spawned threads (like decoder)
+        // have their panics caught by join() and handled gracefully
+        let is_main = std::thread::current().name() == Some("main");
+        if !is_main {
+            return;
+        }
+
         let message = if let Some(s) = info.payload().downcast_ref::<&str>() {
             s.to_string()
         } else if let Some(s) = info.payload().downcast_ref::<String>() {
@@ -53,7 +60,7 @@ fn setup_panic_hook() {
             message, location
         );
 
-        // Write crash log next to the executable or in /tmp
+        // Write crash log
         if let Ok(home) = std::env::var("HOME") {
             let crash_path = std::path::PathBuf::from(home)
                 .join(".local/share/com.tunante.app/crash.log");
