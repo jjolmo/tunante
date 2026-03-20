@@ -6,17 +6,25 @@ use std::num::NonZeroU16;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-/// Ogg Opus decoder that implements rodio::Source.
-/// Decodes Opus packets from an Ogg container and outputs interleaved f32 PCM at 48kHz.
-pub struct OggOpusSource {
-    samples: Vec<f32>,
-    pos: usize,
+/// Streaming Ogg Opus decoder that implements rodio::Source.
+/// Decodes packets on-demand as rodio pulls samples, avoiding upfront memory allocation.
+pub struct OggOpusSource<R: Read + Seek> {
+    packet_reader: PacketReader<R>,
+    decoder: OpusDecoder,
     channels: NonZeroU16,
-    total_pcm_samples: Option<u64>,
+    channel_count: usize,
+    // Current decoded frame buffer
+    buffer: Vec<f32>,
+    buf_pos: usize,
+    // Pre-skip handling
+    skip_remaining: usize,
+    // Duration tracking
+    total_duration: Option<Duration>,
+    finished: bool,
 }
 
-impl OggOpusSource {
-    pub fn new<R: Read + Seek>(reader: R) -> Result<Self, String> {
+impl<R: Read + Seek> OggOpusSource<R> {
+    pub fn new(reader: R) -> Result<Self, String> {
         let mut packet_reader = PacketReader::new(reader);
 
         // Packet 1: OpusHead
@@ -31,6 +39,7 @@ impl OggOpusSource {
 
         let channel_count = head[9] as usize;
         let pre_skip = u16::from_le_bytes([head[10], head[11]]) as usize;
+        let input_sample_rate = u32::from_le_bytes([head[12], head[13], head[14], head[15]]);
 
         if channel_count == 0 || channel_count > 2 {
             return Err(format!(
@@ -44,91 +53,108 @@ impl OggOpusSource {
             .read_packet_expected()
             .map_err(|e| format!("Failed to read OpusTags: {}", e))?;
 
-        // Decode all audio packets
-        let mut decoder = OpusDecoder::new(48000, channel_count)
+        let decoder = OpusDecoder::new(48000, channel_count)
             .map_err(|e| format!("Failed to create Opus decoder: {:?}", e))?;
 
-        let max_frame = decoder.max_frame_size_per_channel();
-        let mut decode_buf = vec![0f32; max_frame * channel_count];
-        let mut all_samples: Vec<f32> = Vec::new();
-        let mut last_absgp = 0u64;
+        let channels =
+            NonZeroU16::new(channel_count as u16).ok_or("Invalid channel count")?;
 
+        // Try to estimate duration from the last page's granule position.
+        // We'd need to seek to the end, which is expensive. For now, use None
+        // and let the timer handle display. If input_sample_rate is set in the
+        // header, we at least know it's a valid file.
+        let _ = input_sample_rate;
+
+        Ok(Self {
+            packet_reader,
+            decoder,
+            channels,
+            channel_count,
+            buffer: Vec::new(),
+            buf_pos: 0,
+            skip_remaining: pre_skip * channel_count,
+            total_duration: None,
+            finished: false,
+        })
+    }
+
+    /// Decode the next Ogg packet into the internal buffer.
+    /// Returns true if a packet was decoded, false if stream ended.
+    fn decode_next_packet(&mut self) -> bool {
         loop {
-            match packet_reader.read_packet() {
+            match self.packet_reader.read_packet() {
                 Ok(Some(packet)) => {
-                    last_absgp = packet.absgp_page();
-                    match decoder.decode_float(&packet.data, &mut decode_buf, false) {
+                    let max_frame = self.decoder.max_frame_size_per_channel();
+                    self.buffer.resize(max_frame * self.channel_count, 0.0);
+
+                    match self.decoder.decode_float(&packet.data, &mut self.buffer, false) {
                         Ok(samples_per_channel) => {
-                            let total = samples_per_channel * channel_count;
-                            all_samples.extend_from_slice(&decode_buf[..total]);
+                            let total = samples_per_channel * self.channel_count;
+                            self.buffer.truncate(total);
+                            self.buf_pos = 0;
+
+                            // Handle pre-skip
+                            if self.skip_remaining > 0 {
+                                let skip = self.skip_remaining.min(self.buffer.len());
+                                self.buf_pos = skip;
+                                self.skip_remaining -= skip;
+                                // If we consumed the entire buffer with skip, decode another
+                                if self.buf_pos >= self.buffer.len() {
+                                    continue;
+                                }
+                            }
+
+                            return true;
                         }
                         Err(e) => {
                             log::warn!("Opus decode error (skipping frame): {:?}", e);
+                            continue;
                         }
                     }
                 }
-                Ok(None) => break,
+                Ok(None) => {
+                    self.finished = true;
+                    return false;
+                }
                 Err(e) => {
                     log::warn!("Ogg read error: {}", e);
-                    break;
+                    self.finished = true;
+                    return false;
                 }
             }
         }
-
-        // Apply pre-skip: remove the first pre_skip samples (per channel)
-        let skip_samples = pre_skip * channel_count;
-        if skip_samples < all_samples.len() {
-            all_samples.drain(..skip_samples);
-        }
-
-        // Trim end based on granule position if available
-        let total_pcm_samples = if last_absgp > pre_skip as u64 {
-            Some(last_absgp - pre_skip as u64)
-        } else {
-            None
-        };
-
-        if let Some(total) = total_pcm_samples {
-            let total_interleaved = (total as usize) * channel_count;
-            if total_interleaved < all_samples.len() {
-                all_samples.truncate(total_interleaved);
-            }
-        }
-
-        let channels = NonZeroU16::new(channel_count as u16)
-            .ok_or("Invalid channel count")?;
-
-        Ok(Self {
-            samples: all_samples,
-            pos: 0,
-            channels,
-            total_pcm_samples,
-        })
     }
 }
 
-impl Iterator for OggOpusSource {
+impl<R: Read + Seek + Send> Iterator for OggOpusSource<R> {
     type Item = f32;
 
     fn next(&mut self) -> Option<f32> {
-        if self.pos < self.samples.len() {
-            let sample = self.samples[self.pos];
-            self.pos += 1;
-            Some(sample)
-        } else {
-            None
+        if self.finished {
+            return None;
         }
-    }
 
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.samples.len() - self.pos;
-        (remaining, Some(remaining))
+        // If current buffer is exhausted, decode next packet
+        if self.buf_pos >= self.buffer.len() {
+            if !self.decode_next_packet() {
+                return None;
+            }
+        }
+
+        let sample = self.buffer[self.buf_pos];
+        self.buf_pos += 1;
+        Some(sample)
     }
 }
 
-impl Source for OggOpusSource {
+impl<R: Read + Seek + Send> Source for OggOpusSource<R> {
     fn current_span_len(&self) -> Option<usize> {
-        Some(self.samples.len() - self.pos)
+        if self.finished {
+            Some(0)
+        } else {
+            // Return remaining samples in current buffer
+            Some(self.buffer.len().saturating_sub(self.buf_pos))
+        }
     }
 
     fn channels(&self) -> NonZeroU16 {
@@ -136,13 +162,10 @@ impl Source for OggOpusSource {
     }
 
     fn sample_rate(&self) -> NonZeroU32 {
-        // SAFETY: 48000 is non-zero
         NonZeroU32::new(48000).unwrap()
     }
 
     fn total_duration(&self) -> Option<Duration> {
-        self.total_pcm_samples.map(|samples| {
-            Duration::from_secs_f64(samples as f64 / 48000.0)
-        })
+        self.total_duration
     }
 }
