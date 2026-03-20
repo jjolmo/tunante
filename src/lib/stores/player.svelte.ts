@@ -145,6 +145,11 @@ class PlayerStore {
 		return this._queuedIds.has(trackId);
 	}
 
+	queuePosition(trackId: string): number {
+		const idx = this.userQueue.findIndex((t) => t.id === trackId);
+		return idx === -1 ? 0 : idx + 1;
+	}
+
 	async enqueueTracks(trackIds: string[]) {
 		try {
 			await invoke('enqueue_tracks', { trackIds });
