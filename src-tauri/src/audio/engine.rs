@@ -1,4 +1,6 @@
+use super::gme::GmeSource;
 use super::opus::OggOpusSource;
+use super::vgm_path::{is_gme_format, parse_vgm_path};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
 use std::io::BufReader;
@@ -107,15 +109,27 @@ impl AudioEngine {
         // Stop current playback
         self.player.stop();
 
-        let is_opus = path
+        let path_str = path.to_string_lossy();
+        let (actual_path_str, sub_track) = parse_vgm_path(&path_str);
+        let actual_path = Path::new(actual_path_str);
+
+        let ext = actual_path
             .extension()
             .and_then(|e| e.to_str())
-            .map(|e| e.eq_ignore_ascii_case("opus"))
-            .unwrap_or(false);
+            .unwrap_or("");
 
-        if is_opus {
+        if is_gme_format(ext) {
+            // GME chiptune format (NSF, SPC, GBS, VGM, etc.)
+            let track_index = sub_track.unwrap_or(0);
+            let source = GmeSource::new(actual_path, track_index)
+                .map_err(|e| AudioError::DecoderError(e))?;
+            let duration = source.total_duration();
+            self.player.append(source);
+            self.player.play();
+            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+        } else if ext.eq_ignore_ascii_case("opus") {
             // Use our custom Opus decoder (symphonia doesn't support Opus)
-            let file = BufReader::new(File::open(path)?);
+            let file = BufReader::new(File::open(actual_path)?);
             let source = OggOpusSource::new(file)
                 .map_err(|e| AudioError::DecoderError(e))?;
             let duration = source.total_duration();
@@ -123,10 +137,8 @@ impl AudioEngine {
             self.player.play();
             self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
         } else {
-            // Decoder::try_from(File) properly sets byte_len from file metadata,
-            // which prevents symphonia's isomp4 demuxer from panicking with
-            // "Seek errors should not occur during initialization".
-            let file = File::open(path)?;
+            // Standard format via symphonia (MP3, FLAC, AAC, WAV, etc.)
+            let file = File::open(actual_path)?;
             let source = Decoder::try_from(file)
                 .map_err(|e| AudioError::DecoderError(e.to_string()))?;
             let duration = source.total_duration();
