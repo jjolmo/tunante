@@ -1,0 +1,6 @@
+{
+  "git": {
+    "sha1": "82fe31d5d8e5aa6b94f1fc2e306d39c69f27e6e8"
+  },
+  "path_in_vcs": "crates/opus-decoder"
+}
