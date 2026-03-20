@@ -411,6 +411,13 @@ impl Database {
         Ok(())
     }
 
+    pub fn clear_all_tracks(&self) -> Result<(), DbError> {
+        self.conn.execute_batch(
+            "DELETE FROM tracks; DELETE FROM tracks_fts;"
+        )?;
+        Ok(())
+    }
+
     pub fn remove_track_by_path(&self, path: &str) -> Result<(), DbError> {
         self.conn
             .execute("DELETE FROM tracks WHERE path = ?1", params![path])?;

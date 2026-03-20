@@ -1,0 +1,3 @@
+[submodule "src-tauri/vgmstream"]
+	path = src-tauri/vgmstream
+	url = https://github.com/vgmstream/vgmstream.git

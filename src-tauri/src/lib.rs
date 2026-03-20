@@ -228,6 +228,7 @@ pub fn run() {
             commands::settings::remove_monitored_folder,
             commands::settings::toggle_folder_watching,
             commands::library::open_containing_folder,
+            commands::library::resync_library,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { MonitoredFolder, Theme } from '$lib/types';
+import { libraryStore } from '$lib/stores/library.svelte';
 
 class SettingsStore {
 	theme = $state<Theme>('dark');
@@ -58,10 +59,12 @@ class SettingsStore {
 
 	async addMonitoredFolder(path: string) {
 		try {
+			libraryStore.isScanning = true;
 			const folder = await invoke<MonitoredFolder>('add_monitored_folder', { path });
 			this.monitoredFolders = [...this.monitoredFolders, folder];
 		} catch (e) {
 			console.error('Failed to add monitored folder:', e);
+			libraryStore.isScanning = false;
 		}
 	}
 

@@ -1,6 +1,7 @@
 use super::gme::GmeSource;
 use super::opus::OggOpusSource;
 use super::vgm_path::{is_gme_format, parse_vgm_path};
+use super::vgmstream::VgmstreamSource;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
 use std::io::BufReader;
@@ -137,14 +138,28 @@ impl AudioEngine {
             self.player.play();
             self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
         } else {
-            // Standard format via symphonia (MP3, FLAC, AAC, WAV, etc.)
-            let file = File::open(actual_path)?;
-            let source = Decoder::try_from(file)
-                .map_err(|e| AudioError::DecoderError(e.to_string()))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            // Try vgmstream for game audio formats (BCSTM, ADX, HCA, etc.)
+            let subsong = sub_track.map(|s| s as i32).unwrap_or(0);
+            match VgmstreamSource::new(actual_path, subsong) {
+                Ok(source) => {
+                    let duration = source.total_duration();
+                    self.player.append(source);
+                    self.player.play();
+                    self.current_duration_ms =
+                        duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+                }
+                Err(_) => {
+                    // Fall back to standard symphonia decoder (MP3, FLAC, AAC, WAV, etc.)
+                    let file = File::open(actual_path)?;
+                    let source = Decoder::try_from(file)
+                        .map_err(|e| AudioError::DecoderError(e.to_string()))?;
+                    let duration = source.total_duration();
+                    self.player.append(source);
+                    self.player.play();
+                    self.current_duration_ms =
+                        duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+                }
+            }
         }
 
         self.timer.start();
