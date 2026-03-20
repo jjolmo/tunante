@@ -27,3 +27,18 @@ pub struct Playlist {
     pub updated_at: i64,
     pub track_count: i64,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Setting {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct MonitoredFolder {
+    pub id: String,
+    pub path: String,
+    pub watching_enabled: bool,
+    pub last_scanned_at: i64,
+    pub added_at: i64,
+}

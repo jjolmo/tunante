@@ -6,11 +6,13 @@ pub mod audio;
 pub mod commands;
 pub mod db;
 pub mod metadata;
+pub mod watcher;
 
 pub struct AppState {
     pub audio: parking_lot::Mutex<audio::AudioEngine>,
     pub db: parking_lot::Mutex<db::Database>,
     pub queue: parking_lot::Mutex<audio::PlayQueue>,
+    pub watcher: parking_lot::Mutex<Option<watcher::FolderWatcher>>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -39,9 +41,36 @@ pub fn run() {
                 audio: parking_lot::Mutex::new(audio_engine),
                 db: parking_lot::Mutex::new(db),
                 queue: parking_lot::Mutex::new(queue),
+                watcher: parking_lot::Mutex::new(None),
             });
 
             app.manage(state.clone());
+
+            // Initialize file watcher
+            {
+                let fw =
+                    watcher::FolderWatcher::new(state.clone(), app.handle().clone());
+                *state.watcher.lock() = Some(fw);
+
+                let db = state.db.lock();
+                if let Ok(folders) = db.get_monitored_folders() {
+                    drop(db);
+                    let mut watcher_lock = state.watcher.lock();
+                    if let Some(ref mut w) = *watcher_lock {
+                        for folder in folders {
+                            if folder.watching_enabled {
+                                if let Err(e) = w.start_watching(&folder.path) {
+                                    log::error!(
+                                        "Failed to start watching {}: {}",
+                                        folder.path,
+                                        e
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // Spawn state update thread
             let handle = app.handle().clone();
@@ -107,6 +136,13 @@ pub fn run() {
             commands::playlists::rename_playlist,
             commands::playlists::add_tracks_to_playlist,
             commands::playlists::remove_track_from_playlist,
+            commands::settings::get_settings,
+            commands::settings::get_setting,
+            commands::settings::set_setting,
+            commands::settings::get_monitored_folders,
+            commands::settings::add_monitored_folder,
+            commands::settings::remove_monitored_folder,
+            commands::settings::toggle_folder_watching,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

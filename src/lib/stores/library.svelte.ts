@@ -48,6 +48,10 @@ class LibraryStore {
 			this.loadTracks();
 		});
 
+		await listen('library-updated', () => {
+			this.loadTracks();
+		});
+
 		await this.loadTracks();
 	}
 
