@@ -1,7 +1,7 @@
 use ogg::reading::PacketReader;
 use opus_decoder::OpusDecoder;
 use rodio::Source;
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, SeekFrom};
 use std::num::NonZeroU16;
 use std::num::NonZeroU32;
 use std::time::Duration;
@@ -13,18 +13,75 @@ pub struct OggOpusSource<R: Read + Seek> {
     decoder: OpusDecoder,
     channels: NonZeroU16,
     channel_count: usize,
-    // Current decoded frame buffer
     buffer: Vec<f32>,
     buf_pos: usize,
-    // Pre-skip handling
     skip_remaining: usize,
-    // Duration tracking
     total_duration: Option<Duration>,
     finished: bool,
 }
 
+/// Find the total duration by reading the last Ogg page's granule position.
+/// Ogg page header: bytes 0-3 = "OggS", bytes 6-13 = granule position (u64 LE).
+fn find_ogg_duration<R: Read + Seek>(reader: &mut R, pre_skip: u64) -> Option<Duration> {
+    let file_size = reader.seek(SeekFrom::End(0)).ok()?;
+    // Read the last 64KB (or whole file if smaller) to find the last "OggS" page
+    let scan_size = 65536u64.min(file_size);
+    let scan_start = file_size - scan_size;
+    reader.seek(SeekFrom::Start(scan_start)).ok()?;
+
+    let mut buf = vec![0u8; scan_size as usize];
+    reader.read_exact(&mut buf).ok()?;
+
+    // Scan backwards for the last "OggS" magic
+    let mut last_granule = None;
+    for i in (0..buf.len().saturating_sub(14)).rev() {
+        if &buf[i..i + 4] == b"OggS" {
+            let granule = u64::from_le_bytes([
+                buf[i + 6],
+                buf[i + 7],
+                buf[i + 8],
+                buf[i + 9],
+                buf[i + 10],
+                buf[i + 11],
+                buf[i + 12],
+                buf[i + 13],
+            ]);
+            // Granule position of -1 (0xFFFFFFFFFFFFFFFF) means "no position"
+            if granule != u64::MAX {
+                last_granule = Some(granule);
+                break;
+            }
+        }
+    }
+
+    // Seek back to start for the PacketReader
+    reader.seek(SeekFrom::Start(0)).ok()?;
+
+    let granule = last_granule?;
+    let pcm_samples = granule.saturating_sub(pre_skip);
+    Some(Duration::from_secs_f64(pcm_samples as f64 / 48000.0))
+}
+
 impl<R: Read + Seek> OggOpusSource<R> {
-    pub fn new(reader: R) -> Result<Self, String> {
+    pub fn new(mut reader: R) -> Result<Self, String> {
+        // First pass: quickly scan for duration from last Ogg page
+        // We need to read headers first to get pre_skip, so do a two-step:
+        // 1. Read OpusHead manually to get pre_skip
+        // 2. Scan for duration
+        // 3. Seek back and create PacketReader for streaming
+
+        // Read first few bytes to get pre_skip from OpusHead
+        let mut head_buf = [0u8; 19];
+        reader
+            .read_exact(&mut head_buf)
+            .map_err(|e| format!("Failed to read OpusHead: {}", e))?;
+
+        // Validate: OpusHead is inside an Ogg page, so we need to skip the Ogg page header.
+        // Actually, let's just use PacketReader properly - seek back and use it.
+        reader
+            .seek(SeekFrom::Start(0))
+            .map_err(|e| format!("Seek failed: {}", e))?;
+
         let mut packet_reader = PacketReader::new(reader);
 
         // Packet 1: OpusHead
@@ -38,8 +95,7 @@ impl<R: Read + Seek> OggOpusSource<R> {
         }
 
         let channel_count = head[9] as usize;
-        let pre_skip = u16::from_le_bytes([head[10], head[11]]) as usize;
-        let input_sample_rate = u32::from_le_bytes([head[12], head[13], head[14], head[15]]);
+        let pre_skip = u16::from_le_bytes([head[10], head[11]]) as u64;
 
         if channel_count == 0 || channel_count > 2 {
             return Err(format!(
@@ -53,17 +109,21 @@ impl<R: Read + Seek> OggOpusSource<R> {
             .read_packet_expected()
             .map_err(|e| format!("Failed to read OpusTags: {}", e))?;
 
+        // Now scan for duration using the underlying reader
+        // We need to get the reader back, scan, then recreate PacketReader
+        let mut reader = packet_reader.into_inner();
+        let total_duration = find_ogg_duration(&mut reader, pre_skip);
+
+        // Recreate PacketReader - it will re-read from start, so skip headers again
+        let mut packet_reader = PacketReader::new(reader);
+        let _ = packet_reader.read_packet_expected(); // OpusHead
+        let _ = packet_reader.read_packet_expected(); // OpusTags
+
         let decoder = OpusDecoder::new(48000, channel_count)
             .map_err(|e| format!("Failed to create Opus decoder: {:?}", e))?;
 
         let channels =
             NonZeroU16::new(channel_count as u16).ok_or("Invalid channel count")?;
-
-        // Try to estimate duration from the last page's granule position.
-        // We'd need to seek to the end, which is expensive. For now, use None
-        // and let the timer handle display. If input_sample_rate is set in the
-        // header, we at least know it's a valid file.
-        let _ = input_sample_rate;
 
         Ok(Self {
             packet_reader,
@@ -72,14 +132,12 @@ impl<R: Read + Seek> OggOpusSource<R> {
             channel_count,
             buffer: Vec::new(),
             buf_pos: 0,
-            skip_remaining: pre_skip * channel_count,
-            total_duration: None,
+            skip_remaining: pre_skip as usize * channel_count,
+            total_duration,
             finished: false,
         })
     }
 
-    /// Decode the next Ogg packet into the internal buffer.
-    /// Returns true if a packet was decoded, false if stream ended.
     fn decode_next_packet(&mut self) -> bool {
         loop {
             match self.packet_reader.read_packet() {
@@ -93,12 +151,10 @@ impl<R: Read + Seek> OggOpusSource<R> {
                             self.buffer.truncate(total);
                             self.buf_pos = 0;
 
-                            // Handle pre-skip
                             if self.skip_remaining > 0 {
                                 let skip = self.skip_remaining.min(self.buffer.len());
                                 self.buf_pos = skip;
                                 self.skip_remaining -= skip;
-                                // If we consumed the entire buffer with skip, decode another
                                 if self.buf_pos >= self.buffer.len() {
                                     continue;
                                 }
@@ -134,7 +190,6 @@ impl<R: Read + Seek + Send> Iterator for OggOpusSource<R> {
             return None;
         }
 
-        // If current buffer is exhausted, decode next packet
         if self.buf_pos >= self.buffer.len() {
             if !self.decode_next_packet() {
                 return None;
@@ -152,7 +207,6 @@ impl<R: Read + Seek + Send> Source for OggOpusSource<R> {
         if self.finished {
             Some(0)
         } else {
-            // Return remaining samples in current buffer
             Some(self.buffer.len().saturating_sub(self.buf_pos))
         }
     }
