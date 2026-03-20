@@ -1,7 +1,6 @@
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use std::fs::File;
 use std::io::BufReader;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -111,9 +110,12 @@ impl AudioEngine {
 
         let file = BufReader::new(File::open(path)?);
 
-        // Wrap decoder creation in catch_unwind because rodio/symphonia can panic
-        // on certain malformed or unsupported files instead of returning an error
-        let source = catch_unwind(AssertUnwindSafe(|| Decoder::new(file)))
+        // Spawn decoder creation in a separate thread because rodio/symphonia can panic
+        // on certain files (e.g. "Seek errors should not occur during initialization").
+        // catch_unwind doesn't work because the panic crosses extern "C" FFI boundaries.
+        // A separate thread isolates the panic - if it dies, join() returns Err.
+        let source = std::thread::spawn(move || Decoder::new(file))
+            .join()
             .map_err(|panic| {
                 let msg = if let Some(s) = panic.downcast_ref::<&str>() {
                     s.to_string()
