@@ -2,6 +2,7 @@
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
 
 	let newPlaylistName = $state('');
 	let showNewPlaylistInput = $state(false);
@@ -146,6 +147,20 @@
 		</div>
 	</div>
 
+	<div class="sidebar-footer">
+		<button
+			class="icon-btn settings-btn"
+			onclick={() => settingsStore.openSettings()}
+			title="Settings"
+		>
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+				<path
+					d="M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.2.7-2.4.5v1.2l2.4.5.3.7-1.3 2 .8.8 2-1.3.7.3.5 2.4h1.2l.5-2.4.7-.3 2 1.3.8-.8-1.3-2 .3-.7 2.4-.5V7.4l-2.4-.5-.3-.7 1.3-2-.8-.8-2 1.3-.7-.3zM8 10a2 2 0 110-4 2 2 0 010 4z"
+				/>
+			</svg>
+		</button>
+	</div>
+
 	{#if libraryStore.isScanning && libraryStore.scanProgress}
 		<div class="scan-progress">
 			<div class="scan-text">
@@ -279,6 +294,17 @@
 		color: var(--color-text-primary);
 		font-size: 12px;
 		outline: none;
+	}
+
+	.sidebar-footer {
+		padding: 4px 8px;
+		border-top: 1px solid var(--color-border);
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.settings-btn {
+		padding: 6px;
 	}
 
 	.scan-progress {

@@ -1,7 +1,7 @@
 pub mod models;
 mod schema;
 
-use models::{Playlist, Track};
+use models::{MonitoredFolder, Playlist, Setting, Track};
 use rusqlite::{params, Connection};
 use std::path::Path;
 use thiserror::Error;
@@ -291,6 +291,97 @@ impl Database {
             params![playlist_id],
         )?;
 
+        Ok(())
+    }
+
+    // --- Settings ---
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>, DbError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT value FROM settings WHERE key = ?1")?;
+        let mut rows = stmt.query_map(params![key], |row| row.get::<_, String>(0))?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<(), DbError> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value, updated_at)
+             VALUES (?1, ?2, strftime('%s', 'now'))",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_all_settings(&self) -> Result<Vec<Setting>, DbError> {
+        let mut stmt = self.conn.prepare("SELECT key, value FROM settings")?;
+        let settings = stmt
+            .query_map([], |row| {
+                Ok(Setting {
+                    key: row.get(0)?,
+                    value: row.get(1)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(settings)
+    }
+
+    // --- Monitored Folders ---
+
+    pub fn get_monitored_folders(&self) -> Result<Vec<MonitoredFolder>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, watching_enabled, last_scanned_at, added_at
+             FROM monitored_folders ORDER BY path",
+        )?;
+        let folders = stmt
+            .query_map([], |row| {
+                Ok(MonitoredFolder {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    watching_enabled: row.get(2)?,
+                    last_scanned_at: row.get(3)?,
+                    added_at: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(folders)
+    }
+
+    pub fn add_monitored_folder(&self, id: &str, path: &str) -> Result<(), DbError> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO monitored_folders (id, path) VALUES (?1, ?2)",
+            params![id, path],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_monitored_folder(&self, id: &str) -> Result<(), DbError> {
+        self.conn.execute(
+            "DELETE FROM monitored_folders WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    pub fn toggle_folder_watching(&self, id: &str, enabled: bool) -> Result<(), DbError> {
+        self.conn.execute(
+            "UPDATE monitored_folders SET watching_enabled = ?2 WHERE id = ?1",
+            params![id, enabled as i32],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_folder_scan_time(&self, id: &str) -> Result<(), DbError> {
+        self.conn.execute(
+            "UPDATE monitored_folders SET last_scanned_at = strftime('%s', 'now') WHERE id = ?1",
+            params![id],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_track_by_path(&self, path: &str) -> Result<(), DbError> {
+        self.conn
+            .execute("DELETE FROM tracks WHERE path = ?1", params![path])?;
         Ok(())
     }
 }

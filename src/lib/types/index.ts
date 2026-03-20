@@ -62,3 +62,18 @@ export function formatFileSize(bytes: number): string {
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
 	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+export interface Setting {
+	key: string;
+	value: string;
+}
+
+export interface MonitoredFolder {
+	id: string;
+	path: string;
+	watching_enabled: boolean;
+	last_scanned_at: number;
+	added_at: number;
+}
+
+export type Theme = 'dark' | 'light';

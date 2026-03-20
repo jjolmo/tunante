@@ -3,6 +3,8 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import ArtworkPanel from '$lib/components/ArtworkPanel.svelte';
 	import PlayerControls from '$lib/components/PlayerControls.svelte';
+	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
 </script>
 
 <div class="app-layout">
@@ -13,6 +15,10 @@
 	</div>
 	<PlayerControls />
 </div>
+
+{#if settingsStore.isSettingsOpen}
+	<SettingsPanel />
+{/if}
 
 <style>
 	.app-layout {
