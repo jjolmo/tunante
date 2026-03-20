@@ -1,6 +1,5 @@
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
+use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
-use std::io::BufReader;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use thiserror::Error;
@@ -71,117 +70,92 @@ impl PlaybackTimer {
 }
 
 pub struct AudioEngine {
-    _stream: Box<OutputStream>,
-    stream_handle: OutputStreamHandle,
-    sink: Option<Sink>,
+    _device: MixerDeviceSink,
+    player: Player,
     volume: f32,
     timer: PlaybackTimer,
     current_duration_ms: u64,
     was_playing: bool,
+    has_source: bool,
 }
 
-// Safety: OutputStream is stored in a Box and never moved between threads.
-// The AudioEngine itself is always accessed through a Mutex, ensuring single-threaded access.
-// OutputStreamHandle and Sink are already Send+Sync.
+// Safety: AudioEngine is always accessed through a Mutex, ensuring single-threaded access.
 unsafe impl Send for AudioEngine {}
 unsafe impl Sync for AudioEngine {}
 
 impl AudioEngine {
     pub fn new() -> Result<Self, AudioError> {
-        let (stream, stream_handle) =
-            OutputStream::try_default().map_err(|e| AudioError::OutputError(e.to_string()))?;
+        let device = DeviceSinkBuilder::open_default_sink()
+            .map_err(|e| AudioError::OutputError(e.to_string()))?;
+        let player = Player::connect_new(&device.mixer());
+        player.set_volume(0.8);
 
         Ok(Self {
-            _stream: Box::new(stream),
-            stream_handle,
-            sink: None,
+            _device: device,
+            player,
             volume: 0.8,
             timer: PlaybackTimer::new(),
             current_duration_ms: 0,
             was_playing: false,
+            has_source: false,
         })
     }
 
     pub fn play_file(&mut self, path: &Path) -> Result<(), AudioError> {
         // Stop current playback
-        if let Some(sink) = self.sink.take() {
-            sink.stop();
-        }
+        self.player.stop();
 
-        let file = BufReader::new(File::open(path)?);
+        let file = File::open(path)?;
 
-        // Spawn decoder creation in a separate thread because rodio/symphonia can panic
-        // on certain files (e.g. "Seek errors should not occur during initialization").
-        // catch_unwind doesn't work because the panic crosses extern "C" FFI boundaries.
-        // A separate thread isolates the panic - if it dies, join() returns Err.
-        let source = std::thread::spawn(move || Decoder::new(file))
-            .join()
-            .map_err(|panic| {
-                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
-                    s.to_string()
-                } else if let Some(s) = panic.downcast_ref::<String>() {
-                    s.clone()
-                } else {
-                    "Unknown decoder panic".to_string()
-                };
-                AudioError::DecoderError(format!("Decoder crashed: {}", msg))
-            })?
+        // Decoder::try_from(File) properly sets byte_len from file metadata,
+        // which prevents symphonia's isomp4 demuxer from panicking with
+        // "Seek errors should not occur during initialization".
+        let source = Decoder::try_from(file)
             .map_err(|e| AudioError::DecoderError(e.to_string()))?;
 
         // Get duration from source if available
         let duration = source.total_duration();
 
-        let sink = Sink::try_new(&self.stream_handle)
-            .map_err(|e| AudioError::OutputError(e.to_string()))?;
-        sink.set_volume(self.volume);
-        sink.append(source);
+        self.player.append(source);
+        self.player.play();
 
         self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
         self.timer.start();
         self.was_playing = true;
-        self.sink = Some(sink);
+        self.has_source = true;
 
         Ok(())
     }
 
     pub fn pause(&mut self) {
-        if let Some(ref sink) = self.sink {
-            sink.pause();
-            self.timer.pause();
-            self.was_playing = false;
-        }
+        self.player.pause();
+        self.timer.pause();
+        self.was_playing = false;
     }
 
     pub fn resume(&mut self) {
-        if let Some(ref sink) = self.sink {
-            sink.play();
-            self.timer.resume();
-            self.was_playing = true;
-        }
+        self.player.play();
+        self.timer.resume();
+        self.was_playing = true;
     }
 
     pub fn stop(&mut self) {
-        if let Some(sink) = self.sink.take() {
-            sink.stop();
-        }
+        self.player.stop();
         self.timer.stop();
         self.was_playing = false;
+        self.has_source = false;
         self.current_duration_ms = 0;
     }
 
     pub fn seek(&mut self, position_ms: u64) {
-        if let Some(ref sink) = self.sink {
-            let position = Duration::from_millis(position_ms);
-            let _ = sink.try_seek(position);
-            self.timer.seek(position);
-        }
+        let position = Duration::from_millis(position_ms);
+        let _ = self.player.try_seek(position);
+        self.timer.seek(position);
     }
 
     pub fn set_volume(&mut self, volume: f32) {
         self.volume = volume.clamp(0.0, 1.0);
-        if let Some(ref sink) = self.sink {
-            sink.set_volume(self.volume);
-        }
+        self.player.set_volume(self.volume);
     }
 
     pub fn volume(&self) -> f32 {
@@ -189,19 +163,11 @@ impl AudioEngine {
     }
 
     pub fn is_playing(&self) -> bool {
-        self.sink
-            .as_ref()
-            .map(|s| !s.is_paused() && !s.empty())
-            .unwrap_or(false)
+        self.has_source && !self.player.is_paused() && !self.player.empty()
     }
 
     pub fn track_finished(&self) -> bool {
-        self.was_playing
-            && self
-                .sink
-                .as_ref()
-                .map(|s| s.empty())
-                .unwrap_or(false)
+        self.was_playing && self.has_source && self.player.empty()
     }
 
     pub fn position_ms(&self) -> u64 {

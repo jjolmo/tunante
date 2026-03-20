@@ -29,16 +29,16 @@
 		left: 50%;
 		transform: translateX(-50%);
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		gap: 8px;
-		padding: 8px 14px;
+		padding: 10px 14px;
 		background-color: #5c1a1a;
 		border: 1px solid #8b2e2e;
 		border-radius: 6px;
 		color: #f8d7da;
 		font-size: 12px;
 		z-index: 200;
-		max-width: 600px;
+		max-width: 700px;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 		cursor: pointer;
 	}
@@ -46,12 +46,12 @@
 	.error-icon {
 		flex-shrink: 0;
 		color: #e57373;
+		margin-top: 1px;
 	}
 
 	.error-text {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		word-break: break-word;
+		line-height: 1.4;
 	}
 
 	.dismiss-btn {

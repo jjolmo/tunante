@@ -4,6 +4,7 @@
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { formatDuration } from '$lib/types';
 	import type { Track, SortColumn, ColumnDef } from '$lib/types';
+	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import SearchBar from './SearchBar.svelte';
@@ -83,6 +84,14 @@
 			items.push({
 				label: count > 1 ? `Add ${count} tracks to queue` : 'Add to queue',
 				action: () => playerStore.enqueueTracks(selectedIds)
+			});
+		}
+
+		if (count === 1) {
+			items.push({ separator: true });
+			items.push({
+				label: 'Open containing folder',
+				action: () => invoke('open_containing_folder', { path: track.path })
 			});
 		}
 
