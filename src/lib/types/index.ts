@@ -14,6 +14,7 @@ export interface Track {
 	codec: string;
 	file_size: number;
 	has_artwork: boolean;
+	rating: number;
 }
 
 export interface Playlist {
@@ -49,6 +50,7 @@ export type SortColumn =
 	| 'channels'
 	| 'bitrate'
 	| 'file_size'
+	| 'rating'
 	| 'path';
 export type SortDirection = 'asc' | 'desc';
 
@@ -102,4 +104,4 @@ export interface MonitoredFolder {
 	added_at: number;
 }
 
-export type Theme = 'dark' | 'light';
+export type Theme = 'dark' | 'light' | 'system';

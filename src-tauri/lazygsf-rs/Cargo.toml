@@ -1,0 +1,11 @@
+[package]
+name = "lazygsf-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust wrapper for lazygsf (GBA sound format decoder using mGBA)"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1"

@@ -1,7 +1,7 @@
 use crate::db::models::{MonitoredFolder, Setting};
 use crate::AppState;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{Manager, State};
 use uuid::Uuid;
 
 #[tauri::command]
@@ -143,5 +143,13 @@ pub fn toggle_folder_watching(
         }
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_tray_visible(visible: bool, app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        tray.set_visible(visible).map_err(|e| e.to_string())?;
+    }
     Ok(())
 }

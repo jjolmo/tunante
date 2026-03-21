@@ -101,6 +101,7 @@ pub fn read_gme_metadata(path: &Path) -> Result<Vec<Track>, String> {
             codec: codec.clone(),
             file_size,
             has_artwork: false,
+            rating: 0,
             modified_at,
         });
     }

@@ -3,6 +3,7 @@
 	import GeneralSettings from './GeneralSettings.svelte';
 	import LibrarySettings from './LibrarySettings.svelte';
 	import ThemeSettings from './ThemeSettings.svelte';
+	import AboutSettings from './AboutSettings.svelte';
 
 	interface Category {
 		id: string;
@@ -25,6 +26,11 @@
 			id: 'theme',
 			label: 'Theme',
 			icon: 'M8 1a7 7 0 100 14A7 7 0 008 1zm0 13A6 6 0 018 2v12z'
+		},
+		{
+			id: 'about',
+			label: 'About',
+			icon: 'M8 1a7 7 0 100 14A7 7 0 008 1zm0 2a5 5 0 110 10A5 5 0 018 3zm-.5 2.5h1v1h-1v-1zm0 2h1v4h-1v-4z'
 		}
 	];
 
@@ -83,6 +89,8 @@
 					<LibrarySettings />
 				{:else if settingsStore.activeCategory === 'theme'}
 					<ThemeSettings />
+				{:else if settingsStore.activeCategory === 'about'}
+					<AboutSettings />
 				{/if}
 			</div>
 		</div>

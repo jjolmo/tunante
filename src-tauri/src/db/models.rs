@@ -15,6 +15,7 @@ pub struct Track {
     pub codec: String,
     pub file_size: i64,
     pub has_artwork: bool,
+    pub rating: i32,
     #[serde(skip_serializing)]
     pub modified_at: i64,
 }
