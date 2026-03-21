@@ -42,6 +42,27 @@
 				<span class="theme-check">&#10003;</span>
 			{/if}
 		</button>
+
+		<button
+			class="theme-card"
+			class:active={settingsStore.theme === 'system'}
+			onclick={() => settingsStore.setTheme('system')}
+		>
+			<div class="theme-preview system-preview">
+				<div class="system-dark-half">
+					<div class="preview-line"></div>
+					<div class="preview-line short"></div>
+				</div>
+				<div class="system-light-half">
+					<div class="preview-line"></div>
+					<div class="preview-line short"></div>
+				</div>
+			</div>
+			<span class="theme-label">System</span>
+			{#if settingsStore.theme === 'system'}
+				<span class="theme-check">&#10003;</span>
+			{/if}
+		</button>
 	</div>
 </div>
 
@@ -153,6 +174,46 @@
 	}
 
 	.light-preview .preview-line.short {
+		width: 60%;
+	}
+
+	.system-preview {
+		background: linear-gradient(to right, #1e1e1e 50%, #ffffff 50%);
+	}
+
+	.system-dark-half {
+		width: 50%;
+		padding: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.system-dark-half .preview-line {
+		height: 4px;
+		background-color: #3e3e42;
+		border-radius: 2px;
+	}
+
+	.system-dark-half .preview-line.short {
+		width: 60%;
+	}
+
+	.system-light-half {
+		width: 50%;
+		padding: 8px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.system-light-half .preview-line {
+		height: 4px;
+		background-color: #d4d4d4;
+		border-radius: 2px;
+	}
+
+	.system-light-half .preview-line.short {
 		width: 60%;
 	}
 

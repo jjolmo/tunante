@@ -25,6 +25,16 @@ pub const AUDIO_EXTENSIONS: &[&str] = &[
     "acb", "awb",
     "ktss", "kvs",
     "csmp", "cstm",
+    // PSF family (GBA, NDS, PS1, PS2, N64, Saturn, Dreamcast)
+    "gsf", "minigsf",
+    "2sf", "mini2sf",
+    "psf", "minipsf",
+    "psf2", "minipsf2",
+    "usf", "miniusf",
+    "ssf", "minissf",
+    "dsf", "minidsf",
+    "qsf", "miniqsf",
+    "ncsf", "minincsf",
 ];
 
 pub fn is_audio_file(path: &std::path::Path) -> bool {
@@ -52,6 +62,48 @@ pub fn get_all_tracks(state: State<'_, Arc<AppState>>) -> Result<Vec<Track>, Str
         .db
         .lock()
         .get_all_tracks()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_track_rating(
+    track_id: String,
+    rating: i32,
+    write_to_file: Option<bool>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    // DB operations: get path and save rating
+    let track_path = {
+        let db = state.db.lock();
+        let path = db
+            .get_track_by_id(&track_id)
+            .map_err(|e| e.to_string())?
+            .map(|t| t.path);
+        db.set_track_rating(&track_id, rating)
+            .map_err(|e| e.to_string())?;
+        path
+    }; // DB lock released here
+
+    // Write rating to the file's metadata (best-effort, no lock held)
+    if write_to_file.unwrap_or(true) {
+        if let Some(path) = track_path {
+            match metadata::write_rating_to_file(&path, rating) {
+                Ok(true) => log::info!("Rating {} written to file: {}", rating, path),
+                Ok(false) => log::debug!("File format doesn't support rating writing: {}", path),
+                Err(e) => log::warn!("Failed to write rating to file {}: {}", path, e),
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_faved_tracks(state: State<'_, Arc<AppState>>) -> Result<Vec<Track>, String> {
+    state
+        .db
+        .lock()
+        .get_faved_tracks()
         .map_err(|e| e.to_string())
 }
 
@@ -176,6 +228,42 @@ pub fn resync_library(state: State<'_, Arc<AppState>>, app: tauri::AppHandle) {
 pub fn get_artwork(track_path: String) -> Result<Option<String>, String> {
     let (actual_path, _) = parse_vgm_path(&track_path);
     metadata::extract_artwork_base64(&PathBuf::from(actual_path)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_track_metadata(
+    track_ids: Vec<String>,
+    fields: std::collections::HashMap<String, serde_json::Value>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let db = state.db.lock();
+
+    let title = fields.get("title").and_then(|v| v.as_str());
+    let artist = fields.get("artist").and_then(|v| v.as_str());
+    let album = fields.get("album").and_then(|v| v.as_str());
+    let album_artist = fields.get("album_artist").and_then(|v| v.as_str());
+    let track_number = fields.get("track_number").map(|v| {
+        if v.is_null() { None } else { v.as_i64().map(|n| n as i32) }
+    });
+    let disc_number = fields.get("disc_number").map(|v| {
+        if v.is_null() { None } else { v.as_i64().map(|n| n as i32) }
+    });
+
+    for track_id in &track_ids {
+        if let Err(e) = db.update_track_metadata(
+            track_id,
+            title,
+            artist,
+            album,
+            album_artist,
+            track_number,
+            disc_number,
+        ) {
+            log::error!("Failed to update metadata for track {}: {}", track_id, e);
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

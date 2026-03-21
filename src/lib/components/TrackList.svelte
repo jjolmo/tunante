@@ -1,12 +1,14 @@
 <script lang="ts">
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
+	import { consolesStore } from '$lib/stores/consoles.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { formatDuration } from '$lib/types';
 	import type { Track, SortColumn, ColumnDef } from '$lib/types';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
+	import MetadataDialog from './MetadataDialog.svelte';
 	import SearchBar from './SearchBar.svelte';
 
 	const ROW_HEIGHT = 26;
@@ -23,8 +25,23 @@
 	// Drag state
 	let dragImageEl: HTMLDivElement | undefined = $state();
 
+	// Metadata dialog state
+	let metadataDialogTracks = $state<Track[]>([]);
+
+	// Column resize state
+	let resizingCol = $state<string | null>(null);
+	let resizeStartX = $state(0);
+	let resizeStartWidth = $state(0);
+
+	// Column drag reorder state
+	let draggingColId = $state<string | null>(null);
+	let dragOverColId = $state<string | null>(null);
+
 	let tracks = $derived(
-		playlistsStore.activePlaylistId ? playlistsStore.playlistTracks : libraryStore.filteredTracks
+		playlistsStore.isFavedView ? playlistsStore.favedTracks :
+		playlistsStore.activePlaylistId ? playlistsStore.playlistTracks :
+		consolesStore.activeConsoleId ? consolesStore.consoleTracks :
+		libraryStore.filteredTracks
 	);
 
 	let visibleColumns = $derived(libraryStore.visibleColumns);
@@ -64,7 +81,6 @@
 
 	function handleTrackContextMenu(track: Track, event: MouseEvent) {
 		event.preventDefault();
-		// If right-clicked track is not in selection, select it alone
 		if (!libraryStore.selectedTrackIds.has(track.id)) {
 			libraryStore.selectTrack(track.id);
 		}
@@ -87,8 +103,29 @@
 			});
 		}
 
+		// Remove from playlist (only in playlist view)
+		if (playlistsStore.activePlaylistId) {
+			items.push({
+				label: count > 1 ? `Remove ${count} tracks from playlist` : 'Remove from playlist',
+				action: () => {
+					playlistsStore.removeTracksFromPlaylist(playlistsStore.activePlaylistId!, selectedIds);
+					libraryStore.clearSelection();
+				}
+			});
+		}
+
+		items.push({ separator: true, label: '', action: () => {} });
+
+		// View metadata
+		items.push({
+			label: count > 1 ? `View metadata (${count} tracks)` : 'View metadata',
+			action: () => {
+				const selectedTracks = libraryStore.tracks.filter((t) => selectedIds.includes(t.id));
+				metadataDialogTracks = selectedTracks;
+			}
+		});
+
 		if (count === 1) {
-			items.push({ separator: true });
 			items.push({
 				label: 'Open containing folder',
 				action: () => invoke('open_containing_folder', { path: track.path })
@@ -150,6 +187,81 @@
 			e.preventDefault();
 			libraryStore.selectAll();
 		}
+
+		// Delete key: remove selected tracks from active playlist
+		if (e.key === 'Delete' && playlistsStore.activePlaylistId) {
+			const selectedIds = [...libraryStore.selectedTrackIds];
+			if (selectedIds.length > 0) {
+				e.preventDefault();
+				playlistsStore.removeTracksFromPlaylist(playlistsStore.activePlaylistId, selectedIds);
+				libraryStore.clearSelection();
+			}
+		}
+	}
+
+	// Column resize
+	function handleResizeStart(e: MouseEvent, colId: string) {
+		e.preventDefault();
+		e.stopPropagation();
+		resizingCol = colId;
+		resizeStartX = e.clientX;
+		const col = libraryStore.columns.find((c) => c.id === colId);
+		if (col) {
+			// Get current computed width from the header element
+			const headerEl = document.querySelector(`[data-col-id="${colId}"]`) as HTMLElement;
+			resizeStartWidth = headerEl ? headerEl.getBoundingClientRect().width : 100;
+		}
+		window.addEventListener('mousemove', handleResizeMove);
+		window.addEventListener('mouseup', handleResizeEnd);
+	}
+
+	function handleResizeMove(e: MouseEvent) {
+		if (!resizingCol) return;
+		const diff = e.clientX - resizeStartX;
+		const newWidth = Math.max(40, resizeStartWidth + diff);
+		libraryStore.setColumnWidth(resizingCol, `${Math.round(newWidth)}px`);
+	}
+
+	function handleResizeEnd() {
+		if (resizingCol) {
+			libraryStore.saveColumnConfig();
+		}
+		resizingCol = null;
+		window.removeEventListener('mousemove', handleResizeMove);
+		window.removeEventListener('mouseup', handleResizeEnd);
+	}
+
+	// Column drag reorder
+	function handleColDragStart(e: DragEvent, colId: string) {
+		draggingColId = colId;
+		e.dataTransfer!.effectAllowed = 'move';
+		e.dataTransfer!.setData('text/plain', colId);
+	}
+
+	function handleColDragOver(e: DragEvent, colId: string) {
+		if (draggingColId && draggingColId !== colId) {
+			e.preventDefault();
+			e.dataTransfer!.dropEffect = 'move';
+			dragOverColId = colId;
+		}
+	}
+
+	function handleColDragLeave() {
+		dragOverColId = null;
+	}
+
+	function handleColDrop(e: DragEvent, colId: string) {
+		e.preventDefault();
+		if (draggingColId && draggingColId !== colId) {
+			libraryStore.moveColumn(draggingColId, colId);
+		}
+		draggingColId = null;
+		dragOverColId = null;
+	}
+
+	function handleColDragEnd() {
+		draggingColId = null;
+		dragOverColId = null;
 	}
 
 	// Drag to playlist
@@ -161,7 +273,6 @@
 		e.dataTransfer!.setData('application/x-tunante-tracks', JSON.stringify(ids));
 		e.dataTransfer!.effectAllowed = 'copy';
 
-		// Custom drag image
 		if (dragImageEl) {
 			dragImageEl.textContent = `♫ ${ids.length} track${ids.length > 1 ? 's' : ''}`;
 			dragImageEl.style.display = 'block';
@@ -181,6 +292,20 @@
 			return () => observer.disconnect();
 		}
 	});
+
+	// Scroll to track when requested (e.g. clicking now-playing info)
+	$effect(() => {
+		const targetId = libraryStore.scrollToTrackId;
+		if (!targetId || !container) return;
+
+		const idx = tracks.findIndex((t) => t.id === targetId);
+		if (idx >= 0) {
+			const targetTop = idx * ROW_HEIGHT;
+			container.scrollTop = targetTop - containerHeight / 2 + ROW_HEIGHT / 2;
+			libraryStore.selectTrack(targetId, false, false, idx);
+		}
+		libraryStore.scrollToTrackId = null;
+	});
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -193,11 +318,46 @@
 		</div>
 		{#each visibleColumns as col (col.id)}
 			{#if col.sortable}
-				<button class="col" style={getColumnStyle(col)} onclick={() => handleSort(col.field)}>
+				<button
+					class="col"
+					class:drag-over-col={dragOverColId === col.id}
+					style={getColumnStyle(col)}
+					data-col-id={col.id}
+					onclick={() => handleSort(col.field)}
+					draggable="true"
+					ondragstart={(e) => handleColDragStart(e, col.id)}
+					ondragover={(e) => handleColDragOver(e, col.id)}
+					ondragleave={handleColDragLeave}
+					ondrop={(e) => handleColDrop(e, col.id)}
+					ondragend={handleColDragEnd}
+				>
 					{col.label}{sortIndicator(col.field)}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<span
+						class="col-resize-handle"
+						onmousedown={(e) => handleResizeStart(e, col.id)}
+					></span>
 				</button>
 			{:else}
-				<div class="col" style={getColumnStyle(col)}>{col.label}</div>
+				<div
+					class="col"
+					class:drag-over-col={dragOverColId === col.id}
+					style={getColumnStyle(col)}
+					data-col-id={col.id}
+					draggable="true"
+					ondragstart={(e) => handleColDragStart(e, col.id)}
+					ondragover={(e) => handleColDragOver(e, col.id)}
+					ondragleave={handleColDragLeave}
+					ondrop={(e) => handleColDrop(e, col.id)}
+					ondragend={handleColDragEnd}
+				>
+					{col.label}
+					<!-- svelte-ignore a11y_no_static_element_interactions -->
+					<span
+						class="col-resize-handle"
+						onmousedown={(e) => handleResizeStart(e, col.id)}
+					></span>
+				</div>
 			{/if}
 		{/each}
 	</div>
@@ -220,7 +380,7 @@
 					>
 						<div class="col col-status">
 							{#if playerStore.currentTrack?.id === track.id && playerStore.isPlaying}
-								<span class="playing-icon">▶</span>
+								<svg class="playing-icon" width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 15,8 3,15"/></svg>
 							{:else if playerStore.isInQueue(track.id)}
 								<span class="queue-pos">{playerStore.queuePosition(track.id)}</span>
 							{/if}
@@ -260,6 +420,13 @@
 	/>
 {/if}
 
+{#if metadataDialogTracks.length > 0}
+	<MetadataDialog
+		tracks={metadataDialogTracks}
+		onclose={() => (metadataDialogTracks = [])}
+	/>
+{/if}
+
 <style>
 	.tracklist-wrapper {
 		flex: 1;
@@ -293,10 +460,34 @@
 		text-align: left;
 		letter-spacing: inherit;
 		text-transform: inherit;
+		position: relative;
 	}
 
 	.tracklist-header button:hover {
 		color: var(--color-text-primary);
+	}
+
+	.tracklist-header .col {
+		position: relative;
+	}
+
+	.tracklist-header .drag-over-col {
+		border-left: 2px solid var(--color-accent);
+	}
+
+	.col-resize-handle {
+		position: absolute;
+		top: 0;
+		right: 0;
+		width: 5px;
+		height: 100%;
+		cursor: col-resize;
+		z-index: 1;
+	}
+
+	.col-resize-handle:hover {
+		background-color: var(--color-accent);
+		opacity: 0.5;
 	}
 
 	.tracklist-body {
@@ -358,8 +549,7 @@
 	}
 
 	.playing-icon {
-		color: var(--color-accent);
-		font-size: 10px;
+		color: var(--color-text-muted);
 	}
 
 	.queue-pos {

@@ -1,0 +1,10 @@
+[package]
+name = "hepsf-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust wrapper for sexypsf (PlayStation 1 sound format decoder with HLE BIOS)"
+
+[dependencies]
+
+[build-dependencies]
+cc = "1"

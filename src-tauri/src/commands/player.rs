@@ -4,6 +4,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, State};
 
+#[derive(Clone, serde::Serialize)]
+struct PlaybackErrorPayload {
+    message: String,
+    path: String,
+}
+
 #[tauri::command]
 pub fn play_file(path: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     let file_path = PathBuf::from(&path);
@@ -48,9 +54,34 @@ pub fn stop(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     Ok(())
 }
 
+/// Seek command — runs the seek on a background thread so the UI stays responsive.
+///
+/// PSF seek involves fast-forwarding the PS1 CPU emulator to the target position,
+/// which can take seconds for far seeks. By spawning a thread, the command returns
+/// immediately and the frontend gets an optimistic update. If the seek fails, a
+/// `playback-error` event is emitted to show a toast.
 #[tauri::command]
-pub fn seek(position_ms: u64, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.audio.lock().seek(position_ms);
+pub fn seek(
+    position_ms: u64,
+    state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let state = state.inner().clone();
+
+    std::thread::spawn(move || {
+        let mut audio = state.audio.lock();
+        if let Err(e) = audio.seek(position_ms) {
+            log::error!("Seek failed: {}", e);
+            let _ = app.emit(
+                "playback-error",
+                PlaybackErrorPayload {
+                    message: format!("Seek failed: {}", e),
+                    path: String::new(),
+                },
+            );
+        }
+    });
+
     Ok(())
 }
 

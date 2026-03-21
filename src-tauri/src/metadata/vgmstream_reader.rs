@@ -76,6 +76,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             codec: codec_name,
             file_size,
             has_artwork: false,
+            rating: 0,
             modified_at,
         }]);
     }
@@ -142,6 +143,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             codec: codec_name,
             file_size,
             has_artwork: false,
+            rating: 0,
             modified_at,
         });
     }

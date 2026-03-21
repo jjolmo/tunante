@@ -1,7 +1,6 @@
 <script lang="ts">
 	import Sidebar from '$lib/components/Sidebar.svelte';
 	import TrackList from '$lib/components/TrackList.svelte';
-	import ArtworkPanel from '$lib/components/ArtworkPanel.svelte';
 	import PlayerControls from '$lib/components/PlayerControls.svelte';
 	import ErrorToast from '$lib/components/ErrorToast.svelte';
 	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
@@ -12,7 +11,6 @@
 	<div class="app-main">
 		<Sidebar />
 		<TrackList />
-		<ArtworkPanel />
 	</div>
 	<PlayerControls />
 </div>

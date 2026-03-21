@@ -19,6 +19,52 @@
 			>
 		</div>
 	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.keepFavsInMetadata}
+			onchange={(e) =>
+				settingsStore.setKeepFavsInMetadata((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Keep song favs in metadata</span>
+			<span class="setting-desc"
+				>Write rating changes to the audio file's metadata tags. When off, ratings are only saved in the local database.</span
+			>
+		</div>
+	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.showInTray}
+			onchange={(e) =>
+				settingsStore.setShowInTray((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Show in system tray</span>
+			<span class="setting-desc"
+				>Display the Tunante icon in the system tray / notification area.</span
+			>
+		</div>
+	</label>
+
+	<label class="setting-row" class:disabled={!settingsStore.showInTray}>
+		<input
+			type="checkbox"
+			checked={settingsStore.closeToTray}
+			disabled={!settingsStore.showInTray}
+			onchange={(e) =>
+				settingsStore.setCloseToTray((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Close to tray</span>
+			<span class="setting-desc"
+				>Minimize to system tray when closing the window instead of quitting the application.</span
+			>
+		</div>
+	</label>
 </div>
 
 <style>
@@ -68,5 +114,14 @@
 	.setting-desc {
 		font-size: 11px;
 		color: var(--color-text-secondary);
+	}
+
+	.setting-row.disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
+	}
+
+	.setting-row.disabled input[type='checkbox'] {
+		cursor: not-allowed;
 	}
 </style>
