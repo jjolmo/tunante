@@ -5,6 +5,7 @@ import { formatDuration, formatFileSize } from '$lib/types';
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: 'title', label: 'Title', field: 'title', flex: 3, minWidth: '150px', align: 'left', sortable: true, visible: true },
+	{ id: 'rating', label: '\u2605', field: 'rating', width: '36px', align: 'center', sortable: true, visible: true, format: (t) => t.rating > 0 ? '\u2605' : '\u2606' },
 	{ id: 'artist', label: 'Artist', field: 'artist', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
 	{ id: 'album', label: 'Album', field: 'album', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
 	{ id: 'album_artist', label: 'Album Artist', field: 'album_artist', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: false },
@@ -28,6 +29,9 @@ class LibraryStore {
 	selectedTrackIds = $state<Set<string>>(new Set());
 	columns = $state<ColumnDef[]>(DEFAULT_COLUMNS.map((c) => ({ ...c })));
 	lastClickedIndex = $state<number | null>(null);
+	scrollToTrackId = $state<string | null>(null);
+
+	private _searchSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	get visibleColumns(): ColumnDef[] {
 		return this.columns.filter((c) => c.visible);
@@ -75,8 +79,35 @@ class LibraryStore {
 			this.loadTracks();
 		});
 
+		// Restore persisted search query
+		try {
+			const savedQuery = await invoke<string | null>('get_setting', { key: 'search_query' });
+			if (savedQuery) {
+				this.searchQuery = savedQuery;
+			}
+		} catch {
+			// ignore
+		}
+
 		await this.loadColumnConfig();
 		await this.loadTracks();
+	}
+
+	setSearchQuery(query: string) {
+		this.searchQuery = query;
+		// Debounce the DB save
+		if (this._searchSaveTimeout) clearTimeout(this._searchSaveTimeout);
+		this._searchSaveTimeout = setTimeout(async () => {
+			try {
+				await invoke('set_setting', { key: 'search_query', value: query });
+			} catch {
+				// ignore
+			}
+		}, 300);
+	}
+
+	requestScrollTo(trackId: string) {
+		this.scrollToTrackId = trackId;
 	}
 
 	async loadTracks() {
@@ -150,6 +181,22 @@ class LibraryStore {
 		this.selectedTrackIds = new Set();
 	}
 
+	/** Get the first selected track object */
+	get selectedTrack(): Track | null {
+		if (this.selectedTrackIds.size === 0) return null;
+		const firstId = this.selectedTrackIds.values().next().value;
+		return this.tracks.find((t) => t.id === firstId) ?? null;
+	}
+
+	/** Update a track's rating locally (already saved to DB by caller) */
+	updateTrackRating(trackId: string, rating: number) {
+		const track = this.tracks.find((t) => t.id === trackId);
+		if (track) {
+			track.rating = rating;
+			this.tracks = [...this.tracks];
+		}
+	}
+
 	toggleColumn(id: string) {
 		const col = this.columns.find((c) => c.id === id);
 		if (col) {
@@ -159,15 +206,62 @@ class LibraryStore {
 		}
 	}
 
+	setColumnWidth(id: string, width: string) {
+		const col = this.columns.find((c) => c.id === id);
+		if (col) {
+			col.width = width;
+			col.flex = undefined;
+			col.minWidth = undefined;
+			this.columns = [...this.columns];
+			// Don't save on every pixel — debounce via the mouseup in TrackList
+		}
+	}
+
+	moveColumn(fromId: string, toId: string) {
+		const cols = [...this.columns];
+		const fromIdx = cols.findIndex((c) => c.id === fromId);
+		const toIdx = cols.findIndex((c) => c.id === toId);
+		if (fromIdx === -1 || toIdx === -1) return;
+		const [moved] = cols.splice(fromIdx, 1);
+		cols.splice(toIdx, 0, moved);
+		this.columns = cols;
+		this.saveColumnConfig();
+	}
+
 	async loadColumnConfig() {
 		try {
-			const val = await invoke<string | null>('get_setting', { key: 'column_visibility' });
+			const val = await invoke<string | null>('get_setting', { key: 'column_config' });
 			if (val) {
-				const visibility: Record<string, boolean> = JSON.parse(val);
-				this.columns = this.columns.map((c) => ({
-					...c,
-					visible: visibility[c.id] ?? c.visible
-				}));
+				const config: Record<string, { visible: boolean; width?: string; flex?: number; order?: number }> = JSON.parse(val);
+				this.columns = this.columns.map((c) => {
+					const cfg = config[c.id];
+					if (!cfg) return c;
+					return {
+						...c,
+						visible: cfg.visible ?? c.visible,
+						width: cfg.width ?? c.width,
+						flex: cfg.width ? undefined : (cfg.flex ?? c.flex),
+						minWidth: cfg.width ? undefined : c.minWidth,
+					};
+				});
+				const hasOrder = Object.values(config).some((c) => c.order !== undefined);
+				if (hasOrder) {
+					this.columns.sort((a, b) => {
+						const oa = config[a.id]?.order ?? 999;
+						const ob = config[b.id]?.order ?? 999;
+						return oa - ob;
+					});
+				}
+			} else {
+				// Try legacy visibility-only config
+				const legacyVal = await invoke<string | null>('get_setting', { key: 'column_visibility' });
+				if (legacyVal) {
+					const visibility: Record<string, boolean> = JSON.parse(legacyVal);
+					this.columns = this.columns.map((c) => ({
+						...c,
+						visible: visibility[c.id] ?? c.visible
+					}));
+				}
 			}
 		} catch {
 			// Use defaults
@@ -176,11 +270,17 @@ class LibraryStore {
 
 	async saveColumnConfig() {
 		try {
-			const visibility: Record<string, boolean> = {};
-			for (const col of this.columns) {
-				visibility[col.id] = col.visible;
+			const config: Record<string, { visible: boolean; width?: string; flex?: number; order: number }> = {};
+			for (let i = 0; i < this.columns.length; i++) {
+				const col = this.columns[i];
+				config[col.id] = {
+					visible: col.visible,
+					width: col.width,
+					flex: col.flex,
+					order: i,
+				};
 			}
-			await invoke('set_setting', { key: 'column_visibility', value: JSON.stringify(visibility) });
+			await invoke('set_setting', { key: 'column_config', value: JSON.stringify(config) });
 		} catch (e) {
 			console.error('Failed to save column config:', e);
 		}

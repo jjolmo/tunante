@@ -121,11 +121,15 @@ class PlayerStore {
 	}
 
 	async seek(positionMs: number) {
+		// Optimistic update — the seek command returns immediately (non-blocking).
+		// The actual seek happens on a background thread. Errors arrive via
+		// the 'playback-error' event (handled by init()).
+		this.positionMs = positionMs;
 		try {
 			await invoke('seek', { positionMs });
-			this.positionMs = positionMs;
 		} catch (e) {
-			console.error('Failed to seek:', e);
+			const msg = e instanceof Error ? e.message : String(e);
+			this.showError(`Seek failed: ${msg}`);
 		}
 	}
 

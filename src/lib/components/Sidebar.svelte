@@ -1,12 +1,50 @@
 <script lang="ts">
 	import { open } from '@tauri-apps/plugin-dialog';
+	import { invoke } from '@tauri-apps/api/core';
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
-	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { consolesStore } from '$lib/stores/consoles.svelte';
+	import { playerStore } from '$lib/stores/player.svelte';
+	import type { ContextMenuItem } from './ContextMenu.svelte';
+	import ContextMenu from './ContextMenu.svelte';
 
 	let newPlaylistName = $state('');
 	let showNewPlaylistInput = $state(false);
 	let dragOverPlaylistId = $state<string | null>(null);
+	let dragOverCreatePlaylist = $state(false);
+	let pendingCreateTrackIds = $state<string[]>([]);
+	let artworkSrc = $state<string | null>(null);
+	let lastArtworkTrackPath = $state<string | null>(null);
+
+	// Playlist context menu
+	let contextMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
+
+	// Rename state
+	let renamingPlaylistId = $state<string | null>(null);
+	let renameValue = $state('');
+
+	// Fetch artwork when the current track changes
+	$effect(() => {
+		const track = playerStore.currentTrack;
+		if (!track) {
+			artworkSrc = null;
+			lastArtworkTrackPath = null;
+			return;
+		}
+		if (track.path === lastArtworkTrackPath) return;
+		lastArtworkTrackPath = track.path;
+		if (track.has_artwork) {
+			invoke<string | null>('get_artwork', { trackPath: track.path })
+				.then((data) => {
+					artworkSrc = data;
+				})
+				.catch(() => {
+					artworkSrc = null;
+				});
+		} else {
+			artworkSrc = null;
+		}
+	});
 
 	async function handleAddFolder() {
 		const selected = await open({ directory: true, multiple: false });
@@ -22,46 +60,14 @@
 				{
 					name: 'Audio',
 					extensions: [
-						'mp3',
-						'flac',
-						'ogg',
-						'wav',
-						'aac',
-						'aiff',
-						'wma',
-						'm4a',
-						'opus',
-						'nsf',
-						'nsfe',
-						'spc',
-						'gbs',
-						'vgm',
-						'vgz',
-						'hes',
-						'kss',
-						'ay',
-						'sap',
-						'gym',
-						'bcstm',
-						'bfstm',
-						'brstm',
-						'bcwav',
-						'bfwav',
-						'brwav',
-						'adx',
-						'hca',
-						'dsp',
-						'idsp',
-						'fsb',
-						'wem',
-						'xma',
-						'at3',
-						'at9',
-						'nus3bank',
-						'lopus',
-						'acb',
-						'awb',
-						'ktss'
+						'mp3', 'flac', 'ogg', 'wav', 'aac', 'aiff', 'wma', 'm4a', 'opus',
+						'nsf', 'nsfe', 'spc', 'gbs', 'vgm', 'vgz', 'hes', 'kss', 'ay', 'sap', 'gym',
+						'bcstm', 'bfstm', 'brstm', 'bcwav', 'bfwav', 'brwav',
+						'adx', 'hca', 'dsp', 'idsp', 'fsb', 'wem', 'xma', 'at3', 'at9',
+						'nus3bank', 'lopus', 'acb', 'awb', 'ktss',
+						'gsf', 'minigsf', 'psf', 'minipsf', 'psf2', 'minipsf2',
+						'usf', 'miniusf', '2sf', 'mini2sf',
+						'ssf', 'minissf', 'dsf', 'minidsf'
 					]
 				}
 			]
@@ -72,14 +78,25 @@
 	}
 
 	function handleSelectAllTracks() {
+		consolesStore.selectConsole(null);
 		playlistsStore.selectPlaylist(null);
 	}
 
 	function handleSelectPlaylist(id: string) {
+		consolesStore.selectConsole(null);
 		playlistsStore.selectPlaylist(id);
 	}
 
+	function handleSelectConsole(id: string) {
+		playlistsStore.selectPlaylist(null);
+		consolesStore.selectConsole(id);
+	}
+
 	async function handleCreatePlaylist() {
+		if (pendingCreateTrackIds.length > 0) {
+			await handleCreatePlaylistWithTracks();
+			return;
+		}
 		if (newPlaylistName.trim()) {
 			await playlistsStore.createPlaylist(newPlaylistName.trim());
 			newPlaylistName = '';
@@ -93,6 +110,60 @@
 			showNewPlaylistInput = false;
 			newPlaylistName = '';
 		}
+	}
+
+	function handleRenameKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			finishRename();
+		}
+		if (e.key === 'Escape') {
+			renamingPlaylistId = null;
+			renameValue = '';
+		}
+	}
+
+	async function finishRename() {
+		if (renamingPlaylistId && renameValue.trim()) {
+			await playlistsStore.renamePlaylist(renamingPlaylistId, renameValue.trim());
+		}
+		renamingPlaylistId = null;
+		renameValue = '';
+	}
+
+	function handlePlaylistContextMenu(e: MouseEvent, playlist: { id: string; name: string; track_count: number }) {
+		e.preventDefault();
+		const items: ContextMenuItem[] = [
+			{
+				label: `Enqueue all (${playlist.track_count} tracks)`,
+				action: async () => {
+					// Get all track IDs from this playlist and enqueue them
+					try {
+						const tracks = await invoke<{ id: string }[]>('get_playlist_tracks', { playlistId: playlist.id });
+						const ids = tracks.map((t) => t.id);
+						if (ids.length > 0) {
+							await playerStore.enqueueTracks(ids);
+						}
+					} catch (err) {
+						console.error('Failed to enqueue playlist:', err);
+					}
+				}
+			},
+			{ separator: true, label: '', action: () => {} },
+			{
+				label: 'Rename',
+				action: () => {
+					renamingPlaylistId = playlist.id;
+					renameValue = playlist.name;
+				}
+			},
+			{
+				label: 'Delete',
+				action: () => {
+					playlistsStore.deletePlaylist(playlist.id);
+				}
+			}
+		];
+		contextMenu = { items, x: e.clientX, y: e.clientY };
 	}
 
 	function handlePlaylistDragOver(e: DragEvent, playlistId: string) {
@@ -114,6 +185,45 @@
 		if (data) {
 			const trackIds: string[] = JSON.parse(data);
 			await playlistsStore.addTracksToPlaylist(playlistId, trackIds);
+		}
+	}
+
+	// Drag-to-create-playlist on section header
+	function handleSectionDragOver(e: DragEvent) {
+		if (e.dataTransfer?.types.includes('application/x-tunante-tracks')) {
+			e.preventDefault();
+			e.dataTransfer.dropEffect = 'copy';
+			dragOverCreatePlaylist = true;
+		}
+	}
+
+	function handleSectionDragLeave() {
+		dragOverCreatePlaylist = false;
+	}
+
+	function handleSectionDrop(e: DragEvent) {
+		e.preventDefault();
+		dragOverCreatePlaylist = false;
+		const data = e.dataTransfer?.getData('application/x-tunante-tracks');
+		if (data) {
+			const trackIds: string[] = JSON.parse(data);
+			pendingCreateTrackIds = trackIds;
+			showNewPlaylistInput = true;
+			newPlaylistName = '';
+		}
+	}
+
+	async function handleCreatePlaylistWithTracks() {
+		if (newPlaylistName.trim()) {
+			await playlistsStore.createPlaylist(newPlaylistName.trim());
+			// Find the newly created playlist (last one)
+			const newPlaylist = playlistsStore.playlists[playlistsStore.playlists.length - 1];
+			if (newPlaylist && pendingCreateTrackIds.length > 0) {
+				await playlistsStore.addTracksToPlaylist(newPlaylist.id, pendingCreateTrackIds);
+			}
+			newPlaylistName = '';
+			showNewPlaylistInput = false;
+			pendingCreateTrackIds = [];
 		}
 	}
 </script>
@@ -143,7 +253,7 @@
 	<div class="sidebar-content">
 		<button
 			class="sidebar-item"
-			class:active={playlistsStore.activePlaylistId === null}
+			class:active={playlistsStore.activePlaylistId === null && !playlistsStore.isFavedView && consolesStore.activeConsoleId === null}
 			onclick={handleSelectAllTracks}
 		>
 			<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -155,8 +265,27 @@
 			<span class="track-count">{libraryStore.tracks.length}</span>
 		</button>
 
+		<button
+			class="sidebar-item"
+			class:active={playlistsStore.isFavedView}
+			onclick={() => { consolesStore.selectConsole(null); playlistsStore.selectFaved(); }}
+		>
+			<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+				<path d="M8 1.23l2.18 4.41 4.87.71-3.52 3.43.83 4.85L8 12.26l-4.36 2.37.83-4.85L1 6.35l4.87-.71L8 1.23z" />
+			</svg>
+			<span>Faved</span>
+			<span class="track-count">{playlistsStore.favedTracks.length}</span>
+		</button>
+
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="sidebar-section">
-			<div class="section-header">
+			<div
+				class="section-header"
+				class:drag-over-create={dragOverCreatePlaylist}
+				ondragover={handleSectionDragOver}
+				ondragleave={handleSectionDragLeave}
+				ondrop={handleSectionDrop}
+			>
 				<span>Playlists</span>
 				<button
 					class="icon-btn small"
@@ -181,37 +310,75 @@
 			{/if}
 
 			{#each playlistsStore.playlists as playlist}
-				<button
-					class="sidebar-item"
-					class:active={playlistsStore.activePlaylistId === playlist.id}
-					class:drag-over={dragOverPlaylistId === playlist.id}
-					onclick={() => handleSelectPlaylist(playlist.id)}
-					ondragover={(e) => handlePlaylistDragOver(e, playlist.id)}
-					ondragleave={handlePlaylistDragLeave}
-					ondrop={(e) => handlePlaylistDrop(e, playlist.id)}
-				>
-					<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-						<path d="M14 1H3v1h10.5l.5.5V13h1V1.5L14 1zM1 3.5l.5-.5h10l.5.5v11l-.5.5h-10l-.5-.5v-11zM2 4v10h9V4H2z" />
-					</svg>
-					<span>{playlist.name}</span>
-					<span class="track-count">{playlist.track_count}</span>
-				</button>
+				{#if renamingPlaylistId === playlist.id}
+					<div class="new-playlist-input">
+						<input
+							type="text"
+							bind:value={renameValue}
+							onkeydown={handleRenameKeydown}
+							onblur={finishRename}
+						/>
+					</div>
+				{:else}
+					<button
+						class="sidebar-item"
+						class:active={playlistsStore.activePlaylistId === playlist.id}
+						class:drag-over={dragOverPlaylistId === playlist.id}
+						onclick={() => handleSelectPlaylist(playlist.id)}
+						oncontextmenu={(e) => handlePlaylistContextMenu(e, playlist)}
+						ondragover={(e) => handlePlaylistDragOver(e, playlist.id)}
+						ondragleave={handlePlaylistDragLeave}
+						ondrop={(e) => handlePlaylistDrop(e, playlist.id)}
+					>
+						<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+							<path d="M14 1H3v1h10.5l.5.5V13h1V1.5L14 1zM1 3.5l.5-.5h10l.5.5v11l-.5.5h-10l-.5-.5v-11zM2 4v10h9V4H2z" />
+						</svg>
+						<span>{playlist.name}</span>
+						<span class="track-count">{playlist.track_count}</span>
+					</button>
+				{/if}
 			{/each}
 		</div>
+
+		{#if consolesStore.consolesWithCounts.length > 0}
+			<div class="sidebar-section">
+				<div class="section-header">
+					<span>Consoles</span>
+				</div>
+
+				{#each consolesStore.consolesWithCounts as console (console.id)}
+					<button
+						class="sidebar-item"
+						class:active={consolesStore.activeConsoleId === console.id}
+						onclick={() => handleSelectConsole(console.id)}
+					>
+						<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+							<path d={console.icon} />
+						</svg>
+						<span>{console.name}</span>
+						<span class="track-count">{console.trackCount}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
 	</div>
 
-	<div class="sidebar-footer">
-		<button
-			class="icon-btn settings-btn"
-			onclick={() => settingsStore.openSettings()}
-			title="Settings"
-		>
-			<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-				<path
-					d="M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.2.7-2.4.5v1.2l2.4.5.3.7-1.3 2 .8.8 2-1.3.7.3.5 2.4h1.2l.5-2.4.7-.3 2 1.3.8-.8-1.3-2 .3-.7 2.4-.5V7.4l-2.4-.5-.3-.7 1.3-2-.8-.8-2 1.3-.7-.3zM8 10a2 2 0 110-4 2 2 0 010 4z"
-				/>
-			</svg>
-		</button>
+	<div class="sidebar-artwork">
+		{#if playerStore.currentTrack}
+			<div class="artwork-container">
+				{#if artworkSrc}
+					<img src={artworkSrc} alt="Album art" class="artwork-image" />
+				{:else}
+					<div class="artwork-placeholder">
+						<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
+							<path
+								d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
+							/>
+						</svg>
+					</div>
+				{/if}
+			</div>
+		{/if}
 	</div>
 
 	{#if libraryStore.isScanning && libraryStore.scanProgress}
@@ -230,6 +397,15 @@
 		</div>
 	{/if}
 </aside>
+
+{#if contextMenu}
+	<ContextMenu
+		items={contextMenu.items}
+		x={contextMenu.x}
+		y={contextMenu.y}
+		onclose={() => (contextMenu = null)}
+	/>
+{/if}
 
 <style>
 	.sidebar {
@@ -341,6 +517,12 @@
 		letter-spacing: 0.5px;
 	}
 
+	.section-header.drag-over-create {
+		border: 2px dashed var(--color-accent);
+		border-radius: 4px;
+		background-color: rgba(var(--color-accent-rgb, 0, 120, 212), 0.1);
+	}
+
 	.new-playlist-input {
 		padding: 4px 12px;
 	}
@@ -356,15 +538,33 @@
 		outline: none;
 	}
 
-	.sidebar-footer {
-		padding: 4px 8px;
-		border-top: 1px solid var(--color-border);
-		display: flex;
-		justify-content: flex-end;
+	.sidebar-artwork {
+		flex-shrink: 0;
 	}
 
-	.settings-btn {
-		padding: 6px;
+	.artwork-container {
+		aspect-ratio: 1;
+		background-color: var(--color-bg-tertiary);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		border-top: 1px solid var(--color-border);
+	}
+
+	.artwork-image {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+
+	.artwork-placeholder {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		height: 100%;
+		color: var(--color-text-muted);
 	}
 
 	.scan-progress {

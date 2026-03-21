@@ -1,5 +1,6 @@
 <script lang="ts">
 	import '../app.css';
+	import { onMount } from 'svelte';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { libraryStore } from '$lib/stores/library.svelte';
@@ -17,6 +18,11 @@
 		settingsStore.init();
 	});
 
+	// Show window after first render — prevents white flash on startup
+	onMount(() => {
+		getCurrentWindow().show();
+	});
+
 	$effect(() => {
 		const track = playerStore.currentTrack;
 		const show = settingsStore.showTrackInTitlebar;
@@ -27,7 +33,12 @@
 				title = `${parts.join(' - ')} — ${APP_TITLE}`;
 			}
 		}
-		getCurrentWindow().setTitle(title);
+		// Set document.title synchronously as fallback
+		document.title = title;
+		// Also set the native window titlebar (async)
+		getCurrentWindow().setTitle(title).catch((err) => {
+			console.warn('Failed to set window title:', err);
+		});
 	});
 </script>
 

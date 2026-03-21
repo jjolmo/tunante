@@ -5,6 +5,8 @@ class PlaylistsStore {
 	playlists = $state<Playlist[]>([]);
 	activePlaylistId = $state<string | null>(null);
 	playlistTracks = $state<Track[]>([]);
+	isFavedView = $state(false);
+	favedTracks = $state<Track[]>([]);
 
 	get activePlaylist(): Playlist | null {
 		return this.playlists.find((p) => p.id === this.activePlaylistId) ?? null;
@@ -23,6 +25,7 @@ class PlaylistsStore {
 	}
 
 	async selectPlaylist(id: string | null) {
+		this.isFavedView = false;
 		this.activePlaylistId = id;
 		if (id) {
 			try {
@@ -34,6 +37,21 @@ class PlaylistsStore {
 			}
 		} else {
 			this.playlistTracks = [];
+		}
+	}
+
+	async selectFaved() {
+		this.activePlaylistId = null;
+		this.playlistTracks = [];
+		this.isFavedView = true;
+		await this.loadFavedTracks();
+	}
+
+	async loadFavedTracks() {
+		try {
+			this.favedTracks = await invoke<Track[]>('get_faved_tracks');
+		} catch (e) {
+			console.error('Failed to load faved tracks:', e);
 		}
 	}
 
@@ -81,6 +99,26 @@ class PlaylistsStore {
 		} catch (e) {
 			console.error('Failed to remove track from playlist:', e);
 		}
+	}
+
+	async removeTracksFromPlaylist(playlistId: string, trackIds: string[]) {
+		try {
+			for (const trackId of trackIds) {
+				await invoke('remove_track_from_playlist', { playlistId, trackId });
+			}
+			if (this.activePlaylistId === playlistId) {
+				await this.selectPlaylist(playlistId);
+			}
+			await this.loadPlaylists();
+		} catch (e) {
+			console.error('Failed to remove tracks from playlist:', e);
+		}
+	}
+
+	selectAllTracks() {
+		this.isFavedView = false;
+		this.activePlaylistId = null;
+		this.playlistTracks = [];
 	}
 
 	async renamePlaylist(id: string, name: string) {

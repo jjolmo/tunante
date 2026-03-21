@@ -11,11 +11,12 @@
 	<input
 		type="text"
 		placeholder="Search tracks..."
-		bind:value={libraryStore.searchQuery}
+		value={libraryStore.searchQuery}
+		oninput={(e) => libraryStore.setSearchQuery((e.target as HTMLInputElement).value)}
 		class="search-input"
 	/>
 	{#if libraryStore.searchQuery}
-		<button class="clear-btn" onclick={() => (libraryStore.searchQuery = '')} aria-label="Clear search">
+		<button class="clear-btn" onclick={() => libraryStore.setSearchQuery('')} aria-label="Clear search">
 			<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
 				<path
 					d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z"

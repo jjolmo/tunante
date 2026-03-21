@@ -13,9 +13,10 @@ crate-type = ["lib", "cdylib", "staticlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rodio = { version = "0.22", features = ["symphonia-mp3", "symphonia-flac", "symphonia-isomp4", "symphonia-aac", "symphonia-ogg", "symphonia-vorbis", "symphonia-wav", "symphonia-pcm"] }
@@ -30,5 +31,8 @@ base64 = "0.22"
 notify = { version = "7", features = ["macos_kqueue"] }
 ogg = "0.9"
 opus-decoder = { path = "opus-decoder-patch" }
-game-music-emu = { path = "game-music-emu-patch" }
+game-music-emu = { path = "game-music-emu-patch", default-features = false, features = ["ay", "gbs", "gym", "hes", "kss", "nsf", "nsfe", "sap", "spc", "vgm"] }
 vgmstream-rs = { path = "vgmstream-rs" }
+lazygsf-rs = { path = "lazygsf-rs" }
+vio2sf-rs = { path = "vio2sf-rs" }
+hepsf-rs = { path = "hepsf-rs" }

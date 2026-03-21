@@ -144,6 +144,10 @@ fn main() {
 
     let mut build = cc::Build::new();
     build.cpp(true);
+    build.warnings(false);
+    // Always optimize the chip emulators (YM2612, SN76489, etc.), even in debug builds.
+    // Without this, seek (which fast-forwards the emulation) is ~10x slower.
+    build.opt_level(2);
 
     build.flag("-std=c++11");
 

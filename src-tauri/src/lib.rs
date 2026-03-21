@@ -1,5 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 
 pub mod audio;
@@ -92,6 +94,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // When a second instance is launched, focus the existing window
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
@@ -137,20 +147,117 @@ pub fn run() {
                 }
             }
 
+            // Set up system tray icon
+            let show_item = MenuItemBuilder::with_id("show", "Show Tunante").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let tray_menu = MenuBuilder::new(app)
+                .item(&show_item)
+                .item(&quit_item)
+                .build()?;
+
+            // Read initial tray visibility from settings
+            let show_in_tray = {
+                let db = state.db.lock();
+                db.get_setting("show_in_tray")
+                    .ok()
+                    .flatten()
+                    .map(|v| v == "true")
+                    .unwrap_or(false)
+            };
+
+            let tray = TrayIconBuilder::with_id("main-tray")
+                .icon(app.default_window_icon().unwrap().clone())
+                .tooltip("Tunante")
+                .menu(&tray_menu)
+                .on_menu_event(|app, event| {
+                    match event.id().as_ref() {
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
+                        let app = tray.app_handle();
+                        match button {
+                            tauri::tray::MouseButton::Left => {
+                                // Left click: show and focus window
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let _ = window.show();
+                                    let _ = window.unminimize();
+                                    let _ = window.set_focus();
+                                }
+                            }
+                            tauri::tray::MouseButton::Middle => {
+                                // Middle click: toggle pause/resume
+                                let state = app.state::<Arc<AppState>>();
+                                let mut audio = state.audio.lock();
+                                if audio.is_playing() {
+                                    audio.pause();
+                                } else {
+                                    audio.resume();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // Apply initial visibility
+            let _ = tray.set_visible(show_in_tray);
+
             // Spawn state update thread
+            //
+            // Uses try_lock() to never block when the audio mutex is held by a
+            // slow operation (PSF seek, loading, etc.). This keeps the event loop
+            // alive so the frontend stays responsive even during long operations.
             let handle = app.handle().clone();
             std::thread::spawn(move || {
+                let mut last_tooltip = String::from("Tunante");
                 loop {
                     std::thread::sleep(Duration::from_millis(250));
 
                     let state = handle.state::<Arc<AppState>>();
-                    let audio = state.audio.lock();
+
+                    // try_lock: skip this cycle if audio is busy (seek/load in progress)
+                    let Some(audio) = state.audio.try_lock() else {
+                        continue;
+                    };
                     let is_playing = audio.is_playing();
                     let position_ms = audio.position_ms();
                     let duration_ms = audio.duration_ms();
                     let volume = audio.volume();
                     let track_finished = audio.track_finished();
                     drop(audio);
+
+                    // Update tray tooltip with current track info
+                    let tooltip = {
+                        let queue = state.queue.lock();
+                        if let Some(track) = queue.current() {
+                            let status = if is_playing { "▶" } else { "⏸" };
+                            if track.artist.is_empty() || track.artist == "Unknown Artist" {
+                                format!("{} {}", status, track.title)
+                            } else {
+                                format!("{} {} – {}", status, track.artist, track.title)
+                            }
+                        } else {
+                            "Tunante".to_string()
+                        }
+                    };
+                    if tooltip != last_tooltip {
+                        if let Some(tray) = handle.tray_by_id("main-tray") {
+                            let _ = tray.set_tooltip(Some(&tooltip));
+                        }
+                        last_tooltip = tooltip;
+                    }
 
                     let _ = handle.emit(
                         "player-state-update",
@@ -195,6 +302,25 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Check if close_to_tray is enabled
+                let app_state = window.state::<Arc<AppState>>();
+                let close_to_tray = {
+                    let db = app_state.db.lock();
+                    db.get_setting("close_to_tray")
+                        .ok()
+                        .flatten()
+                        .map(|v| v == "true")
+                        .unwrap_or(false)
+                };
+
+                if close_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::player::play_file,
             commands::player::pause,
@@ -210,6 +336,8 @@ pub fn run() {
             commands::player::get_queue,
             commands::player::is_in_queue,
             commands::library::get_all_tracks,
+            commands::library::set_track_rating,
+            commands::library::get_faved_tracks,
             commands::library::scan_folder,
             commands::library::add_files,
             commands::library::get_artwork,
@@ -227,8 +355,10 @@ pub fn run() {
             commands::settings::add_monitored_folder,
             commands::settings::remove_monitored_folder,
             commands::settings::toggle_folder_watching,
+            commands::settings::set_tray_visible,
             commands::library::open_containing_folder,
             commands::library::resync_library,
+            commands::library::update_track_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

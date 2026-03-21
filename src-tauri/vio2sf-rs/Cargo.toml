@@ -1,0 +1,11 @@
+[package]
+name = "vio2sf-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust wrapper for vio2sf (Nintendo DS sound format decoder using DeSmuME)"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1"
