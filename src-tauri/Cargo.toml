@@ -36,6 +36,7 @@ vgmstream-rs = { path = "vgmstream-rs" }
 lazygsf-rs = { path = "lazygsf-rs" }
 vio2sf-rs = { path = "vio2sf-rs" }
 hepsf-rs = { path = "hepsf-rs" }
+rdev = "0.5.3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gio = "0.18"
