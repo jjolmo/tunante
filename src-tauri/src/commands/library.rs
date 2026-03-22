@@ -300,3 +300,8 @@ pub fn open_containing_folder(path: String) -> Result<(), String> {
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn is_directory(path: String) -> bool {
+    std::path::Path::new(&path).is_dir()
+}
