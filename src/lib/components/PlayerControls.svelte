@@ -87,12 +87,85 @@
 		return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 	}
 
-	function handleGlobalKeydown(e: KeyboardEvent) {
+	// In-app shortcut handler for bare keys (no modifiers — only work when window focused)
+	async function handleGlobalKeydown(e: KeyboardEvent) {
+		// Always handle Ctrl+P for settings
 		if ((e.ctrlKey || e.metaKey) && e.key === 'p') {
 			e.preventDefault();
 			settingsStore.openSettings();
+			return;
+		}
+
+		// Don't intercept when typing in inputs or settings is open
+		const tag = (e.target as HTMLElement)?.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+		if (settingsStore.isSettingsOpen) return;
+
+		// Check if this key matches any in-app shortcut (bare keys without modifiers)
+		const shortcuts = await invoke<Record<string, string>>('get_shortcuts');
+		const normalizedKey = normalizeKeyForMatch(e);
+
+		for (const [actionId, keys] of Object.entries(shortcuts)) {
+			if (!keys || keys.includes('Mouse')) continue;
+			if (keys === normalizedKey) {
+				e.preventDefault();
+				executeInAppAction(actionId);
+				return;
+			}
 		}
 	}
+
+	function normalizeKeyForMatch(e: KeyboardEvent): string {
+		const parts: string[] = [];
+		if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+		if (e.shiftKey) parts.push('Shift');
+		if (e.altKey) parts.push('Alt');
+
+		let key = e.key;
+		if (key === ' ') key = 'Space';
+		else if (key === 'ArrowUp') key = 'Up';
+		else if (key === 'ArrowDown') key = 'Down';
+		else if (key === 'ArrowLeft') key = 'Left';
+		else if (key === 'ArrowRight') key = 'Right';
+		else if (key.length === 1) key = key.toUpperCase();
+
+		if (!['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+			parts.push(key);
+		}
+
+		return parts.join('+');
+	}
+
+	function executeInAppAction(actionId: string) {
+		switch (actionId) {
+			case 'play_pause': playerStore.togglePlayPause(); break;
+			case 'stop': playerStore.stop(); break;
+			case 'next_track': playerStore.nextTrack(); break;
+			case 'prev_track': playerStore.prevTrack(); break;
+			case 'volume_up': playerStore.setVolume(Math.min(1, playerStore.volume + 0.05)); break;
+			case 'volume_down': playerStore.setVolume(Math.max(0, playerStore.volume - 0.05)); break;
+			case 'mute': playerStore.setVolume(playerStore.volume > 0 ? 0 : 0.8); break;
+			case 'toggle_shuffle': playerStore.toggleShuffle(); break;
+			case 'cycle_repeat': playerStore.cycleRepeat(); break;
+			case 'focus_search': {
+				const input = document.querySelector('.search-bar input') as HTMLInputElement;
+				if (input) input.focus();
+				break;
+			}
+			case 'toggle_fav': toggleRating(); break;
+		}
+	}
+
+	// Listen for shortcut actions from backend (for frontend-only actions like focus_search)
+	import { listen } from '@tauri-apps/api/event';
+	import { onMount } from 'svelte';
+
+	onMount(() => {
+		const unlisten = listen<string>('shortcut-action', (event) => {
+			executeInAppAction(event.payload);
+		});
+		return () => { unlisten.then(fn => fn()); };
+	});
 </script>
 
 <svelte:window onkeydown={handleGlobalKeydown} />
