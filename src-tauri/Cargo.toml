@@ -40,6 +40,9 @@ hepsf-rs = { path = "hepsf-rs" }
 [target.'cfg(target_os = "linux")'.dependencies]
 gio = "0.18"
 
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-global-shortcut = "2.3.1"
+
 # Patch tray-icon and libappindicator to support left-click toggle on Linux.
 # On Linux, libayatana-appindicator normally shows the context menu on ALL
 # clicks. Our patched tray-icon calls app_indicator_set_secondary_activate_target()
