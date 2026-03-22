@@ -2,6 +2,14 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
+    // macOS ARM requires deployment target >= 11.0; set it for all macOS
+    // so cmake and the cc crate pass the correct -mmacosx-version-min flag.
+    if let Ok(target) = env::var("TARGET") {
+        if target.contains("apple") {
+            env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
+        }
+    }
+
     let vgmstream_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
         .parent()
         .unwrap()
@@ -10,6 +18,7 @@ fn main() {
     let dst = cmake::Config::new(&vgmstream_dir)
         .define("BUILD_STATIC", "ON")
         .define("BUILD_CLI", "OFF")
+        .define("BUILD_FB2K", "OFF")
         .define("BUILD_V123", "OFF")
         .define("BUILD_AUDACIOUS", "OFF")
         .define("USE_FFMPEG", "OFF")
