@@ -261,13 +261,14 @@
 			<!-- Mouse picker panel (inline, below the row) -->
 			{#if mousePickerId === action.id}
 				<div class="mouse-picker">
-					<select class="mouse-select" bind:value={mouseModifier}>
+					<span class="mouse-picker-label">Mouse bind:</span>
+					<select class="mouse-select mod-select" bind:value={mouseModifier}>
 						{#each MODIFIERS as mod}
 							<option value={mod.value}>{mod.label}</option>
 						{/each}
 					</select>
 					<span class="mouse-plus">+</span>
-					<select class="mouse-select" bind:value={mouseButton}>
+					<select class="mouse-select btn-select" bind:value={mouseButton}>
 						{#each MOUSE_BUTTONS as btn}
 							<option value={btn.value}>{btn.label}</option>
 						{/each}
@@ -394,10 +395,17 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 6px 8px 6px 140px;
+		padding: 6px 12px;
 		background-color: var(--color-bg-tertiary);
 		border-radius: 4px;
 		margin-top: 2px;
+		flex-wrap: wrap;
+	}
+
+	.mouse-picker-label {
+		font-size: 11px;
+		color: var(--color-text-muted);
+		margin-right: 4px;
 	}
 
 	.mouse-select {
