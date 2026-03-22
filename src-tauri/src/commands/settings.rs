@@ -171,10 +171,15 @@ pub fn get_desktop_entry_path() -> String {
     String::new()
 }
 
+/// Embedded 128x128 PNG icon — compiled into the binary so it works
+/// regardless of runtime paths (AppImage, dev mode, installed binary).
+#[cfg(target_os = "linux")]
+static ICON_PNG: &[u8] = include_bytes!("../../icons/128x128.png");
+
 /// Creates a .desktop entry for Tunante on Linux.
-/// Copies the app icon and writes the .desktop file.
+/// Writes the embedded icon and generates the .desktop file.
 #[tauri::command]
-pub fn create_desktop_entry(app: tauri::AppHandle) -> Result<String, String> {
+pub fn create_desktop_entry(_app: tauri::AppHandle) -> Result<String, String> {
     #[cfg(target_os = "linux")]
     {
         let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
@@ -184,39 +189,13 @@ pub fn create_desktop_entry(app: tauri::AppHandle) -> Result<String, String> {
         let exe_path = std::env::current_exe()
             .map_err(|e| format!("Cannot find executable: {}", e))?;
 
-        // Create icon directory
+        // Write embedded icon to ~/.local/share/icons/tunante.png
         let icon_dir = home_path.join(".local/share/icons");
         std::fs::create_dir_all(&icon_dir)
             .map_err(|e| format!("Cannot create icon dir: {}", e))?;
-
-        // Copy icon from Tauri resources
         let icon_dest = icon_dir.join("tunante.png");
-        let resource_path = app.path()
-            .resource_dir()
-            .map_err(|e| format!("Cannot get resource dir: {}", e))?;
-
-        // Try to find the icon in resource dir or alongside the executable
-        let icon_source_candidates = vec![
-            resource_path.join("icons/128x128.png"),
-            resource_path.join("icons/icon.png"),
-            exe_path.parent().unwrap_or(std::path::Path::new("/")).join("icons/128x128.png"),
-        ];
-
-        let mut icon_copied = false;
-        for candidate in &icon_source_candidates {
-            if candidate.exists() {
-                std::fs::copy(candidate, &icon_dest)
-                    .map_err(|e| format!("Cannot copy icon: {}", e))?;
-                icon_copied = true;
-                break;
-            }
-        }
-
-        // If no resource icon found, try to extract from the binary's embedded icon
-        if !icon_copied {
-            // Use a placeholder — the .desktop entry will still work without an icon
-            log::warn!("No icon found in resource dir, .desktop entry will have no icon");
-        }
+        std::fs::write(&icon_dest, ICON_PNG)
+            .map_err(|e| format!("Cannot write icon: {}", e))?;
 
         // Create .desktop file
         let desktop_dir = home_path.join(".local/share/applications");
@@ -225,11 +204,7 @@ pub fn create_desktop_entry(app: tauri::AppHandle) -> Result<String, String> {
 
         let desktop_path = desktop_dir.join("tunante.desktop");
         let exe_str = exe_path.to_string_lossy();
-        let icon_str = if icon_dest.exists() {
-            icon_dest.to_string_lossy().to_string()
-        } else {
-            "audio-x-generic".to_string()
-        };
+        let icon_str = icon_dest.to_string_lossy();
 
         let desktop_content = format!(
             "[Desktop Entry]\n\
