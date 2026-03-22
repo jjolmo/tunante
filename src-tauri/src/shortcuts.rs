@@ -233,39 +233,12 @@ pub fn register_user_shortcuts(
             }
             // Bare keys without modifiers are handled by the frontend via web events
         }
-        // Mouse button shortcuts are handled by the rdev listener
+        // Mouse button shortcuts: configure your input remapper to send
+        // keyboard combos, then bind those here. The keyboard combos will
+        // be registered as global shortcuts above.
     }
 
     shortcut_map
-}
-
-/// Check if an rdev mouse event matches any configured mouse shortcut.
-pub fn match_mouse_shortcut(
-    button: rdev::Button,
-    bindings: &HashMap<String, String>,
-) -> Option<String> {
-    // Map rdev button to our string name
-    // X11 button numbering: 1=Left, 2=Middle, 3=Right, 4-5=Scroll, 6-7=HScroll, 8+=Extra
-    let btn_name = match button {
-        rdev::Button::Middle => "MouseMiddle",
-        rdev::Button::Unknown(8) => "MouseBack",
-        rdev::Button::Unknown(9) => "MouseForward",
-        rdev::Button::Unknown(10) => "Mouse6",
-        rdev::Button::Unknown(11) => "Mouse7",
-        rdev::Button::Unknown(12) => "Mouse8",
-        rdev::Button::Unknown(13) => "Mouse9",
-        rdev::Button::Unknown(14) => "Mouse10",
-        _ => return None,
-    };
-
-    for (action_id, keys) in bindings {
-        // Match bare button or with modifiers (e.g. "Ctrl+MouseMiddle")
-        if keys == btn_name || keys.ends_with(&format!("+{}", btn_name)) {
-            return Some(action_id.clone());
-        }
-    }
-
-    None
 }
 
 /// Tauri command: update shortcut bindings from frontend.
@@ -310,9 +283,6 @@ pub fn update_shortcuts(
 
     // Update the shortcut map in app state
     *state.shortcut_map.lock() = shortcut_map;
-
-    // Update mouse bindings
-    *state.mouse_bindings.lock() = bindings;
 
     Ok(())
 }
