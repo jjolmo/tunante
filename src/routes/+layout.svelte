@@ -35,7 +35,17 @@
 			// Wait for BOTH library and playlists to finish before restoring session
 			const libReady = libraryStore.init((key) => settingsStore.getSetting(key));
 			const plReady = playlistsStore.init();
-			Promise.all([libReady, plReady]).then(() => restoreSession());
+			Promise.all([libReady, plReady]).then(() => {
+				restoreSession();
+				// Check for updates on startup if enabled
+				if (settingsStore.checkUpdatesOnStart) {
+					invoke('check_for_updates').then((info: any) => {
+						if (info.update_available) {
+							console.log(`Update available: v${info.latest_version}`);
+						}
+					}).catch(() => {});
+				}
+			});
 		});
 	});
 

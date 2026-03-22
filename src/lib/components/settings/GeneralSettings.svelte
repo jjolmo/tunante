@@ -65,6 +65,21 @@
 			>
 		</div>
 	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.checkUpdatesOnStart}
+			onchange={(e) =>
+				settingsStore.setCheckUpdatesOnStart((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Check for updates on startup</span>
+			<span class="setting-desc"
+				>Automatically check GitHub for new releases when the app starts.</span
+			>
+		</div>
+	</label>
 </div>
 
 <style>
