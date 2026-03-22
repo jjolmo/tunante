@@ -13,6 +13,7 @@ class SettingsStore {
 	showInTray = $state(false);
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
+	checkUpdatesOnStart = $state(true);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -59,6 +60,9 @@ class SettingsStore {
 
 		const showArt = this._settingsCache.get('show_cover_art');
 		if (showArt !== undefined) this.showCoverArt = showArt === 'true';
+
+		const checkUpdates = this._settingsCache.get('check_updates_on_start');
+		if (checkUpdates !== undefined) this.checkUpdatesOnStart = checkUpdates === 'true';
 	}
 
 	private _teardownMediaListener() {
@@ -200,6 +204,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'show_cover_art', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save cover art setting:', e);
+		}
+	}
+
+	async setCheckUpdatesOnStart(enabled: boolean) {
+		this.checkUpdatesOnStart = enabled;
+		try {
+			await invoke('set_setting', { key: 'check_updates_on_start', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save update check setting:', e);
 		}
 	}
 }
