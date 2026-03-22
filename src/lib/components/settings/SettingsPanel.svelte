@@ -117,10 +117,10 @@
 	}
 
 	.settings-dialog {
-		width: 700px;
+		width: 850px;
 		max-width: 90vw;
-		height: 500px;
-		max-height: 80vh;
+		height: 550px;
+		max-height: 85vh;
 		background-color: var(--color-bg-primary);
 		border: 1px solid var(--color-border);
 		border-radius: 6px;
