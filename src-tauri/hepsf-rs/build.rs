@@ -102,6 +102,56 @@ fn main() {
     wrapper.file(base.join("sexypsf_wrapper.c"));
     wrapper.compile("hepsf_wrapper");
 
+    // =========================================================================
+    // Build 3: Highly Experimental (HE) emulator core — for PSF2 (PS2 IOP)
+    //
+    // HE provides a complete IOP (R3000 + SPU/SPU2) emulator that supports
+    // both PS1 (version=1) and PS2 (version=2). It uses psx_execute() as a
+    // synchronous pull-based API, so no thread/ring-buffer wrapper is needed.
+    //
+    // The BIOS is synthesized at runtime via mkhebios — no real PS2 BIOS dump
+    // is required. The mkhebios tool assembles a synthetic HLE BIOS from
+    // embedded MIPS code scripts.
+    // =========================================================================
+    let he_dir = base.join("he");
+    let psflib_dir = base.join("psflib");
+
+    let mut he = cc::Build::new();
+    he.warnings(false)
+        .opt_level(2)
+        .include(&he_dir)
+        .include(&psflib_dir)
+        .include(&zlib_dir)
+        .flag_if_supported("-fvisibility=hidden")
+        // EMU_COMPILE is required by all HE source files
+        .define("EMU_COMPILE", None)
+        // Set endianness for little-endian platforms (x86/x64/ARM)
+        .define("EMU_LITTLE_ENDIAN", None)
+        // Use stdint.h types
+        .define("HAVE_STDINT_H", None);
+
+    // HE core: IOP emulator (R3000 CPU + SPU/SPU2 + timers + VFS)
+    he.files(&[
+        he_dir.join("bios.c"),
+        he_dir.join("iop.c"),
+        he_dir.join("ioptimer.c"),
+        he_dir.join("psx.c"),
+        he_dir.join("r3000.c"),
+        he_dir.join("r3000asm.c"),
+        he_dir.join("spu.c"),
+        he_dir.join("spucore.c"),
+        he_dir.join("vfs.c"),
+        he_dir.join("mkhebios.c"),
+    ]);
+
+    // psflib: PSF container parser + psf2fs virtual filesystem
+    he.files(&[
+        psflib_dir.join("psflib.c"),
+        psflib_dir.join("psf2fs.c"),
+    ]);
+
+    he.compile("hepsf_he");
+
     // Link math library on Unix (needed by SPU reverb calculations)
     #[cfg(unix)]
     println!("cargo:rustc-link-lib=m");
@@ -114,4 +164,6 @@ fn main() {
     println!("cargo:rerun-if-changed=sexypsf/spu/");
     println!("cargo:rerun-if-changed=sexypsf_wrapper.c");
     println!("cargo:rerun-if-changed=zlib/");
+    println!("cargo:rerun-if-changed=he/");
+    println!("cargo:rerun-if-changed=psflib/");
 }

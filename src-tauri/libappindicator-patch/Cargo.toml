@@ -1,0 +1,17 @@
+[package]
+name = "libappindicator"
+version = "0.9.0"
+edition = "2021"
+description = "Rust safe bindings for libappindicator (patched for Tunante)"
+license = "Apache-2.0 OR MIT"
+
+[dependencies]
+glib = "0.18"
+gtk = "0.18"
+gtk-sys = "0.18"
+libappindicator-sys = "0.9"
+log = "0.4"
+
+[features]
+backcompat = ["libappindicator-sys/backcompat"]
+default = ["backcompat"]

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { MonitoredFolder, Theme } from '$lib/types';
+import type { MonitoredFolder, Setting, Theme } from '$lib/types';
 import { libraryStore } from '$lib/stores/library.svelte';
 
 class SettingsStore {
@@ -15,55 +15,46 @@ class SettingsStore {
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
+	private _settingsCache = new Map<string, string>();
+
+	/** Synchronous getter for cached settings (available after init) */
+	getSetting(key: string): string | null {
+		return this._settingsCache.get(key) ?? null;
+	}
 
 	async init() {
-		try {
-			const theme = await invoke<string | null>('get_setting', { key: 'theme' });
-			if (theme === 'light' || theme === 'dark' || theme === 'system') {
-				this.theme = theme;
-			}
-			this.applyTheme(this.theme);
-		} catch (e) {
-			console.error('Failed to load theme setting:', e);
+		// Load all settings in a single batch IPC call + monitored folders in parallel
+		const [settings] = await Promise.all([
+			invoke<Setting[]>('get_settings').catch((e) => {
+				console.error('Failed to load settings:', e);
+				return [] as Setting[];
+			}),
+			this.loadMonitoredFolders(),
+		]);
+
+		// Build cache for other stores to use
+		for (const s of settings) {
+			this._settingsCache.set(s.key, s.value);
 		}
 
-		try {
-			const val = await invoke<string | null>('get_setting', { key: 'show_track_in_titlebar' });
-			if (val !== null) {
-				this.showTrackInTitlebar = val === 'true';
-			}
-		} catch (e) {
-			console.error('Failed to load titlebar setting:', e);
+		// Apply settings from batch
+		const theme = this._settingsCache.get('theme');
+		if (theme === 'light' || theme === 'dark' || theme === 'system') {
+			this.theme = theme;
 		}
+		this.applyTheme(this.theme);
 
-		try {
-			const val = await invoke<string | null>('get_setting', { key: 'keep_favs_in_metadata' });
-			if (val !== null) {
-				this.keepFavsInMetadata = val === 'true';
-			}
-		} catch (e) {
-			console.error('Failed to load keep favs setting:', e);
-		}
+		const titlebar = this._settingsCache.get('show_track_in_titlebar');
+		if (titlebar !== undefined) this.showTrackInTitlebar = titlebar === 'true';
 
-		try {
-			const val = await invoke<string | null>('get_setting', { key: 'show_in_tray' });
-			if (val !== null) {
-				this.showInTray = val === 'true';
-			}
-		} catch (e) {
-			console.error('Failed to load show in tray setting:', e);
-		}
+		const keepFavs = this._settingsCache.get('keep_favs_in_metadata');
+		if (keepFavs !== undefined) this.keepFavsInMetadata = keepFavs === 'true';
 
-		try {
-			const val = await invoke<string | null>('get_setting', { key: 'close_to_tray' });
-			if (val !== null) {
-				this.closeToTray = val === 'true';
-			}
-		} catch (e) {
-			console.error('Failed to load close to tray setting:', e);
-		}
+		const showTray = this._settingsCache.get('show_in_tray');
+		if (showTray !== undefined) this.showInTray = showTray === 'true';
 
-		await this.loadMonitoredFolders();
+		const closeTray = this._settingsCache.get('close_to_tray');
+		if (closeTray !== undefined) this.closeToTray = closeTray === 'true';
 	}
 
 	private _teardownMediaListener() {

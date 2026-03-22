@@ -11,8 +11,11 @@ const GSF_EXTENSIONS: &[&str] = &["gsf", "minigsf"];
 /// 2SF (NDS Sound Format) extensions
 const TWOSF_EXTENSIONS: &[&str] = &["2sf", "mini2sf"];
 
-/// PSF (PlayStation Sound Format) extensions
+/// PSF (PlayStation Sound Format) extensions — PS1 only
 const PSF_EXTENSIONS: &[&str] = &["psf", "minipsf"];
+
+/// PSF2 (PlayStation 2 Sound Format) extensions
+const PSF2_EXTENSIONS: &[&str] = &["psf2", "minipsf2"];
 
 /// Parse a potentially multi-track path into (file_path, sub_track_index).
 /// Format: "/path/to/file.nsf#3" → ("/path/to/file.nsf", Some(3))
@@ -70,15 +73,28 @@ pub fn is_twosf_file(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Check if an extension is a PSF format (PlayStation Sound Format)
+/// Check if an extension is a PSF format (PlayStation 1 Sound Format)
 pub fn is_psf_format(ext: &str) -> bool {
     PSF_EXTENSIONS.contains(&ext.to_lowercase().as_str())
 }
 
-/// Check if a file path is a PSF format
+/// Check if a file path is a PSF format (PS1)
 pub fn is_psf_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| is_psf_format(e))
+        .unwrap_or(false)
+}
+
+/// Check if an extension is a PSF2 format (PlayStation 2 Sound Format)
+pub fn is_psf2_format(ext: &str) -> bool {
+    PSF2_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+}
+
+/// Check if a file path is a PSF2 format (PS2)
+pub fn is_psf2_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| is_psf2_format(e))
         .unwrap_or(false)
 }

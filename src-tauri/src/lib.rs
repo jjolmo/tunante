@@ -88,8 +88,76 @@ fn setup_panic_hook() {
     }));
 }
 
+/// Installs a D-Bus message filter on the session bus that handles the
+/// StatusNotifierItem `Activate` method call (sent by KDE on left-click).
+///
+/// libayatana-appindicator 0.5.x does not implement `Activate` in its D-Bus
+/// interface, so KDE falls back to showing the context menu on left-click.
+/// This filter intercepts `Activate`, toggles the main window, and sends a
+/// success reply before the "no such method" error is synthesised.
+#[cfg(target_os = "linux")]
+fn setup_dbus_activate_handler(handle: tauri::AppHandle) {
+    let Ok(connection) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) else {
+        log::warn!("Could not get D-Bus session bus for Activate handler");
+        return;
+    };
+
+    connection.add_filter(move |conn, msg, incoming| {
+        if !incoming {
+            return Some(msg.to_owned());
+        }
+
+        let is_activate = msg.message_type() == gio::DBusMessageType::MethodCall
+            && msg.member().as_deref() == Some("Activate")
+            && msg.interface().as_deref() == Some("org.kde.StatusNotifierItem");
+
+        if !is_activate {
+            return Some(msg.to_owned());
+        }
+
+        // Toggle main window visibility
+        if let Some(window) = handle.get_webview_window("main") {
+            if window.is_visible().unwrap_or(false) {
+                let _ = window.hide();
+            } else {
+                let _ = window.show();
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }
+
+        // Send a success reply so KDE knows the call was handled.
+        // (Returning None causes GLib to auto-synthesise an error reply,
+        // but D-Bus ignores duplicate replies for the same serial.)
+        let reply = msg.to_owned();
+        let method_reply = gio::DBusMessage::new_method_reply(&reply);
+        let _ = conn.send_message(&method_reply, gio::DBusSendMessageFlags::NONE);
+
+        // Consume the message so normal dispatch doesn't see it.
+        None
+    });
+}
+
 pub fn run() {
     setup_panic_hook();
+
+    // Force X11 backend on Linux for native window decorations.
+    //
+    // On Wayland, tao (Tauri's windowing library) explicitly sets a GTK3
+    // client-side-decoration (CSD) header bar (tao PR #979). This overrides
+    // GTK_CSD=0 and renders GNOME-style buttons instead of the window
+    // manager's native titlebar (KDE Breeze, etc.).
+    //
+    // Forcing X11 (via XWayland) lets the window manager draw decorations,
+    // matching the user's system theme. The performance impact is negligible
+    // for a music player. This is the recommended workaround until tao
+    // supports xdg-decoration negotiation (tracked in tao#1046).
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var("GDK_BACKEND").is_err() {
+            std::env::set_var("GDK_BACKEND", "x11");
+        }
+    }
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -148,33 +216,58 @@ pub fn run() {
             }
 
             // Set up system tray icon
-            let show_item = MenuItemBuilder::with_id("show", "Show Tunante").build(app)?;
+            //
+            // Platform behaviour:
+            //   Windows/macOS — left-click toggles window (via on_tray_icon_event),
+            //                   right-click opens the context menu.
+            //   Linux (KDE)  — Our patched tray-icon sets the first menu item as
+            //                   the secondary_activate_target. KDE sends the SNI
+            //                   `Activate` D-Bus method on left-click, which triggers
+            //                   the "Show / Hide" item directly. Right-click opens
+            //                   the full context menu.
+            //   Linux (GNOME)— GNOME's AppIndicator extension always shows the menu
+            //                   on any click. The "Show / Hide" item is at the top.
+            let show_hide_item = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let tray_menu = MenuBuilder::new(app)
-                .item(&show_item)
+                .item(&show_hide_item)
                 .item(&quit_item)
                 .build()?;
 
-            // Read initial tray visibility from settings
+            // Read initial tray visibility from settings (default: visible)
             let show_in_tray = {
                 let db = state.db.lock();
                 db.get_setting("show_in_tray")
                     .ok()
                     .flatten()
                     .map(|v| v == "true")
-                    .unwrap_or(false)
+                    .unwrap_or(true)
             };
 
-            let tray = TrayIconBuilder::with_id("main-tray")
+            let tray_builder = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Tunante")
-                .menu(&tray_menu)
+                .menu(&tray_menu);
+
+            // On Windows/macOS: disable menu on left-click so left-click
+            // fires the Click event (toggle window), right-click shows menu.
+            // On Linux: do NOT call this — libayatana-appindicator needs the
+            // menu activation path to even display the tray icon.
+            #[cfg(not(target_os = "linux"))]
+            let tray_builder = tray_builder.show_menu_on_left_click(false);
+
+            let tray = tray_builder
                 .on_menu_event(|app, event| {
                     match event.id().as_ref() {
-                        "show" => {
+                        "show_hide" => {
                             if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                                if window.is_visible().unwrap_or(false) {
+                                    let _ = window.hide();
+                                } else {
+                                    let _ = window.show();
+                                    let _ = window.unminimize();
+                                    let _ = window.set_focus();
+                                }
                             }
                         }
                         "quit" => {
@@ -188,11 +281,15 @@ pub fn run() {
                         let app = tray.app_handle();
                         match button {
                             tauri::tray::MouseButton::Left => {
-                                // Left click: show and focus window
+                                // Left click: toggle window visibility
                                 if let Some(window) = app.get_webview_window("main") {
-                                    let _ = window.show();
-                                    let _ = window.unminimize();
-                                    let _ = window.set_focus();
+                                    if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
+                                        let _ = window.hide();
+                                    } else {
+                                        let _ = window.show();
+                                        let _ = window.unminimize();
+                                        let _ = window.set_focus();
+                                    }
                                 }
                             }
                             tauri::tray::MouseButton::Middle => {
@@ -213,6 +310,22 @@ pub fn run() {
 
             // Apply initial visibility
             let _ = tray.set_visible(show_in_tray);
+
+            // Linux: install a D-Bus message filter to handle the `Activate`
+            // method on the StatusNotifierItem interface.
+            //
+            // libayatana-appindicator 0.5.x does NOT expose the `Activate`
+            // D-Bus method (only `SecondaryActivate` and `Scroll`). When KDE
+            // Plasma sends `Activate` on left-click, the call fails and KDE
+            // falls back to showing the context menu.
+            //
+            // Our filter intercepts the incoming `Activate` method call,
+            // toggles the main window, and sends a success reply so KDE
+            // knows the action was handled.
+            #[cfg(target_os = "linux")]
+            {
+                setup_dbus_activate_handler(app.handle().clone());
+            }
 
             // Spawn state update thread
             //
@@ -335,6 +448,8 @@ pub fn run() {
             commands::player::dequeue_tracks,
             commands::player::get_queue,
             commands::player::is_in_queue,
+            commands::player::set_shuffle,
+            commands::player::set_repeat,
             commands::library::get_all_tracks,
             commands::library::set_track_rating,
             commands::library::get_faved_tracks,
