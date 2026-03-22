@@ -8,6 +8,7 @@ pub mod audio;
 pub mod commands;
 pub mod db;
 pub mod metadata;
+pub mod shortcuts;
 pub mod watcher;
 
 #[derive(Clone, serde::Serialize)]
@@ -21,6 +22,10 @@ pub struct AppState {
     pub db: parking_lot::Mutex<db::Database>,
     pub queue: parking_lot::Mutex<audio::PlayQueue>,
     pub watcher: parking_lot::Mutex<Option<watcher::FolderWatcher>>,
+    /// Maps global shortcut ID → action_id for keyboard shortcuts
+    pub shortcut_map: parking_lot::Mutex<std::collections::HashMap<u32, String>>,
+    /// Maps action_id → key string for mouse button shortcuts
+    pub mouse_bindings: parking_lot::Mutex<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -138,9 +143,9 @@ fn setup_dbus_activate_handler(handle: tauri::AppHandle) {
     });
 }
 
-/// Build the global-shortcut plugin with media key handlers.
-fn setup_media_keys_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
-    use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
+/// Build the global-shortcut plugin with media key + user shortcut handlers.
+fn setup_global_shortcut_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use tauri_plugin_global_shortcut::{Code, ShortcutState};
 
     tauri_plugin_global_shortcut::Builder::new()
         .with_handler(|app, shortcut, event| {
@@ -150,43 +155,33 @@ fn setup_media_keys_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 
             let state = app.state::<Arc<AppState>>();
 
+            // Check hardcoded media keys first
             match shortcut.key {
                 Code::MediaPlayPause => {
-                    let mut audio = state.audio.lock();
-                    if audio.is_playing() {
-                        audio.pause();
-                    } else {
-                        audio.resume();
-                    }
+                    shortcuts::handle_action("play_pause", app, &state);
+                    return;
                 }
                 Code::MediaTrackNext => {
-                    let mut queue = state.queue.lock();
-                    if let Some(next_track) = queue.next() {
-                        let path = next_track.path.clone();
-                        drop(queue);
-                        let mut audio = state.audio.lock();
-                        if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
-                            let _ = app.emit("track-changed", next_track);
-                        }
-                    }
+                    shortcuts::handle_action("next_track", app, &state);
+                    return;
                 }
                 Code::MediaTrackPrevious => {
-                    let mut queue = state.queue.lock();
-                    if let Some(prev_track) = queue.prev() {
-                        let path = prev_track.path.clone();
-                        drop(queue);
-                        let mut audio = state.audio.lock();
-                        if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
-                            let _ = app.emit("track-changed", prev_track);
-                        }
-                    }
+                    shortcuts::handle_action("prev_track", app, &state);
+                    return;
                 }
                 Code::MediaStop => {
-                    let mut audio = state.audio.lock();
-                    audio.stop();
-                    let _ = app.emit("playback-stopped", ());
+                    shortcuts::handle_action("stop", app, &state);
+                    return;
                 }
                 _ => {}
+            }
+
+            // Check user-configured shortcuts
+            let shortcut_map = state.shortcut_map.lock();
+            if let Some(action_id) = shortcut_map.get(&shortcut.id()) {
+                let action = action_id.clone();
+                drop(shortcut_map);
+                shortcuts::handle_action(&action, app, &state);
             }
         })
         .build()
@@ -216,7 +211,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(setup_media_keys_plugin())
+        .plugin(setup_global_shortcut_plugin())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When a second instance is launched, focus the existing window
             if let Some(window) = app.get_webview_window("main") {
@@ -235,11 +230,21 @@ pub fn run() {
                 audio::AudioEngine::new().expect("Failed to initialize audio engine");
             let queue = audio::PlayQueue::new();
 
+            // Load user shortcut bindings from DB
+            let user_bindings: std::collections::HashMap<String, String> = db
+                .get_setting("shortcuts")
+                .ok()
+                .flatten()
+                .and_then(|json| serde_json::from_str(&json).ok())
+                .unwrap_or_default();
+
             let state = Arc::new(AppState {
                 audio: parking_lot::Mutex::new(audio_engine),
                 db: parking_lot::Mutex::new(db),
                 queue: parking_lot::Mutex::new(queue),
                 watcher: parking_lot::Mutex::new(None),
+                shortcut_map: parking_lot::Mutex::new(std::collections::HashMap::new()),
+                mouse_bindings: parking_lot::Mutex::new(user_bindings.clone()),
             });
 
             app.manage(state.clone());
@@ -333,38 +338,9 @@ pub fn run() {
                                 }
                             }
                         }
-                        "play_pause" => {
+                        "play_pause" | "next_track" | "prev_track" => {
                             let state = app.state::<Arc<AppState>>();
-                            let mut audio = state.audio.lock();
-                            if audio.is_playing() {
-                                audio.pause();
-                            } else {
-                                audio.resume();
-                            }
-                        }
-                        "next_track" => {
-                            let state = app.state::<Arc<AppState>>();
-                            let mut queue = state.queue.lock();
-                            if let Some(next_track) = queue.next() {
-                                let path = next_track.path.clone();
-                                drop(queue);
-                                let mut audio = state.audio.lock();
-                                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
-                                    let _ = app.emit("track-changed", next_track);
-                                }
-                            }
-                        }
-                        "prev_track" => {
-                            let state = app.state::<Arc<AppState>>();
-                            let mut queue = state.queue.lock();
-                            if let Some(prev_track) = queue.prev() {
-                                let path = prev_track.path.clone();
-                                drop(queue);
-                                let mut audio = state.audio.lock();
-                                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
-                                    let _ = app.emit("track-changed", prev_track);
-                                }
-                            }
+                            shortcuts::handle_action(event.id().as_ref(), app, &state);
                         }
                         "quit" => {
                             app.exit(0);
@@ -423,20 +399,50 @@ pub fn run() {
                 setup_dbus_activate_handler(app.handle().clone());
             }
 
-            // Register global media key shortcuts
+            // Register global shortcuts: media keys + user-configured
             {
                 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Code, Shortcut};
-                let shortcuts = [
+                // Hardcoded media keys (always active)
+                let media_keys = [
                     Shortcut::new(None, Code::MediaPlayPause),
                     Shortcut::new(None, Code::MediaTrackNext),
                     Shortcut::new(None, Code::MediaTrackPrevious),
                     Shortcut::new(None, Code::MediaStop),
                 ];
-                for shortcut in &shortcuts {
+                for shortcut in &media_keys {
                     if let Err(e) = app.global_shortcut().register(*shortcut) {
                         log::warn!("Failed to register media key {:?}: {}", shortcut.key, e);
                     }
                 }
+                // User-configured keyboard shortcuts (with modifiers → global)
+                let shortcut_map =
+                    shortcuts::register_user_shortcuts(app.handle(), &user_bindings);
+                *state.shortcut_map.lock() = shortcut_map;
+            }
+
+            // Spawn rdev mouse listener thread for global mouse button shortcuts
+            {
+                let mouse_state = state.clone();
+                let mouse_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = rdev::listen(move |event| {
+                        if let rdev::EventType::ButtonPress(button) = event.event_type {
+                            let bindings = mouse_state.mouse_bindings.lock();
+                            if let Some(action_id) =
+                                shortcuts::match_mouse_shortcut(button, &bindings)
+                            {
+                                drop(bindings);
+                                shortcuts::handle_action(
+                                    &action_id,
+                                    &mouse_handle,
+                                    &mouse_state,
+                                );
+                            }
+                        }
+                    }) {
+                        log::warn!("rdev mouse listener error: {:?}", e);
+                    }
+                });
             }
 
             // Spawn state update thread
@@ -586,6 +592,8 @@ pub fn run() {
             commands::library::open_containing_folder,
             commands::library::resync_library,
             commands::library::update_track_metadata,
+            shortcuts::update_shortcuts,
+            shortcuts::get_shortcuts,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

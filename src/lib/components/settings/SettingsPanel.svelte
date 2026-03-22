@@ -3,6 +3,7 @@
 	import GeneralSettings from './GeneralSettings.svelte';
 	import LibrarySettings from './LibrarySettings.svelte';
 	import ThemeSettings from './ThemeSettings.svelte';
+	import ShortcutsSettings from './ShortcutsSettings.svelte';
 	import AboutSettings from './AboutSettings.svelte';
 
 	interface Category {
@@ -26,6 +27,11 @@
 			id: 'theme',
 			label: 'Theme',
 			icon: 'M8 1a7 7 0 100 14A7 7 0 008 1zm0 13A6 6 0 018 2v12z'
+		},
+		{
+			id: 'shortcuts',
+			label: 'Shortcuts',
+			icon: 'M14 3H2v10h12V3zM1 2.5l.5-.5h13l.5.5v11l-.5.5H1.5l-.5-.5v-11zM4 6h1v1H4V6zm0 2h1v3H4V8zm7 3h1V8h-1v3zm0-4h1V6h-1v1zM6 6h4v1H6V6zm0 2h1v3H6V8zm2 0h2v3H8V8z'
 		},
 		{
 			id: 'about',
@@ -89,6 +95,8 @@
 					<LibrarySettings />
 				{:else if settingsStore.activeCategory === 'theme'}
 					<ThemeSettings />
+				{:else if settingsStore.activeCategory === 'shortcuts'}
+					<ShortcutsSettings />
 				{:else if settingsStore.activeCategory === 'about'}
 					<AboutSettings />
 				{/if}
