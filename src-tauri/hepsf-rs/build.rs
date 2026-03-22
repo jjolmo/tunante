@@ -41,7 +41,12 @@ fn main() {
         .flag_if_supported("-fno-stack-protector");
 
     #[cfg(windows)]
-    emu.define("PSS_STYLE", "2");
+    {
+        emu.define("PSS_STYLE", "2");
+        // MSVC provides _stricmp/_strnicmp instead of POSIX strcasecmp/strncasecmp
+        emu.define("strcasecmp", "_stricmp");
+        emu.define("strncasecmp", "_strnicmp");
+    }
     #[cfg(not(windows))]
     emu.define("PSS_STYLE", "1");
 

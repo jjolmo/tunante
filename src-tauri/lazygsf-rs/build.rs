@@ -52,9 +52,11 @@ fn main() {
         // macOS provides strlcpy as a builtin — skip mGBA's redeclaration
         build.define("HAVE_STRLCPY", None);
     } else if is_windows {
-        // MSVC compatibility: use _open/_close/_read/_write instead of POSIX variants
+        // MSVC compatibility
         build.define("_CRT_SECURE_NO_WARNINGS", None);
         build.define("_CRT_NONSTDC_NO_DEPRECATE", None);
+        // Use stdio-based VFS (vfs-file.c) instead of POSIX fd-based (vfs-fd.c)
+        build.define("USE_VFS_FILE", None);
     } else {
         // Linux and other Unix
         build.define("HAVE_LOCALE", None);
