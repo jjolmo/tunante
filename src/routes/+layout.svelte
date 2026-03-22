@@ -28,6 +28,26 @@
 		} catch {}
 	}
 
+	async function silentAutoUpdate() {
+		try {
+			const info = await invoke<any>('check_for_updates');
+			if (info.update_available) {
+				try {
+					const { check } = await import('@tauri-apps/plugin-updater');
+					const update = await check();
+					if (update) {
+						await update.downloadAndInstall();
+						const { relaunch } = await import('@tauri-apps/plugin-process');
+						setTimeout(() => relaunch(), 1000);
+					}
+				} catch {
+					// Linux AppImage fallback
+					await invoke('download_and_apply_update', { downloadUrl: info.download_url });
+				}
+			}
+		} catch {}
+	}
+
 	function handleSkipVersion(version: string) {
 		invoke('set_setting', { key: 'skipped_update_version', value: version }).catch(() => {});
 		showUpdateDialog = false;
@@ -57,8 +77,10 @@
 			const plReady = playlistsStore.init();
 			Promise.all([libReady, plReady]).then(() => {
 				restoreSession();
-				// Check for updates on startup if enabled (and not auto-updating)
-				if (settingsStore.checkUpdatesOnStart) {
+				// Update on startup
+				if (settingsStore.autoUpdateOnStart) {
+					silentAutoUpdate();
+				} else if (settingsStore.checkUpdatesOnStart) {
 					checkStartupUpdate();
 				}
 			});
