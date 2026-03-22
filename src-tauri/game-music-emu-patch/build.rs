@@ -149,7 +149,9 @@ fn main() {
     // Without this, seek (which fast-forwards the emulation) is ~10x slower.
     build.opt_level(2);
 
-    build.flag("-std=c++11");
+    // MSVC uses /std:c++14 (minimum), GCC/Clang use -std=c++11
+    build.flag_if_supported("-std=c++11");
+    build.flag_if_supported("/std:c++14");
 
     for file in files {
         build.file(format!("src/gme/{}", file));
