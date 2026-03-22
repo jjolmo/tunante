@@ -36,13 +36,13 @@ vgmstream-rs = { path = "vgmstream-rs" }
 lazygsf-rs = { path = "lazygsf-rs" }
 vio2sf-rs = { path = "vio2sf-rs" }
 hepsf-rs = { path = "hepsf-rs" }
-evdev = "0.13.2"
 reqwest = { version = "0.13.2", features = ["json"] }
 open = "5.3.3"
 tauri-plugin-updater = "2.10.0"
 tauri-plugin-process = "2.3.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+evdev = "0.13.2"
 gio = "0.18"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
