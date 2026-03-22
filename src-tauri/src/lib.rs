@@ -420,75 +420,74 @@ pub fn run() {
                 *state.shortcut_map.lock() = shortcut_map;
             }
 
-            // Spawn global mouse button listener (Linux only).
+            // Spawn global mouse button listener via evdev (Linux only).
             //
-            // Uses `xinput test-xi2 --root` as a subprocess to capture mouse
-            // button presses system-wide. Falls back gracefully if xinput
-            // is not installed. No root or input group needed.
-            //
-            // Install xinput for global mouse shortcuts:
-            //   Ubuntu/Debian: sudo apt install xinput
-            //   Fedora: sudo dnf install xinput
+            // Reads /dev/input/event* devices directly for mouse button
+            // presses. Works on both X11 and Wayland. Requires user to be
+            // in the 'input' group: sudo usermod -aG input $USER
+            // Falls back gracefully if no devices are accessible.
             #[cfg(target_os = "linux")]
             {
                 let mouse_state = state.clone();
                 let mouse_handle = app.handle().clone();
                 std::thread::Builder::new()
-                    .name("xinput-mouse".into())
+                    .name("evdev-mouse".into())
                     .spawn(move || {
-                        use std::io::BufRead;
+                        use evdev::{Device, EventType, KeyCode};
 
-                        // Try xinput first, then xdotool as fallback
-                        let child = std::process::Command::new("xinput")
-                            .args(["test-xi2", "--root"])
-                            .stdout(std::process::Stdio::piped())
-                            .stderr(std::process::Stdio::null())
-                            .spawn();
+                        // Find all mouse/pointer devices
+                        let devices: Vec<Device> = evdev::enumerate()
+                            .filter_map(|(_, dev)| {
+                                let keys = dev.supported_keys()?;
+                                if keys.contains(KeyCode::BTN_LEFT)
+                                    || keys.contains(KeyCode::BTN_MIDDLE)
+                                {
+                                    Some(dev)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
 
-                        let mut child = match child {
-                            Ok(c) => c,
-                            Err(_) => {
-                                log::warn!(
-                                    "xinput not found — global mouse shortcuts disabled. \
-                                     Install with: sudo apt install xinput"
-                                );
-                                return;
-                            }
-                        };
+                        if devices.is_empty() {
+                            log::warn!(
+                                "No mouse devices found for global shortcuts. \
+                                 Add user to input group: sudo usermod -aG input $USER"
+                            );
+                            return;
+                        }
 
-                        let stdout = child.stdout.take().unwrap();
-                        let reader = std::io::BufReader::new(stdout);
+                        log::info!(
+                            "evdev mouse listener: monitoring {} device(s)",
+                            devices.len()
+                        );
 
-                        // Parse xinput test-xi2 output:
-                        //   EVENT type 15 (RawButtonPress)
-                        //       detail: 10
-                        let mut looking_for_detail = false;
+                        // Poll all mouse devices
+                        let mut fds: Vec<Device> = devices;
+                        loop {
+                            for dev in &mut fds {
+                                if let Ok(events) = dev.fetch_events() {
+                                    for event in events {
+                                        // Only key/button events, only press (value=1)
+                                        if event.event_type() != EventType::KEY
+                                            || event.value() != 1
+                                        {
+                                            continue;
+                                        }
 
-                        for line in reader.lines() {
-                            let line = match line {
-                                Ok(l) => l,
-                                Err(_) => break,
-                            };
-                            let trimmed = line.trim();
-
-                            if trimmed.contains("RawButtonPress") {
-                                looking_for_detail = true;
-                                continue;
-                            }
-
-                            if looking_for_detail && trimmed.starts_with("detail:") {
-                                looking_for_detail = false;
-                                if let Some(num_str) = trimmed.strip_prefix("detail:") {
-                                    if let Ok(btn_num) = num_str.trim().parse::<u32>() {
-                                        let btn_name = match btn_num {
-                                            2 => Some("MouseMiddle"),
-                                            8 => Some("MouseBack"),
-                                            9 => Some("MouseForward"),
-                                            10 => Some("Mouse6"),
-                                            11 => Some("Mouse7"),
-                                            12 => Some("Mouse8"),
-                                            13 => Some("Mouse9"),
-                                            14 => Some("Mouse10"),
+                                        let code = event.code();
+                                        // Map evdev button codes to our names
+                                        // BTN_MIDDLE=0x112, BTN_SIDE=0x113, BTN_EXTRA=0x114
+                                        // BTN_FORWARD=0x115, BTN_BACK=0x116, BTN_TASK=0x117
+                                        let btn_name = match code {
+                                            0x112 => Some("MouseMiddle"),
+                                            0x113 => Some("MouseBack"),
+                                            0x114 => Some("MouseForward"),
+                                            0x115 => Some("Mouse6"),
+                                            0x116 => Some("Mouse7"),
+                                            0x117 => Some("Mouse8"),
+                                            0x118 => Some("Mouse9"),
+                                            0x119 => Some("Mouse10"),
                                             _ => None,
                                         };
 
@@ -514,10 +513,8 @@ pub fn run() {
                                     }
                                 }
                             }
+                            std::thread::sleep(Duration::from_millis(10));
                         }
-
-                        // Reap the child process
-                        let _ = child.wait();
                     })
                     .ok();
             }
