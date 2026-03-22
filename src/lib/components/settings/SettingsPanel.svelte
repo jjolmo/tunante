@@ -25,7 +25,7 @@
 		},
 		{
 			id: 'theme',
-			label: 'Theme',
+			label: 'Appearance',
 			icon: 'M8 1a7 7 0 100 14A7 7 0 008 1zm0 13A6 6 0 018 2v12z'
 		},
 		{
