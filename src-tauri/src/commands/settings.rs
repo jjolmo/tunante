@@ -4,6 +4,9 @@ use std::sync::Arc;
 use tauri::{Manager, State};
 use uuid::Uuid;
 
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
+
 #[tauri::command]
 pub fn get_settings(state: State<'_, Arc<AppState>>) -> Result<Vec<Setting>, String> {
     state
@@ -152,4 +155,100 @@ pub fn set_tray_visible(visible: bool, app: tauri::AppHandle) -> Result<(), Stri
         tray.set_visible(visible).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Returns the path where the .desktop file would be created, or empty string on non-Linux.
+#[tauri::command]
+pub fn get_desktop_entry_path() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        if let Some(home) = std::env::var_os("HOME") {
+            let path = PathBuf::from(home)
+                .join(".local/share/applications/tunante.desktop");
+            return path.to_string_lossy().to_string();
+        }
+    }
+    String::new()
+}
+
+/// Creates a .desktop entry for Tunante on Linux.
+/// Copies the app icon and writes the .desktop file.
+#[tauri::command]
+pub fn create_desktop_entry(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
+        let home_path = PathBuf::from(&home);
+
+        // Find the current executable path
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("Cannot find executable: {}", e))?;
+
+        // Create icon directory
+        let icon_dir = home_path.join(".local/share/icons");
+        std::fs::create_dir_all(&icon_dir)
+            .map_err(|e| format!("Cannot create icon dir: {}", e))?;
+
+        // Copy icon from Tauri resources
+        let icon_dest = icon_dir.join("tunante.png");
+        let resource_path = app.path()
+            .resource_dir()
+            .map_err(|e| format!("Cannot get resource dir: {}", e))?;
+
+        // Try to find the icon in resource dir or alongside the executable
+        let icon_source_candidates = vec![
+            resource_path.join("icons/128x128.png"),
+            resource_path.join("icons/icon.png"),
+            exe_path.parent().unwrap_or(std::path::Path::new("/")).join("icons/128x128.png"),
+        ];
+
+        let mut icon_copied = false;
+        for candidate in &icon_source_candidates {
+            if candidate.exists() {
+                std::fs::copy(candidate, &icon_dest)
+                    .map_err(|e| format!("Cannot copy icon: {}", e))?;
+                icon_copied = true;
+                break;
+            }
+        }
+
+        // If no resource icon found, try to extract from the binary's embedded icon
+        if !icon_copied {
+            // Use a placeholder — the .desktop entry will still work without an icon
+            log::warn!("No icon found in resource dir, .desktop entry will have no icon");
+        }
+
+        // Create .desktop file
+        let desktop_dir = home_path.join(".local/share/applications");
+        std::fs::create_dir_all(&desktop_dir)
+            .map_err(|e| format!("Cannot create applications dir: {}", e))?;
+
+        let desktop_path = desktop_dir.join("tunante.desktop");
+        let exe_str = exe_path.to_string_lossy();
+        let icon_str = if icon_dest.exists() {
+            icon_dest.to_string_lossy().to_string()
+        } else {
+            "audio-x-generic".to_string()
+        };
+
+        let desktop_content = format!(
+            "[Desktop Entry]\n\
+             Name=Tunante\n\
+             Comment=Cross-platform music player for video game music\n\
+             Exec=env GDK_BACKEND=x11 WEBKIT_EXEC_PATH=/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1 \"{exe_str}\"\n\
+             Icon={icon_str}\n\
+             Terminal=false\n\
+             Type=Application\n\
+             Categories=Audio;Music;Player;\n\
+             MimeType=audio/mpeg;audio/ogg;audio/flac;audio/wav;\n"
+        );
+
+        std::fs::write(&desktop_path, desktop_content)
+            .map_err(|e| format!("Cannot write .desktop file: {}", e))?;
+
+        return Ok(desktop_path.to_string_lossy().to_string());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    Err("Desktop entries are only supported on Linux".to_string())
 }

@@ -10,8 +10,19 @@
 
 	let { version, onupdate, oncancel, onskip }: Props = $props();
 	let downloading = $state(false);
+	let downloadComplete = $state(false);
 	let downloadProgress = $state('');
 	let error = $state('');
+
+	async function handleRestart() {
+		try {
+			const { relaunch } = await import('@tauri-apps/plugin-process');
+			await relaunch();
+		} catch {
+			// Fallback: just tell user to restart manually
+			downloadProgress = 'Please restart the app manually to apply the update.';
+		}
+	}
 
 	async function handleUpdate() {
 		downloading = true;
@@ -39,7 +50,8 @@
 				const info = await invoke<any>('check_for_updates');
 				if (info.update_available) {
 					await invoke<string>('download_and_apply_update', { downloadUrl: info.download_url });
-					downloadProgress = 'Restart to apply update';
+					downloadComplete = true;
+					downloadProgress = 'Download complete.';
 				}
 			}
 		} catch (e) {
@@ -56,14 +68,19 @@
 			A new version <strong>v{version}</strong> is available. Would you like to update now?
 		</p>
 
-		{#if downloading}
+		{#if downloading && !downloadComplete}
 			<p class="update-progress">Downloading... {downloadProgress}</p>
+		{:else if downloadComplete}
+			<p class="update-progress">{downloadProgress} Restart to apply update.</p>
 		{:else if error}
 			<p class="update-error">{error}</p>
 		{/if}
 
 		<div class="update-buttons">
-			{#if !downloading}
+			{#if downloadComplete}
+				<button class="btn primary" onclick={handleRestart}>Restart Now</button>
+				<button class="btn" onclick={oncancel}>Later</button>
+			{:else if !downloading}
 				<button class="btn primary" onclick={handleUpdate}>Update Now</button>
 				<button class="btn" onclick={oncancel}>Later</button>
 				<button class="btn skip" onclick={() => onskip(version)}>Skip v{version}</button>
