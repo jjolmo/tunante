@@ -9,6 +9,7 @@ pub mod commands;
 pub mod db;
 pub mod metadata;
 pub mod shortcuts;
+pub mod updater;
 pub mod watcher;
 
 #[derive(Clone, serde::Serialize)]
@@ -655,6 +656,8 @@ pub fn run() {
             commands::library::update_track_metadata,
             shortcuts::update_shortcuts,
             shortcuts::get_shortcuts,
+            updater::check_for_updates,
+            updater::download_and_apply_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
