@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
 fn main() {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let is_macos = target.contains("apple");
+
     // macOS ARM requires deployment target >= 11.0; set it for all macOS
     // so the cc crate passes the correct -mmacosx-version-min flag.
-    if let Ok(target) = std::env::var("TARGET") {
-        if target.contains("apple") {
-            std::env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
-        }
+    if is_macos {
+        std::env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
     }
 
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -15,7 +16,7 @@ fn main() {
     let psflib_dir = base.join("psflib");
     let zlib_dir = base.join("zlib");
 
-    // === C sources: DeSmuME + psflib + zlib ===
+    // === C sources: DeSmuME + psflib (+ zlib on non-macOS) ===
     let mut c_build = cc::Build::new();
     c_build
         .warnings(false)
@@ -31,20 +32,23 @@ fn main() {
         .define("BARRAY_DECORATE", "TWOSF")
         .define("RESAMPLER_DECORATE", "TWOSF");
 
-    // Vendored zlib (11 source files)
-    c_build.files(&[
-        zlib_dir.join("adler32.c"),
-        zlib_dir.join("compress.c"),
-        zlib_dir.join("crc32.c"),
-        zlib_dir.join("deflate.c"),
-        zlib_dir.join("infback.c"),
-        zlib_dir.join("inffast.c"),
-        zlib_dir.join("inflate.c"),
-        zlib_dir.join("inftrees.c"),
-        zlib_dir.join("trees.c"),
-        zlib_dir.join("uncompr.c"),
-        zlib_dir.join("zutil.c"),
-    ]);
+    if !is_macos {
+        // Vendored zlib (11 source files) — on macOS, use system libz instead
+        // because the vendored zlib 1.2.12 gzguts.h conflicts with Xcode 16+ SDK _stdio.h
+        c_build.files(&[
+            zlib_dir.join("adler32.c"),
+            zlib_dir.join("compress.c"),
+            zlib_dir.join("crc32.c"),
+            zlib_dir.join("deflate.c"),
+            zlib_dir.join("infback.c"),
+            zlib_dir.join("inffast.c"),
+            zlib_dir.join("inflate.c"),
+            zlib_dir.join("inftrees.c"),
+            zlib_dir.join("trees.c"),
+            zlib_dir.join("uncompr.c"),
+            zlib_dir.join("zutil.c"),
+        ]);
+    }
 
     // psflib
     c_build.file(psflib_dir.join("psflib.c"));
@@ -92,6 +96,11 @@ fn main() {
     println!("cargo:rustc-link-lib=stdc++");
     #[cfg(target_os = "macos")]
     println!("cargo:rustc-link-lib=c++");
+
+    // On macOS, use system zlib instead of vendored (avoids Xcode 16+ SDK conflicts)
+    if is_macos {
+        println!("cargo:rustc-link-lib=z");
+    }
 
     // Link math library on Unix
     #[cfg(unix)]
