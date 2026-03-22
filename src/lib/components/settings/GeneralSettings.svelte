@@ -74,9 +74,9 @@
 				settingsStore.setCheckUpdatesOnStart((e.target as HTMLInputElement).checked)}
 		/>
 		<div class="setting-text">
-			<span class="setting-label">Check for updates on startup</span>
+			<span class="setting-label">Ask for updates on startup</span>
 			<span class="setting-desc"
-				>Automatically check GitHub for new releases when the app starts.</span
+				>Show a dialog when a new version is available at startup. You can skip specific versions.</span
 			>
 		</div>
 	</label>
