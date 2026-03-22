@@ -1,53 +1,81 @@
 <script lang="ts">
+	import { check } from '@tauri-apps/plugin-updater';
+	import { relaunch } from '@tauri-apps/plugin-process';
 	import { invoke } from '@tauri-apps/api/core';
 
-	interface UpdateCheck {
-		current_version: string;
-		latest_version: string;
-		update_available: boolean;
-		release_notes: string;
-		download_url: string;
-		release_url: string;
-		asset_name: string;
-		asset_size: number;
-	}
-
 	let updateStatus = $state<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'done' | 'error'>('idle');
-	let updateInfo = $state<UpdateCheck | null>(null);
+	let updateVersion = $state('');
 	let updateError = $state('');
-	let downloadMessage = $state('');
+	let downloadProgress = $state('');
 
 	async function checkForUpdates() {
 		updateStatus = 'checking';
 		updateError = '';
 		try {
-			const info = await invoke<UpdateCheck>('check_for_updates');
-			updateInfo = info;
-			updateStatus = info.update_available ? 'available' : 'up-to-date';
+			const update = await check();
+			if (update) {
+				updateVersion = update.version;
+				updateStatus = 'available';
+
+				// Store update reference for download
+				(window as any).__tauriUpdate = update;
+			} else {
+				updateStatus = 'up-to-date';
+			}
 		} catch (e) {
-			updateError = String(e);
-			updateStatus = 'error';
+			// Fallback to custom updater for Linux AppImage
+			try {
+				const info = await invoke<any>('check_for_updates');
+				if (info.update_available) {
+					updateVersion = info.latest_version;
+					updateStatus = 'available';
+					(window as any).__tauriUpdate = null;
+					(window as any).__customUpdateUrl = info.download_url;
+				} else {
+					updateStatus = 'up-to-date';
+				}
+			} catch (e2) {
+				updateError = String(e2);
+				updateStatus = 'error';
+			}
 		}
 	}
 
-	async function downloadUpdate() {
-		if (!updateInfo) return;
+	async function downloadAndInstall() {
 		updateStatus = 'downloading';
 		try {
-			const msg = await invoke<string>('download_and_apply_update', {
-				downloadUrl: updateInfo.download_url,
-			});
-			downloadMessage = msg;
-			updateStatus = 'done';
+			const update = (window as any).__tauriUpdate;
+			if (update) {
+				// Tauri plugin updater (Windows/Mac)
+				let totalBytes = 0;
+				let downloadedBytes = 0;
+				await update.downloadAndInstall((event: any) => {
+					if (event.event === 'Started' && event.data?.contentLength) {
+						totalBytes = event.data.contentLength;
+					} else if (event.event === 'Progress') {
+						downloadedBytes += event.data?.chunkLength ?? 0;
+						if (totalBytes > 0) {
+							const pct = Math.round((downloadedBytes / totalBytes) * 100);
+							downloadProgress = `${pct}%`;
+						}
+					} else if (event.event === 'Finished') {
+						downloadProgress = 'Done!';
+					}
+				});
+				updateStatus = 'done';
+				// Auto-relaunch after 2 seconds
+				setTimeout(() => relaunch(), 2000);
+			} else {
+				// Custom updater fallback (Linux AppImage)
+				const url = (window as any).__customUpdateUrl;
+				const msg = await invoke<string>('download_and_apply_update', { downloadUrl: url });
+				downloadProgress = msg;
+				updateStatus = 'done';
+			}
 		} catch (e) {
 			updateError = String(e);
 			updateStatus = 'error';
 		}
-	}
-
-	function formatSize(bytes: number): string {
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 </script>
 
@@ -76,27 +104,21 @@
 		{:else if updateStatus === 'checking'}
 			<span class="update-status">Checking for updates...</span>
 		{:else if updateStatus === 'up-to-date'}
-			<span class="update-status success">You're on the latest version (v{updateInfo?.current_version})</span>
+			<span class="update-status success">You're on the latest version</span>
 			<button class="update-btn small" onclick={checkForUpdates}>Check again</button>
-		{:else if updateStatus === 'available' && updateInfo}
+		{:else if updateStatus === 'available'}
 			<div class="update-available">
-				<span class="update-new">New version available: <strong>v{updateInfo.latest_version}</strong></span>
-				{#if updateInfo.asset_name}
-					<span class="update-asset">{updateInfo.asset_name} ({formatSize(updateInfo.asset_size)})</span>
-				{/if}
+				<span class="update-new">New version available: <strong>v{updateVersion}</strong></span>
 				<div class="update-actions">
-					<button class="update-btn primary" onclick={downloadUpdate}>
+					<button class="update-btn primary" onclick={downloadAndInstall}>
 						Download & Install
 					</button>
-					<a class="update-btn" href={updateInfo.release_url} target="_blank" rel="noopener">
-						View Release
-					</a>
 				</div>
 			</div>
 		{:else if updateStatus === 'downloading'}
-			<span class="update-status">Downloading update...</span>
+			<span class="update-status">Downloading update... {downloadProgress}</span>
 		{:else if updateStatus === 'done'}
-			<span class="update-status success">{downloadMessage}</span>
+			<span class="update-status success">Update installed! Restarting...</span>
 		{:else if updateStatus === 'error'}
 			<span class="update-status error">{updateError}</span>
 			<button class="update-btn small" onclick={checkForUpdates}>Retry</button>

@@ -73,29 +73,17 @@ jobs:
       - name: Build
         run: npm run tauri build
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ''
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
 
-      - name: Find artifacts
-        id: artifacts
-        run: |
-          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "*.AppImage" | head -1)
-          DEB=$(find src-tauri/target/release/bundle/deb -name "*.deb" | head -1)
-          echo "appimage=$APPIMAGE" >> "$GITHUB_OUTPUT"
-          echo "deb=$DEB" >> "$GITHUB_OUTPUT"
-          echo "appimage_name=$(basename $APPIMAGE)" >> "$GITHUB_OUTPUT"
-          echo "deb_name=$(basename $DEB)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload AppImage
+      - name: Upload all bundles
         uses: actions/upload-artifact@v4
         with:
-          name: tunante-linux-${{ matrix.arch }}-appimage
-          path: ${{ steps.artifacts.outputs.appimage }}
-
-      - name: Upload DEB
-        uses: actions/upload-artifact@v4
-        with:
-          name: tunante-linux-${{ matrix.arch }}-deb
-          path: ${{ steps.artifacts.outputs.deb }}
+          name: tunante-linux-${{ matrix.arch }}
+          path: |
+            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/appimage/*.AppImage.sig
+            src-tauri/target/release/bundle/deb/*.deb
 
   release:
     needs: build-linux
@@ -108,10 +96,41 @@ jobs:
         with:
           path: artifacts
 
-      - name: Prepare release files
+      - name: Prepare release files and generate latest.json
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" \) -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.sig" \) -exec cp {} release/ \;
+
+          # Generate latest.json for Tauri updater
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${TAG#v}"
+          NOTES="Release $TAG"
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          BASE_URL="https://github.com/jjolmo/tunante/releases/download/$TAG"
+
+          # Find AppImage files and their signatures
+          APPIMAGE_AMD64=$(ls release/*amd64*.AppImage 2>/dev/null | head -1 || true)
+          APPIMAGE_ARM64=$(ls release/*arm64*.AppImage 2>/dev/null | head -1 || true)
+          SIG_AMD64=$(cat "${APPIMAGE_AMD64}.sig" 2>/dev/null || echo "")
+          SIG_ARM64=$(cat "${APPIMAGE_ARM64}.sig" 2>/dev/null || echo "")
+
+          cat > release/latest.json << ENDJSON
+          {
+            "version": "$VERSION",
+            "notes": "$NOTES",
+            "pub_date": "$DATE",
+            "platforms": {
+              "linux-x86_64": {
+                "signature": "$SIG_AMD64",
+                "url": "$BASE_URL/$(basename $APPIMAGE_AMD64 2>/dev/null || echo 'none')"
+              },
+              "linux-aarch64": {
+                "signature": "$SIG_ARM64",
+                "url": "$BASE_URL/$(basename $APPIMAGE_ARM64 2>/dev/null || echo 'none')"
+              }
+            }
+          }
+          ENDJSON
           ls -la release/
 
       - name: Determine tag
