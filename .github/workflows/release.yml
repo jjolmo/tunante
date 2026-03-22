@@ -128,16 +128,8 @@ jobs:
   build-macos:
     needs: version
     if: needs.version.outputs.should_release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            runner: macos-13
-          - arch: aarch64
-            runner: macos-latest
-    runs-on: ${{ matrix.runner }}
-    name: macOS ${{ matrix.arch }}
+    runs-on: macos-latest
+    name: macOS aarch64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,7 +153,7 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
       - uses: actions/upload-artifact@v4
         with:
-          name: tunante-macos-${{ matrix.arch }}
+          name: tunante-macos-aarch64
           path: |
             src-tauri/target/release/bundle/dmg/*.dmg
             src-tauri/target/release/bundle/macos/*.app.tar.gz
@@ -197,8 +189,6 @@ jobs:
           APPIMAGE_ARM64=$(ls release/*arm64*.AppImage 2>/dev/null | head -1 || true)
           MSI=$(ls release/*.msi 2>/dev/null | grep -v '.sig' | head -1 || true)
           NSIS=$(ls release/*.exe 2>/dev/null | grep -v '.sig' | head -1 || true)
-          DMG_X64=$(ls release/*x64*.dmg 2>/dev/null || ls release/*.dmg 2>/dev/null | head -1 || true)
-          MACOS_X64_TAR=$(ls release/*x86_64*.app.tar.gz 2>/dev/null | head -1 || true)
           MACOS_ARM_TAR=$(ls release/*aarch64*.app.tar.gz 2>/dev/null | head -1 || true)
 
           name_or_none() { [ -n "$1" ] && basename "$1" || echo "none"; }
@@ -220,10 +210,6 @@ jobs:
               "windows-x86_64": {
                 "signature": "$(read_sig "${MSI}.sig")",
                 "url": "$BASE_URL/$(name_or_none "$MSI")"
-              },
-              "darwin-x86_64": {
-                "signature": "$(read_sig "${MACOS_X64_TAR}.sig")",
-                "url": "$BASE_URL/$(name_or_none "$MACOS_X64_TAR")"
               },
               "darwin-aarch64": {
                 "signature": "$(read_sig "${MACOS_ARM_TAR}.sig")",
