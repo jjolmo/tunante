@@ -71,6 +71,9 @@ type PsfInfoCallback =
 type PsfStatusCallback = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 
 extern "C" {
+    // Renamed via -Dpsf_load=twosf_psf_load in build.rs to avoid
+    // symbol collision with lazygsf-rs and hepsf-rs psflib copies
+    #[link_name = "twosf_psf_load"]
     fn psf_load(
         uri: *const c_char,
         file_callbacks: *const PsfFileCallbacks,

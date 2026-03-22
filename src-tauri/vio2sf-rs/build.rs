@@ -30,7 +30,10 @@ fn main() {
         .include(&zlib_dir)
         // Symbol namespacing to avoid collisions with other libraries
         .define("BARRAY_DECORATE", "TWOSF")
-        .define("RESAMPLER_DECORATE", "TWOSF");
+        .define("RESAMPLER_DECORATE", "TWOSF")
+        // Rename psf_load to avoid symbol collision with lazygsf-rs and hepsf-rs
+        .define("psf_load", "twosf_psf_load")
+        .define("strrpbrk", "twosf_strrpbrk");
 
     if !is_macos {
         // Vendored zlib (11 source files) — on macOS, use system libz instead
