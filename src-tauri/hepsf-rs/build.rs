@@ -144,7 +144,14 @@ fn main() {
         // Set endianness for little-endian platforms (x86/x64/ARM)
         .define("EMU_LITTLE_ENDIAN", None)
         // Use stdint.h types
-        .define("HAVE_STDINT_H", None);
+        .define("HAVE_STDINT_H", None)
+        // Rename psf_load to avoid symbol collision with lazygsf-rs and vio2sf-rs
+        .define("psf_load", "hepsf_psf_load")
+        .define("strrpbrk", "hepsf_strrpbrk")
+        .define("psf2fs_create", "hepsf_psf2fs_create")
+        .define("psf2fs_delete", "hepsf_psf2fs_delete")
+        .define("psf2fs_load_callback", "hepsf_psf2fs_load_callback")
+        .define("psf2fs_virtual_readfile", "hepsf_psf2fs_virtual_readfile");
 
     // HE core: IOP emulator (R3000 CPU + SPU/SPU2 + timers + VFS)
     he.files(&[

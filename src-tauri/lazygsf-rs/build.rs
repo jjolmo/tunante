@@ -42,7 +42,11 @@ fn main() {
         .define("MINIMAL_CORE", "2")
         .define("BUILD_STATIC", None)
         // Tell mGBA's util/crc32.c to use zlib's crc32 instead of its own
-        .define("HAVE_CRC32", None);
+        .define("HAVE_CRC32", None)
+        // Rename psf_load to avoid symbol collision with hepsf-rs and vio2sf-rs
+        // (all three crates bundle psflib with a global psf_load symbol)
+        .define("psf_load", "gsf_psf_load")
+        .define("strrpbrk", "gsf_strrpbrk");
 
     // Platform-specific defines
     if is_macos {
