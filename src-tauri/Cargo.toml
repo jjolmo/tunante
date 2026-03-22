@@ -3,7 +3,7 @@ name = "tunante"
 version = "0.1.0"
 edition = "2021"
 description = "Cross-platform music player for video game music and standard audio formats"
-license = "MIT"
+license = "GPL-2.0"
 
 [lib]
 name = "tunante_lib"

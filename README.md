@@ -1,10 +1,12 @@
 # Tunante
 
+*I have codevibed this to understand how replaceable I am as a programmer.*
+
 A cross-platform music player focused on video game music formats, inspired by foobar2000.
 
 Built with [Tauri v2](https://tauri.app/) (Rust backend) and [SvelteKit 2](https://kit.svelte.dev/) + [Svelte 5](https://svelte.dev/) (frontend).
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+![License](https://img.shields.io/badge/license-GPL--2.0-blue)
 
 ## Features
 
@@ -156,4 +158,6 @@ npm run dev
 
 ## License
 
-MIT
+This project is licensed under the **GNU General Public License v2.0** — see the [LICENSE](LICENSE) file for details.
+
+GPL v2 is required because the project statically links GPL-licensed C/C++ libraries (sexypsf, DeSmuME, MAME YM2612 emulator).
