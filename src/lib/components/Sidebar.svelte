@@ -33,17 +33,13 @@
 		}
 		if (track.path === lastArtworkTrackPath) return;
 		lastArtworkTrackPath = track.path;
-		if (track.has_artwork) {
-			invoke<string | null>('get_artwork', { trackPath: track.path })
-				.then((data) => {
-					artworkSrc = data;
-				})
-				.catch(() => {
-					artworkSrc = null;
-				});
-		} else {
-			artworkSrc = null;
-		}
+		invoke<string | null>('get_artwork', { trackPath: track.path })
+			.then((data) => {
+				artworkSrc = data;
+			})
+			.catch(() => {
+				artworkSrc = null;
+			});
 	});
 
 	async function handleAddFolder() {
@@ -77,11 +73,6 @@
 		}
 	}
 
-	function handleSelectAllTracks() {
-		consolesStore.selectConsole(null);
-		playlistsStore.selectPlaylist(null);
-	}
-
 	function handleSelectPlaylist(id: string) {
 		consolesStore.selectConsole(null);
 		playlistsStore.selectPlaylist(id);
@@ -90,6 +81,16 @@
 	function handleSelectConsole(id: string) {
 		playlistsStore.selectPlaylist(null);
 		consolesStore.selectConsole(id);
+		// Save console view to session (can't do this in +layout.svelte due to circular imports)
+		invoke('set_setting', { key: 'session_view', value: 'console' }).catch(() => {});
+		invoke('set_setting', { key: 'session_view_id', value: id }).catch(() => {});
+	}
+
+	function handleSelectAllTracks() {
+		consolesStore.selectConsole(null);
+		playlistsStore.selectPlaylist(null);
+		invoke('set_setting', { key: 'session_view', value: 'all' }).catch(() => {});
+		invoke('set_setting', { key: 'session_view_id', value: '' }).catch(() => {});
 	}
 
 	async function handleCreatePlaylist() {
