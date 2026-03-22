@@ -37,12 +37,25 @@
 	let draggingColId = $state<string | null>(null);
 	let dragOverColId = $state<string | null>(null);
 
-	let tracks = $derived(
-		playlistsStore.isFavedView ? playlistsStore.favedTracks :
-		playlistsStore.activePlaylistId ? playlistsStore.playlistTracks :
-		consolesStore.activeConsoleId ? consolesStore.consoleTracks :
-		libraryStore.filteredTracks
-	);
+	let tracks = $derived.by(() => {
+		let result =
+			playlistsStore.isFavedView ? playlistsStore.favedTracks :
+			playlistsStore.activePlaylistId ? playlistsStore.playlistTracks :
+			consolesStore.activeConsoleId ? consolesStore.consoleTracks :
+			libraryStore.filteredTracks;
+
+		// Apply search filter to all views (not just All Tracks)
+		if (libraryStore.searchQuery.trim() && !consolesStore.activeConsoleId && result !== libraryStore.filteredTracks) {
+			const q = libraryStore.searchQuery.toLowerCase();
+			result = result.filter(
+				(t) =>
+					t.title.toLowerCase().includes(q) ||
+					t.artist.toLowerCase().includes(q) ||
+					t.album.toLowerCase().includes(q)
+			);
+		}
+		return result;
+	});
 
 	let visibleColumns = $derived(libraryStore.visibleColumns);
 

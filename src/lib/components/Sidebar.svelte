@@ -336,7 +336,15 @@
 							<path d="M14 1H3v1h10.5l.5.5V13h1V1.5L14 1zM1 3.5l.5-.5h10l.5.5v11l-.5.5h-10l-.5-.5v-11zM2 4v10h9V4H2z" />
 						</svg>
 						<span>{playlist.name}</span>
-						<span class="track-count">{playlist.track_count}</span>
+						{#if playlistsStore.scanningPlaylistId === playlist.id}
+							<span class="scanning-icon" title="Scanning...">
+								<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" class="spin">
+									<path d="M8 1a7 7 0 00-7 7h2a5 5 0 015-5V1z" />
+								</svg>
+							</span>
+						{:else}
+							<span class="track-count">{playlist.track_count}</span>
+						{/if}
 					</button>
 				{/if}
 			{/each}
@@ -503,6 +511,22 @@
 		margin-left: auto;
 		color: var(--color-text-muted);
 		font-size: 11px;
+	}
+
+	.sidebar-item .scanning-icon {
+		margin-left: auto;
+		color: var(--color-accent);
+		display: flex;
+		align-items: center;
+	}
+
+	.spin {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
 	}
 
 	.sidebar-section {

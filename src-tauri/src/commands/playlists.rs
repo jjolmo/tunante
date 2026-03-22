@@ -89,13 +89,15 @@ pub fn remove_track_from_playlist(
         .map_err(|e| e.to_string())
 }
 
-/// Scan a folder for audio files, add them to the library, and create a new
-/// playlist containing all discovered tracks. Runs in a background thread
-/// and emits scan-progress / scan-complete / playlist-created events.
+/// Scan a folder for audio files, add them to the library, and populate
+/// an existing playlist with the discovered tracks. The playlist should be
+/// created by the frontend first (so it appears immediately in the sidebar).
+/// Runs in a background thread and emits scan-progress / scan-complete /
+/// playlist-created events.
 #[tauri::command]
 pub fn create_playlist_from_folder(
     path: String,
-    name: String,
+    playlist_id: String,
     state: State<'_, Arc<AppState>>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
@@ -112,35 +114,26 @@ pub fn create_playlist_from_folder(
 
         let total = audio_files.len();
 
-        // 2. Create the playlist
-        let playlist_id = Uuid::new_v4().to_string();
-        {
-            let db = state_inner.db.lock();
-            if let Err(e) = db.create_playlist(&playlist_id, &name) {
-                log::error!("Failed to create playlist '{}': {}", name, e);
-                return;
-            }
-        }
-
-        // 3. Scan each file: read metadata, insert into library, add to playlist
+        // 2. Scan each file: read metadata, insert into library
         let mut track_ids: Vec<String> = Vec::with_capacity(total);
         for (i, file_path) in audio_files.iter().enumerate() {
-            // Emit progress
             let _ = app.emit("scan-progress", serde_json::json!({
                 "scanned": i,
                 "total": total,
                 "current_path": file_path.to_string_lossy(),
             }));
 
-            match metadata::read_metadata(file_path) {
-                Ok(track) => {
-                    let track_id = track.id.clone();
+            match metadata::read_metadata_all(file_path) {
+                Ok(tracks) => {
                     let db = state_inner.db.lock();
-                    if let Err(e) = db.insert_track(&track) {
-                        log::error!("Failed to insert track {:?}: {}", file_path, e);
-                        continue;
+                    for track in tracks {
+                        let track_id = track.id.clone();
+                        if let Err(e) = db.insert_track(&track) {
+                            log::error!("Failed to insert track {:?}: {}", file_path, e);
+                            continue;
+                        }
+                        track_ids.push(track_id);
                     }
-                    track_ids.push(track_id);
                 }
                 Err(e) => {
                     log::warn!("Failed to read metadata for {:?}: {}", file_path, e);
@@ -148,7 +141,7 @@ pub fn create_playlist_from_folder(
             }
         }
 
-        // 4. Add all tracks to the playlist
+        // 3. Add all tracks to the playlist
         {
             let db = state_inner.db.lock();
             for track_id in &track_ids {
@@ -159,17 +152,16 @@ pub fn create_playlist_from_folder(
             }
         }
 
-        // 5. Emit completion events
+        // 4. Emit completion events
         let _ = app.emit("scan-complete", ());
         let _ = app.emit("playlist-created", serde_json::json!({
             "id": playlist_id,
-            "name": name,
             "track_count": track_ids.len(),
         }));
 
         log::info!(
             "Created playlist '{}' with {} tracks from '{}'",
-            name, track_ids.len(), path
+            playlist_id, track_ids.len(), path
         );
     });
 
