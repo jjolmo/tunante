@@ -17,6 +17,6 @@ export default defineConfig({
 					host,
 					port: 1421
 				}
-			: undefined
+			: { overlay: false }
 	}
 });

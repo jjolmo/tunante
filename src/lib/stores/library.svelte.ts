@@ -5,7 +5,7 @@ import { formatDuration, formatFileSize } from '$lib/types';
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: 'title', label: 'Title', field: 'title', flex: 3, minWidth: '150px', align: 'left', sortable: true, visible: true },
-	{ id: 'rating', label: '\u2605', field: 'rating', width: '36px', align: 'center', sortable: true, visible: true, format: (t) => t.rating > 0 ? '\u2605' : '\u2606' },
+	{ id: 'rating', label: '\u2605', field: 'rating', width: '36px', align: 'center', sortable: true, visible: true, format: (t) => t.rating > 0 ? '\u2605' : '' },
 	{ id: 'artist', label: 'Artist', field: 'artist', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
 	{ id: 'album', label: 'Album', field: 'album', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
 	{ id: 'album_artist', label: 'Album Artist', field: 'album_artist', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: false },
