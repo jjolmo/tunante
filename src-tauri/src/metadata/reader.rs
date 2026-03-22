@@ -168,27 +168,96 @@ pub fn read_metadata(path: &Path) -> Result<Track, MetadataError> {
 }
 
 pub fn extract_artwork_base64(path: &Path) -> Result<Option<String>, MetadataError> {
-    let tagged_file = lofty::read_from_path(path)?;
-    let tag = tagged_file
-        .primary_tag()
-        .or_else(|| tagged_file.first_tag());
+    // 1. Try embedded artwork from file tags
+    if let Ok(tagged_file) = lofty::read_from_path(path) {
+        let tag = tagged_file
+            .primary_tag()
+            .or_else(|| tagged_file.first_tag());
 
-    if let Some(tag) = tag {
-        if let Some(picture) = tag.pictures().first() {
-            use base64::Engine;
-            let mime = match picture.mime_type() {
-                Some(lofty::picture::MimeType::Png) => "image/png",
-                Some(lofty::picture::MimeType::Jpeg) => "image/jpeg",
-                Some(lofty::picture::MimeType::Bmp) => "image/bmp",
-                Some(lofty::picture::MimeType::Gif) => "image/gif",
-                _ => "image/jpeg",
-            };
-            let b64 = base64::engine::general_purpose::STANDARD.encode(picture.data());
-            return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+        if let Some(tag) = tag {
+            if let Some(picture) = tag.pictures().first() {
+                use base64::Engine;
+                let mime = match picture.mime_type() {
+                    Some(lofty::picture::MimeType::Png) => "image/png",
+                    Some(lofty::picture::MimeType::Jpeg) => "image/jpeg",
+                    Some(lofty::picture::MimeType::Bmp) => "image/bmp",
+                    Some(lofty::picture::MimeType::Gif) => "image/gif",
+                    _ => "image/jpeg",
+                };
+                let b64 = base64::engine::general_purpose::STANDARD.encode(picture.data());
+                return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+            }
+        }
+    }
+
+    // 2. Fallback: look for cover image in the same folder
+    if let Some(parent) = path.parent() {
+        if let Some(art) = find_folder_artwork(parent) {
+            return Ok(Some(art));
         }
     }
 
     Ok(None)
+}
+
+/// Search for common cover art filenames in a folder.
+fn find_folder_artwork(folder: &Path) -> Option<String> {
+    use base64::Engine;
+
+    const NAMES: &[&str] = &[
+        "cover", "folder", "front", "album", "albumart", "art", "thumb",
+    ];
+    const EXTS: &[&str] = &["jpg", "jpeg", "png", "bmp", "gif", "webp"];
+
+    // First pass: check common names (cover.jpg, folder.png, etc.)
+    for name in NAMES {
+        for ext in EXTS {
+            let candidate = folder.join(format!("{}.{}", name, ext));
+            if candidate.is_file() {
+                return read_image_as_data_uri(&candidate);
+            }
+            // Also try uppercase extension
+            let candidate_upper = folder.join(format!("{}.{}", name, ext.to_uppercase()));
+            if candidate_upper.is_file() {
+                return read_image_as_data_uri(&candidate_upper);
+            }
+        }
+    }
+
+    // Second pass: use first image file found in the folder
+    if let Ok(entries) = std::fs::read_dir(folder) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                if EXTS.contains(&ext.to_ascii_lowercase().as_str()) && p.is_file() {
+                    return read_image_as_data_uri(&p);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn read_image_as_data_uri(path: &Path) -> Option<String> {
+    use base64::Engine;
+
+    let data = std::fs::read(path).ok()?;
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "bmp" => "image/bmp",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        _ => "image/jpeg",
+    };
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
+    Some(format!("data:{};base64,{}", mime, b64))
 }
 
 fn detect_codec(path: &Path) -> String {
