@@ -68,7 +68,7 @@ export const CONSOLE_DEFINITIONS: ConsoleDefinition[] = [
 	},
 	{
 		id: 'gba',
-		name: 'Game Boy Advance',
+		name: 'GB Advance',
 		codecs: ['GSF', 'MINIGSF'],
 		// GBA wide handheld
 		icon: 'M1 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V5zm4 0H4v4h4V5H5zm-2 1v1H2V6h1zm1.5 3h1v1h-1V9zm-1 0v1H3V9h1.5zm8-3a.75.75 0 100 1.5.75.75 0 000-1.5zm-1.5 1.5a.75.75 0 100 1.5.75.75 0 000-1.5z'

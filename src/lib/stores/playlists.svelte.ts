@@ -7,6 +7,7 @@ class PlaylistsStore {
 	playlistTracks = $state<Track[]>([]);
 	isFavedView = $state(false);
 	favedTracks = $state<Track[]>([]);
+	scanningPlaylistId = $state<string | null>(null);
 
 	get activePlaylist(): Playlist | null {
 		return this.playlists.find((p) => p.id === this.activePlaylistId) ?? null;

@@ -54,10 +54,11 @@
 		}
 
 		// Listen for playlist-created event to reload playlists
-		unlistenPlaylistCreated = await listen<{ id: string; name: string; track_count: number }>(
+		unlistenPlaylistCreated = await listen<{ id: string; track_count: number }>(
 			'playlist-created',
 			async (event) => {
 				isCreating = false;
+				playlistsStore.scanningPlaylistId = null;
 				await playlistsStore.loadPlaylists();
 				await libraryStore.loadTracks();
 				// Select the new playlist
@@ -75,16 +76,25 @@
 		if (!playlistName.trim() || !droppedPath) return;
 		showNameDialog = false;
 		isCreating = true;
-		libraryStore.isScanning = true;
 		try {
+			// 1. Create the playlist immediately so it shows in the sidebar
+			const playlistId = await invoke<string>('create_playlist', {
+				name: playlistName.trim(),
+			});
+			await playlistsStore.loadPlaylists();
+
+			// 2. Mark it as scanning (shows spinner in sidebar)
+			playlistsStore.scanningPlaylistId = playlistId;
+
+			// 3. Scan folder in background — populates the playlist with tracks
 			await invoke('create_playlist_from_folder', {
 				path: droppedPath,
-				name: playlistName.trim(),
+				playlistId,
 			});
 		} catch (e) {
 			console.error('Failed to create playlist from folder:', e);
 			isCreating = false;
-			libraryStore.isScanning = false;
+			playlistsStore.scanningPlaylistId = null;
 		}
 	}
 
