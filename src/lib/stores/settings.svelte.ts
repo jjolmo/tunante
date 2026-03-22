@@ -12,6 +12,7 @@ class SettingsStore {
 	keepFavsInMetadata = $state(true);
 	showInTray = $state(false);
 	closeToTray = $state(false);
+	showCoverArt = $state(true);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -55,6 +56,9 @@ class SettingsStore {
 
 		const closeTray = this._settingsCache.get('close_to_tray');
 		if (closeTray !== undefined) this.closeToTray = closeTray === 'true';
+
+		const showArt = this._settingsCache.get('show_cover_art');
+		if (showArt !== undefined) this.showCoverArt = showArt === 'true';
 	}
 
 	private _teardownMediaListener() {
@@ -187,6 +191,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'close_to_tray', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save close to tray setting:', e);
+		}
+	}
+
+	async setShowCoverArt(enabled: boolean) {
+		this.showCoverArt = enabled;
+		try {
+			await invoke('set_setting', { key: 'show_cover_art', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save cover art setting:', e);
 		}
 	}
 }
