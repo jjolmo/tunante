@@ -138,6 +138,60 @@ fn setup_dbus_activate_handler(handle: tauri::AppHandle) {
     });
 }
 
+/// Build the global-shortcut plugin with media key handlers.
+fn setup_media_keys_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    use tauri_plugin_global_shortcut::{Code, Shortcut, ShortcutState};
+
+    tauri_plugin_global_shortcut::Builder::new()
+        .with_handler(|app, shortcut, event| {
+            if event.state != ShortcutState::Pressed {
+                return;
+            }
+
+            let state = app.state::<Arc<AppState>>();
+
+            match shortcut.key {
+                Code::MediaPlayPause => {
+                    let mut audio = state.audio.lock();
+                    if audio.is_playing() {
+                        audio.pause();
+                    } else {
+                        audio.resume();
+                    }
+                }
+                Code::MediaTrackNext => {
+                    let mut queue = state.queue.lock();
+                    if let Some(next_track) = queue.next() {
+                        let path = next_track.path.clone();
+                        drop(queue);
+                        let mut audio = state.audio.lock();
+                        if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
+                            let _ = app.emit("track-changed", next_track);
+                        }
+                    }
+                }
+                Code::MediaTrackPrevious => {
+                    let mut queue = state.queue.lock();
+                    if let Some(prev_track) = queue.prev() {
+                        let path = prev_track.path.clone();
+                        drop(queue);
+                        let mut audio = state.audio.lock();
+                        if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
+                            let _ = app.emit("track-changed", prev_track);
+                        }
+                    }
+                }
+                Code::MediaStop => {
+                    let mut audio = state.audio.lock();
+                    audio.stop();
+                    let _ = app.emit("playback-stopped", ());
+                }
+                _ => {}
+            }
+        })
+        .build()
+}
+
 pub fn run() {
     setup_panic_hook();
 
@@ -162,6 +216,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(setup_media_keys_plugin())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When a second instance is launched, focus the existing window
             if let Some(window) = app.get_webview_window("main") {
@@ -228,9 +283,17 @@ pub fn run() {
             //   Linux (GNOME)— GNOME's AppIndicator extension always shows the menu
             //                   on any click. The "Show / Hide" item is at the top.
             let show_hide_item = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
+            let play_pause_item = MenuItemBuilder::with_id("play_pause", "Play / Pause").build(app)?;
+            let next_item = MenuItemBuilder::with_id("next_track", "Next").build(app)?;
+            let prev_item = MenuItemBuilder::with_id("prev_track", "Previous").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let tray_menu = MenuBuilder::new(app)
                 .item(&show_hide_item)
+                .separator()
+                .item(&play_pause_item)
+                .item(&next_item)
+                .item(&prev_item)
+                .separator()
                 .item(&quit_item)
                 .build()?;
 
@@ -267,6 +330,39 @@ pub fn run() {
                                     let _ = window.show();
                                     let _ = window.unminimize();
                                     let _ = window.set_focus();
+                                }
+                            }
+                        }
+                        "play_pause" => {
+                            let state = app.state::<Arc<AppState>>();
+                            let mut audio = state.audio.lock();
+                            if audio.is_playing() {
+                                audio.pause();
+                            } else {
+                                audio.resume();
+                            }
+                        }
+                        "next_track" => {
+                            let state = app.state::<Arc<AppState>>();
+                            let mut queue = state.queue.lock();
+                            if let Some(next_track) = queue.next() {
+                                let path = next_track.path.clone();
+                                drop(queue);
+                                let mut audio = state.audio.lock();
+                                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
+                                    let _ = app.emit("track-changed", next_track);
+                                }
+                            }
+                        }
+                        "prev_track" => {
+                            let state = app.state::<Arc<AppState>>();
+                            let mut queue = state.queue.lock();
+                            if let Some(prev_track) = queue.prev() {
+                                let path = prev_track.path.clone();
+                                drop(queue);
+                                let mut audio = state.audio.lock();
+                                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
+                                    let _ = app.emit("track-changed", prev_track);
                                 }
                             }
                         }
@@ -325,6 +421,22 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             {
                 setup_dbus_activate_handler(app.handle().clone());
+            }
+
+            // Register global media key shortcuts
+            {
+                use tauri_plugin_global_shortcut::{GlobalShortcutExt, Code, Shortcut};
+                let shortcuts = [
+                    Shortcut::new(None, Code::MediaPlayPause),
+                    Shortcut::new(None, Code::MediaTrackNext),
+                    Shortcut::new(None, Code::MediaTrackPrevious),
+                    Shortcut::new(None, Code::MediaStop),
+                ];
+                for shortcut in &shortcuts {
+                    if let Err(e) = app.global_shortcut().register(*shortcut) {
+                        log::warn!("Failed to register media key {:?}: {}", shortcut.key, e);
+                    }
+                }
             }
 
             // Spawn state update thread

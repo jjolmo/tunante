@@ -51,19 +51,33 @@
 		}
 	}
 
-	function handleNowPlayingClick() {
+	async function handleNowPlayingClick() {
 		const track = playerStore.currentTrack;
 		if (!track) return;
 
-		// Check if the track is in the current view
+		// Check if the track is already in the current view
 		const inCurrentView = libraryStore.filteredTracks.some((t) => t.id === track.id);
-		if (!inCurrentView) {
-			// Switch to All Tracks view
-			playlistsStore.selectAllTracks();
+		if (inCurrentView) {
+			libraryStore.requestScrollTo(track.id);
+			return;
 		}
 
-		// Request scroll to the track
-		libraryStore.requestScrollTo(track.id);
+		// Try to find which console contains this track
+		const { consolesStore, CONSOLE_DEFINITIONS } = await import('$lib/stores/consoles.svelte');
+		for (const def of CONSOLE_DEFINITIONS) {
+			if (def.codecs.some((c: string) => c.toUpperCase() === track.codec?.toUpperCase())) {
+				playlistsStore.selectPlaylist(null);
+				consolesStore.selectConsole(def.id);
+				// Wait for view to update before scrolling
+				setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
+				return;
+			}
+		}
+
+		// Fallback: switch to All Tracks
+		playlistsStore.selectAllTracks();
+		import('$lib/stores/consoles.svelte').then(({ consolesStore }) => consolesStore.selectConsole(null));
+		setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
 	}
 
 	function formatTime(ms: number): string {
@@ -122,7 +136,7 @@
 				class:active={playerStore.shuffle}
 				title="Shuffle"
 			>
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+				<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
 					<path
 						d="M13.151 8L14 8.849l-.849.849L12.303 8.849 13.151 8zM14 4.849L13.151 4l-.849.849.849.849L14 4.849zM11.5 13h1v-2.5L8.964 7H5.5V5h-3v3h3V6h2.964L11.5 9.5V13zM5.5 11h-3v-3h3v3zM12.5 3h-1v2.5L8.036 9H5.5v2h-3V8h3v2h2.964L11.5 6.5V3h1z"
 					/>
@@ -130,8 +144,8 @@
 			</button>
 
 			<button class="ctrl-btn" onclick={() => playerStore.prevTrack()} title="Previous">
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-					<path d="M4 3v10h1V3H4zm8.03 5L6 3v10l6.03-5z" />
+				<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+					<path d="M11 3v10h1V3h-1zM3.97 8L10 13V3L3.97 8z" />
 				</svg>
 			</button>
 
@@ -141,25 +155,25 @@
 				title={playerStore.isPlaying ? 'Pause' : 'Play'}
 			>
 				{#if playerStore.isPlaying}
-					<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+					<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor">
 						<path d="M4.5 3H7v10H4.5V3zm4.5 0h2.5v10H9V3z" />
 					</svg>
 				{:else}
-					<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+					<svg width="24" height="24" viewBox="0 0 16 16" fill="currentColor">
 						<path d="M4 3v10l9-5-9-5z" />
 					</svg>
 				{/if}
 			</button>
 
 			<button class="ctrl-btn" onclick={() => playerStore.stop()} title="Stop">
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+				<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
 					<path d="M3.5 3.5h9v9h-9z" />
 				</svg>
 			</button>
 
 			<button class="ctrl-btn" onclick={() => playerStore.nextTrack()} title="Next">
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-					<path d="M11 3v10h1V3h-1zM3.97 8L10 13V3L3.97 8z" />
+				<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+					<path d="M4 3v10h1V3H4zm8.03 5L6 3v10l6.03-5z" />
 				</svg>
 			</button>
 
@@ -169,7 +183,7 @@
 				class:active={playerStore.repeat !== 'off'}
 				title="Repeat: {playerStore.repeat}"
 			>
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+				<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
 					<path
 						d="M5.5 2l-3 3 3 3V6h6.5v2h1V5.5l-.5-.5H5.5V2zm5 11l3-3-3-3v2H4V7H3v3.5l.5.5h7V13z"
 					/>
@@ -186,7 +200,7 @@
 				disabled={!selectedTrack}
 				title={selectedTrack ? (selectedTrackRating > 0 ? 'Remove from favorites' : 'Add to favorites') : 'Select a track first'}
 			>
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+				<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
 					{#if selectedTrackRating > 0}
 						<path d="M8 1.23l2.18 4.41 4.87.71-3.52 3.43.83 4.85L8 12.26l-4.36 2.37.83-4.85L1 6.35l4.87-.71L8 1.23z" />
 					{:else}
@@ -202,7 +216,7 @@
 				onclick={() => settingsStore.openSettings()}
 				title="Settings (Ctrl+P)"
 			>
-				<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+				<svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
 					<path
 						d="M9.1 4.4L8.6 2H7.4l-.5 2.4-.7.3-2-1.3-.9.8 1.3 2-.2.7-2.4.5v1.2l2.4.5.3.7-1.3 2 .8.8 2-1.3.7.3.5 2.4h1.2l.5-2.4.7-.3 2 1.3.8-.8-1.3-2 .3-.7 2.4-.5V7.4l-2.4-.5-.3-.7 1.3-2-.8-.8-2 1.3-.7-.3zM8 10a2 2 0 110-4 2 2 0 010 4z"
 					/>
@@ -264,7 +278,7 @@
 	}
 
 	.now-playing {
-		width: 200px;
+		flex: 1;
 		min-width: 150px;
 		overflow: hidden;
 	}
@@ -311,7 +325,6 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		margin: 0 auto;
 	}
 
 	.ctrl-btn {
