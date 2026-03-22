@@ -24,6 +24,7 @@ pub struct AppState {
     pub watcher: parking_lot::Mutex<Option<watcher::FolderWatcher>>,
     /// Maps global shortcut ID → action_id for keyboard shortcuts
     pub shortcut_map: parking_lot::Mutex<std::collections::HashMap<u32, String>>,
+    pub mouse_bindings: parking_lot::Mutex<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -242,6 +243,7 @@ pub fn run() {
                 queue: parking_lot::Mutex::new(queue),
                 watcher: parking_lot::Mutex::new(None),
                 shortcut_map: parking_lot::Mutex::new(std::collections::HashMap::new()),
+                mouse_bindings: parking_lot::Mutex::new(user_bindings.clone()),
             });
 
             app.manage(state.clone());
@@ -417,12 +419,92 @@ pub fn run() {
                 *state.shortcut_map.lock() = shortcut_map;
             }
 
-            // NOTE: Global mouse button shortcuts are handled via the keyboard
-            // shortcut system. Users with extra mouse buttons should configure
-            // their input remapper (input-remapper, xbindkeys, etc.) to emit
-            // keyboard combos (e.g. Ctrl+Alt+1), then bind those combos in
-            // Tunante's Shortcuts settings. This works globally even when
-            // the app is minimized.
+            // Spawn evdev mouse listener for global mouse button shortcuts (Linux).
+            // Reads /dev/input/event* in non-blocking mode. Requires 'input' group.
+            // Falls back gracefully if input-remapper grabs the devices.
+            #[cfg(target_os = "linux")]
+            {
+                let mouse_state = state.clone();
+                let mouse_handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("evdev-mouse".into())
+                    .spawn(move || {
+                        use evdev::{Device, EventType, KeyCode};
+
+                        let mut devices: Vec<Device> = evdev::enumerate()
+                            .filter_map(|(_, mut dev)| {
+                                let keys = dev.supported_keys()?;
+                                if keys.contains(KeyCode::BTN_SIDE)
+                                    || keys.contains(KeyCode::BTN_EXTRA)
+                                    || keys.contains(KeyCode::BTN_MIDDLE)
+                                {
+                                    let _ = dev.set_nonblocking(true);
+                                    Some(dev)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+
+                        if devices.is_empty() {
+                            return;
+                        }
+
+                        loop {
+                            for dev in &mut devices {
+                                match dev.fetch_events() {
+                                    Ok(events) => {
+                                        for event in events {
+                                            if event.event_type() != EventType::KEY
+                                                || event.value() != 1
+                                            {
+                                                continue;
+                                            }
+                                            let btn_name = match event.code() {
+                                                0x112 => Some("MouseMiddle"),
+                                                0x113 => Some("MouseBack"),
+                                                0x114 => Some("MouseForward"),
+                                                0x115 => Some("Mouse6"),
+                                                0x116 => Some("Mouse7"),
+                                                0x117 => Some("Mouse8"),
+                                                0x118 => Some("Mouse9"),
+                                                0x119 => Some("Mouse10"),
+                                                _ => None,
+                                            };
+                                            if let Some(name) = btn_name {
+                                                let bindings =
+                                                    mouse_state.mouse_bindings.lock();
+                                                let action = bindings
+                                                    .iter()
+                                                    .find(|(_, v)| {
+                                                        v.as_str() == name
+                                                            || v.ends_with(
+                                                                &format!("+{}", name),
+                                                            )
+                                                    })
+                                                    .map(|(k, _)| k.clone());
+                                                drop(bindings);
+                                                if let Some(action_id) = action {
+                                                    shortcuts::handle_action(
+                                                        &action_id,
+                                                        &mouse_handle,
+                                                        &mouse_state,
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(e)
+                                        if e.kind()
+                                            == std::io::ErrorKind::WouldBlock => {}
+                                    Err(_) => {}
+                                }
+                            }
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                    })
+                    .ok();
+            }
 
             // Spawn state update thread
             //
