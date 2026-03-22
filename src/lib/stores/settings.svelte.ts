@@ -14,6 +14,7 @@ class SettingsStore {
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
 	showConsoles = $state(true);
+	autoUpdateOnStart = $state(false);
 	checkUpdatesOnStart = $state(true);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
@@ -64,6 +65,9 @@ class SettingsStore {
 
 		const showConsoles = this._settingsCache.get('show_consoles');
 		if (showConsoles !== undefined) this.showConsoles = showConsoles === 'true';
+
+		const autoUpdate = this._settingsCache.get('auto_update_on_start');
+		if (autoUpdate !== undefined) this.autoUpdateOnStart = autoUpdate === 'true';
 
 		const checkUpdates = this._settingsCache.get('check_updates_on_start');
 		if (checkUpdates !== undefined) this.checkUpdatesOnStart = checkUpdates === 'true';
@@ -217,6 +221,20 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'show_consoles', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save consoles setting:', e);
+		}
+	}
+
+	async setAutoUpdateOnStart(enabled: boolean) {
+		this.autoUpdateOnStart = enabled;
+		// If auto-update is on, disable the ask dialog
+		if (enabled) {
+			this.checkUpdatesOnStart = false;
+			await invoke('set_setting', { key: 'check_updates_on_start', value: 'false' }).catch(() => {});
+		}
+		try {
+			await invoke('set_setting', { key: 'auto_update_on_start', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save auto-update setting:', e);
 		}
 	}
 
