@@ -355,6 +355,9 @@ pub mod psf2 {
     type PsfStatusCallback = Option<unsafe extern "C" fn(*mut c_void, *const c_char)>;
 
     extern "C" {
+        // Renamed via -Dpsf_load=hepsf_psf_load in build.rs to avoid
+        // symbol collision with lazygsf-rs and vio2sf-rs psflib copies
+        #[link_name = "hepsf_psf_load"]
         fn psf_load(
             uri: *const c_char,
             file_callbacks: *const PsfFileCallbacks,
@@ -374,8 +377,11 @@ pub mod psf2 {
     // ========================================================================
 
     extern "C" {
+        #[link_name = "hepsf_psf2fs_create"]
         fn psf2fs_create() -> *mut c_void;
+        #[link_name = "hepsf_psf2fs_delete"]
         fn psf2fs_delete(fs: *mut c_void);
+        #[link_name = "hepsf_psf2fs_load_callback"]
         fn psf2fs_load_callback(
             psf2vfs: *mut c_void,
             exe: *const u8,
@@ -383,6 +389,7 @@ pub mod psf2 {
             reserved: *const u8,
             reserved_size: usize,
         ) -> c_int;
+        #[link_name = "hepsf_psf2fs_virtual_readfile"]
         fn psf2fs_virtual_readfile(
             psf2vfs: *mut c_void,
             path: *const c_char,
