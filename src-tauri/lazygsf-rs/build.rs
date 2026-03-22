@@ -31,13 +31,20 @@ fn main() {
         // Tell mGBA's util/crc32.c to use zlib's crc32 instead of its own
         .define("HAVE_CRC32", None);
 
-    // Platform-specific locale defines
+    // Platform-specific defines
     #[cfg(unix)]
     {
         build.define("HAVE_LOCALE", None);
-        // snprintf_l is available on macOS but not always Linux
         #[cfg(target_os = "macos")]
         build.define("HAVE_SNPRINTF_L", None);
+    }
+    #[cfg(windows)]
+    {
+        // MSVC compatibility: use _open/_close/_read/_write instead of POSIX variants
+        build.define("_CRT_SECURE_NO_WARNINGS", None);
+        build.define("_CRT_NONSTDC_NO_DEPRECATE", None);
+        // Disable features that need POSIX APIs not available on MSVC
+        build.define("MINIMAL_CORE", "2");
     }
 
     // === Vendored zlib (needed by psflib) ===
@@ -105,8 +112,13 @@ fn main() {
         util_dir.join("table.c"),
         util_dir.join("vfs.c"),
         util_dir.join("vfs").join("vfs-mem.c"),
-        util_dir.join("vfs").join("vfs-fd.c"),
     ]);
+
+    // VFS backend: vfs-fd.c uses POSIX APIs, vfs-file.c uses stdio (portable)
+    #[cfg(unix)]
+    build.file(util_dir.join("vfs").join("vfs-fd.c"));
+    #[cfg(windows)]
+    build.file(util_dir.join("vfs").join("vfs-file.c"));
 
     // === mGBA Third-party (2 files) ===
     let tp_dir = mgba_src.join("third-party");
