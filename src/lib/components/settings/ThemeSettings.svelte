@@ -79,6 +79,19 @@
 			<span class="setting-desc">Display album artwork in the sidebar when a track is playing.</span>
 		</div>
 	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.showConsoles}
+			onchange={(e) =>
+				settingsStore.setShowConsoles((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Show consoles</span>
+			<span class="setting-desc">Display the console browser section (NES, SNES, etc.) in the sidebar.</span>
+		</div>
+	</label>
 </div>
 
 <style>

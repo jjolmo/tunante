@@ -13,6 +13,7 @@ class SettingsStore {
 	showInTray = $state(false);
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
+	showConsoles = $state(true);
 	checkUpdatesOnStart = $state(true);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
@@ -60,6 +61,9 @@ class SettingsStore {
 
 		const showArt = this._settingsCache.get('show_cover_art');
 		if (showArt !== undefined) this.showCoverArt = showArt === 'true';
+
+		const showConsoles = this._settingsCache.get('show_consoles');
+		if (showConsoles !== undefined) this.showConsoles = showConsoles === 'true';
 
 		const checkUpdates = this._settingsCache.get('check_updates_on_start');
 		if (checkUpdates !== undefined) this.checkUpdatesOnStart = checkUpdates === 'true';
@@ -204,6 +208,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'show_cover_art', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save cover art setting:', e);
+		}
+	}
+
+	async setShowConsoles(enabled: boolean) {
+		this.showConsoles = enabled;
+		try {
+			await invoke('set_setting', { key: 'show_consoles', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save consoles setting:', e);
 		}
 	}
 

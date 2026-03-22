@@ -35,6 +35,15 @@
 			"icons/128x128@2x.png",
 			"icons/icon.icns",
 			"icons/icon.ico"
-		]
+		],
+		"createUpdaterArtifacts": true
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "RWRo7Reb5gNpsQXLHFSO8HHkpE1qSkyNu83pseRQoPKi/uSY7CbQu+jn",
+			"endpoints": [
+				"https://github.com/jjolmo/tunante/releases/latest/download/latest.json"
+			]
+		}
 	}
 }
