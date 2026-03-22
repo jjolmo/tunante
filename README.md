@@ -168,7 +168,7 @@ I don't know, ask Copilot, they know all the answers it seems, even a comprehens
 
 **"I need this feature"**
 
-Fork it or open a PR. I'll decide if I want to ship it or not. This app is meant to be customized for me with minimal elements to make it faster. Anyway in the near future you won't need a stupid GitHub to get an app. You will do it on demand and dedicate the rest of your time to do creative tasks like washing your plates or do your laundry.
+Fork it or open a PR. I'll decide if I want to ship it or not. This app is meant to be customized for me with minimal elements to make it faster. Anyway in the near future you won't need a stupid GitHub to get an app. You will do it on demand and dedicate the rest of your time to do creative tasks like washing your dishes or do your laundry.
 
 ## License
 
