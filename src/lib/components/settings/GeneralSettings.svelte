@@ -1,5 +1,32 @@
 <script lang="ts">
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { invoke } from '@tauri-apps/api/core';
+
+	let desktopEntryPath = $state('');
+	let showDesktopModal = $state(false);
+	let desktopResult = $state('');
+	let isLinux = $state(false);
+
+	// Check if we're on Linux and get the .desktop path
+	$effect(() => {
+		invoke<string>('get_desktop_entry_path').then((path) => {
+			if (path) {
+				desktopEntryPath = path;
+				isLinux = true;
+			}
+		}).catch(() => {});
+	});
+
+	async function handleCreateDesktopEntry() {
+		try {
+			const path = await invoke<string>('create_desktop_entry');
+			desktopResult = `Desktop entry created at ${path}`;
+			showDesktopModal = false;
+		} catch (e) {
+			desktopResult = `Error: ${e}`;
+			showDesktopModal = false;
+		}
+	}
 </script>
 
 <div class="general-settings">
@@ -96,7 +123,32 @@
 			>
 		</div>
 	</label>
+
+	{#if isLinux}
+		<div class="setting-action">
+			<button class="action-btn" onclick={() => { desktopResult = ''; showDesktopModal = true; }}>
+				Create .desktop entry
+			</button>
+			{#if desktopResult}
+				<span class="action-result" class:error={desktopResult.startsWith('Error')}>{desktopResult}</span>
+			{/if}
+		</div>
+	{/if}
 </div>
+
+{#if showDesktopModal}
+	<div class="modal-overlay" role="dialog">
+		<div class="modal-dialog">
+			<h3 class="modal-title">Create Desktop Entry</h3>
+			<p class="modal-text">A desktop entry will be created in:</p>
+			<code class="modal-path">{desktopEntryPath}</code>
+			<div class="modal-buttons">
+				<button class="btn primary" onclick={handleCreateDesktopEntry}>Continue</button>
+				<button class="btn" onclick={() => showDesktopModal = false}>Cancel</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.general-settings {
@@ -154,5 +206,108 @@
 
 	.setting-row.disabled input[type='checkbox'] {
 		cursor: not-allowed;
+	}
+
+	.setting-action {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 8px;
+	}
+
+	.action-btn {
+		padding: 6px 16px;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		background: none;
+		color: var(--color-text-primary);
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.action-btn:hover {
+		background-color: var(--color-bg-hover);
+	}
+
+	.action-result {
+		font-size: 11px;
+		color: var(--color-accent);
+	}
+
+	.action-result.error {
+		color: #f44336;
+	}
+
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		z-index: 300;
+		background-color: rgba(0, 0, 0, 0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.modal-dialog {
+		background-color: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 8px;
+		padding: 24px;
+		width: 420px;
+		max-width: 90vw;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+	}
+
+	.modal-title {
+		margin: 0 0 8px;
+		font-size: 16px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.modal-text {
+		margin: 0 0 8px;
+		font-size: 13px;
+		color: var(--color-text-secondary);
+	}
+
+	.modal-path {
+		display: block;
+		margin: 0 0 16px;
+		padding: 8px 12px;
+		background-color: var(--color-bg-secondary);
+		border-radius: 4px;
+		font-size: 12px;
+		color: var(--color-text-primary);
+		word-break: break-all;
+	}
+
+	.modal-buttons {
+		display: flex;
+		gap: 8px;
+	}
+
+	.btn {
+		padding: 6px 16px;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		background: none;
+		color: var(--color-text-primary);
+		font-size: 13px;
+		cursor: pointer;
+	}
+
+	.btn:hover {
+		background-color: var(--color-bg-hover);
+	}
+
+	.btn.primary {
+		background-color: var(--color-accent);
+		border-color: var(--color-accent);
+		color: white;
+	}
+
+	.btn.primary:hover {
+		opacity: 0.9;
 	}
 </style>

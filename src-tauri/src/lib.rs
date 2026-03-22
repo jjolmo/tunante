@@ -653,6 +653,8 @@ pub fn run() {
             commands::settings::remove_monitored_folder,
             commands::settings::toggle_folder_watching,
             commands::settings::set_tray_visible,
+            commands::settings::get_desktop_entry_path,
+            commands::settings::create_desktop_entry,
             commands::library::open_containing_folder,
             commands::library::resync_library,
             commands::library::update_track_metadata,
