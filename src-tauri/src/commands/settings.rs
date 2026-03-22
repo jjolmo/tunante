@@ -185,9 +185,18 @@ pub fn create_desktop_entry(_app: tauri::AppHandle) -> Result<String, String> {
         let home = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
         let home_path = PathBuf::from(&home);
 
-        // Find the current executable path
-        let exe_path = std::env::current_exe()
-            .map_err(|e| format!("Cannot find executable: {}", e))?;
+        // Determine the real executable path:
+        // - AppImage: use $APPIMAGE env var (the .AppImage file itself)
+        //   current_exe() returns the temp mount path which disappears on exit
+        // - Release binary / dev: use current_exe() directly
+        let exe_str = if let Ok(appimage) = std::env::var("APPIMAGE") {
+            appimage
+        } else {
+            std::env::current_exe()
+                .map_err(|e| format!("Cannot find executable: {}", e))?
+                .to_string_lossy()
+                .to_string()
+        };
 
         // Write embedded icon to ~/.local/share/icons/tunante.png
         let icon_dir = home_path.join(".local/share/icons");
@@ -203,7 +212,6 @@ pub fn create_desktop_entry(_app: tauri::AppHandle) -> Result<String, String> {
             .map_err(|e| format!("Cannot create applications dir: {}", e))?;
 
         let desktop_path = desktop_dir.join("tunante.desktop");
-        let exe_str = exe_path.to_string_lossy();
         let icon_str = icon_dest.to_string_lossy();
 
         let desktop_content = format!(
