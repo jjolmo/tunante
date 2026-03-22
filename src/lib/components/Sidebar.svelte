@@ -5,6 +5,7 @@
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { consolesStore } from '$lib/stores/consoles.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 
@@ -364,23 +365,25 @@
 		{/if}
 	</div>
 
-	<div class="sidebar-artwork">
-		{#if playerStore.currentTrack}
-			<div class="artwork-container">
-				{#if artworkSrc}
-					<img src={artworkSrc} alt="Album art" class="artwork-image" />
-				{:else}
-					<div class="artwork-placeholder">
-						<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
-							<path
-								d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
-							/>
-						</svg>
-					</div>
-				{/if}
-			</div>
-		{/if}
-	</div>
+	{#if settingsStore.showCoverArt}
+		<div class="sidebar-artwork">
+			{#if playerStore.currentTrack}
+				<div class="artwork-container">
+					{#if artworkSrc}
+						<img src={artworkSrc} alt="Album art" class="artwork-image" />
+					{:else}
+						<div class="artwork-placeholder">
+							<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
+								<path
+									d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"
+								/>
+							</svg>
+						</div>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	{/if}
 
 	{#if libraryStore.isScanning && libraryStore.scanProgress}
 		<div class="scan-progress">
