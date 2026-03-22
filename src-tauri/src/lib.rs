@@ -24,8 +24,6 @@ pub struct AppState {
     pub watcher: parking_lot::Mutex<Option<watcher::FolderWatcher>>,
     /// Maps global shortcut ID → action_id for keyboard shortcuts
     pub shortcut_map: parking_lot::Mutex<std::collections::HashMap<u32, String>>,
-    /// Maps action_id → key string for mouse button shortcuts
-    pub mouse_bindings: parking_lot::Mutex<std::collections::HashMap<String, String>>,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -244,7 +242,6 @@ pub fn run() {
                 queue: parking_lot::Mutex::new(queue),
                 watcher: parking_lot::Mutex::new(None),
                 shortcut_map: parking_lot::Mutex::new(std::collections::HashMap::new()),
-                mouse_bindings: parking_lot::Mutex::new(user_bindings.clone()),
             });
 
             app.manage(state.clone());
@@ -420,104 +417,12 @@ pub fn run() {
                 *state.shortcut_map.lock() = shortcut_map;
             }
 
-            // Spawn global mouse button listener via evdev (Linux only).
-            //
-            // Reads /dev/input/event* devices directly for mouse button
-            // presses. Works on both X11 and Wayland. Requires user to be
-            // in the 'input' group: sudo usermod -aG input $USER
-            // Falls back gracefully if no devices are accessible.
-            #[cfg(target_os = "linux")]
-            {
-                let mouse_state = state.clone();
-                let mouse_handle = app.handle().clone();
-                std::thread::Builder::new()
-                    .name("evdev-mouse".into())
-                    .spawn(move || {
-                        use evdev::{Device, EventType, KeyCode};
-
-                        // Find all mouse/pointer devices
-                        let devices: Vec<Device> = evdev::enumerate()
-                            .filter_map(|(_, dev)| {
-                                let keys = dev.supported_keys()?;
-                                if keys.contains(KeyCode::BTN_LEFT)
-                                    || keys.contains(KeyCode::BTN_MIDDLE)
-                                {
-                                    Some(dev)
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-
-                        if devices.is_empty() {
-                            log::warn!(
-                                "No mouse devices found for global shortcuts. \
-                                 Add user to input group: sudo usermod -aG input $USER"
-                            );
-                            return;
-                        }
-
-                        log::info!(
-                            "evdev mouse listener: monitoring {} device(s)",
-                            devices.len()
-                        );
-
-                        // Poll all mouse devices
-                        let mut fds: Vec<Device> = devices;
-                        loop {
-                            for dev in &mut fds {
-                                if let Ok(events) = dev.fetch_events() {
-                                    for event in events {
-                                        // Only key/button events, only press (value=1)
-                                        if event.event_type() != EventType::KEY
-                                            || event.value() != 1
-                                        {
-                                            continue;
-                                        }
-
-                                        let code = event.code();
-                                        // Map evdev button codes to our names
-                                        // BTN_MIDDLE=0x112, BTN_SIDE=0x113, BTN_EXTRA=0x114
-                                        // BTN_FORWARD=0x115, BTN_BACK=0x116, BTN_TASK=0x117
-                                        let btn_name = match code {
-                                            0x112 => Some("MouseMiddle"),
-                                            0x113 => Some("MouseBack"),
-                                            0x114 => Some("MouseForward"),
-                                            0x115 => Some("Mouse6"),
-                                            0x116 => Some("Mouse7"),
-                                            0x117 => Some("Mouse8"),
-                                            0x118 => Some("Mouse9"),
-                                            0x119 => Some("Mouse10"),
-                                            _ => None,
-                                        };
-
-                                        if let Some(name) = btn_name {
-                                            let bindings = mouse_state.mouse_bindings.lock();
-                                            let action = bindings
-                                                .iter()
-                                                .find(|(_, v)| {
-                                                    v.as_str() == name
-                                                        || v.ends_with(&format!("+{}", name))
-                                                })
-                                                .map(|(k, _)| k.clone());
-                                            drop(bindings);
-
-                                            if let Some(action_id) = action {
-                                                shortcuts::handle_action(
-                                                    &action_id,
-                                                    &mouse_handle,
-                                                    &mouse_state,
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            std::thread::sleep(Duration::from_millis(10));
-                        }
-                    })
-                    .ok();
-            }
+            // NOTE: Global mouse button shortcuts are handled via the keyboard
+            // shortcut system. Users with extra mouse buttons should configure
+            // their input remapper (input-remapper, xbindkeys, etc.) to emit
+            // keyboard combos (e.g. Ctrl+Alt+1), then bind those combos in
+            // Tunante's Shortcuts settings. This works globally even when
+            // the app is minimized.
 
             // Spawn state update thread
             //
