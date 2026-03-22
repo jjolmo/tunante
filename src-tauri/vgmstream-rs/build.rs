@@ -41,7 +41,16 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", build_src);
     println!("cargo:rustc-link-search=native={}/Release", build_src);
     println!("cargo:rustc-link-search=native={}/Debug", build_src);
-    println!("cargo:rustc-link-lib=static=vgmstream");
+    // cmake target is "libvgmstream" with PREFIX="" set:
+    // - Unix: produces "libvgmstream.a" (cmake adds "lib" prefix for static)
+    //   Wait no, PREFIX="" removes it: "vgmstream.a"... hmm.
+    // - MSVC: produces "libvgmstream.lib" (target name IS the file name)
+    // Try both names to handle both cases:
+    if target.contains("windows") {
+        println!("cargo:rustc-link-lib=static=libvgmstream");
+    } else {
+        println!("cargo:rustc-link-lib=static=vgmstream");
+    }
 
     // Link math library on unix
     if !target.contains("windows") {
