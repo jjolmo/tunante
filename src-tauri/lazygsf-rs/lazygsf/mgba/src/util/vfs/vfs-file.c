@@ -26,6 +26,9 @@ static void _vffTruncate(struct VFile* vf, size_t size);
 static ssize_t _vffSize(struct VFile* vf);
 static bool _vffSync(struct VFile* vf, void* buffer, size_t size);
 
+/* Forward declaration needed for C11 strict mode (MSVC /std:c11) */
+struct VFile* VFileFromFILE(FILE* file);
+
 struct VFile* VFileFOpen(const char* path, const char* mode) {
 	if (!path && !mode) {
 		return 0;
