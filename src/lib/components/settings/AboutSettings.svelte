@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { check } from '@tauri-apps/plugin-updater';
-	import { relaunch } from '@tauri-apps/plugin-process';
 	import { invoke } from '@tauri-apps/api/core';
 
 	let updateStatus = $state<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'done' | 'error'>('idle');
@@ -12,6 +10,7 @@
 		updateStatus = 'checking';
 		updateError = '';
 		try {
+			const { check } = await import('@tauri-apps/plugin-updater');
 			const update = await check();
 			if (update) {
 				updateVersion = update.version;
@@ -64,6 +63,7 @@
 				});
 				updateStatus = 'done';
 				// Auto-relaunch after 2 seconds
+				const { relaunch } = await import('@tauri-apps/plugin-process');
 				setTimeout(() => relaunch(), 2000);
 			} else {
 				// Custom updater fallback (Linux AppImage)
