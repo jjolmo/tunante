@@ -156,6 +156,20 @@ npm run dev
 | Database | [rusqlite](https://github.com/rusqlite/rusqlite) (SQLite, bundled) |
 | Concurrency | [parking_lot](https://github.com/Amanieu/parking_lot) |
 
+## FAQ
+
+**"I have found a bug, what should I do?"**
+
+Create a PR, or fork it and fix it, I don't care anymore. Software development is dead, and my time is more expensive to just ask the AI to fix things when you can also contribute.
+
+**"But it's codevibed shit, is it secure?"**
+
+I don't know, ask Copilot, they know all the answers it seems, even a comprehensive guide about how to be a plumber.
+
+**"I need this feature"**
+
+Fork it or open a PR. I'll decide if I want to ship it or not. This app is meant to be customized for me with minimal elements to make it faster. Anyway in the near future you won't need a stupid GitHub to get an app. You will do it on demand and dedicate the rest of your time to do creative tasks like washing your plates or do your laundry.
+
 ## License
 
 This project is licensed under the **GNU General Public License v2.0** — see the [LICENSE](LICENSE) file for details.
