@@ -168,6 +168,9 @@ fn main() {
         // SIO — gbp.c excluded: Game Boy Player serial IO not needed for audio
     ]);
 
+    // === Stubs for removed cheats/gbp modules ===
+    build.file(base.join("stubs.c"));
+
     // === lazygsf itself (1 file) ===
     build.file(lazygsf_src.join("lazygsf.c"));
 
