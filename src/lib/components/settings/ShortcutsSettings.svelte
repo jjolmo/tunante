@@ -22,8 +22,13 @@
 
 	const MOUSE_BUTTONS = [
 		{ value: 'MouseMiddle', label: 'Middle Click' },
-		{ value: 'MouseBack', label: 'Back' },
-		{ value: 'MouseForward', label: 'Forward' },
+		{ value: 'MouseBack', label: 'Mouse 4 (Back)' },
+		{ value: 'MouseForward', label: 'Mouse 5 (Forward)' },
+		{ value: 'Mouse6', label: 'Mouse 6' },
+		{ value: 'Mouse7', label: 'Mouse 7' },
+		{ value: 'Mouse8', label: 'Mouse 8' },
+		{ value: 'Mouse9', label: 'Mouse 9' },
+		{ value: 'Mouse10', label: 'Mouse 10' },
 	];
 
 	const MODIFIERS = [
@@ -189,8 +194,8 @@
 		if (!keys) return 'Not set';
 		return keys
 			.replace('MouseMiddle', 'Middle Click')
-			.replace('MouseBack', 'Back')
-			.replace('MouseForward', 'Forward');
+			.replace('MouseBack', 'Mouse 4')
+			.replace('MouseForward', 'Mouse 5');
 	}
 </script>
 
@@ -396,13 +401,24 @@
 	}
 
 	.mouse-select {
-		background-color: var(--color-bg-primary);
+		background-color: var(--color-bg-secondary);
 		border: 1px solid var(--color-border);
 		border-radius: 3px;
 		color: var(--color-text-primary);
-		font-size: 11px;
-		padding: 3px 6px;
+		font-size: 12px;
+		padding: 4px 8px;
 		cursor: pointer;
+		-webkit-appearance: none;
+		appearance: none;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 6px center;
+		padding-right: 20px;
+	}
+
+	.mouse-select option {
+		background-color: var(--color-bg-secondary);
+		color: var(--color-text-primary);
 	}
 
 	.mouse-plus {
