@@ -366,7 +366,7 @@
 	}
 
 	.now-playing.clickable:hover {
-		background-color: var(--color-bg-hover);
+		background-color: transparent;
 	}
 
 	.track-info {
