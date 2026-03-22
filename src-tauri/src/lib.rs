@@ -421,28 +421,40 @@ pub fn run() {
             }
 
             // Spawn rdev mouse listener thread for global mouse button shortcuts
-            {
+            // TODO: rdev may crash on some X11 setups — disabled temporarily for debugging
+            if false {
                 let mouse_state = state.clone();
                 let mouse_handle = app.handle().clone();
-                std::thread::spawn(move || {
-                    if let Err(e) = rdev::listen(move |event| {
-                        if let rdev::EventType::ButtonPress(button) = event.event_type {
-                            let bindings = mouse_state.mouse_bindings.lock();
-                            if let Some(action_id) =
-                                shortcuts::match_mouse_shortcut(button, &bindings)
-                            {
-                                drop(bindings);
-                                shortcuts::handle_action(
-                                    &action_id,
-                                    &mouse_handle,
-                                    &mouse_state,
-                                );
-                            }
+                std::thread::Builder::new()
+                    .name("rdev-mouse".into())
+                    .spawn(move || {
+                        eprintln!("[rdev] Mouse listener thread starting...");
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            rdev::listen(move |event| {
+                                if let rdev::EventType::ButtonPress(button) = event.event_type {
+                                    eprintln!("[rdev] Button press: {:?}", button);
+                                    let bindings = mouse_state.mouse_bindings.lock();
+                                    if let Some(action_id) =
+                                        shortcuts::match_mouse_shortcut(button, &bindings)
+                                    {
+                                        eprintln!("[rdev] Matched action: {}", action_id);
+                                        drop(bindings);
+                                        shortcuts::handle_action(
+                                            &action_id,
+                                            &mouse_handle,
+                                            &mouse_state,
+                                        );
+                                    }
+                                }
+                            })
+                        }));
+                        match result {
+                            Ok(Ok(())) => eprintln!("[rdev] Listener ended normally"),
+                            Ok(Err(e)) => eprintln!("[rdev] Listener error: {:?}", e),
+                            Err(_) => eprintln!("[rdev] Listener panicked (XRecord not available?)"),
                         }
-                    }) {
-                        log::warn!("rdev mouse listener error: {:?}", e);
-                    }
-                });
+                    })
+                    .ok();
             }
 
             // Spawn state update thread
