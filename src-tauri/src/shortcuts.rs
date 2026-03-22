@@ -244,20 +244,25 @@ pub fn match_mouse_shortcut(
     button: rdev::Button,
     bindings: &HashMap<String, String>,
 ) -> Option<String> {
+    // Map rdev button to our string name
+    // X11 button numbering: 1=Left, 2=Middle, 3=Right, 4-5=Scroll, 6-7=HScroll, 8+=Extra
     let btn_name = match button {
         rdev::Button::Middle => "MouseMiddle",
-        rdev::Button::Unknown(8) => "MouseBack", // X11 button numbering
+        rdev::Button::Unknown(8) => "MouseBack",
         rdev::Button::Unknown(9) => "MouseForward",
+        rdev::Button::Unknown(10) => "Mouse6",
+        rdev::Button::Unknown(11) => "Mouse7",
+        rdev::Button::Unknown(12) => "Mouse8",
+        rdev::Button::Unknown(13) => "Mouse9",
+        rdev::Button::Unknown(14) => "Mouse10",
         _ => return None,
     };
 
     for (action_id, keys) in bindings {
-        if keys == btn_name {
+        // Match bare button or with modifiers (e.g. "Ctrl+MouseMiddle")
+        if keys == btn_name || keys.ends_with(&format!("+{}", btn_name)) {
             return Some(action_id.clone());
         }
-        // Also check with modifiers (e.g., "Ctrl+MouseMiddle") — but rdev doesn't
-        // easily give us modifier state. For simplicity, mouse shortcuts are bare buttons.
-        // Users who want modifiers should use keyboard shortcuts.
     }
 
     None
