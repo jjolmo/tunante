@@ -1,6 +1,14 @@
 use std::path::PathBuf;
 
 fn main() {
+    // macOS ARM requires deployment target >= 11.0; set it for all macOS
+    // so the cc crate passes the correct -mmacosx-version-min flag.
+    if let Ok(target) = std::env::var("TARGET") {
+        if target.contains("apple") {
+            std::env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
+        }
+    }
+
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let vio2sf_dir = base.join("vio2sf");
     let desmume_dir = vio2sf_dir.join("desmume");
