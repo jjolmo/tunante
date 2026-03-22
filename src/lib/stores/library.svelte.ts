@@ -37,6 +37,10 @@ class LibraryStore {
 		return this.columns.filter((c) => c.visible);
 	}
 
+	get favedCount(): number {
+		return this.tracks.filter((t) => t.rating > 0).length;
+	}
+
 	get filteredTracks(): Track[] {
 		let result = this.tracks;
 
@@ -64,32 +68,31 @@ class LibraryStore {
 		return result;
 	}
 
-	async init() {
-		await listen<ScanProgress>('scan-progress', (event) => {
-			this.scanProgress = event.payload;
-		});
+	async init(getSetting?: (key: string) => string | null) {
+		// Register all event listeners in parallel (no dependencies between them)
+		await Promise.all([
+			listen<ScanProgress>('scan-progress', (event) => {
+				this.scanProgress = event.payload;
+			}),
+			listen('scan-complete', () => {
+				this.isScanning = false;
+				this.scanProgress = null;
+				this.loadTracks();
+			}),
+			listen('library-updated', () => {
+				this.loadTracks();
+			}),
+		]);
 
-		await listen('scan-complete', () => {
-			this.isScanning = false;
-			this.scanProgress = null;
-			this.loadTracks();
-		});
-
-		await listen('library-updated', () => {
-			this.loadTracks();
-		});
-
-		// Restore persisted search query
-		try {
-			const savedQuery = await invoke<string | null>('get_setting', { key: 'search_query' });
+		// Restore settings from cache (no IPC needed — settingsStore already loaded all)
+		if (getSetting) {
+			const savedQuery = getSetting('search_query');
 			if (savedQuery) {
 				this.searchQuery = savedQuery;
 			}
-		} catch {
-			// ignore
+			this.loadColumnConfigFromCache(getSetting);
 		}
 
-		await this.loadColumnConfig();
 		await this.loadTracks();
 	}
 
@@ -148,9 +151,9 @@ class LibraryStore {
 		}
 	}
 
-	selectTrack(id: string, multi = false, shiftKey = false, trackIndex?: number) {
+	selectTrack(id: string, multi = false, shiftKey = false, trackIndex?: number, contextTracks?: Track[]) {
 		if (shiftKey && this.lastClickedIndex !== null && trackIndex !== undefined) {
-			const tracks = this.filteredTracks;
+			const tracks = contextTracks ?? this.filteredTracks;
 			const start = Math.min(this.lastClickedIndex, trackIndex);
 			const end = Math.max(this.lastClickedIndex, trackIndex);
 			const next = multi ? new Set(this.selectedTrackIds) : new Set<string>();
@@ -173,8 +176,9 @@ class LibraryStore {
 		}
 	}
 
-	selectAll() {
-		this.selectedTrackIds = new Set(this.filteredTracks.map((t) => t.id));
+	selectAll(contextTracks?: Track[]) {
+		const tracks = contextTracks ?? this.filteredTracks;
+		this.selectedTrackIds = new Set(tracks.map((t) => t.id));
 	}
 
 	clearSelection() {
@@ -228,9 +232,10 @@ class LibraryStore {
 		this.saveColumnConfig();
 	}
 
-	async loadColumnConfig() {
+	/** Load column config synchronously from settings cache */
+	private loadColumnConfigFromCache(getSetting: (key: string) => string | null) {
 		try {
-			const val = await invoke<string | null>('get_setting', { key: 'column_config' });
+			const val = getSetting('column_config');
 			if (val) {
 				const config: Record<string, { visible: boolean; width?: string; flex?: number; order?: number }> = JSON.parse(val);
 				this.columns = this.columns.map((c) => {
@@ -254,7 +259,7 @@ class LibraryStore {
 				}
 			} else {
 				// Try legacy visibility-only config
-				const legacyVal = await invoke<string | null>('get_setting', { key: 'column_visibility' });
+				const legacyVal = getSetting('column_visibility');
 				if (legacyVal) {
 					const visibility: Record<string, boolean> = JSON.parse(legacyVal);
 					this.columns = this.columns.map((c) => ({

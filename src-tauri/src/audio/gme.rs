@@ -48,11 +48,12 @@ impl GmeSource {
             DEFAULT_DURATION_MS
         };
 
-        // Set fade-out point so GME fades at the end
-        emu.set_fade(play_duration_ms);
-
+        // Start the track first, then set fade — start_track resets
+        // internal state, so set_fade must come after.
         emu.start_track(track_index)
             .map_err(|e| format!("GME start track error: {}", e))?;
+
+        emu.set_fade(play_duration_ms);
 
         let total_ms = play_duration_ms + FADE_MS;
 

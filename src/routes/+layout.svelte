@@ -12,10 +12,13 @@
 	let { children } = $props();
 
 	$effect(() => {
-		playerStore.init();
-		libraryStore.init();
-		playlistsStore.init();
-		settingsStore.init();
+		// Settings must load first (batch IPC), then other stores can use the cache
+		settingsStore.init().then(() => {
+			// These can run in parallel — libraryStore gets settings via getter to avoid circular imports
+			playerStore.init();
+			libraryStore.init((key) => settingsStore.getSetting(key));
+			playlistsStore.init();
+		});
 	});
 
 	// Show window after first render — prevents white flash on startup
