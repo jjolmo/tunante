@@ -8,10 +8,30 @@
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 
+	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
+
 	const APP_TITLE = 'Tunante';
 
 	let { children } = $props();
 	let sessionRestored = $state(false);
+	let showUpdateDialog = $state(false);
+	let updateVersion = $state('');
+
+	async function checkStartupUpdate() {
+		const skippedVersion = settingsStore.getSetting('skipped_update_version');
+		try {
+			const info = await invoke<any>('check_for_updates');
+			if (info.update_available && info.latest_version !== skippedVersion) {
+				updateVersion = info.latest_version;
+				showUpdateDialog = true;
+			}
+		} catch {}
+	}
+
+	function handleSkipVersion(version: string) {
+		invoke('set_setting', { key: 'skipped_update_version', value: version }).catch(() => {});
+		showUpdateDialog = false;
+	}
 
 	// Debounced setting saver to avoid hammering IPC
 	const pendingSaves = new Map<string, string>();
@@ -37,13 +57,9 @@
 			const plReady = playlistsStore.init();
 			Promise.all([libReady, plReady]).then(() => {
 				restoreSession();
-				// Check for updates on startup if enabled
+				// Check for updates on startup if enabled (and not auto-updating)
 				if (settingsStore.checkUpdatesOnStart) {
-					invoke('check_for_updates').then((info: any) => {
-						if (info.update_available) {
-							console.log(`Update available: v${info.latest_version}`);
-						}
-					}).catch(() => {});
+					checkStartupUpdate();
 				}
 			});
 		});
@@ -189,3 +205,12 @@
 </script>
 
 {@render children()}
+
+{#if showUpdateDialog}
+	<UpdateDialog
+		version={updateVersion}
+		onupdate={() => { showUpdateDialog = false; }}
+		oncancel={() => { showUpdateDialog = false; }}
+		onskip={handleSkipVersion}
+	/>
+{/if}
