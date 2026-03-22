@@ -9,7 +9,7 @@ export interface ConsoleDefinition {
 }
 
 // Console definitions with codec mappings and SVG icon paths (16x16 viewBox)
-const CONSOLE_DEFINITIONS: ConsoleDefinition[] = [
+export const CONSOLE_DEFINITIONS: ConsoleDefinition[] = [
 	{
 		id: 'nes',
 		name: 'NES',
