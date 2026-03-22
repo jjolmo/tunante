@@ -342,7 +342,7 @@
 			{/each}
 		</div>
 
-		{#if consolesStore.consolesWithCounts.length > 0}
+		{#if settingsStore.showConsoles && consolesStore.consolesWithCounts.length > 0}
 			<div class="sidebar-section">
 				<div class="section-header">
 					<span>Consoles</span>
