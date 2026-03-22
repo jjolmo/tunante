@@ -1,6 +1,14 @@
 use std::path::PathBuf;
 
 fn main() {
+    // macOS ARM requires deployment target >= 11.0; set it for all macOS
+    // so the cc crate passes the correct -mmacosx-version-min flag.
+    if let Ok(target) = std::env::var("TARGET") {
+        if target.contains("apple") {
+            std::env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
+        }
+    }
+
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mgba = base.join("lazygsf").join("mgba");
     let mgba_src = mgba.join("src");
@@ -37,7 +45,11 @@ fn main() {
     {
         build.define("HAVE_LOCALE", None);
         #[cfg(target_os = "macos")]
-        build.define("HAVE_SNPRINTF_L", None);
+        {
+            build.define("HAVE_SNPRINTF_L", None);
+            // macOS provides strlcpy as a builtin — skip mGBA's redeclaration
+            build.define("HAVE_STRLCPY", None);
+        }
     }
     #[cfg(windows)]
     {

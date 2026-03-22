@@ -24,9 +24,9 @@ typedef struct {
 	u32 sCycle, Cycle, rate, interrupt;
 } psxCounter;
 
-psxCounter psxCounters[5];
+PSX_GLOBAL psxCounter psxCounters[5];
 
-u32 psxNextCounter, psxNextsCounter;
+PSX_GLOBAL u32 psxNextCounter, psxNextsCounter;
 
 void psxRcntInit();
 void psxRcntUpdate();

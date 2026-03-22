@@ -41,21 +41,21 @@ static INLINE u32 BFLIP32(u32 x)
 }
 #endif
 
-s8 *psxM;
+PSX_GLOBAL s8 *psxM;
 #define psxMu32(mem)	(*(u32*)&psxM[(mem) & 0x1fffff])
 
-s8 *psxP;
-s8 *psxR;
+PSX_GLOBAL s8 *psxP;
+PSX_GLOBAL s8 *psxR;
 #define psxRu32(mem)	(*(u32*)&psxR[(mem) & 0x7ffff])
 
-s8 *psxH;
+PSX_GLOBAL s8 *psxH;
 
 #define psxHu8(mem)	(*(u8*) &psxH[(mem) & 0xffff])
 
 #define psxHu16(mem)   	(*(u16*)&psxH[(mem) & 0xffff])
 #define psxHu32(mem)   	(*(u32*)&psxH[(mem) & 0xffff])
 
-char **psxMemLUT;
+PSX_GLOBAL char **psxMemLUT;
 
 #define PSXM(mem)		(psxMemLUT[(mem) >> 16] == 0 ? NULL : (void*)(psxMemLUT[(mem) >> 16] + ((mem) & 0xffff)))
 

@@ -17,7 +17,17 @@ typedef uint64_t u64;
 
 
 
-/* For gcc only? */
+/* Struct packing attribute — all members are u32 so packing is
+   effectively a no-op, but the original code requires the macro. */
+#ifdef _MSC_VER
+#define PACKSTRUCT
+/* sexypsf headers define globals (psxRegs, psxM, etc.) without 'extern',
+   which causes "multiply defined symbol" on MSVC. selectany tells the
+   linker to pick one copy and discard duplicates (same as GCC -fcommon). */
+#define PSX_GLOBAL __declspec(selectany)
+#else
 #define PACKSTRUCT	__attribute__ ((packed))
+#define PSX_GLOBAL
+#endif
 
 #endif
