@@ -69,14 +69,30 @@
 	<label class="setting-row">
 		<input
 			type="checkbox"
+			checked={settingsStore.autoUpdateOnStart}
+			onchange={(e) =>
+				settingsStore.setAutoUpdateOnStart((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Auto-update on startup</span>
+			<span class="setting-desc"
+				>Automatically download and install updates when the app starts. No dialog shown.</span
+			>
+		</div>
+	</label>
+
+	<label class="setting-row" class:disabled={settingsStore.autoUpdateOnStart}>
+		<input
+			type="checkbox"
 			checked={settingsStore.checkUpdatesOnStart}
+			disabled={settingsStore.autoUpdateOnStart}
 			onchange={(e) =>
 				settingsStore.setCheckUpdatesOnStart((e.target as HTMLInputElement).checked)}
 		/>
 		<div class="setting-text">
 			<span class="setting-label">Ask for updates on startup</span>
 			<span class="setting-desc"
-				>Show a dialog when a new version is available at startup. You can skip specific versions.</span
+				>Show a dialog when a new version is available. You can skip specific versions. Disabled when auto-update is on.</span
 			>
 		</div>
 	</label>
