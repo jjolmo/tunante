@@ -420,39 +420,104 @@ pub fn run() {
                 *state.shortcut_map.lock() = shortcut_map;
             }
 
-            // Spawn rdev mouse listener thread for global mouse button shortcuts
-            // TODO: rdev may crash on some X11 setups — disabled temporarily for debugging
-            if false {
+            // Spawn global mouse button listener (Linux only).
+            //
+            // Uses `xinput test-xi2 --root` as a subprocess to capture mouse
+            // button presses system-wide. Falls back gracefully if xinput
+            // is not installed. No root or input group needed.
+            //
+            // Install xinput for global mouse shortcuts:
+            //   Ubuntu/Debian: sudo apt install xinput
+            //   Fedora: sudo dnf install xinput
+            #[cfg(target_os = "linux")]
+            {
                 let mouse_state = state.clone();
                 let mouse_handle = app.handle().clone();
                 std::thread::Builder::new()
-                    .name("rdev-mouse".into())
+                    .name("xinput-mouse".into())
                     .spawn(move || {
-                        eprintln!("[rdev] Mouse listener thread starting...");
-                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            rdev::listen(move |event| {
-                                if let rdev::EventType::ButtonPress(button) = event.event_type {
-                                    eprintln!("[rdev] Button press: {:?}", button);
-                                    let bindings = mouse_state.mouse_bindings.lock();
-                                    if let Some(action_id) =
-                                        shortcuts::match_mouse_shortcut(button, &bindings)
-                                    {
-                                        eprintln!("[rdev] Matched action: {}", action_id);
-                                        drop(bindings);
-                                        shortcuts::handle_action(
-                                            &action_id,
-                                            &mouse_handle,
-                                            &mouse_state,
-                                        );
+                        use std::io::BufRead;
+
+                        // Try xinput first, then xdotool as fallback
+                        let child = std::process::Command::new("xinput")
+                            .args(["test-xi2", "--root"])
+                            .stdout(std::process::Stdio::piped())
+                            .stderr(std::process::Stdio::null())
+                            .spawn();
+
+                        let mut child = match child {
+                            Ok(c) => c,
+                            Err(_) => {
+                                log::warn!(
+                                    "xinput not found — global mouse shortcuts disabled. \
+                                     Install with: sudo apt install xinput"
+                                );
+                                return;
+                            }
+                        };
+
+                        let stdout = child.stdout.take().unwrap();
+                        let reader = std::io::BufReader::new(stdout);
+
+                        // Parse xinput test-xi2 output:
+                        //   EVENT type 15 (RawButtonPress)
+                        //       detail: 10
+                        let mut looking_for_detail = false;
+
+                        for line in reader.lines() {
+                            let line = match line {
+                                Ok(l) => l,
+                                Err(_) => break,
+                            };
+                            let trimmed = line.trim();
+
+                            if trimmed.contains("RawButtonPress") {
+                                looking_for_detail = true;
+                                continue;
+                            }
+
+                            if looking_for_detail && trimmed.starts_with("detail:") {
+                                looking_for_detail = false;
+                                if let Some(num_str) = trimmed.strip_prefix("detail:") {
+                                    if let Ok(btn_num) = num_str.trim().parse::<u32>() {
+                                        let btn_name = match btn_num {
+                                            2 => Some("MouseMiddle"),
+                                            8 => Some("MouseBack"),
+                                            9 => Some("MouseForward"),
+                                            10 => Some("Mouse6"),
+                                            11 => Some("Mouse7"),
+                                            12 => Some("Mouse8"),
+                                            13 => Some("Mouse9"),
+                                            14 => Some("Mouse10"),
+                                            _ => None,
+                                        };
+
+                                        if let Some(name) = btn_name {
+                                            let bindings = mouse_state.mouse_bindings.lock();
+                                            let action = bindings
+                                                .iter()
+                                                .find(|(_, v)| {
+                                                    v.as_str() == name
+                                                        || v.ends_with(&format!("+{}", name))
+                                                })
+                                                .map(|(k, _)| k.clone());
+                                            drop(bindings);
+
+                                            if let Some(action_id) = action {
+                                                shortcuts::handle_action(
+                                                    &action_id,
+                                                    &mouse_handle,
+                                                    &mouse_state,
+                                                );
+                                            }
+                                        }
                                     }
                                 }
-                            })
-                        }));
-                        match result {
-                            Ok(Ok(())) => eprintln!("[rdev] Listener ended normally"),
-                            Ok(Err(e)) => eprintln!("[rdev] Listener error: {:?}", e),
-                            Err(_) => eprintln!("[rdev] Listener panicked (XRecord not available?)"),
+                            }
                         }
+
+                        // Reap the child process
+                        let _ = child.wait();
                     })
                     .ok();
             }
