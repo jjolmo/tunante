@@ -87,7 +87,7 @@
 		</svg>
 		<div class="about-title-block">
 			<h2 class="about-title">Tunante</h2>
-			<span class="about-version">v{updateInfo?.current_version ?? '0.1.0'}</span>
+			<span class="about-version">v0.1.0</span>
 		</div>
 	</div>
 
