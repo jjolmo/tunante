@@ -13,6 +13,7 @@ fn main() {
     let mut build = cc::Build::new();
     build
         .warnings(false)
+        .flag_if_supported("-std=gnu11")
         // Always optimize the GBA emulator, even in debug builds.
         // Without this, the ARM interpreter runs ~10x slower,
         // making seek (which fast-forwards the CPU) unacceptably slow.
@@ -81,7 +82,7 @@ fn main() {
     build.files(&[
         core_dir.join("bitmap-cache.c"),
         core_dir.join("cache-set.c"),
-        core_dir.join("cheats.c"),
+        // core_dir.join("cheats.c"), // Not needed for audio
         core_dir.join("config.c"),
         core_dir.join("core.c"),
         core_dir.join("interface.c"),
@@ -135,7 +136,7 @@ fn main() {
     build.files(&[
         gba_dir.join("audio.c"),
         gba_dir.join("bios.c"),
-        gba_dir.join("cheats.c"),
+        // gba_dir.join("cheats.c"), // Not needed for audio
         gba_dir.join("core.c"),
         gba_dir.join("dma.c"),
         gba_dir.join("gba.c"),
@@ -153,10 +154,10 @@ fn main() {
         gba_dir.join("cart").join("gpio.c"),
         gba_dir.join("cart").join("matrix.c"),
         gba_dir.join("cart").join("vfame.c"),
-        // Cheats
-        gba_dir.join("cheats").join("codebreaker.c"),
-        gba_dir.join("cheats").join("gameshark.c"),
-        gba_dir.join("cheats").join("parv3.c"),
+        // Cheats — excluded: not needed for audio playback
+        // gba_dir.join("cheats").join("codebreaker.c"),
+        // gba_dir.join("cheats").join("gameshark.c"),
+        // gba_dir.join("cheats").join("parv3.c"),
         // Renderers
         gba_dir.join("renderers").join("cache-set.c"),
         gba_dir.join("renderers").join("common.c"),
@@ -164,8 +165,7 @@ fn main() {
         gba_dir.join("renderers").join("software-mode0.c"),
         gba_dir.join("renderers").join("software-obj.c"),
         gba_dir.join("renderers").join("video-software.c"),
-        // SIO
-        gba_dir.join("sio").join("gbp.c"),
+        // SIO — gbp.c excluded: Game Boy Player serial IO not needed for audio
     ]);
 
     // === lazygsf itself (1 file) ===
