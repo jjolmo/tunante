@@ -1,5 +1,7 @@
 # Tunante
 
+![Tunante Screenshot](screenshot.png)
+
 *I have codevibed this to understand how replaceable I am as a programmer.*
 
 A cross-platform music player focused on video game music formats, inspired by foobar2000.

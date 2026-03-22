@@ -3,6 +3,7 @@
 	import TrackList from '$lib/components/TrackList.svelte';
 	import PlayerControls from '$lib/components/PlayerControls.svelte';
 	import ErrorToast from '$lib/components/ErrorToast.svelte';
+	import FolderDropOverlay from '$lib/components/FolderDropOverlay.svelte';
 	import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 </script>
@@ -16,6 +17,7 @@
 </div>
 
 <ErrorToast />
+<FolderDropOverlay />
 
 {#if settingsStore.isSettingsOpen}
 	<SettingsPanel />

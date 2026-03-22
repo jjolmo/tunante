@@ -645,6 +645,8 @@ pub fn run() {
             commands::playlists::rename_playlist,
             commands::playlists::add_tracks_to_playlist,
             commands::playlists::remove_track_from_playlist,
+            commands::playlists::create_playlist_from_folder,
+            commands::library::is_directory,
             commands::settings::get_settings,
             commands::settings::get_setting,
             commands::settings::set_setting,
