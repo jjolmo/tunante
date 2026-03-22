@@ -157,8 +157,8 @@ fn main() {
         build.file(format!("src/gme/{}", file));
     }
 
-    for flag in defines {
-        build.flag(format!("-D {}", flag));
+    for def in defines {
+        build.define(def, None);
     }
 
     build.compile("gme");
