@@ -64,6 +64,21 @@
 			{/if}
 		</button>
 	</div>
+
+	<h3 class="section-title" style="margin-top: 16px;">Display</h3>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.showCoverArt}
+			onchange={(e) =>
+				settingsStore.setShowCoverArt((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Show cover art</span>
+			<span class="setting-desc">Display album artwork in the sidebar when a track is playing.</span>
+		</div>
+	</label>
 </div>
 
 <style>
@@ -228,5 +243,40 @@
 		right: 8px;
 		color: var(--color-accent);
 		font-size: 14px;
+	}
+
+	.setting-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		cursor: pointer;
+		padding: 8px;
+		border-radius: 4px;
+	}
+
+	.setting-row:hover {
+		background-color: var(--color-bg-hover);
+	}
+
+	.setting-row input[type='checkbox'] {
+		margin-top: 2px;
+		accent-color: var(--color-accent);
+		cursor: pointer;
+	}
+
+	.setting-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.setting-label {
+		font-size: 13px;
+		color: var(--color-text-primary);
+	}
+
+	.setting-desc {
+		font-size: 11px;
+		color: var(--color-text-secondary);
 	}
 </style>

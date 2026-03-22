@@ -65,21 +65,6 @@
 			>
 		</div>
 	</label>
-
-	<label class="setting-row">
-		<input
-			type="checkbox"
-			checked={settingsStore.showCoverArt}
-			onchange={(e) =>
-				settingsStore.setShowCoverArt((e.target as HTMLInputElement).checked)}
-		/>
-		<div class="setting-text">
-			<span class="setting-label">Show cover art</span>
-			<span class="setting-desc"
-				>Display album artwork in the sidebar when a track is playing.</span
-			>
-		</div>
-	</label>
 </div>
 
 <style>
