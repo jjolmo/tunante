@@ -1,12 +1,14 @@
 use std::path::PathBuf;
 
 fn main() {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let is_macos = target.contains("apple");
+    let is_windows = target.contains("windows");
+
     // macOS ARM requires deployment target >= 11.0; set it for all macOS
     // so the cc crate passes the correct -mmacosx-version-min flag.
-    if let Ok(target) = std::env::var("TARGET") {
-        if target.contains("apple") {
-            std::env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
-        }
+    if is_macos {
+        std::env::set_var("MACOSX_DEPLOYMENT_TARGET", "11.0");
     }
 
     let base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -43,39 +45,38 @@ fn main() {
         .define("HAVE_CRC32", None);
 
     // Platform-specific defines
-    #[cfg(unix)]
-    {
+    if is_macos {
         build.define("HAVE_LOCALE", None);
-        #[cfg(target_os = "macos")]
-        {
-            build.define("HAVE_SNPRINTF_L", None);
-            // macOS provides strlcpy as a builtin — skip mGBA's redeclaration
-            build.define("HAVE_STRLCPY", None);
-        }
-    }
-    #[cfg(windows)]
-    {
+        // Skip HAVE_SNPRINTF_L — Xcode 16+ Clang treats implicit function
+        // declarations as errors, and the mGBA code doesn't include <xlocale.h>
+        // macOS provides strlcpy as a builtin — skip mGBA's redeclaration
+        build.define("HAVE_STRLCPY", None);
+    } else if is_windows {
         // MSVC compatibility: use _open/_close/_read/_write instead of POSIX variants
         build.define("_CRT_SECURE_NO_WARNINGS", None);
         build.define("_CRT_NONSTDC_NO_DEPRECATE", None);
-        // Disable features that need POSIX APIs not available on MSVC
-        build.define("MINIMAL_CORE", "2");
+    } else {
+        // Linux and other Unix
+        build.define("HAVE_LOCALE", None);
     }
 
-    // === Vendored zlib (needed by psflib) ===
-    build.files(&[
-        zlib_dir.join("adler32.c"),
-        zlib_dir.join("compress.c"),
-        zlib_dir.join("crc32.c"),
-        zlib_dir.join("deflate.c"),
-        zlib_dir.join("infback.c"),
-        zlib_dir.join("inffast.c"),
-        zlib_dir.join("inflate.c"),
-        zlib_dir.join("inftrees.c"),
-        zlib_dir.join("trees.c"),
-        zlib_dir.join("uncompr.c"),
-        zlib_dir.join("zutil.c"),
-    ]);
+    if !is_macos {
+        // Vendored zlib — on macOS, use system libz instead because the
+        // vendored zlib gzguts.h conflicts with Xcode 16+ SDK _stdio.h
+        build.files(&[
+            zlib_dir.join("adler32.c"),
+            zlib_dir.join("compress.c"),
+            zlib_dir.join("crc32.c"),
+            zlib_dir.join("deflate.c"),
+            zlib_dir.join("infback.c"),
+            zlib_dir.join("inffast.c"),
+            zlib_dir.join("inflate.c"),
+            zlib_dir.join("inftrees.c"),
+            zlib_dir.join("trees.c"),
+            zlib_dir.join("uncompr.c"),
+            zlib_dir.join("zutil.c"),
+        ]);
+    }
 
     // === psflib (PSF container parser) ===
     build.file(psflib_dir.join("psflib.c"));
@@ -96,7 +97,6 @@ fn main() {
     build.files(&[
         core_dir.join("bitmap-cache.c"),
         core_dir.join("cache-set.c"),
-        // core_dir.join("cheats.c"), // Not needed for audio
         core_dir.join("config.c"),
         core_dir.join("core.c"),
         core_dir.join("interface.c"),
@@ -110,7 +110,6 @@ fn main() {
     ]);
 
     // === mGBA Utilities (14 files) ===
-    // NOTE: HAVE_CRC32 is defined above so util/crc32.c uses zlib's crc32 instead of its own
     let util_dir = mgba_src.join("util");
     build.files(&[
         util_dir.join("circle-buffer.c"),
@@ -130,10 +129,11 @@ fn main() {
     ]);
 
     // VFS backend: vfs-fd.c uses POSIX APIs, vfs-file.c uses stdio (portable)
-    #[cfg(unix)]
-    build.file(util_dir.join("vfs").join("vfs-fd.c"));
-    #[cfg(windows)]
-    build.file(util_dir.join("vfs").join("vfs-file.c"));
+    if is_windows {
+        build.file(util_dir.join("vfs").join("vfs-file.c"));
+    } else {
+        build.file(util_dir.join("vfs").join("vfs-fd.c"));
+    }
 
     // === mGBA Third-party (2 files) ===
     let tp_dir = mgba_src.join("third-party");
@@ -150,7 +150,6 @@ fn main() {
     build.files(&[
         gba_dir.join("audio.c"),
         gba_dir.join("bios.c"),
-        // gba_dir.join("cheats.c"), // Not needed for audio
         gba_dir.join("core.c"),
         gba_dir.join("dma.c"),
         gba_dir.join("gba.c"),
@@ -168,10 +167,6 @@ fn main() {
         gba_dir.join("cart").join("gpio.c"),
         gba_dir.join("cart").join("matrix.c"),
         gba_dir.join("cart").join("vfame.c"),
-        // Cheats — excluded: not needed for audio playback
-        // gba_dir.join("cheats").join("codebreaker.c"),
-        // gba_dir.join("cheats").join("gameshark.c"),
-        // gba_dir.join("cheats").join("parv3.c"),
         // Renderers
         gba_dir.join("renderers").join("cache-set.c"),
         gba_dir.join("renderers").join("common.c"),
@@ -179,7 +174,6 @@ fn main() {
         gba_dir.join("renderers").join("software-mode0.c"),
         gba_dir.join("renderers").join("software-obj.c"),
         gba_dir.join("renderers").join("video-software.c"),
-        // SIO — gbp.c excluded: Game Boy Player serial IO not needed for audio
     ]);
 
     // === Stubs for removed cheats/gbp modules ===
@@ -191,9 +185,15 @@ fn main() {
     // Compile everything into a single static library
     build.compile("lazygsf");
 
+    // On macOS, use system zlib instead of vendored (avoids Xcode 16+ SDK conflicts)
+    if is_macos {
+        println!("cargo:rustc-link-lib=z");
+    }
+
     // Link math library on Unix
-    #[cfg(unix)]
-    println!("cargo:rustc-link-lib=m");
+    if !is_windows {
+        println!("cargo:rustc-link-lib=m");
+    }
 
     // Rerun if sources change
     println!("cargo:rerun-if-changed=lazygsf/");
