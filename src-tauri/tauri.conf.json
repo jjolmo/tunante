@@ -6,7 +6,7 @@
 	"build": {
 		"frontendDist": "../build",
 		"devUrl": "http://localhost:1420",
-		"beforeDevCommand": "npm run dev",
+		"beforeDevCommand": "npm run kill-port; npm run dev",
 		"beforeBuildCommand": "npm run build"
 	},
 	"app": {
