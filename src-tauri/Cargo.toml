@@ -36,3 +36,15 @@ vgmstream-rs = { path = "vgmstream-rs" }
 lazygsf-rs = { path = "lazygsf-rs" }
 vio2sf-rs = { path = "vio2sf-rs" }
 hepsf-rs = { path = "hepsf-rs" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gio = "0.18"
+
+# Patch tray-icon and libappindicator to support left-click toggle on Linux.
+# On Linux, libayatana-appindicator normally shows the context menu on ALL
+# clicks. Our patched tray-icon calls app_indicator_set_secondary_activate_target()
+# to make the SNI `Activate` D-Bus method (left-click on KDE) trigger the
+# first menu item ("Show / Hide") instead of showing the menu.
+[patch.crates-io]
+tray-icon = { path = "tray-icon-patch" }
+libappindicator = { path = "libappindicator-patch" }

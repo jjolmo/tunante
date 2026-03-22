@@ -65,11 +65,13 @@
 	}
 
 	function handleTrackClick(track: Track, event: MouseEvent, idx: number) {
-		libraryStore.selectTrack(track.id, event.ctrlKey || event.metaKey, event.shiftKey, idx);
+		libraryStore.selectTrack(track.id, event.ctrlKey || event.metaKey, event.shiftKey, idx, tracks);
 	}
 
 	function handleTrackDblClick(track: Track) {
-		playerStore.playTrack(track);
+		// Pass current view's track IDs as queue context for context-aware auto-advance
+		const contextIds = tracks.map((t) => t.id);
+		playerStore.playTrack(track, contextIds);
 	}
 
 	function handleMiddleClick(track: Track, event: MouseEvent) {
@@ -185,7 +187,7 @@
 
 		if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
 			e.preventDefault();
-			libraryStore.selectAll();
+			libraryStore.selectAll(tracks);
 		}
 
 		// Delete key: remove selected tracks from active playlist

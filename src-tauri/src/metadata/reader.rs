@@ -1,8 +1,9 @@
-use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file};
+use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_psf2_file, is_twosf_file};
 use crate::db::models::Track;
 use crate::metadata::gme_reader;
 use crate::metadata::gsf_reader;
 use crate::metadata::psf_reader;
+use crate::metadata::psf2_reader;
 use crate::metadata::twosf_reader;
 use crate::metadata::vgmstream_reader;
 use lofty::file::AudioFile;
@@ -28,6 +29,8 @@ pub enum MetadataError {
     TwoSf(String),
     #[error("PSF error: {0}")]
     Psf(String),
+    #[error("PSF2 error: {0}")]
+    Psf2(String),
 }
 
 /// Check if a file is a vgmstream-only format (not handled by GME or standard decoders)
@@ -67,6 +70,9 @@ pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
     }
     if is_twosf_file(path) {
         return twosf_reader::read_twosf_metadata(path).map_err(MetadataError::TwoSf);
+    }
+    if is_psf2_file(path) {
+        return psf2_reader::read_psf2_metadata(path).map_err(MetadataError::Psf2);
     }
     if is_psf_file(path) {
         return psf_reader::read_psf_metadata(path).map_err(MetadataError::Psf);

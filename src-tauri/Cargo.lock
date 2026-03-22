@@ -1678,6 +1678,7 @@ name = "hepsf-rs"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "libc",
 ]
 
 [[package]]
@@ -2171,8 +2172,6 @@ checksum = "09edd9e8b54e49e587e4f6295a7d29c3ea94d469cb40ab8ca70b288248a81db2"
 [[package]]
 name = "libappindicator"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03589b9607c868cc7ae54c0b2a22c8dc03dd41692d48f2d7df73615c6a95dc0a"
 dependencies = [
  "glib",
  "gtk",
@@ -4915,12 +4914,14 @@ dependencies = [
 [[package]]
 name = "tray-icon"
 version = "0.21.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5e85aa143ceb072062fc4d6356c1b520a51d636e7bc8e77ec94be3608e5e80c"
 dependencies = [
  "crossbeam-channel",
  "dirs",
+ "glib",
+ "gtk",
+ "gtk-sys",
  "libappindicator",
+ "libappindicator-sys",
  "muda",
  "objc2",
  "objc2-app-kit",
@@ -4946,6 +4947,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "game-music-emu",
+ "gio",
  "hepsf-rs",
  "lazygsf-rs",
  "lofty",

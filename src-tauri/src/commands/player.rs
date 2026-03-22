@@ -1,3 +1,4 @@
+use crate::audio::RepeatMode;
 use crate::db::models::Track;
 use crate::AppState;
 use std::path::PathBuf;
@@ -10,26 +11,34 @@ struct PlaybackErrorPayload {
     path: String,
 }
 
+/// Play a file. If `track_ids` is provided, those tracks become the queue context
+/// (for context-aware auto-advance). Otherwise, all library tracks are used.
 #[tauri::command]
-pub fn play_file(path: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn play_file(
+    path: String,
+    track_ids: Option<Vec<String>>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
     let file_path = PathBuf::from(&path);
 
-    // Load tracks into queue from library
+    // Load context tracks into queue
     let db = state.db.lock();
-    let all_tracks = db.get_all_tracks().map_err(|e| e.to_string())?;
+    let context_tracks = if let Some(ids) = track_ids {
+        db.get_tracks_by_ids(&ids).map_err(|e| e.to_string())?
+    } else {
+        db.get_all_tracks().map_err(|e| e.to_string())?
+    };
+
+    let track_id = db
+        .get_track_by_path(&path)
+        .map_err(|e| e.to_string())?
+        .map(|t| t.id)
+        .unwrap_or_default();
     drop(db);
 
     let mut queue = state.queue.lock();
-    queue.set_tracks(all_tracks);
-    queue.play_track_by_id(
-        &state
-            .db
-            .lock()
-            .get_track_by_path(&path)
-            .map_err(|e| e.to_string())?
-            .map(|t| t.id)
-            .unwrap_or_default(),
-    );
+    queue.set_tracks(context_tracks);
+    queue.play_track_by_id(&track_id);
     drop(queue);
 
     let mut audio = state.audio.lock();
@@ -174,4 +183,21 @@ pub fn get_queue(state: State<'_, Arc<AppState>>) -> Result<Vec<Track>, String> 
 pub fn is_in_queue(track_id: String, state: State<'_, Arc<AppState>>) -> Result<bool, String> {
     let queue = state.queue.lock();
     Ok(queue.is_in_user_queue(&track_id))
+}
+
+#[tauri::command]
+pub fn set_shuffle(enabled: bool, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.queue.lock().set_shuffle(enabled);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_repeat(mode: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let repeat = match mode.as_str() {
+        "all" => RepeatMode::All,
+        "one" => RepeatMode::One,
+        _ => RepeatMode::Off,
+    };
+    state.queue.lock().set_repeat(repeat);
+    Ok(())
 }

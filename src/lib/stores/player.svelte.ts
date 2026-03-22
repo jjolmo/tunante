@@ -85,9 +85,12 @@ class PlayerStore {
 		}
 	}
 
-	async playTrack(track: Track) {
+	async playTrack(track: Track, contextTrackIds?: string[]) {
 		try {
-			await invoke('play_file', { path: track.path });
+			await invoke('play_file', {
+				path: track.path,
+				trackIds: contextTrackIds ?? null,
+			});
 			this.currentTrack = track;
 			this.isPlaying = true;
 		} catch (e) {
@@ -161,12 +164,18 @@ class PlayerStore {
 
 	toggleShuffle() {
 		this.shuffle = !this.shuffle;
+		invoke('set_shuffle', { enabled: this.shuffle }).catch((e) => {
+			console.error('Failed to sync shuffle:', e);
+		});
 	}
 
 	cycleRepeat() {
 		const modes: RepeatMode[] = ['off', 'all', 'one'];
 		const idx = modes.indexOf(this.repeat);
 		this.repeat = modes[(idx + 1) % modes.length];
+		invoke('set_repeat', { mode: this.repeat }).catch((e) => {
+			console.error('Failed to sync repeat:', e);
+		});
 	}
 
 	isInQueue(trackId: string): boolean {

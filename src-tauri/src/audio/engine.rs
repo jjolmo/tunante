@@ -2,8 +2,9 @@ use super::gme::GmeSource;
 use super::gsf::GsfSource;
 use super::opus::OggOpusSource;
 use super::psf::PsfSource;
+use super::psf2::Psf2Source;
 use super::twosf::TwoSfSource;
-use super::vgm_path::{is_gme_format, is_gsf_format, is_psf_format, is_twosf_format, parse_vgm_path};
+use super::vgm_path::{is_gme_format, is_gsf_format, is_psf_format, is_psf2_format, is_twosf_format, parse_vgm_path};
 use super::vgmstream::VgmstreamSource;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
@@ -158,8 +159,16 @@ impl AudioEngine {
             self.player.append(source);
             self.player.play();
             self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+        } else if is_psf2_format(ext) {
+            // PSF2/minipsf2 format (PlayStation 2 Sound Format via Highly Experimental)
+            let source = Psf2Source::new(actual_path)
+                .map_err(|e| AudioError::DecoderError(e))?;
+            let duration = source.total_duration();
+            self.player.append(source);
+            self.player.play();
+            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
         } else if is_psf_format(ext) {
-            // PSF/minipsf format (PlayStation Sound Format via Highly Experimental)
+            // PSF/minipsf format (PlayStation 1 Sound Format via sexypsf)
             let source = PsfSource::new(actual_path)
                 .map_err(|e| AudioError::DecoderError(e))?;
             let duration = source.total_duration();

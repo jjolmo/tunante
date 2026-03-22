@@ -482,6 +482,55 @@ impl Database {
         Ok(tracks)
     }
 
+    /// Fetch tracks by their IDs, preserving the input order.
+    pub fn get_tracks_by_ids(&self, ids: &[String]) -> Result<Vec<Track>, DbError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build placeholders: (?1, ?2, ?3, ...)
+        let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
+        let sql = format!(
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+             FROM tracks WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+
+        let mut stmt = self.conn.prepare(&sql)?;
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
+
+        let tracks_map: std::collections::HashMap<String, Track> = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                Ok(Track {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    title: row.get(2)?,
+                    artist: row.get(3)?,
+                    album: row.get(4)?,
+                    album_artist: row.get(5)?,
+                    track_number: row.get(6)?,
+                    disc_number: row.get(7)?,
+                    duration_ms: row.get(8)?,
+                    sample_rate: row.get(9)?,
+                    channels: row.get(10)?,
+                    bitrate: row.get(11)?,
+                    codec: row.get(12)?,
+                    file_size: row.get(13)?,
+                    has_artwork: row.get(14)?,
+                    rating: row.get(15)?,
+                    modified_at: 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .map(|t| (t.id.clone(), t))
+            .collect();
+
+        // Preserve input order
+        Ok(ids.iter().filter_map(|id| tracks_map.get(id).cloned()).collect())
+    }
+
     pub fn clear_all_tracks(&self) -> Result<(), DbError> {
         self.conn.execute_batch(
             "DELETE FROM tracks; DELETE FROM tracks_fts;"
