@@ -22,6 +22,8 @@ fn main() {
     build
         .warnings(false)
         .flag_if_supported("-std=gnu11")
+        // MSVC: enable C11 for _Static_assert used by mGBA's serialize.h
+        .flag_if_supported("/std:c11")
         // Always optimize the GBA emulator, even in debug builds.
         // Without this, the ARM interpreter runs ~10x slower,
         // making seek (which fast-forwards the CPU) unacceptably slow.
