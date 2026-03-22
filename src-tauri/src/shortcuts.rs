@@ -38,23 +38,25 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
         }
         "next_track" => {
             let mut queue = state.queue.lock();
-            if let Some(next_track) = queue.next() {
-                let path = next_track.path.clone();
+            let track = queue.next().or_else(|| queue.current().cloned());
+            if let Some(track) = track {
+                let path = track.path.clone();
                 drop(queue);
                 let mut audio = state.audio.lock();
                 if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
-                    let _ = app.emit("track-changed", next_track);
+                    let _ = app.emit("track-changed", track);
                 }
             }
         }
         "prev_track" => {
             let mut queue = state.queue.lock();
-            if let Some(prev_track) = queue.prev() {
-                let path = prev_track.path.clone();
+            let track = queue.prev().or_else(|| queue.current().cloned());
+            if let Some(track) = track {
+                let path = track.path.clone();
                 drop(queue);
                 let mut audio = state.audio.lock();
                 if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
-                    let _ = app.emit("track-changed", prev_track);
+                    let _ = app.emit("track-changed", track);
                 }
             }
         }
@@ -283,6 +285,7 @@ pub fn update_shortcuts(
 
     // Update the shortcut map in app state
     *state.shortcut_map.lock() = shortcut_map;
+    *state.mouse_bindings.lock() = bindings;
 
     Ok(())
 }
