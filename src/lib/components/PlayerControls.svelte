@@ -136,10 +136,12 @@
 				class:active={playerStore.shuffle}
 				title="Shuffle"
 			>
-				<svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
-					<path
-						d="M13.151 8L14 8.849l-.849.849L12.303 8.849 13.151 8zM14 4.849L13.151 4l-.849.849.849.849L14 4.849zM11.5 13h1v-2.5L8.964 7H5.5V5h-3v3h3V6h2.964L11.5 9.5V13zM5.5 11h-3v-3h3v3zM12.5 3h-1v2.5L8.036 9H5.5v2h-3V8h3v2h2.964L11.5 6.5V3h1z"
-					/>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+					<polyline points="16 3 21 3 21 8" />
+					<line x1="4" y1="20" x2="21" y2="3" />
+					<polyline points="21 16 21 21 16 21" />
+					<line x1="15" y1="15" x2="21" y2="21" />
+					<line x1="4" y1="4" x2="9" y2="9" />
 				</svg>
 			</button>
 
