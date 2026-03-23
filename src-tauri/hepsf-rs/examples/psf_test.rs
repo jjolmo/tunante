@@ -2,7 +2,7 @@
 //! Run: cargo run --manifest-path src-tauri/hepsf-rs/Cargo.toml --example psf_test
 
 fn main() {
-    let path = std::path::Path::new("/media/cidwel/storage/Seafile/Cidwel/Musica/OST juegos/PSX/FF7_psf/FF7 104 Anxious Heart.minipsf");
+    let path = std::path::Path::new("/tmp/test_psf/FF7 104 Anxious Heart.minipsf");
 
     eprintln!("[1] Loading on main thread...");
     let (mut decoder, tags) = hepsf_rs::PsfDecoder::new(path).unwrap();
