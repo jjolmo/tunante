@@ -222,7 +222,7 @@ pub fn create_desktop_entry(_app: tauri::AppHandle) -> Result<String, String> {
              Icon={icon_str}\n\
              Terminal=false\n\
              Type=Application\n\
-             Categories=Audio;Music;Player;\n\
+             Categories=Player;\n\
              MimeType=audio/mpeg;audio/ogg;audio/flac;audio/wav;\n"
         );
 
