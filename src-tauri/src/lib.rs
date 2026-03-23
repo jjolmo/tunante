@@ -757,3 +757,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+// Auto-updater test bump 1774267730
