@@ -32,22 +32,30 @@
 	async function silentAutoUpdate() {
 		try {
 			const info = await invoke<any>('check_for_updates');
-			if (info.update_available) {
-				try {
-					const { check } = await import('@tauri-apps/plugin-updater');
-					const update = await check();
-					if (update) {
-						await update.downloadAndInstall();
-						const { relaunch } = await import('@tauri-apps/plugin-process');
-						setTimeout(() => relaunch(), 1000);
-					}
-				} catch {
-					// Linux AppImage fallback: download, then show restart dialog
-					await invoke('download_and_apply_update', { downloadUrl: info.download_url });
-					updateVersion = info.latest_version;
-					silentUpdateReady = true;
+			if (!info.update_available) return;
+
+			// 1. Try Tauri plugin updater (works on macOS/Windows with signed artifacts)
+			try {
+				const { check } = await import('@tauri-apps/plugin-updater');
+				const update = await check();
+				if (update) {
+					await update.downloadAndInstall();
+					const { relaunch } = await import('@tauri-apps/plugin-process');
+					setTimeout(() => relaunch(), 1000);
+					return; // Success — app will relaunch
 				}
+			} catch {
+				// Plugin failed — fall through to platform-specific fallback
 			}
+
+			// 2. Linux AppImage: download and self-replace, then prompt restart
+			const result = await invoke<string>('download_and_apply_update', { downloadUrl: info.download_url });
+			if (result.includes('applied')) {
+				// Linux: AppImage was replaced — show restart toast
+				updateVersion = info.latest_version;
+				silentUpdateReady = true;
+			}
+			// macOS/Windows fallback: browser was opened silently, no toast needed
 		} catch {}
 	}
 
