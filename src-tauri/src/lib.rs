@@ -732,6 +732,7 @@ pub fn run() {
             commands::playlists::create_playlist,
             commands::playlists::delete_playlist,
             commands::playlists::rename_playlist,
+            commands::playlists::reorder_playlists,
             commands::playlists::add_tracks_to_playlist,
             commands::playlists::remove_track_from_playlist,
             commands::playlists::create_playlist_from_folder,

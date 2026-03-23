@@ -116,10 +116,33 @@ class PlaylistsStore {
 		}
 	}
 
+	/** Update a track's rating locally in playlistTracks and favedTracks */
+	updateTrackRating(trackId: string, rating: number) {
+		const pt = this.playlistTracks.find((t) => t.id === trackId);
+		if (pt) {
+			pt.rating = rating;
+			this.playlistTracks = [...this.playlistTracks];
+		}
+		const ft = this.favedTracks.find((t) => t.id === trackId);
+		if (ft) {
+			ft.rating = rating;
+			this.favedTracks = [...this.favedTracks];
+		}
+	}
+
 	selectAllTracks() {
 		this.isFavedView = false;
 		this.activePlaylistId = null;
 		this.playlistTracks = [];
+	}
+
+	async reorderPlaylists(orderedIds: string[]) {
+		try {
+			await invoke('reorder_playlists', { orderedIds });
+		} catch (e) {
+			console.error('Failed to reorder playlists:', e);
+			await this.loadPlaylists();
+		}
 	}
 
 	async renamePlaylist(id: string, name: string) {

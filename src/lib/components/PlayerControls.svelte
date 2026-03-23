@@ -42,6 +42,7 @@
 				writeToFile: settingsStore.keepFavsInMetadata
 			});
 			libraryStore.updateTrackRating(selectedTrack.id, newRating);
+			playlistsStore.updateTrackRating(selectedTrack.id, newRating);
 			// Refresh faved view if active
 			if (playlistsStore.isFavedView) {
 				await playlistsStore.loadFavedTracks();

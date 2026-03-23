@@ -175,6 +175,15 @@ impl OpusDecoder {
             )
             .map_err(OpusError::from)?;
         self.sync_state_from_decoder();
+
+        // Diagnostic: detect sample count mismatch (potential playback speed bug)
+        if samples_per_channel != samples_per_channel_hint {
+            eprintln!(
+                "[opus-diag] decode_float: hint={} actual={} — sample count mismatch",
+                samples_per_channel_hint, samples_per_channel
+            );
+        }
+
         let written = samples_per_channel * self.decoder.channels() as usize;
         for (dst, src) in pcm.iter_mut().zip(self.float_scratch[..written].iter()) {
             *dst = f32::from(*src) / 32768.0;

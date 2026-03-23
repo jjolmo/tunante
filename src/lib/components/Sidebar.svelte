@@ -17,6 +17,10 @@
 	let artworkSrc = $state<string | null>(null);
 	let lastArtworkTrackPath = $state<string | null>(null);
 
+	// Playlist reorder drag state
+	let draggingPlaylistId = $state<string | null>(null);
+	let reorderDragOverId = $state<string | null>(null);
+
 	// Playlist context menu
 	let contextMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
 
@@ -247,6 +251,50 @@
 		}
 	}
 
+	// Playlist reorder drag handlers
+	function handlePlaylistReorderDragStart(e: DragEvent, playlistId: string) {
+		draggingPlaylistId = playlistId;
+		e.dataTransfer!.effectAllowed = 'move';
+		e.dataTransfer!.setData('application/x-tunante-playlist-reorder', playlistId);
+	}
+
+	function handlePlaylistReorderDragOver(e: DragEvent, playlistId: string) {
+		if (e.dataTransfer?.types.includes('application/x-tunante-playlist-reorder')) {
+			e.preventDefault();
+			e.dataTransfer.dropEffect = 'move';
+			reorderDragOverId = playlistId;
+		}
+	}
+
+	function handlePlaylistReorderDragEnd() {
+		draggingPlaylistId = null;
+		reorderDragOverId = null;
+	}
+
+	async function handlePlaylistReorderDrop(e: DragEvent, targetId: string) {
+		e.preventDefault();
+		reorderDragOverId = null;
+		const sourceId = e.dataTransfer?.getData('application/x-tunante-playlist-reorder');
+		if (!sourceId || sourceId === targetId) {
+			draggingPlaylistId = null;
+			return;
+		}
+		const ids = playlistsStore.playlists.map((p) => p.id);
+		const fromIdx = ids.indexOf(sourceId);
+		const toIdx = ids.indexOf(targetId);
+		if (fromIdx === -1 || toIdx === -1) {
+			draggingPlaylistId = null;
+			return;
+		}
+		ids.splice(fromIdx, 1);
+		ids.splice(toIdx, 0, sourceId);
+		// Optimistic reorder
+		const reordered = ids.map((id) => playlistsStore.playlists.find((p) => p.id === id)!);
+		playlistsStore.playlists = reordered;
+		draggingPlaylistId = null;
+		await playlistsStore.reorderPlaylists(ids);
+	}
+
 	async function handleCreatePlaylistWithTracks() {
 		if (newPlaylistName.trim()) {
 			await playlistsStore.createPlaylist(newPlaylistName.trim());
@@ -358,11 +406,16 @@
 						class="sidebar-item"
 						class:active={playlistsStore.activePlaylistId === playlist.id}
 						class:drag-over={dragOverPlaylistId === playlist.id}
+						class:reorder-over={reorderDragOverId === playlist.id}
+						class:dragging={draggingPlaylistId === playlist.id}
+						draggable="true"
 						onclick={() => handleSelectPlaylist(playlist.id)}
 						oncontextmenu={(e) => handlePlaylistContextMenu(e, playlist)}
-						ondragover={(e) => handlePlaylistDragOver(e, playlist.id)}
-						ondragleave={handlePlaylistDragLeave}
-						ondrop={(e) => handlePlaylistDrop(e, playlist.id)}
+						ondragstart={(e) => handlePlaylistReorderDragStart(e, playlist.id)}
+						ondragover={(e) => { handlePlaylistDragOver(e, playlist.id); handlePlaylistReorderDragOver(e, playlist.id); }}
+						ondragleave={() => { handlePlaylistDragLeave(); reorderDragOverId = null; }}
+						ondrop={(e) => { handlePlaylistDrop(e, playlist.id); handlePlaylistReorderDrop(e, playlist.id); }}
+						ondragend={handlePlaylistReorderDragEnd}
 					>
 						<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 							<path d="M14 1H3v1h10.5l.5.5V13h1V1.5L14 1zM1 3.5l.5-.5h10l.5.5v11l-.5.5h-10l-.5-.5v-11zM2 4v10h9V4H2z" />
@@ -537,6 +590,14 @@
 		color: white;
 		outline: 2px solid var(--color-accent);
 		outline-offset: -2px;
+	}
+
+	.sidebar-item.reorder-over {
+		border-top: 2px solid var(--color-accent);
+	}
+
+	.sidebar-item.dragging {
+		opacity: 0.4;
 	}
 
 	.sidebar-item .track-count {

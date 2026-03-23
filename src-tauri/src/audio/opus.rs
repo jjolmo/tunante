@@ -155,6 +155,14 @@ impl<R: Read + Seek> OggOpusSource<R> {
                             self.buffer.truncate(total);
                             self.buf_pos = 0;
 
+                            // Diagnostic: log unusual frame sizes (normal Opus: 120/240/480/960)
+                            if !matches!(samples_per_channel, 120 | 240 | 480 | 960 | 1920 | 2880 | 5760) {
+                                log::warn!(
+                                    "Opus: unusual samples_per_channel={} (total={})",
+                                    samples_per_channel, total
+                                );
+                            }
+
                             if self.skip_remaining > 0 {
                                 let skip = self.skip_remaining.min(self.buffer.len());
                                 self.buf_pos = skip;

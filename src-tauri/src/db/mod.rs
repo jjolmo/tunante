@@ -30,6 +30,17 @@ impl Database {
             "ALTER TABLE tracks ADD COLUMN rating INTEGER NOT NULL DEFAULT 0;",
         );
 
+        // Migration: add position column to playlists for manual ordering
+        let _ = conn.execute_batch(
+            "ALTER TABLE playlists ADD COLUMN position INTEGER NOT NULL DEFAULT 0;",
+        );
+        // Seed initial positions in alphabetical order for existing playlists
+        let _ = conn.execute_batch(
+            "UPDATE playlists SET position = (
+                 SELECT COUNT(*) FROM playlists p2 WHERE p2.name < playlists.name
+             ) WHERE position = 0;",
+        );
+
         Ok(Self { conn })
     }
 
@@ -234,7 +245,7 @@ impl Database {
         let mut stmt = self.conn.prepare(
             "SELECT p.id, p.name, p.created_at, p.updated_at,
                     (SELECT COUNT(*) FROM playlist_tracks pt WHERE pt.playlist_id = p.id) as track_count
-             FROM playlists p ORDER BY p.name",
+             FROM playlists p ORDER BY p.position, p.name",
         )?;
 
         let playlists = stmt
@@ -253,9 +264,15 @@ impl Database {
     }
 
     pub fn create_playlist(&self, id: &str, name: &str) -> Result<(), DbError> {
+        // Append new playlist at the end (position = max + 1)
+        let next_pos: i64 = self.conn.query_row(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM playlists",
+            [],
+            |row| row.get(0),
+        )?;
         self.conn.execute(
-            "INSERT INTO playlists (id, name) VALUES (?1, ?2)",
-            params![id, name],
+            "INSERT INTO playlists (id, name, position) VALUES (?1, ?2, ?3)",
+            params![id, name, next_pos],
         )?;
         Ok(())
     }
@@ -271,6 +288,16 @@ impl Database {
             "UPDATE playlists SET name = ?2, updated_at = strftime('%s', 'now') WHERE id = ?1",
             params![id, name],
         )?;
+        Ok(())
+    }
+
+    pub fn reorder_playlists(&self, ordered_ids: &[String]) -> Result<(), DbError> {
+        for (position, id) in ordered_ids.iter().enumerate() {
+            self.conn.execute(
+                "UPDATE playlists SET position = ?1 WHERE id = ?2",
+                params![position as i64, id],
+            )?;
+        }
         Ok(())
     }
 
