@@ -74,9 +74,37 @@ export const CONSOLE_DEFINITIONS: ConsoleDefinition[] = [
 		icon: 'M1 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V5zm4 0H4v4h4V5H5zm-2 1v1H2V6h1zm1.5 3h1v1h-1V9zm-1 0v1H3V9h1.5zm8-3a.75.75 0 100 1.5.75.75 0 000-1.5zm-1.5 1.5a.75.75 0 100 1.5.75.75 0 000-1.5z'
 	},
 	{
+		id: 'gamecube',
+		name: 'GameCube',
+		codecs: ['DSP', 'IDSP'],
+		// GC controller
+		icon: 'M2 5.5C2 4.67 2.67 4 3.5 4h2L7 3h2l1.5 1h2c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-9C2.67 11 2 10.33 2 9.5v-4zM8 5a2 2 0 100 4 2 2 0 000-4zm0 1a1 1 0 110 2 1 1 0 010-2zM4.5 6a.5.5 0 100 1 .5.5 0 000-1zm7 .5a.5.5 0 100 1 .5.5 0 000-1z'
+	},
+	{
+		id: 'wii',
+		name: 'Wii',
+		codecs: ['BRSTM', 'BRWAV', 'RWSD', 'RWAR', 'RWAV'],
+		// Wii Remote
+		icon: 'M5 1h6a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V3a2 2 0 012-2zm2.5 2a1 1 0 100 2 1 1 0 000-2zM6 6h4v3H6V6zm1 5h2v1H7v-1z'
+	},
+	{
+		id: 'n3ds',
+		name: 'Nintendo 3DS',
+		codecs: ['BCSTM', 'BCWAV', 'CSMP', 'CSTM'],
+		// 3DS two screens with 3D bar
+		icon: 'M3 1h10a1 1 0 011 1v5H2V2a1 1 0 011-1zm5 1.5a.5.5 0 100 1 .5.5 0 000-1zM2 8h12v1H2V8zm1 1h10v5a1 1 0 01-1 1H4a1 1 0 01-1-1V9zm1 1v3h8v-3H4z'
+	},
+	{
+		id: 'wiiu',
+		name: 'Wii U',
+		codecs: ['BFSTM', 'BFWAV', 'BFSAR', 'BARS'],
+		// Wii U gamepad
+		icon: 'M1 4h14a1 1 0 011 1v6a1 1 0 01-1 1H1a1 1 0 01-1-1V5a1 1 0 011-1zm2 1.5a.5.5 0 100 1 .5.5 0 000-1zM5 6v4h6V6H5zm8 .5a.5.5 0 100 1 .5.5 0 000-1z'
+	},
+	{
 		id: 'nds',
 		name: 'Nintendo DS',
-		codecs: ['2SF', 'MINI2SF'],
+		codecs: ['2SF', 'MINI2SF', 'STRM'],
 		// DS two screens stacked
 		icon: 'M3 1h10a1 1 0 011 1v5H2V2a1 1 0 011-1zm-1 7h12v1H2V8zm0 1h12v5a1 1 0 01-1 1H3a1 1 0 01-1-1V9zm2 1v3h8v-3H4z'
 	},

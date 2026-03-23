@@ -15,7 +15,7 @@ pub const AUDIO_EXTENSIONS: &[&str] = &[
     // vgmstream (Nintendo, common game audio)
     "bcstm", "bfstm", "brstm", "bcwav", "bfwav", "brwav",
     "adx", "hca", "aax", "scd", "at3", "at9",
-    "dsp", "idsp", "bfsar", "bars",
+    "dsp", "idsp", "bfsar", "bars", "strm", "csmp", "cstm",
     "fsb", "bnk", "wem", "mus",
     "xma", "xma2", "xwb",
     "genh", "txth", "txtp",
