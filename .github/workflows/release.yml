@@ -210,7 +210,7 @@ jobs:
           APPIMAGE_ARM64=$(ls release/*arm64*.AppImage 2>/dev/null | head -1 || true)
           MSI=$(ls release/*.msi 2>/dev/null | grep -v '.sig' | head -1 || true)
           NSIS=$(ls release/*.exe 2>/dev/null | grep -v '.sig' | head -1 || true)
-          MACOS_ARM_TAR=$(ls release/*aarch64*.app.tar.gz 2>/dev/null | head -1 || true)
+          MACOS_ARM_TAR=$(ls release/*.app.tar.gz 2>/dev/null | grep -v '.sig' | head -1 || true)
 
           name_or_none() { [ -n "$1" ] && basename "$1" || echo "none"; }
 
