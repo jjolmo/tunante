@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-const TEST_PSF: &str = "/media/jjolmo/Music/OST juegos/PSX/FF7_psf/FF7 104 Anxious Heart.minipsf";
+const TEST_PSF: &str = "/tmp/test_psf/FF7 104 Anxious Heart.minipsf";
 
 #[test]
 fn test_psf_bare_renders() {
