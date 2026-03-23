@@ -149,8 +149,14 @@ impl<R: Read + Seek> OggOpusSource<R> {
                     let max_frame = self.decoder.max_frame_size_per_channel();
                     self.buffer.resize(max_frame * self.channel_count, 0.0);
 
-                    match self.decoder.decode_float(&packet.data, &mut self.buffer, false) {
-                        Ok(samples_per_channel) => {
+                    // Use catch_unwind to guard against panics in the opus-decoder
+                    // (e.g. shift overflow in celt/vq.rs with corrupted data)
+                    let decode_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        self.decoder.decode_float(&packet.data, &mut self.buffer, false)
+                    }));
+
+                    match decode_result {
+                        Ok(Ok(samples_per_channel)) => {
                             let total = samples_per_channel * self.channel_count;
                             self.buffer.truncate(total);
                             self.buf_pos = 0;
@@ -174,9 +180,14 @@ impl<R: Read + Seek> OggOpusSource<R> {
 
                             return true;
                         }
-                        Err(e) => {
+                        Ok(Err(e)) => {
                             log::warn!("Opus decode error (skipping frame): {:?}", e);
                             continue;
+                        }
+                        Err(_) => {
+                            log::error!("Opus decoder panicked (corrupted data?), stopping playback");
+                            self.finished = true;
+                            return false;
                         }
                     }
                 }
