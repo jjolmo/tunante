@@ -316,7 +316,7 @@ pub fn run() {
 
             // Use a white monochrome icon for the system tray
             let tray_icon = {
-                let png_bytes = include_bytes!("../icons/tray-icon.png");
+                let png_bytes = include_bytes!("../icons/tray-icon-big.png");
                 let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
                 let mut reader = decoder.read_info().expect("Failed to decode tray icon PNG");
                 let mut buf = vec![0u8; reader.output_buffer_size()];
