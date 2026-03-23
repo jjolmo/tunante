@@ -46,12 +46,19 @@
 					return;
 				}
 			} catch {
-				// Fallback to custom updater (Linux AppImage)
+				// Fallback to custom updater
 				const info = await invoke<any>('check_for_updates');
 				if (info.update_available) {
-					await invoke<string>('download_and_apply_update', { downloadUrl: info.download_url });
-					downloadComplete = true;
-					downloadProgress = 'Download complete.';
+					const result = await invoke<string>('download_and_apply_update', { downloadUrl: info.download_url });
+					if (result.includes('applied')) {
+						// Linux: AppImage was replaced — show Restart button
+						downloadComplete = true;
+						downloadProgress = 'Download complete.';
+					} else {
+						// macOS/Windows: browser opened with download page
+						downloadProgress = 'Download opened in browser. Install manually and restart.';
+						downloading = false;
+					}
 				}
 			}
 		} catch (e) {
