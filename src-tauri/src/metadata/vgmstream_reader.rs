@@ -50,11 +50,9 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             file_name.clone()
         };
 
-        let codec_name = if !info.codec_name.is_empty() {
-            info.codec_name.clone()
-        } else {
-            codec_ext.clone()
-        };
+        // Always use file extension as codec (consistent with other readers),
+        // so the console browser can map extensions to platforms
+        let codec_name = codec_ext.clone();
 
         return Ok(vec![Track {
             id: Uuid::new_v4().to_string(),
@@ -114,11 +112,9 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             format!("{} - Stream {}", file_name, i)
         };
 
-        let codec_name = if !info.codec_name.is_empty() {
-            info.codec_name.clone()
-        } else {
-            codec_ext.clone()
-        };
+        // Always use file extension as codec (consistent with other readers),
+        // so the console browser can map extensions to platforms
+        let codec_name = codec_ext.clone();
 
         // Virtual path: path#N (1-based subsong index)
         let virtual_path = build_vgm_path(&file_path_str, i as usize);
