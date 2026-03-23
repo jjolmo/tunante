@@ -115,7 +115,7 @@ fn extract_collapse_mask(iy: &[i32], n: usize, b: usize) -> u8 {
             nonzero |= iy[i * n0 + j];
         }
         if nonzero != 0 {
-            mask |= 1u32 << i;
+            mask |= 1u32.wrapping_shl(i as u32);
         }
     }
     mask as u8
