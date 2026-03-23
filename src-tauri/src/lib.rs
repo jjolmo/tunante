@@ -314,9 +314,18 @@ pub fn run() {
                     .unwrap_or(false)
             };
 
-            // Use a white monochrome icon for the system tray
+            // Choose tray icon based on OS theme (white for dark, black for light)
             let tray_icon = {
-                let png_bytes = include_bytes!("../icons/tray-icon-big.png");
+                let is_light = app.get_webview_window("main")
+                    .and_then(|w| w.theme().ok())
+                    .map(|t| t == tauri::Theme::Light)
+                    .unwrap_or(false);
+
+                let png_bytes: &[u8] = if is_light {
+                    include_bytes!("../icons/tray-icon-big-black-fixed.png")
+                } else {
+                    include_bytes!("../icons/tray-icon-big-fixed.png")
+                };
                 let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
                 let mut reader = decoder.read_info().expect("Failed to decode tray icon PNG");
                 let mut buf = vec![0u8; reader.output_buffer_size()];
@@ -685,22 +694,45 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                // Check if close_to_tray is enabled
-                let app_state = window.state::<Arc<AppState>>();
-                let close_to_tray = {
-                    let db = app_state.db.lock();
-                    db.get_setting("close_to_tray")
-                        .ok()
-                        .flatten()
-                        .map(|v| v == "true")
-                        .unwrap_or(false)
-                };
+            match event {
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    // Check if close_to_tray is enabled
+                    let app_state = window.state::<Arc<AppState>>();
+                    let close_to_tray = {
+                        let db = app_state.db.lock();
+                        db.get_setting("close_to_tray")
+                            .ok()
+                            .flatten()
+                            .map(|v| v == "true")
+                            .unwrap_or(false)
+                    };
 
-                if close_to_tray {
-                    api.prevent_close();
-                    let _ = window.hide();
+                    if close_to_tray {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
                 }
+                tauri::WindowEvent::ThemeChanged(theme) => {
+                    // Update tray icon when OS theme changes
+                    let is_light = *theme == tauri::Theme::Light;
+                    let png_bytes: &[u8] = if is_light {
+                        include_bytes!("../icons/tray-icon-big-black-fixed.png")
+                    } else {
+                        include_bytes!("../icons/tray-icon-big-fixed.png")
+                    };
+                    let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
+                    if let Ok(mut reader) = decoder.read_info() {
+                        let mut buf = vec![0u8; reader.output_buffer_size()];
+                        if let Ok(info) = reader.next_frame(&mut buf) {
+                            buf.truncate(info.buffer_size());
+                            let icon = tauri::image::Image::new_owned(buf, info.width, info.height);
+                            if let Some(tray) = window.app_handle().tray_by_id("main-tray") {
+                                let _ = tray.set_icon(Some(icon));
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
