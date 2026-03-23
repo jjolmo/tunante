@@ -521,6 +521,81 @@ pub fn run() {
                     .ok();
             }
 
+            // Spawn CGEventTap mouse listener for global mouse button shortcuts (macOS).
+            // Uses Input Monitoring permission to passively listen for extra mouse buttons.
+            // Gated behind the "global-mouse" feature.
+            #[cfg(all(target_os = "macos", feature = "global-mouse"))]
+            {
+                let mouse_state = state.clone();
+                let mouse_handle = app.handle().clone();
+                std::thread::Builder::new()
+                    .name("macos-mouse".into())
+                    .spawn(move || {
+                        use core_graphics::event::{
+                            CGEventTap, CGEventTapLocation, CGEventTapPlacement,
+                            CGEventTapOptions, CGEventType, EventField, CallbackResult,
+                        };
+                        use core_foundation::runloop::CFRunLoop;
+
+                        let result = CGEventTap::with_enabled(
+                            CGEventTapLocation::Session,
+                            CGEventTapPlacement::TailAppendEventTap,
+                            CGEventTapOptions::ListenOnly,
+                            vec![CGEventType::OtherMouseDown],
+                            |_proxy, _type, event| {
+                                let button = event.get_integer_value_field(
+                                    EventField::MOUSE_EVENT_BUTTON_NUMBER,
+                                );
+                                let btn_name = match button {
+                                    2 => Some("MouseMiddle"),
+                                    3 => Some("MouseBack"),
+                                    4 => Some("MouseForward"),
+                                    5 => Some("Mouse6"),
+                                    6 => Some("Mouse7"),
+                                    7 => Some("Mouse8"),
+                                    8 => Some("Mouse9"),
+                                    9 => Some("Mouse10"),
+                                    _ => None,
+                                };
+                                if let Some(name) = btn_name {
+                                    let bindings =
+                                        mouse_state.mouse_bindings.lock();
+                                    let action = bindings
+                                        .iter()
+                                        .find(|(_, v)| {
+                                            v.as_str() == name
+                                                || v.ends_with(
+                                                    &format!("+{}", name),
+                                                )
+                                        })
+                                        .map(|(k, _)| k.clone());
+                                    drop(bindings);
+                                    if let Some(action_id) = action {
+                                        shortcuts::handle_action(
+                                            &action_id,
+                                            &mouse_handle,
+                                            &mouse_state,
+                                        );
+                                    }
+                                }
+                                CallbackResult::Keep
+                            },
+                            || {
+                                CFRunLoop::run_current();
+                            },
+                        );
+
+                        if result.is_err() {
+                            log::warn!(
+                                "Failed to create macOS mouse event tap — \
+                                 grant Input Monitoring permission in \
+                                 System Settings > Privacy & Security > Input Monitoring"
+                            );
+                        }
+                    })
+                    .ok();
+            }
+
             // Spawn state update thread
             //
             // Uses try_lock() to never block when the audio mutex is held by a
