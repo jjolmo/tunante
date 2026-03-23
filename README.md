@@ -181,7 +181,7 @@ npm run dev
 
 **"Why you built it?"**
 
-First of all: I didn't do shit, I just prompted it. My creative coding happens on gamedev which is the only place I'm happy to code like we did in 2022. I built this because Foobar2000 with videogame plugins does not work on Linux and Mac. And I was tired of trying to emulate it with Wine. I tried [Cog](https://github.com/losnoco/Cog) also for Mac but it was crashing like hell with my library and doesn't cover all my consoles. Then [Fooyin](https://github.com/fooyin/fooyin) which is promising but lacks VGM format support. So here we are.
+First of all: I didn't do shit, I just prompted it. My creative coding happens on gamedev which is the only place I'm happy to code like we did in 2022. I built this because Foobar2000 with videogame plugins does not work on Linux and Mac. And I was tired of trying to emulate it with Wine. I tried [Cog](https://github.com/losnoco/Cog) also for Mac but it was crashing like hell with my library and doesn't cover all my consoles. Then [Fooyin](https://github.com/fooyin/fooyin) only works on Linux so I really needed something that worked on Mac because I use them in my paid fulltime work. And also it doesn't include all the videogame libraries and is not able to handle all my collection, again because it crashes. So here we are.
 
 **"I have found a bug, what should I do?"**
 
