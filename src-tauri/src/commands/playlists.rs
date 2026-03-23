@@ -62,6 +62,18 @@ pub fn rename_playlist(
 }
 
 #[tauri::command]
+pub fn reorder_playlists(
+    ordered_ids: Vec<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    state
+        .db
+        .lock()
+        .reorder_playlists(&ordered_ids)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn add_tracks_to_playlist(
     playlist_id: String,
     track_ids: Vec<String>,

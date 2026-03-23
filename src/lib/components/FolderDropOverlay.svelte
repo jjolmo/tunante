@@ -20,11 +20,16 @@
 		try {
 			const appWindow = getCurrentWebviewWindow();
 			unlisten = await appWindow.onDragDropEvent(async (event) => {
-				if (event.payload.type === 'enter' || event.payload.type === 'over') {
-					// Only show overlay if not already in name dialog
-					if (!showNameDialog && !isCreating) {
+				if (event.payload.type === 'enter') {
+					// Only show overlay for external OS file drags (which carry paths).
+					// Internal HTML5 drags (column reorder, track-to-playlist) produce
+					// 'enter' with empty paths — ignore those.
+					const paths = (event.payload as any).paths;
+					if (paths && paths.length > 0 && !showNameDialog && !isCreating) {
 						isDraggingOver = true;
 					}
+				} else if (event.payload.type === 'over') {
+					// Keep overlay visible if already shown by a valid 'enter'; no-op otherwise
 				} else if (event.payload.type === 'leave') {
 					isDraggingOver = false;
 				} else if (event.payload.type === 'drop') {
