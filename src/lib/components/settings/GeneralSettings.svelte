@@ -124,6 +124,21 @@
 		</div>
 	</label>
 
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.autoDownloadCoverArt}
+			onchange={(e) =>
+				settingsStore.setAutoDownloadCoverArt((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Auto-download missing cover art</span>
+			<span class="setting-desc"
+				>Search iTunes for album artwork when no local cover is found. Downloaded covers are cached locally.</span
+			>
+		</div>
+	</label>
+
 	{#if isLinux}
 		<div class="setting-action">
 			<button class="action-btn" onclick={() => { desktopResult = ''; showDesktopModal = true; }}>

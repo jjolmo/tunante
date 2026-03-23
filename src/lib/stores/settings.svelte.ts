@@ -16,6 +16,7 @@ class SettingsStore {
 	showConsoles = $state(true);
 	autoUpdateOnStart = $state(false);
 	checkUpdatesOnStart = $state(true);
+	autoDownloadCoverArt = $state(false);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -71,6 +72,9 @@ class SettingsStore {
 
 		const checkUpdates = this._settingsCache.get('check_updates_on_start');
 		if (checkUpdates !== undefined) this.checkUpdatesOnStart = checkUpdates === 'true';
+
+		const dlCover = this._settingsCache.get('auto_download_cover_art');
+		if (dlCover !== undefined) this.autoDownloadCoverArt = dlCover === 'true';
 	}
 
 	private _teardownMediaListener() {
@@ -244,6 +248,14 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'check_updates_on_start', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save update check setting:', e);
+		}
+	}
+	async setAutoDownloadCoverArt(enabled: boolean) {
+		this.autoDownloadCoverArt = enabled;
+		try {
+			await invoke('set_setting', { key: 'auto_download_cover_art', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save auto-download cover art setting:', e);
 		}
 	}
 }
