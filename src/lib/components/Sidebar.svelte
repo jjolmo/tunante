@@ -3,7 +3,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
-	import { consolesStore } from '$lib/stores/consoles.svelte';
+	import { consolesStore, CODEC_TO_CONSOLE, CONSOLE_DEFINITIONS } from '$lib/stores/consoles.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
@@ -34,17 +34,31 @@
 		}
 		if (track.path === lastArtworkTrackPath) return;
 		lastArtworkTrackPath = track.path;
+		// Immediately reset to placeholder while loading
+		artworkSrc = null;
 		invoke<string | null>('get_artwork', { trackPath: track.path })
 			.then(async (data) => {
 				if (data) {
 					artworkSrc = data;
-				} else if (settingsStore.autoDownloadCoverArt && (track.album || track.artist)) {
-					// No local artwork — try downloading from iTunes
+				} else if (settingsStore.autoDownloadCoverArt) {
+					// No local artwork — try downloading
 					try {
-						const downloaded = await invoke<string | null>('fetch_cover_art', {
-							album: track.album || '',
-							artist: track.artist || '',
-						});
+						let downloaded: string | null = null;
+						const consoleId = CODEC_TO_CONSOLE.get(track.codec);
+						if (consoleId && track.album) {
+							// VGM track: use Wikipedia game cover scraper
+							const consoleDef = CONSOLE_DEFINITIONS.find((d) => d.id === consoleId);
+							downloaded = await invoke<string | null>('fetch_vgm_cover_art', {
+								gameName: track.album,
+								consoleName: consoleDef?.name || '',
+							});
+						} else if (track.album || track.artist) {
+							// Standard track: use iTunes scraper
+							downloaded = await invoke<string | null>('fetch_cover_art', {
+								album: track.album || '',
+								artist: track.artist || '',
+							});
+						}
 						// Only update if still on the same track
 						if (lastArtworkTrackPath === track.path) {
 							artworkSrc = downloaded;
