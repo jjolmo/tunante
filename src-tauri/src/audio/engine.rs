@@ -120,8 +120,13 @@ impl AudioEngine {
     }
 
     pub fn play_file(&mut self, path: &Path) -> Result<(), AudioError> {
-        // Stop current playback
+        // Recreate the Player to fully reset rodio's internal resampler state.
+        // Without this, switching between tracks with different sample rates
+        // (e.g. 48kHz PSF2/Opus → 44.1kHz GSF) can corrupt the resampler,
+        // causing audio to play at the wrong speed until app restart.
         self.player.stop();
+        self.player = Player::connect_new(&self._device.mixer());
+        self.player.set_volume(self.volume);
 
         let path_str = path.to_string_lossy();
         let (actual_path_str, sub_track) = parse_vgm_path(&path_str);
