@@ -112,13 +112,15 @@ Download the `.AppImage` from [Releases](https://github.com/jjolmo/tunante/relea
 Download the `.msi` or `.exe` installer from [Releases](https://github.com/jjolmo/tunante/releases) and run it.
 
 ### macOS (unsigned app)
-The app is not signed with an Apple Developer certificate. macOS will block it by default. To open it:
+The app is not signed with an Apple Developer certificate. macOS Sequoia+ will show **"Tunante is damaged and can't be opened"**. This is not true — it's just unsigned. To fix it:
 
 1. Download the `.dmg` from [Releases](https://github.com/jjolmo/tunante/releases)
 2. Open the `.dmg` and drag **Tunante** to your Applications folder
-3. **First launch**: Right-click (or Ctrl+click) on Tunante.app → **Open** → click **Open** in the dialog
-4. Alternatively, after the first blocked attempt: **System Settings → Privacy & Security → scroll down → click "Open Anyway"**
-5. You only need to do this once — macOS remembers your choice
+3. Open **Terminal** and run:
+   ```bash
+   xattr -cr /Applications/Tunante.app
+   ```
+4. Now open Tunante normally — the quarantine flag is removed and macOS won't block it again
 
 ## Project Structure
 
