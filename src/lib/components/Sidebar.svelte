@@ -35,8 +35,26 @@
 		if (track.path === lastArtworkTrackPath) return;
 		lastArtworkTrackPath = track.path;
 		invoke<string | null>('get_artwork', { trackPath: track.path })
-			.then((data) => {
-				artworkSrc = data;
+			.then(async (data) => {
+				if (data) {
+					artworkSrc = data;
+				} else if (settingsStore.autoDownloadCoverArt && (track.album || track.artist)) {
+					// No local artwork — try downloading from iTunes
+					try {
+						const downloaded = await invoke<string | null>('fetch_cover_art', {
+							album: track.album || '',
+							artist: track.artist || '',
+						});
+						// Only update if still on the same track
+						if (lastArtworkTrackPath === track.path) {
+							artworkSrc = downloaded;
+						}
+					} catch {
+						artworkSrc = null;
+					}
+				} else {
+					artworkSrc = null;
+				}
 			})
 			.catch(() => {
 				artworkSrc = null;

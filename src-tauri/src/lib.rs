@@ -638,6 +638,7 @@ pub fn run() {
             commands::library::scan_folder,
             commands::library::add_files,
             commands::library::get_artwork,
+            commands::library::fetch_cover_art,
             commands::playlists::get_playlists,
             commands::playlists::get_playlist_tracks,
             commands::playlists::create_playlist,

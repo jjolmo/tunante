@@ -230,6 +230,123 @@ pub fn get_artwork(track_path: String) -> Result<Option<String>, String> {
     metadata::extract_artwork_base64(&PathBuf::from(actual_path)).map_err(|e| e.to_string())
 }
 
+/// Fetch cover art from iTunes Search API with local file cache.
+/// Returns base64 data URI if found, None otherwise.
+#[tauri::command]
+pub async fn fetch_cover_art(
+    album: String,
+    artist: String,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    use sha2::{Sha256, Digest};
+    use base64::Engine;
+    use tauri::Manager;
+
+    // 1. Compute cache key
+    let cache_key = {
+        let input = format!("{}\0{}", album.to_lowercase(), artist.to_lowercase());
+        let hash = Sha256::digest(input.as_bytes());
+        format!("{:x}", hash)[..16].to_string()
+    };
+
+    // 2. Resolve cache directory
+    let cache_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Cannot get app data dir: {}", e))?
+        .join("covers");
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Cannot create covers cache dir: {}", e))?;
+
+    let cache_path = cache_dir.join(format!("{}.jpg", cache_key));
+    let miss_path = cache_dir.join(format!("{}.miss", cache_key));
+
+    // 3. Check cache
+    if cache_path.exists() {
+        let bytes = std::fs::read(&cache_path)
+            .map_err(|e| format!("Cannot read cached cover: {}", e))?;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        return Ok(Some(format!("data:image/jpeg;base64,{}", b64)));
+    }
+    if miss_path.exists() {
+        return Ok(None); // Already searched, not found
+    }
+
+    // 4. Search iTunes API
+    let query = if !artist.is_empty() && !album.is_empty() {
+        format!("{} {}", album, artist)
+    } else if !album.is_empty() {
+        album.clone()
+    } else {
+        artist.clone()
+    };
+
+    let url = format!(
+        "https://itunes.apple.com/search?term={}&media=music&entity=album&limit=3",
+        urlencoding::encode(&query)
+    );
+
+    let client = reqwest::Client::builder()
+        .user_agent("Tunante/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client.get(&url).send().await
+        .map_err(|e| format!("iTunes search failed: {}", e))?;
+
+    if !response.status().is_success() {
+        // Don't cache network errors — might be temporary
+        return Ok(None);
+    }
+
+    let data: serde_json::Value = response.json().await
+        .map_err(|e| format!("Failed to parse iTunes response: {}", e))?;
+
+    // 5. Find best match
+    let results = data["results"].as_array();
+    let artwork_url = results
+        .and_then(|arr| {
+            // Try to find exact album name match first
+            let album_lower = album.to_lowercase();
+            arr.iter()
+                .find(|r| {
+                    r["collectionName"].as_str()
+                        .map(|n| n.to_lowercase().contains(&album_lower))
+                        .unwrap_or(false)
+                })
+                .or_else(|| arr.first())
+        })
+        .and_then(|r| r["artworkUrl100"].as_str())
+        .map(|url| url.replace("100x100bb", "600x600bb"));
+
+    let artwork_url = match artwork_url {
+        Some(url) => url,
+        None => {
+            // No results — cache the miss
+            let _ = std::fs::write(&miss_path, b"");
+            return Ok(None);
+        }
+    };
+
+    // 6. Download the artwork
+    let img_response = client.get(&artwork_url).send().await
+        .map_err(|e| format!("Failed to download artwork: {}", e))?;
+
+    if !img_response.status().is_success() {
+        let _ = std::fs::write(&miss_path, b"");
+        return Ok(None);
+    }
+
+    let bytes = img_response.bytes().await
+        .map_err(|e| format!("Failed to read artwork bytes: {}", e))?;
+
+    // 7. Save to cache
+    std::fs::write(&cache_path, &bytes)
+        .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+
+    // 8. Return as base64 data URI
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(Some(format!("data:image/jpeg;base64,{}", b64)))
+}
+
 #[tauri::command]
 pub fn update_track_metadata(
     track_ids: Vec<String>,
