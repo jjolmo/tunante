@@ -530,21 +530,28 @@ pub async fn fetch_vgm_cover_art(
         .map_err(|e| e.to_string())?;
 
     // === SOURCE 1: Libretro thumbnails (retro game box art) ===
+    // Libretro uses No-Intro ROM names which include region suffixes like "(USA)".
+    // Try the exact name first, then common region variants.
     if let Some(system) = libretro_system_name(&console_name) {
         let clean_name = libretro_game_name(&game_name);
         let base = "https://thumbnails.libretro.com";
         let encoded_system = urlencoding::encode(system);
-        let encoded_name = urlencoding::encode(&clean_name);
-        let libretro_url = format!("{}/{}/Named_Boxarts/{}.png", base, encoded_system, encoded_name);
 
-        if let Some(bytes) = try_download_image(&client, &libretro_url).await {
-            if bytes.len() > 100 { // Sanity check: not an error page
-                std::fs::write(&cache_path, &bytes)
-                    .map_err(|e| format!("Failed to cache cover art: {}", e))?;
-                let mime = mime_from_bytes(&bytes);
-                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                log::info!("VGM cover from Libretro: {} ({})", game_name, console_name);
-                return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+        let region_suffixes = ["", " (USA)", " (USA, Europe)", " (Europe)", " (Japan)", " (World)"];
+        for suffix in &region_suffixes {
+            let full_name = format!("{}{}", clean_name, suffix);
+            let encoded_name = urlencoding::encode(&full_name);
+            let libretro_url = format!("{}/{}/Named_Boxarts/{}.png", base, encoded_system, encoded_name);
+
+            if let Some(bytes) = try_download_image(&client, &libretro_url).await {
+                if bytes.len() > 100 { // Sanity check: not an error page
+                    std::fs::write(&cache_path, &bytes)
+                        .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+                    let mime = mime_from_bytes(&bytes);
+                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                    log::info!("VGM cover from Libretro: {} [{}] ({})", game_name, full_name, console_name);
+                    return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+                }
             }
         }
     }
