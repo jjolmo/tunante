@@ -59,6 +59,8 @@
 			async (event) => {
 				isCreating = false;
 				playlistsStore.scanningPlaylistId = null;
+				libraryStore.isScanning = false;
+				libraryStore.scanProgress = null;
 				await playlistsStore.loadPlaylists();
 				await libraryStore.loadTracks();
 				// Select the new playlist
@@ -83,8 +85,9 @@
 			});
 			await playlistsStore.loadPlaylists();
 
-			// 2. Mark it as scanning (shows spinner in sidebar)
+			// 2. Mark it as scanning (shows spinner + progress bar in sidebar)
 			playlistsStore.scanningPlaylistId = playlistId;
+			libraryStore.isScanning = true;
 
 			// 3. Scan folder in background — populates the playlist with tracks
 			await invoke('create_playlist_from_folder', {
@@ -95,6 +98,8 @@
 			console.error('Failed to create playlist from folder:', e);
 			isCreating = false;
 			playlistsStore.scanningPlaylistId = null;
+			libraryStore.isScanning = false;
+			libraryStore.scanProgress = null;
 		}
 	}
 

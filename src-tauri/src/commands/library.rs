@@ -347,6 +347,144 @@ pub async fn fetch_cover_art(
     Ok(Some(format!("data:image/jpeg;base64,{}", b64)))
 }
 
+/// Detect MIME type from the first bytes of an image file.
+fn mime_from_bytes(bytes: &[u8]) -> &'static str {
+    if bytes.len() >= 3 && bytes[..3] == [0xFF, 0xD8, 0xFF] {
+        "image/jpeg"
+    } else if bytes.len() >= 4 && bytes[..4] == [0x89, 0x50, 0x4E, 0x47] {
+        "image/png"
+    } else {
+        "image/jpeg"
+    }
+}
+
+/// Fetch cover art for video game music from Wikipedia.
+/// Uses the game name (album field) and console name to search Wikipedia
+/// for the game's article and extract its main image (usually box art).
+#[tauri::command]
+pub async fn fetch_vgm_cover_art(
+    game_name: String,
+    console_name: String,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    use sha2::{Sha256, Digest};
+    use base64::Engine;
+    use tauri::Manager;
+
+    if game_name.is_empty() {
+        return Ok(None);
+    }
+
+    // 1. Compute cache key (with "vgm" prefix to avoid collision with iTunes cache)
+    let cache_key = {
+        let input = format!("vgm\0{}\0{}", game_name.to_lowercase(), console_name.to_lowercase());
+        let hash = Sha256::digest(input.as_bytes());
+        format!("{:x}", hash)[..16].to_string()
+    };
+
+    // 2. Resolve cache directory
+    let cache_dir = app.path().app_data_dir()
+        .map_err(|e| format!("Cannot get app data dir: {}", e))?
+        .join("covers");
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Cannot create covers cache dir: {}", e))?;
+
+    let cache_path = cache_dir.join(format!("{}.img", cache_key));
+    let miss_path = cache_dir.join(format!("{}.miss", cache_key));
+
+    // 3. Check cache
+    if cache_path.exists() {
+        let bytes = std::fs::read(&cache_path)
+            .map_err(|e| format!("Cannot read cached cover: {}", e))?;
+        let mime = mime_from_bytes(&bytes);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+    }
+    if miss_path.exists() {
+        return Ok(None);
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Tunante/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // 4. Search Wikipedia for the game
+    let query = if !console_name.is_empty() {
+        format!("{} {} video game", game_name, console_name)
+    } else {
+        format!("{} video game", game_name)
+    };
+
+    let url = format!(
+        "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}&gsrlimit=5&prop=pageimages&piprop=original&format=json",
+        urlencoding::encode(&query)
+    );
+
+    let response = client.get(&url).send().await
+        .map_err(|e| format!("Wikipedia search failed: {}", e))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let data: serde_json::Value = response.json().await
+        .map_err(|e| format!("Failed to parse Wikipedia response: {}", e))?;
+
+    // 5. Find the best matching page with a raster image
+    let artwork_url = data["query"]["pages"].as_object()
+        .and_then(|pages| {
+            let game_lower = game_name.to_lowercase();
+            // Try exact title match first, then fall back to first page with image
+            pages.values()
+                .find(|p| {
+                    p["title"].as_str()
+                        .map(|t| t.to_lowercase().contains(&game_lower))
+                        .unwrap_or(false)
+                        && p["original"]["source"].as_str()
+                            .map(|u| !u.contains(".svg"))
+                            .unwrap_or(false)
+                })
+                .or_else(|| {
+                    pages.values().find(|p| {
+                        p["original"]["source"].as_str()
+                            .map(|u| !u.contains(".svg"))
+                            .unwrap_or(false)
+                    })
+                })
+        })
+        .and_then(|page| page["original"]["source"].as_str().map(String::from));
+
+    let artwork_url = match artwork_url {
+        Some(url) => url,
+        None => {
+            let _ = std::fs::write(&miss_path, b"");
+            return Ok(None);
+        }
+    };
+
+    // 6. Download the image
+    let img_response = client.get(&artwork_url).send().await
+        .map_err(|e| format!("Failed to download artwork: {}", e))?;
+
+    if !img_response.status().is_success() {
+        let _ = std::fs::write(&miss_path, b"");
+        return Ok(None);
+    }
+
+    let bytes = img_response.bytes().await
+        .map_err(|e| format!("Failed to read artwork bytes: {}", e))?;
+
+    // 7. Save to cache
+    std::fs::write(&cache_path, &bytes)
+        .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+
+    // 8. Return as base64 data URI with correct MIME type
+    let mime = mime_from_bytes(&bytes);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(Some(format!("data:{};base64,{}", mime, b64)))
+}
+
 #[tauri::command]
 pub fn update_track_metadata(
     track_ids: Vec<String>,
