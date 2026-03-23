@@ -436,7 +436,8 @@ pub fn run() {
             // Spawn evdev mouse listener for global mouse button shortcuts (Linux).
             // Reads /dev/input/event* in non-blocking mode. Requires 'input' group.
             // Falls back gracefully if input-remapper grabs the devices.
-            #[cfg(target_os = "linux")]
+            // Gated behind the "global-mouse" feature to allow builds without evdev overhead.
+            #[cfg(all(target_os = "linux", feature = "global-mouse"))]
             {
                 let mouse_state = state.clone();
                 let mouse_handle = app.handle().clone();
