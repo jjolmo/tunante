@@ -133,7 +133,7 @@
 
 	<div class="about-section">
 		<span class="about-credit">
-			Vibecoded by <strong>Cidwel</strong> to understand how much I'm replaceable by AI.
+			Vibecoded by <strong>jjolmo</strong> to understand how much I'm replaceable by AI.
 		</span>
 	</div>
 
