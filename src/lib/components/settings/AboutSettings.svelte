@@ -1,10 +1,16 @@
 <script lang="ts">
 	import { invoke } from '@tauri-apps/api/core';
+	import { getVersion } from '@tauri-apps/api/app';
 
+	let appVersion = $state('0.1.0');
 	let updateStatus = $state<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'done' | 'error'>('idle');
 	let updateVersion = $state('');
 	let updateError = $state('');
 	let downloadProgress = $state('');
+
+	$effect(() => {
+		getVersion().then(v => appVersion = v).catch(() => {});
+	});
 
 	async function checkForUpdates() {
 		updateStatus = 'checking';
@@ -87,7 +93,7 @@
 		</svg>
 		<div class="about-title-block">
 			<h2 class="about-title">Tunante</h2>
-			<span class="about-version">v0.1.0</span>
+			<span class="about-version">v{appVersion}</span>
 		</div>
 	</div>
 
