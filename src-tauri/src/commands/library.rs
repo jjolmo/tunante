@@ -358,9 +358,129 @@ fn mime_from_bytes(bytes: &[u8]) -> &'static str {
     }
 }
 
-/// Fetch cover art for video game music from Wikipedia.
-/// Uses the game name (album field) and console name to search Wikipedia
-/// for the game's article and extract its main image (usually box art).
+/// Map console ID to Libretro thumbnail system name.
+fn libretro_system_name(console_name: &str) -> Option<&'static str> {
+    match console_name {
+        "NES" => Some("Nintendo - Nintendo Entertainment System"),
+        "SNES" => Some("Nintendo - Super Nintendo Entertainment System"),
+        "Game Boy" => Some("Nintendo - Game Boy"),
+        "GB Advance" => Some("Nintendo - Game Boy Advance"),
+        "Nintendo DS" => Some("Nintendo - Nintendo DS"),
+        "Nintendo 64" => Some("Nintendo - Nintendo 64"),
+        "Nintendo 3DS" => Some("Nintendo - Nintendo 3DS"),
+        "GameCube" => Some("Nintendo - GameCube"),
+        "Wii" => Some("Nintendo - Wii"),
+        "Wii U" => Some("Nintendo - Wii U"),
+        "Sega Genesis" => Some("Sega - Mega Drive - Genesis"),
+        "Sega Saturn" => Some("Sega - Saturn"),
+        "Sega Dreamcast" => Some("Sega - Dreamcast"),
+        "PlayStation" => Some("Sony - PlayStation"),
+        "PlayStation 2" => Some("Sony - PlayStation 2"),
+        "TurboGrafx-16" => Some("NEC - PC Engine - TurboGrafx 16"),
+        "MSX" => Some("Microsoft - MSX"),
+        "Atari" => Some("Atari - 2600"),
+        "ZX Spectrum" => Some("Sinclair - ZX Spectrum"),
+        _ => None,
+    }
+}
+
+/// Sanitize a game name for Libretro thumbnail URL (special char replacement).
+fn libretro_game_name(name: &str) -> String {
+    name.replace('&', "_")
+        .replace('/', "_")
+        .replace('\\', "_")
+        .replace(':', "")
+        .replace('?', "")
+        .replace('*', "")
+        .replace('\"', "")
+        .replace('<', "")
+        .replace('>', "")
+        .replace('|', "")
+        .trim()
+        .to_string()
+}
+
+/// Try to download an image from a URL. Returns bytes if successful.
+async fn try_download_image(client: &reqwest::Client, url: &str) -> Option<Vec<u8>> {
+    let resp = client.get(url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    resp.bytes().await.ok().map(|b| b.to_vec())
+}
+
+/// Search Wikipedia for a game's page image (box art).
+async fn search_wikipedia_cover(
+    client: &reqwest::Client,
+    game_name: &str,
+    console_name: &str,
+) -> Option<String> {
+    // Try multiple search queries in order of specificity
+    let queries = if !console_name.is_empty() {
+        vec![
+            format!("\"{}\" {} video game", game_name, console_name),
+            format!("{} {} video game", game_name, console_name),
+            format!("{} video game", game_name),
+        ]
+    } else {
+        vec![
+            format!("\"{}\" video game", game_name),
+            format!("{} video game", game_name),
+        ]
+    };
+
+    let game_lower = game_name.to_lowercase();
+
+    for query in &queries {
+        let url = format!(
+            "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}&gsrlimit=5&prop=pageimages&piprop=original&format=json",
+            urlencoding::encode(query)
+        );
+
+        let response = match client.get(&url).send().await {
+            Ok(r) if r.status().is_success() => r,
+            _ => continue,
+        };
+
+        let data: serde_json::Value = match response.json().await {
+            Ok(d) => d,
+            Err(_) => continue,
+        };
+
+        let artwork_url = data["query"]["pages"].as_object()
+            .and_then(|pages| {
+                // Try exact title match first
+                pages.values()
+                    .find(|p| {
+                        p["title"].as_str()
+                            .map(|t| t.to_lowercase().contains(&game_lower))
+                            .unwrap_or(false)
+                            && p["original"]["source"].as_str()
+                                .map(|u| !u.contains(".svg"))
+                                .unwrap_or(false)
+                    })
+                    .or_else(|| {
+                        pages.values().find(|p| {
+                            p["original"]["source"].as_str()
+                                .map(|u| !u.contains(".svg"))
+                                .unwrap_or(false)
+                        })
+                    })
+            })
+            .and_then(|page| page["original"]["source"].as_str().map(String::from));
+
+        if artwork_url.is_some() {
+            return artwork_url;
+        }
+    }
+    None
+}
+
+/// Fetch cover art for video game music.
+/// Searches multiple sources in priority order:
+///   1. Libretro thumbnails (retro game box art database, direct URL)
+///   2. Wikipedia (game article page image)
+///   3. iTunes (music album artwork, last resort)
 #[tauri::command]
 pub async fn fetch_vgm_cover_art(
     game_name: String,
@@ -375,9 +495,9 @@ pub async fn fetch_vgm_cover_art(
         return Ok(None);
     }
 
-    // 1. Compute cache key (with "vgm" prefix to avoid collision with iTunes cache)
+    // 1. Compute cache key
     let cache_key = {
-        let input = format!("vgm\0{}\0{}", game_name.to_lowercase(), console_name.to_lowercase());
+        let input = format!("vgm2\0{}\0{}", game_name.to_lowercase(), console_name.to_lowercase());
         let hash = Sha256::digest(input.as_bytes());
         format!("{:x}", hash)[..16].to_string()
     };
@@ -409,80 +529,80 @@ pub async fn fetch_vgm_cover_art(
         .build()
         .map_err(|e| e.to_string())?;
 
-    // 4. Search Wikipedia for the game
-    let query = if !console_name.is_empty() {
-        format!("{} {} video game", game_name, console_name)
-    } else {
-        format!("{} video game", game_name)
-    };
+    // === SOURCE 1: Libretro thumbnails (retro game box art) ===
+    if let Some(system) = libretro_system_name(&console_name) {
+        let clean_name = libretro_game_name(&game_name);
+        let base = "https://thumbnails.libretro.com";
+        let encoded_system = urlencoding::encode(system);
+        let encoded_name = urlencoding::encode(&clean_name);
+        let libretro_url = format!("{}/{}/Named_Boxarts/{}.png", base, encoded_system, encoded_name);
 
-    let url = format!(
-        "https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch={}&gsrlimit=5&prop=pageimages&piprop=original&format=json",
-        urlencoding::encode(&query)
-    );
-
-    let response = client.get(&url).send().await
-        .map_err(|e| format!("Wikipedia search failed: {}", e))?;
-
-    if !response.status().is_success() {
-        return Ok(None);
-    }
-
-    let data: serde_json::Value = response.json().await
-        .map_err(|e| format!("Failed to parse Wikipedia response: {}", e))?;
-
-    // 5. Find the best matching page with a raster image
-    let artwork_url = data["query"]["pages"].as_object()
-        .and_then(|pages| {
-            let game_lower = game_name.to_lowercase();
-            // Try exact title match first, then fall back to first page with image
-            pages.values()
-                .find(|p| {
-                    p["title"].as_str()
-                        .map(|t| t.to_lowercase().contains(&game_lower))
-                        .unwrap_or(false)
-                        && p["original"]["source"].as_str()
-                            .map(|u| !u.contains(".svg"))
-                            .unwrap_or(false)
-                })
-                .or_else(|| {
-                    pages.values().find(|p| {
-                        p["original"]["source"].as_str()
-                            .map(|u| !u.contains(".svg"))
-                            .unwrap_or(false)
-                    })
-                })
-        })
-        .and_then(|page| page["original"]["source"].as_str().map(String::from));
-
-    let artwork_url = match artwork_url {
-        Some(url) => url,
-        None => {
-            let _ = std::fs::write(&miss_path, b"");
-            return Ok(None);
+        if let Some(bytes) = try_download_image(&client, &libretro_url).await {
+            if bytes.len() > 100 { // Sanity check: not an error page
+                std::fs::write(&cache_path, &bytes)
+                    .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+                let mime = mime_from_bytes(&bytes);
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                log::info!("VGM cover from Libretro: {} ({})", game_name, console_name);
+                return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+            }
         }
-    };
-
-    // 6. Download the image
-    let img_response = client.get(&artwork_url).send().await
-        .map_err(|e| format!("Failed to download artwork: {}", e))?;
-
-    if !img_response.status().is_success() {
-        let _ = std::fs::write(&miss_path, b"");
-        return Ok(None);
     }
 
-    let bytes = img_response.bytes().await
-        .map_err(|e| format!("Failed to read artwork bytes: {}", e))?;
+    // === SOURCE 2: Wikipedia (game article page image) ===
+    if let Some(artwork_url) = search_wikipedia_cover(&client, &game_name, &console_name).await {
+        if let Some(bytes) = try_download_image(&client, &artwork_url).await {
+            std::fs::write(&cache_path, &bytes)
+                .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+            let mime = mime_from_bytes(&bytes);
+            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            log::info!("VGM cover from Wikipedia: {}", game_name);
+            return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+        }
+    }
 
-    // 7. Save to cache
-    std::fs::write(&cache_path, &bytes)
-        .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+    // === SOURCE 3: iTunes (music soundtrack, last resort) ===
+    {
+        let query = format!("{} soundtrack", game_name);
+        let url = format!(
+            "https://itunes.apple.com/search?term={}&media=music&entity=album&limit=3",
+            urlencoding::encode(&query)
+        );
+        if let Ok(response) = client.get(&url).send().await {
+            if response.status().is_success() {
+                if let Ok(data) = response.json::<serde_json::Value>().await {
+                    let game_lower = game_name.to_lowercase();
+                    let artwork_url = data["results"].as_array()
+                        .and_then(|arr| {
+                            arr.iter()
+                                .find(|r| {
+                                    r["collectionName"].as_str()
+                                        .map(|n| n.to_lowercase().contains(&game_lower))
+                                        .unwrap_or(false)
+                                })
+                                .or_else(|| arr.first())
+                        })
+                        .and_then(|r| r["artworkUrl100"].as_str())
+                        .map(|url| url.replace("100x100bb", "600x600bb"));
 
-    // 8. Return as base64 data URI with correct MIME type
-    let mime = mime_from_bytes(&bytes);
-    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-    Ok(Some(format!("data:{};base64,{}", mime, b64)))
+                    if let Some(art_url) = artwork_url {
+                        if let Some(bytes) = try_download_image(&client, &art_url).await {
+                            std::fs::write(&cache_path, &bytes)
+                                .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+                            let mime = mime_from_bytes(&bytes);
+                            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                            log::info!("VGM cover from iTunes: {}", game_name);
+                            return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // No source found — cache the miss
+    let _ = std::fs::write(&miss_path, b"");
+    Ok(None)
 }
 
 #[tauri::command]
