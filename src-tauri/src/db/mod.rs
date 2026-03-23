@@ -46,12 +46,13 @@ impl Database {
 
     // --- Tracks ---
 
-    pub fn insert_track(&self, track: &Track) -> Result<(), DbError> {
+    /// Insert a track, upserting on path conflict. Returns the actual stored track ID
+    /// (which may differ from track.id if the path already existed).
+    pub fn insert_track(&self, track: &Track) -> Result<String, DbError> {
         self.conn.execute(
             "INSERT INTO tracks (id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, modified_at, has_artwork, rating)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
              ON CONFLICT(path) DO UPDATE SET
-               id = excluded.id,
                title = excluded.title,
                artist = excluded.artist,
                album = excluded.album,
@@ -88,14 +89,21 @@ impl Database {
             ],
         )?;
 
+        // Get the actual stored ID (may be the existing one on conflict)
+        let actual_id: String = self.conn.query_row(
+            "SELECT id FROM tracks WHERE path = ?1",
+            params![track.path],
+            |row| row.get(0),
+        )?;
+
         // Update FTS index
         self.conn.execute(
             "INSERT OR REPLACE INTO tracks_fts (rowid, title, artist, album, album_artist)
              SELECT rowid, title, artist, album, album_artist FROM tracks WHERE id = ?1",
-            params![track.id],
+            params![actual_id],
         )?;
 
-        Ok(())
+        Ok(actual_id)
     }
 
     pub fn get_all_tracks(&self) -> Result<Vec<Track>, DbError> {
