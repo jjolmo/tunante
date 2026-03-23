@@ -5575,6 +5575,7 @@ dependencies = [
  "open",
  "opus-decoder",
  "parking_lot",
+ "png",
  "reqwest",
  "rodio",
  "rusqlite",

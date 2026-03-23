@@ -311,11 +311,22 @@ pub fn run() {
                     .ok()
                     .flatten()
                     .map(|v| v == "true")
-                    .unwrap_or(true)
+                    .unwrap_or(false)
+            };
+
+            // Use a white monochrome icon for the system tray
+            let tray_icon = {
+                let png_bytes = include_bytes!("../icons/tray-icon.png");
+                let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
+                let mut reader = decoder.read_info().expect("Failed to decode tray icon PNG");
+                let mut buf = vec![0u8; reader.output_buffer_size()];
+                let info = reader.next_frame(&mut buf).expect("Failed to read tray icon frame");
+                buf.truncate(info.buffer_size());
+                tauri::image::Image::new_owned(buf, info.width, info.height)
             };
 
             let tray_builder = TrayIconBuilder::with_id("main-tray")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tray_icon)
                 .tooltip("Tunante")
                 .menu(&tray_menu);
 
