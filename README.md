@@ -191,6 +191,18 @@ I don't know, ask Copilot, they know all the answers it seems, even a comprehens
 
 Fork it or open a PR. I'll decide if I want to ship it or not. This app is meant to be customized for me with minimal elements to make it faster. Anyway in the near future you won't need a stupid GitHub to get an app. You will vibecode it on demand and dedicate the rest of your time to do creative tasks like washing your dishes or do your laundry.
 
+**"Format doesn't work?"**
+
+Send me an example. I'll just tell the AI to do it so I can go to the fucking fuck anywhere and keep learning how to unclog a WC.
+
+**"How much it took to build first 'stable' version?"**
+
+2 days, while I was watching youtube videos to decide if I should sell all my stock before meltdown happens.
+
+**"How many lines were made by human hand?"**
+
+0 (Zero). So you can start reflecting now what kind of future we're moving towards ☀️
+
 ## License
 
 This project is licensed under the **GNU General Public License v2.0** — see the [LICENSE](LICENSE) file for details.
