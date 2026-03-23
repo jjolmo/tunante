@@ -59,10 +59,18 @@ class LibraryStore {
 		result = [...result].sort((a, b) => {
 			const va = a[column] ?? '';
 			const vb = b[column] ?? '';
+			let cmp: number;
 			if (typeof va === 'number' && typeof vb === 'number') {
-				return (va - vb) * dir;
+				cmp = (va - vb) * dir;
+			} else {
+				cmp = String(va).localeCompare(String(vb)) * dir;
 			}
-			return String(va).localeCompare(String(vb)) * dir;
+			// Secondary sort: when primary values are equal, sort by path
+			// so tracks within the same album/artist stay in filesystem order
+			if (cmp === 0 && column !== 'path') {
+				return (a.path ?? '').localeCompare(b.path ?? '');
+			}
+			return cmp;
 		});
 
 		return result;
