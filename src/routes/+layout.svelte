@@ -15,6 +15,7 @@
 	let { children } = $props();
 	let sessionRestored = $state(false);
 	let showUpdateDialog = $state(false);
+	let silentUpdateReady = $state(false);
 	let updateVersion = $state('');
 
 	async function checkStartupUpdate() {
@@ -41,8 +42,10 @@
 						setTimeout(() => relaunch(), 1000);
 					}
 				} catch {
-					// Linux AppImage fallback
+					// Linux AppImage fallback: download, then show restart dialog
 					await invoke('download_and_apply_update', { downloadUrl: info.download_url });
+					updateVersion = info.latest_version;
+					silentUpdateReady = true;
 				}
 			}
 		} catch {}
@@ -236,3 +239,60 @@
 		onskip={handleSkipVersion}
 	/>
 {/if}
+
+{#if silentUpdateReady}
+	<div class="update-toast">
+		<span>v{updateVersion} downloaded.</span>
+		<button class="toast-btn" onclick={async () => {
+			try {
+				const { relaunch } = await import('@tauri-apps/plugin-process');
+				await relaunch();
+			} catch {
+				silentUpdateReady = false;
+			}
+		}}>Restart</button>
+		<button class="toast-dismiss" onclick={() => silentUpdateReady = false}>✕</button>
+	</div>
+{/if}
+
+<style>
+	.update-toast {
+		position: fixed;
+		bottom: 48px;
+		right: 16px;
+		z-index: 200;
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 14px;
+		background-color: var(--color-bg-secondary, #2a2a2a);
+		border: 1px solid var(--color-accent, #4a9eff);
+		border-radius: 6px;
+		font-size: 13px;
+		color: var(--color-text-primary, #eee);
+		box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+	}
+
+	.toast-btn {
+		padding: 4px 12px;
+		border: none;
+		border-radius: 4px;
+		background-color: var(--color-accent, #4a9eff);
+		color: white;
+		font-size: 12px;
+		cursor: pointer;
+	}
+
+	.toast-btn:hover { opacity: 0.9; }
+
+	.toast-dismiss {
+		background: none;
+		border: none;
+		color: var(--color-text-muted, #888);
+		cursor: pointer;
+		font-size: 14px;
+		padding: 0 2px;
+	}
+
+	.toast-dismiss:hover { color: var(--color-text-primary, #eee); }
+</style>
