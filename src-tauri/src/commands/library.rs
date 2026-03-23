@@ -648,13 +648,45 @@ pub fn open_containing_folder(path: String) -> Result<(), String> {
     let file_path = PathBuf::from(actual_path);
     let folder = file_path.parent().unwrap_or(&file_path);
 
+    log::info!("open_containing_folder: path={}, folder={}", path, folder.display());
+
+    if !folder.exists() {
+        return Err(format!("Folder does not exist: {}", folder.display()));
+    }
+
     #[cfg(target_os = "linux")]
     {
-        // Try xdg-open first, fall back to nautilus/dolphin/thunar
-        std::process::Command::new("xdg-open")
-            .arg(folder)
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
+        // Use dbus to ask the file manager to show the file (highlights it)
+        // Falls back to xdg-open on the folder if dbus fails
+        let file_uri = format!("file://{}", file_path.display());
+        let dbus_result = std::process::Command::new("dbus-send")
+            .args([
+                "--session",
+                "--dest=org.freedesktop.FileManager1",
+                "--type=method_call",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+                &format!("array:string:{}", file_uri),
+                "string:",
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .output();
+
+        match dbus_result {
+            Ok(output) if output.status.success() => {
+                log::info!("Opened via dbus FileManager1");
+            }
+            _ => {
+                log::info!("dbus FileManager1 failed, falling back to xdg-open");
+                std::process::Command::new("xdg-open")
+                    .arg(folder)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .map_err(|e| format!("Failed to open folder: {}", e))?;
+            }
+        }
     }
 
     #[cfg(target_os = "macos")]

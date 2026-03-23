@@ -139,12 +139,12 @@ pub fn create_playlist_from_folder(
                 Ok(tracks) => {
                     let db = state_inner.db.lock();
                     for track in tracks {
-                        let track_id = track.id.clone();
-                        if let Err(e) = db.insert_track(&track) {
-                            log::error!("Failed to insert track {:?}: {}", file_path, e);
-                            continue;
+                        match db.insert_track(&track) {
+                            Ok(actual_id) => track_ids.push(actual_id),
+                            Err(e) => {
+                                log::error!("Failed to insert track {:?}: {}", file_path, e);
+                            }
                         }
-                        track_ids.push(track_id);
                     }
                 }
                 Err(e) => {
