@@ -103,6 +103,23 @@ The built application will be in `src-tauri/target/release/bundle/`:
 - **macOS**: `.dmg`
 - **Windows**: `.msi` and `.exe`
 
+## Installation
+
+### Linux
+Download the `.AppImage` from [Releases](https://github.com/jjolmo/tunante/releases), make it executable (`chmod +x`), and run it. You can create a `.desktop` entry from Settings → General inside the app.
+
+### Windows
+Download the `.msi` or `.exe` installer from [Releases](https://github.com/jjolmo/tunante/releases) and run it.
+
+### macOS (unsigned app)
+The app is not signed with an Apple Developer certificate. macOS will block it by default. To open it:
+
+1. Download the `.dmg` from [Releases](https://github.com/jjolmo/tunante/releases)
+2. Open the `.dmg` and drag **Tunante** to your Applications folder
+3. **First launch**: Right-click (or Ctrl+click) on Tunante.app → **Open** → click **Open** in the dialog
+4. Alternatively, after the first blocked attempt: **System Settings → Privacy & Security → scroll down → click "Open Anyway"**
+5. You only need to do this once — macOS remembers your choice
+
 ## Project Structure
 
 ```
