@@ -40,7 +40,7 @@
 	},
 	"plugins": {
 		"updater": {
-			"pubkey": "RWRo7Reb5gNpsQXLHFSO8HHkpE1qSkyNu83pseRQoPKi/uSY7CbQu+jn",
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg0QThFOUQ0MjZBMTY0MjMKUldRalpLRW0xT21vaEU1SS9yc2ZGZXBJUGRtZGlsRDhXZTA2RldJUHVPbXpvM1VXS1F6dFQzMGwK",
 			"endpoints": [
 				"https://github.com/jjolmo/tunante/releases/latest/download/latest.json"
 			]
