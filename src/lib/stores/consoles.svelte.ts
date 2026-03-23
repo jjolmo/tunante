@@ -146,7 +146,7 @@ export const CONSOLE_DEFINITIONS: ConsoleDefinition[] = [
 ];
 
 // Build a reverse lookup: codec → console id
-const CODEC_TO_CONSOLE = new Map<string, string>();
+export const CODEC_TO_CONSOLE = new Map<string, string>();
 for (const def of CONSOLE_DEFINITIONS) {
 	for (const codec of def.codecs) {
 		CODEC_TO_CONSOLE.set(codec, def.id);
