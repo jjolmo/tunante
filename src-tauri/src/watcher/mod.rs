@@ -1,7 +1,7 @@
 use crate::commands::library::is_audio_file;
 use crate::metadata;
 use crate::AppState;
-use notify::{Config, Event, EventKind, RecursiveMode, Watcher};
+use notify::{Config, Event, EventKind, PollWatcher, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -9,22 +9,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
-/// On macOS, kqueue opens one FD per watched file/directory. Large libraries
-/// (especially cloud-synced folders like Seafile/Dropbox) easily exceed the
-/// 10240 FD limit. PollWatcher uses periodic directory scans instead — no FDs.
-///
-/// On Linux/Windows, the native watchers (inotify/ReadDirectoryChanges) are
-/// efficient and don't have the FD-per-file problem.
-#[cfg(target_os = "macos")]
-type PlatformWatcher = notify::PollWatcher;
-
-#[cfg(not(target_os = "macos"))]
-type PlatformWatcher = notify::RecommendedWatcher;
-
 pub struct FolderWatcher {
-    watcher: Option<PlatformWatcher>,
+    watcher: Option<Box<dyn Watcher + Send>>,
     watched_paths: HashMap<String, bool>,
     tx: mpsc::Sender<notify::Result<Event>>,
+    /// True if using PollWatcher fallback instead of native watcher
+    is_polling: bool,
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -47,36 +37,99 @@ impl FolderWatcher {
             watcher: None,
             watched_paths: HashMap::new(),
             tx,
+            is_polling: false,
         }
     }
 
     pub fn start_watching(&mut self, path: &str) -> Result<(), String> {
         if self.watcher.is_none() {
-            let tx = self.tx.clone();
-
-            #[cfg(target_os = "macos")]
-            let config = Config::default()
-                .with_poll_interval(Duration::from_secs(120));
-
-            #[cfg(not(target_os = "macos"))]
-            let config = Config::default();
-
-            let watcher = PlatformWatcher::new(
-                move |res| {
-                    let _ = tx.send(res);
-                },
-                config,
-            )
-            .map_err(|e| e.to_string())?;
-            self.watcher = Some(watcher);
+            self.create_watcher()?;
         }
 
         if let Some(ref mut watcher) = self.watcher {
-            watcher
-                .watch(std::path::Path::new(path), RecursiveMode::Recursive)
-                .map_err(|e| e.to_string())?;
-            self.watched_paths.insert(path.to_string(), true);
+            match watcher.watch(std::path::Path::new(path), RecursiveMode::Recursive) {
+                Ok(()) => {
+                    self.watched_paths.insert(path.to_string(), true);
+                }
+                Err(e) => {
+                    // On Linux, if inotify fails (too many watches), fall back to PollWatcher
+                    #[cfg(target_os = "linux")]
+                    if !self.is_polling {
+                        log::warn!(
+                            "Native watcher failed for {}: {} — falling back to PollWatcher",
+                            path, e
+                        );
+                        return self.fallback_to_poll(path);
+                    }
+                    return Err(e.to_string());
+                }
+            }
         }
+        Ok(())
+    }
+
+    /// Create the appropriate watcher for this platform.
+    /// macOS: always PollWatcher (kqueue FD limits).
+    /// Linux/Windows: native watcher (inotify/ReadDirectoryChanges).
+    fn create_watcher(&mut self) -> Result<(), String> {
+        let tx = self.tx.clone();
+
+        #[cfg(target_os = "macos")]
+        {
+            let config = Config::default().with_poll_interval(Duration::from_secs(120));
+            let watcher = PollWatcher::new(
+                move |res| { let _ = tx.send(res); },
+                config,
+            ).map_err(|e| e.to_string())?;
+            self.watcher = Some(Box::new(watcher));
+            self.is_polling = true;
+            log::info!("File watcher: PollWatcher (macOS, 120s interval)");
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            let watcher = RecommendedWatcher::new(
+                move |res| { let _ = tx.send(res); },
+                Config::default(),
+            ).map_err(|e| e.to_string())?;
+            self.watcher = Some(Box::new(watcher));
+            self.is_polling = false;
+            log::info!("File watcher: native (inotify/ReadDirectoryChanges)");
+        }
+
+        Ok(())
+    }
+
+    /// Fall back from native watcher to PollWatcher (Linux only).
+    /// Re-watches all previously watched paths with the poll watcher.
+    #[cfg(target_os = "linux")]
+    fn fallback_to_poll(&mut self, new_path: &str) -> Result<(), String> {
+        let tx = self.tx.clone();
+        let config = Config::default().with_poll_interval(Duration::from_secs(120));
+        let mut poll_watcher = PollWatcher::new(
+            move |res| { let _ = tx.send(res); },
+            config,
+        ).map_err(|e| format!("PollWatcher fallback failed: {}", e))?;
+
+        // Re-watch all existing paths
+        for existing_path in self.watched_paths.keys() {
+            if let Err(e) = poll_watcher.watch(
+                std::path::Path::new(existing_path),
+                RecursiveMode::Recursive,
+            ) {
+                log::warn!("PollWatcher failed to re-watch {}: {}", existing_path, e);
+            }
+        }
+
+        // Watch the new path that triggered the fallback
+        poll_watcher
+            .watch(std::path::Path::new(new_path), RecursiveMode::Recursive)
+            .map_err(|e| e.to_string())?;
+        self.watched_paths.insert(new_path.to_string(), true);
+
+        self.watcher = Some(Box::new(poll_watcher));
+        self.is_polling = true;
+        log::info!("File watcher: fell back to PollWatcher (120s interval)");
         Ok(())
     }
 
