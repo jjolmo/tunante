@@ -11,6 +11,10 @@
 	let initialized = $state(false);
 	let contextMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
 
+	// Breadcrumb slide animation
+	let slideDirection = $state<'forward' | 'back' | null>(null);
+	let slideKey = $state(0);
+
 	onMount(() => {
 		if (!initialized) {
 			filesStore.init();
@@ -49,7 +53,22 @@
 		expandSaveTimer = setTimeout(() => filesStore.saveExpandedFolders(), 500);
 	}
 
+	function triggerSlide(direction: 'forward' | 'back') {
+		slideDirection = direction;
+		slideKey++;
+		// Clear after animation completes
+		setTimeout(() => { slideDirection = null; }, 200);
+	}
+
 	function handleBreadcrumbNav(path: string | null) {
+		// Determine direction: going deeper = forward, going up = back
+		const oldPath = filesStore.currentPath;
+		if (path && oldPath && path.length > oldPath.length) {
+			triggerSlide('forward');
+		} else if (!path || (oldPath && path.length < oldPath.length)) {
+			triggerSlide('back');
+		}
+
 		playlistsStore.selectPlaylist(null);
 		import('$lib/stores/consoles.svelte').then(({ consolesStore }) => {
 			consolesStore.selectConsole(null);
@@ -61,10 +80,9 @@
 
 	function handleBreadcrumbFolderClick(node: FolderNode) {
 		if (node.children.length > 0) {
-			// Has children: navigate into it
+			triggerSlide('forward');
 			handleBreadcrumbNav(node.fullPath);
 		} else {
-			// Leaf folder: just select it
 			handleFolderClick(node);
 		}
 	}
@@ -207,7 +225,7 @@
 		<!-- Breadcrumb mode -->
 		{#if filesStore.currentPath}
 			<div class="breadcrumb-bar">
-				<button class="breadcrumb-up" onclick={() => filesStore.navigateUp()} title="Go up">
+				<button class="breadcrumb-up" onclick={() => { triggerSlide('back'); filesStore.navigateUp(); }} title="Go up">
 					<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
 						<path d="M11 8.5L7 4.5 3 8.5h2.5V13h3V8.5H11z" />
 					</svg>
@@ -225,11 +243,18 @@
 				{/each}
 			</div>
 		{/if}
+		{#key slideKey}
+		<div
+			class="breadcrumb-list"
+			class:slide-forward={slideDirection === 'forward'}
+			class:slide-back={slideDirection === 'back'}
+		>
 		{#each filesStore.currentFolderChildren as child (child.fullPath)}
 			<button
 				class="sidebar-item"
 				class:active={filesStore.activeFolder === child.fullPath}
 				onclick={() => handleBreadcrumbFolderClick(child)}
+				oncontextmenu={(e) => handleFolderContextMenu(e, child)}
 				title={child.fullPath}
 			>
 				<svg class="folder-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -247,6 +272,8 @@
 		{#if filesStore.currentFolderChildren.length === 0 && !filesStore.currentPath}
 			<div class="empty-hint">No monitored folders</div>
 		{/if}
+		</div>
+		{/key}
 	{/if}
 </div>
 
@@ -263,6 +290,31 @@
 	.sidebar-section {
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
+	}
+
+	/* Breadcrumb slide animations */
+	.breadcrumb-list {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.breadcrumb-list.slide-forward {
+		animation: slide-in-right 0.18s ease-out;
+	}
+
+	.breadcrumb-list.slide-back {
+		animation: slide-in-left 0.18s ease-out;
+	}
+
+	@keyframes slide-in-right {
+		from { transform: translateX(30px); opacity: 0.3; }
+		to { transform: translateX(0); opacity: 1; }
+	}
+
+	@keyframes slide-in-left {
+		from { transform: translateX(-30px); opacity: 0.3; }
+		to { transform: translateX(0); opacity: 1; }
 	}
 
 	.folder-search {
