@@ -853,6 +853,7 @@ pub fn run() {
             commands::settings::get_desktop_entry_path,
             commands::settings::create_desktop_entry,
             commands::library::open_containing_folder,
+            commands::library::open_folder,
             commands::library::resync_library,
             commands::library::update_track_metadata,
             shortcuts::update_shortcuts,
