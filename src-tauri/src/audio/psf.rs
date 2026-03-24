@@ -43,13 +43,17 @@ impl PsfSource {
     /// Uses catch_unwind to prevent panics in the C FFI layer from crashing
     /// the entire application.
     pub fn new(path: &Path) -> Result<Self, String> {
+        log::info!("[PSF] Opening: {}", path.display());
         let path_owned = path.to_path_buf();
         let result = catch_unwind(AssertUnwindSafe(|| {
             PsfDecoder::new(&path_owned)
         }));
 
         let (decoder, tags) = match result {
-            Ok(Ok(pair)) => pair,
+            Ok(Ok(pair)) => {
+                log::info!("[PSF] Loaded OK: {}", path.display());
+                pair
+            }
             Ok(Err(e)) => return Err(format!("PSF load error: {}", e)),
             Err(panic) => {
                 let msg = if let Some(s) = panic.downcast_ref::<&str>() {
@@ -165,6 +169,12 @@ impl Iterator for PsfSource {
         let sample = self.buffer[self.buf_pos];
         self.buf_pos += 1;
         Some(sample)
+    }
+}
+
+impl Drop for PsfSource {
+    fn drop(&mut self) {
+        log::info!("[PSF] Dropped (sexypsf_close will run)");
     }
 }
 
