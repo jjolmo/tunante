@@ -17,19 +17,17 @@ class FilesStore {
 	currentPath = $state<string | null>(null);
 	folderSearch = $state('');
 
-	// Cache for folderTree — only rebuild when track count changes
-	private _treeCache: FolderNode[] = [];
-	private _treeCacheKey = '';
+	// The folder tree is NOT a reactive getter — building it from 16k tracks
+	// on every reactive access caused OOM. Instead it's built once on init
+	// and rebuilt explicitly when the library changes (rescan/add/remove).
+	folderTree = $state<FolderNode[]>([]);
 
-	// --- Derived: folder tree built from track paths ---
-	get folderTree(): FolderNode[] {
+	/** Build (or rebuild) the folder tree from current tracks. Call explicitly. */
+	rebuildTree() {
 		const tracks = libraryStore.tracks;
-		if (tracks.length === 0) return [];
-
-		// Only rebuild when tracks change (by count) or monitored folders change
-		const cacheKey = `${tracks.length}:${settingsStore.monitoredFolders.map(f => f.path).join(',')}`;
-		if (cacheKey === this._treeCacheKey && this._treeCache.length > 0) {
-			return this._treeCache;
+		if (tracks.length === 0) {
+			this.folderTree = [];
+			return;
 		}
 
 		// Step 1: Count tracks per directory
@@ -44,7 +42,6 @@ class FilesStore {
 		// Step 2: Find roots from monitored folders
 		const roots = settingsStore.monitoredFolders.map((f) => f.path);
 		if (roots.length === 0) {
-			// Fallback: find common prefix of all directories
 			const dirs = [...dirCounts.keys()].sort();
 			if (dirs.length > 0) {
 				roots.push(findCommonPrefix(dirs));
@@ -58,9 +55,7 @@ class FilesStore {
 			if (tree) result.push(tree);
 		}
 
-		this._treeCache = result;
-		this._treeCacheKey = cacheKey;
-		return result;
+		this.folderTree = result;
 	}
 
 	// --- Derived: flat list of folders matching search query ---
@@ -162,6 +157,12 @@ class FilesStore {
 	setViewMode(mode: 'tree' | 'breadcrumb') {
 		this.viewMode = mode;
 		invoke('set_setting', { key: 'files_view_mode', value: mode }).catch(() => {});
+	}
+
+	/** Initialize: build tree and subscribe to library changes */
+	init() {
+		this.rebuildTree();
+		libraryStore.onTracksLoaded(() => this.rebuildTree());
 	}
 
 	restoreFromCache(getSetting: (key: string) => string | null) {
