@@ -116,16 +116,31 @@ struct ScanProgress {
 
 pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &str) {
     let scan_path = PathBuf::from(path);
+    log::info!("Scan started: {}", path);
+
+    let start_time = std::time::Instant::now();
 
     let audio_files: Vec<PathBuf> = WalkDir::new(&scan_path)
         .follow_links(true)
         .into_iter()
-        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            match e {
+                Ok(entry) => Some(entry),
+                Err(err) => {
+                    log::warn!("Scan walk error: {}", err);
+                    None
+                }
+            }
+        })
         .filter(|e| e.file_type().is_file() && is_audio_file(e.path()))
         .map(|e| e.into_path())
         .collect();
 
     let total = audio_files.len();
+    log::info!("Scan found {} audio files in {} (walk took {:?})", total, path, start_time.elapsed());
+
+    let mut inserted = 0usize;
+    let mut errors = 0usize;
 
     for (i, file_path) in audio_files.iter().enumerate() {
         let _ = app.emit(
@@ -141,8 +156,12 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
             Ok(tracks) => {
                 let db = state.db.lock();
                 for track in tracks {
-                    if let Err(e) = db.insert_track(&track) {
-                        log::error!("Failed to insert track {}: {}", track.path, e);
+                    match db.insert_track(&track) {
+                        Ok(_) => inserted += 1,
+                        Err(e) => {
+                            log::error!("Failed to insert track {}: {}", track.path, e);
+                            errors += 1;
+                        }
                     }
                 }
             }
@@ -152,9 +171,16 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
                     file_path.display(),
                     e
                 );
+                errors += 1;
             }
         }
     }
+
+    let elapsed = start_time.elapsed();
+    log::info!(
+        "Scan complete: {} — {} tracks inserted, {} errors, took {:.1}s",
+        path, inserted, errors, elapsed.as_secs_f64()
+    );
 
     let _ = app.emit("scan-complete", ());
 }

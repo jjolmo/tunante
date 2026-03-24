@@ -459,6 +459,37 @@ impl Database {
         Ok(())
     }
 
+    /// Remove all tracks whose path starts with the given folder path.
+    /// Also cleans up FTS entries and playlist references for removed tracks.
+    pub fn remove_tracks_by_folder_path(&self, folder_path: &str) -> Result<usize, DbError> {
+        // Ensure folder path ends with separator for prefix matching
+        let prefix = if folder_path.ends_with('/') || folder_path.ends_with('\\') {
+            folder_path.to_string()
+        } else {
+            format!("{}/", folder_path)
+        };
+
+        // Remove FTS entries for matching tracks
+        self.conn.execute(
+            "DELETE FROM tracks_fts WHERE rowid IN (SELECT rowid FROM tracks WHERE path LIKE ?1 OR path = ?2)",
+            params![format!("{}%", prefix), folder_path],
+        )?;
+
+        // Remove playlist_tracks references for matching tracks
+        self.conn.execute(
+            "DELETE FROM playlist_tracks WHERE track_id IN (SELECT id FROM tracks WHERE path LIKE ?1 OR path = ?2)",
+            params![format!("{}%", prefix), folder_path],
+        )?;
+
+        // Remove the tracks themselves
+        let deleted = self.conn.execute(
+            "DELETE FROM tracks WHERE path LIKE ?1 OR path = ?2",
+            params![format!("{}%", prefix), folder_path],
+        )?;
+
+        Ok(deleted)
+    }
+
     pub fn toggle_folder_watching(&self, id: &str, enabled: bool) -> Result<(), DbError> {
         self.conn.execute(
             "UPDATE monitored_folders SET watching_enabled = ?2 WHERE id = ?1",
