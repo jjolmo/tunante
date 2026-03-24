@@ -144,9 +144,9 @@
 				consolesStore.selectConsole(viewId);
 			});
 		} else if (view === 'files' && viewId) {
+			// Restore files view — only restore expanded folders and view mode,
+			// don't auto-select a folder on startup (can cause OOM with large libraries)
 			import('$lib/stores/files.svelte').then(({ filesStore }) => {
-				playlistsStore.selectPlaylist(null);
-				filesStore.selectFolder(viewId);
 				filesStore.restoreFromCache((k) => settingsStore.getSetting(k));
 			});
 		}
