@@ -56,7 +56,7 @@ impl FolderWatcher {
 
             #[cfg(target_os = "macos")]
             let config = Config::default()
-                .with_poll_interval(Duration::from_secs(30));
+                .with_poll_interval(Duration::from_secs(120));
 
             #[cfg(not(target_os = "macos"))]
             let config = Config::default();
