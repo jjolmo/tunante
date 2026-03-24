@@ -23,6 +23,8 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
 class LibraryStore {
 	tracks = $state<Track[]>([]);
 	searchQuery = $state('');
+	/** Debounced query used for actual filtering — updates 150ms after typing stops */
+	private _activeQuery = $state('');
 	sortConfig = $state<SortConfig>({ column: 'title', direction: 'asc' });
 	isScanning = $state(false);
 	scanProgress = $state<ScanProgress | null>(null);
@@ -32,6 +34,12 @@ class LibraryStore {
 	scrollToTrackId = $state<string | null>(null);
 
 	private _searchSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+	private _searchFilterTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	/** The debounced search query actually used for filtering */
+	get activeSearchQuery(): string {
+		return this._activeQuery;
+	}
 
 	get visibleColumns(): ColumnDef[] {
 		return this.columns.filter((c) => c.visible);
@@ -44,8 +52,8 @@ class LibraryStore {
 	get filteredTracks(): Track[] {
 		let result = this.tracks;
 
-		if (this.searchQuery.trim()) {
-			const q = this.searchQuery.toLowerCase();
+		if (this._activeQuery.trim()) {
+			const q = this._activeQuery.toLowerCase();
 			result = result.filter(
 				(t) =>
 					t.title.toLowerCase().includes(q) ||
@@ -97,6 +105,7 @@ class LibraryStore {
 			const savedQuery = getSetting('search_query');
 			if (savedQuery) {
 				this.searchQuery = savedQuery;
+				this._activeQuery = savedQuery;
 			}
 			this.loadColumnConfigFromCache(getSetting);
 		}
@@ -105,7 +114,19 @@ class LibraryStore {
 	}
 
 	setSearchQuery(query: string) {
-		this.searchQuery = query;
+		this.searchQuery = query; // Immediate — keeps input responsive
+
+		// Debounce the actual filtering (expensive with 16k+ tracks)
+		// Clear is instant (no reason to delay showing all tracks)
+		if (this._searchFilterTimeout) clearTimeout(this._searchFilterTimeout);
+		if (!query.trim()) {
+			this._activeQuery = '';
+		} else {
+			this._searchFilterTimeout = setTimeout(() => {
+				this._activeQuery = query;
+			}, 150);
+		}
+
 		// Debounce the DB save
 		if (this._searchSaveTimeout) clearTimeout(this._searchSaveTimeout);
 		this._searchSaveTimeout = setTimeout(async () => {
@@ -114,7 +135,7 @@ class LibraryStore {
 			} catch {
 				// ignore
 			}
-		}, 300);
+		}, 500);
 	}
 
 	requestScrollTo(trackId: string) {

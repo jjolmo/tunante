@@ -45,8 +45,9 @@
 			libraryStore.filteredTracks;
 
 		// Apply search filter to all views (not just All Tracks)
-		if (libraryStore.searchQuery.trim() && !consolesStore.activeConsoleId && result !== libraryStore.filteredTracks) {
-			const q = libraryStore.searchQuery.toLowerCase();
+		// Uses the debounced activeSearchQuery to avoid re-filtering on every keystroke
+		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && result !== libraryStore.filteredTracks) {
+			const q = libraryStore.activeSearchQuery.toLowerCase();
 			result = result.filter(
 				(t) =>
 					t.title.toLowerCase().includes(q) ||
