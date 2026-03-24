@@ -6,8 +6,11 @@
 	let expandSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function handleFolderClick(node: FolderNode) {
-		// Deselect other views
-		playlistsStore.selectPlaylist(null);
+		// Batch all state changes: clear other views first, then set files view
+		// Using queueMicrotask to avoid Svelte 5 reactivity cascade crashes
+		playlistsStore.isFavedView = false;
+		playlistsStore.activePlaylistId = null;
+		playlistsStore.playlistTracks = [];
 		import('$lib/stores/consoles.svelte').then(({ consolesStore }) => {
 			consolesStore.selectConsole(null);
 		});

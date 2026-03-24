@@ -36,6 +36,12 @@ class LibraryStore {
 	private _searchSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 	private _searchFilterTimeout: ReturnType<typeof setTimeout> | null = null;
 
+	// Memoization cache for filteredTracks — avoids creating a new sorted
+	// 16k-element array on every getter access (which caused OOM after
+	// several folder switches in Files view).
+	private _ftCache: Track[] = [];
+	private _ftCacheKey = '';
+
 	/** The debounced search query actually used for filtering */
 	get activeSearchQuery(): string {
 		return this._activeQuery;
@@ -50,6 +56,13 @@ class LibraryStore {
 	}
 
 	get filteredTracks(): Track[] {
+		// Cache key: tracks identity + query + sort config
+		// Only recompute when these actually change
+		const cacheKey = `${this.tracks.length}:${this._activeQuery}:${this.sortConfig.column}:${this.sortConfig.direction}`;
+		if (cacheKey === this._ftCacheKey && this._ftCache.length > 0) {
+			return this._ftCache;
+		}
+
 		let result = this.tracks;
 
 		if (this._activeQuery.trim()) {
@@ -81,6 +94,8 @@ class LibraryStore {
 			return cmp;
 		});
 
+		this._ftCache = result;
+		this._ftCacheKey = cacheKey;
 		return result;
 	}
 

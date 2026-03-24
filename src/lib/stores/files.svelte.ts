@@ -17,10 +17,20 @@ class FilesStore {
 	currentPath = $state<string | null>(null);
 	folderSearch = $state('');
 
+	// Cache for folderTree — only rebuild when track count changes
+	private _treeCache: FolderNode[] = [];
+	private _treeCacheKey = '';
+
 	// --- Derived: folder tree built from track paths ---
 	get folderTree(): FolderNode[] {
 		const tracks = libraryStore.tracks;
 		if (tracks.length === 0) return [];
+
+		// Only rebuild when tracks change (by count) or monitored folders change
+		const cacheKey = `${tracks.length}:${settingsStore.monitoredFolders.map(f => f.path).join(',')}`;
+		if (cacheKey === this._treeCacheKey && this._treeCache.length > 0) {
+			return this._treeCache;
+		}
 
 		// Step 1: Count tracks per directory
 		const dirCounts = new Map<string, number>();
@@ -48,6 +58,8 @@ class FilesStore {
 			if (tree) result.push(tree);
 		}
 
+		this._treeCache = result;
+		this._treeCacheKey = cacheKey;
 		return result;
 	}
 
@@ -71,9 +83,13 @@ class FilesStore {
 	// --- Derived: tracks for the active folder ---
 	get folderTracks(): Track[] {
 		if (!this.activeFolder) return [];
-		const prefix = this.activeFolder + '/';
-		return libraryStore.filteredTracks.filter(
-			(t) => t.path.startsWith(prefix) || t.path.substring(0, t.path.lastIndexOf('/')) === this.activeFolder
+		const folder = this.activeFolder;
+		const prefix = folder + '/';
+		// Filter directly from tracks (not filteredTracks) to avoid
+		// creating an expensive sorted copy of the entire library.
+		// TrackList handles its own sorting via the sortConfig.
+		return libraryStore.tracks.filter(
+			(t) => t.path.startsWith(prefix) || t.path.substring(0, t.path.lastIndexOf('/')) === folder
 		);
 	}
 
