@@ -4,9 +4,12 @@
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { invoke } from '@tauri-apps/api/core';
+	import type { ContextMenuItem } from './ContextMenu.svelte';
+	import ContextMenu from './ContextMenu.svelte';
 
 	let expandSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let initialized = $state(false);
+	let contextMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
 
 	onMount(() => {
 		if (!initialized) {
@@ -74,6 +77,28 @@
 			filesStore.currentPath = filesStore.activeFolder;
 		}
 	}
+
+	function handleFolderContextMenu(e: MouseEvent, node: FolderNode) {
+		e.preventDefault();
+		contextMenu = {
+			x: e.clientX,
+			y: e.clientY,
+			items: [
+				{
+					label: 'Play folder',
+					action: () => handleFolderDblClick(node),
+				},
+				{
+					label: 'Open in file manager',
+					action: () => {
+						invoke('open_folder', { path: node.fullPath }).catch((err) => {
+							console.error('Failed to open folder:', err);
+						});
+					},
+				},
+			],
+		};
+	}
 </script>
 
 {#snippet treeNode(node: FolderNode, depth: number)}
@@ -83,6 +108,7 @@
 		style="padding-left: {12 + depth * 16}px"
 		onclick={() => handleFolderClick(node)}
 		ondblclick={() => handleFolderDblClick(node)}
+		oncontextmenu={(e) => handleFolderContextMenu(e, node)}
 		title={node.fullPath}
 	>
 		{#if node.children.length > 0}
@@ -160,6 +186,7 @@
 				class:active={filesStore.activeFolder === node.fullPath}
 				onclick={() => handleFolderClick(node)}
 				ondblclick={() => handleFolderDblClick(node)}
+				oncontextmenu={(e) => handleFolderContextMenu(e, node)}
 				title={node.fullPath}
 			>
 				<svg class="folder-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -222,6 +249,15 @@
 		{/if}
 	{/if}
 </div>
+
+{#if contextMenu}
+	<ContextMenu
+		items={contextMenu.items}
+		x={contextMenu.x}
+		y={contextMenu.y}
+		onclose={() => contextMenu = null}
+	/>
+{/if}
 
 <style>
 	.sidebar-section {
