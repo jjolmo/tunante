@@ -2,6 +2,7 @@
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { consolesStore } from '$lib/stores/consoles.svelte';
+	import { filesStore } from '$lib/stores/files.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { formatDuration } from '$lib/types';
 	import type { Track, SortColumn, ColumnDef } from '$lib/types';
@@ -42,11 +43,12 @@
 			playlistsStore.isFavedView ? playlistsStore.favedTracks :
 			playlistsStore.activePlaylistId ? playlistsStore.playlistTracks :
 			consolesStore.activeConsoleId ? consolesStore.consoleTracks :
+			filesStore.activeFolder ? filesStore.folderTracks :
 			libraryStore.filteredTracks;
 
 		// Apply search filter to all views (not just All Tracks)
 		// Uses the debounced activeSearchQuery to avoid re-filtering on every keystroke
-		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && result !== libraryStore.filteredTracks) {
+		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && !filesStore.activeFolder && result !== libraryStore.filteredTracks) {
 			const q = libraryStore.activeSearchQuery.toLowerCase();
 			result = result.filter(
 				(t) =>

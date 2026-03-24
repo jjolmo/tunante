@@ -4,8 +4,10 @@
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { consolesStore, CODEC_TO_CONSOLE, CONSOLE_DEFINITIONS } from '$lib/stores/consoles.svelte';
+	import { filesStore } from '$lib/stores/files.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import FilesBrowser from './FilesBrowser.svelte';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 
@@ -112,19 +114,21 @@
 
 	function handleSelectPlaylist(id: string) {
 		consolesStore.selectConsole(null);
+		filesStore.selectFolder(null);
 		playlistsStore.selectPlaylist(id);
 	}
 
 	function handleSelectConsole(id: string) {
 		playlistsStore.selectPlaylist(null);
+		filesStore.selectFolder(null);
 		consolesStore.selectConsole(id);
-		// Save console view to session (can't do this in +layout.svelte due to circular imports)
 		invoke('set_setting', { key: 'session_view', value: 'console' }).catch(() => {});
 		invoke('set_setting', { key: 'session_view_id', value: id }).catch(() => {});
 	}
 
 	function handleSelectAllTracks() {
 		consolesStore.selectConsole(null);
+		filesStore.selectFolder(null);
 		playlistsStore.selectPlaylist(null);
 		invoke('set_setting', { key: 'session_view', value: 'all' }).catch(() => {});
 		invoke('set_setting', { key: 'session_view_id', value: '' }).catch(() => {});
@@ -335,7 +339,7 @@
 	<div class="sidebar-content">
 		<button
 			class="sidebar-item"
-			class:active={playlistsStore.activePlaylistId === null && !playlistsStore.isFavedView && consolesStore.activeConsoleId === null}
+			class:active={playlistsStore.activePlaylistId === null && !playlistsStore.isFavedView && consolesStore.activeConsoleId === null && filesStore.activeFolder === null}
 			onclick={handleSelectAllTracks}
 		>
 			<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -455,6 +459,10 @@
 					</button>
 				{/each}
 			</div>
+		{/if}
+
+		{#if settingsStore.showFiles && libraryStore.tracks.length > 0}
+			<FilesBrowser />
 		{/if}
 	</div>
 

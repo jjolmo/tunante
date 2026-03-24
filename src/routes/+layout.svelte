@@ -143,6 +143,12 @@
 				playlistsStore.selectPlaylist(null);
 				consolesStore.selectConsole(viewId);
 			});
+		} else if (view === 'files' && viewId) {
+			import('$lib/stores/files.svelte').then(({ filesStore }) => {
+				playlistsStore.selectPlaylist(null);
+				filesStore.selectFolder(viewId);
+				filesStore.restoreFromCache((k) => settingsStore.getSetting(k));
+			});
 		}
 
 		// Restore last track (show in player bar but don't auto-play)
