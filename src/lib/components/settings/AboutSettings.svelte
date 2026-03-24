@@ -12,37 +12,47 @@
 		getVersion().then(v => appVersion = v).catch(() => {});
 	});
 
+	const isMacOS = navigator.platform.startsWith('Mac');
+
 	async function checkForUpdates() {
 		updateStatus = 'checking';
 		updateError = '';
-		try {
-			const { check } = await import('@tauri-apps/plugin-updater');
-			const update = await check();
-			if (update) {
-				updateVersion = update.version;
-				updateStatus = 'available';
 
-				// Store update reference for download
-				(window as any).__tauriUpdate = update;
+		// On macOS, skip the Tauri plugin updater — it returns null (no update)
+		// instead of throwing, because the builds aren't codesigned/notarized.
+		// Go straight to the GitHub API fallback which always works.
+		if (!isMacOS) {
+			try {
+				const { check } = await import('@tauri-apps/plugin-updater');
+				const update = await check();
+				if (update) {
+					updateVersion = update.version;
+					updateStatus = 'available';
+					(window as any).__tauriUpdate = update;
+					return;
+				} else {
+					updateStatus = 'up-to-date';
+					return;
+				}
+			} catch {
+				// Tauri plugin failed — fall through to custom updater
+			}
+		}
+
+		// Custom updater via GitHub API (works on all platforms)
+		try {
+			const info = await invoke<any>('check_for_updates');
+			if (info.update_available) {
+				updateVersion = info.latest_version;
+				updateStatus = 'available';
+				(window as any).__tauriUpdate = null;
+				(window as any).__customUpdateUrl = info.download_url;
 			} else {
 				updateStatus = 'up-to-date';
 			}
-		} catch (e) {
-			// Fallback to custom updater for Linux AppImage
-			try {
-				const info = await invoke<any>('check_for_updates');
-				if (info.update_available) {
-					updateVersion = info.latest_version;
-					updateStatus = 'available';
-					(window as any).__tauriUpdate = null;
-					(window as any).__customUpdateUrl = info.download_url;
-				} else {
-					updateStatus = 'up-to-date';
-				}
-			} catch (e2) {
-				updateError = String(e2);
-				updateStatus = 'error';
-			}
+		} catch (e2) {
+			updateError = String(e2);
+			updateStatus = 'error';
 		}
 	}
 
