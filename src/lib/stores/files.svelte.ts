@@ -92,13 +92,16 @@ class FilesStore {
 	get breadcrumbs(): { name: string; path: string }[] {
 		if (!this.currentPath) return [];
 
-		// Find the monitored folder root that contains currentPath
-		const root = settingsStore.monitoredFolders.find((f) =>
+		// Find the root: first try monitored folders, then fall back to tree roots
+		const monRoot = settingsStore.monitoredFolders.find((f) =>
 			this.currentPath!.startsWith(f.path)
 		);
-		if (!root) return [];
+		const treeRoot = this.folderTree.find((t) =>
+			this.currentPath!.startsWith(t.fullPath)
+		);
+		const rootPath = monRoot?.path ?? treeRoot?.fullPath;
+		if (!rootPath) return [];
 
-		const rootPath = root.path;
 		const rootName = rootPath.substring(rootPath.lastIndexOf('/') + 1);
 		const crumbs: { name: string; path: string }[] = [
 			{ name: rootName, path: rootPath },
@@ -149,20 +152,23 @@ class FilesStore {
 
 	navigateUp() {
 		if (!this.currentPath) return;
-		// Find the root this path belongs to
-		const root = settingsStore.monitoredFolders.find((f) =>
+		// Find the root: monitored folder or tree root
+		const monRoot = settingsStore.monitoredFolders.find((f) =>
 			this.currentPath!.startsWith(f.path)
 		);
-		if (!root || this.currentPath === root.path) {
-			// Already at root or above — go to top level (show all roots)
+		const treeRoot = this.folderTree.find((t) =>
+			this.currentPath!.startsWith(t.fullPath)
+		);
+		const rootPath = monRoot?.path ?? treeRoot?.fullPath;
+		if (!rootPath || this.currentPath === rootPath) {
+			// Already at root — go to top level (show all roots)
 			this.currentPath = null;
 			this.activeFolder = null;
 			return;
 		}
 		const parent = this.currentPath.substring(0, this.currentPath.lastIndexOf('/'));
-		// Don't navigate above the monitored folder root
-		if (parent.length < root.path.length) {
-			this.navigateTo(root.path);
+		if (parent.length < rootPath.length) {
+			this.navigateTo(rootPath);
 		} else {
 			this.navigateTo(parent);
 		}
