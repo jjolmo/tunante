@@ -130,6 +130,11 @@ impl AudioEngine {
         // (e.g. 48kHz PSF2/Opus → 44.1kHz GSF) can corrupt the resampler,
         // causing audio to play at the wrong speed until app restart.
         self.player.stop();
+        // Brief pause to let rodio's audio thread drop the old source.
+        // Critical for PSF/PSF2/GSF/2SF: these decoders wrap C libraries with
+        // global state. The old decoder MUST be fully dropped before creating
+        // a new one, or the C globals (sexypsf, lazygsf, etc.) will conflict.
+        std::thread::sleep(Duration::from_millis(50));
         self.player = Player::connect_new(&self._device.mixer());
         self.player.set_volume(self.volume);
 
@@ -142,7 +147,7 @@ impl AudioEngine {
             .and_then(|e| e.to_str())
             .unwrap_or("");
 
-        log::info!("[play_file] path={}, ext='{}', is_gsf={}", actual_path.display(), ext, is_gsf_format(ext));
+        log::info!("[play_file] ext='{}', path={}", ext, actual_path.display());
 
         if is_gme_format(ext) {
             // GME chiptune format (NSF, SPC, GBS, VGM, etc.)
