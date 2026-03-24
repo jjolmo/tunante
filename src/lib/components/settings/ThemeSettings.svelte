@@ -83,6 +83,19 @@
 	<label class="setting-row">
 		<input
 			type="checkbox"
+			checked={settingsStore.showPlaylists}
+			onchange={(e) =>
+				settingsStore.setShowPlaylists((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Show playlists</span>
+			<span class="setting-desc">Display the playlists section in the sidebar.</span>
+		</div>
+	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
 			checked={settingsStore.showConsoles}
 			onchange={(e) =>
 				settingsStore.setShowConsoles((e.target as HTMLInputElement).checked)}
