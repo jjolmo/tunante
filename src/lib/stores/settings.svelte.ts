@@ -13,6 +13,7 @@ class SettingsStore {
 	showInTray = $state(false);
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
+	showPlaylists = $state(true);
 	showConsoles = $state(true);
 	showFiles = $state(false);
 	autoUpdateOnStart = $state(false);
@@ -64,6 +65,9 @@ class SettingsStore {
 
 		const showArt = this._settingsCache.get('show_cover_art');
 		if (showArt !== undefined) this.showCoverArt = showArt === 'true';
+
+		const showPlaylists = this._settingsCache.get('show_playlists');
+		if (showPlaylists !== undefined) this.showPlaylists = showPlaylists === 'true';
 
 		const showConsoles = this._settingsCache.get('show_consoles');
 		if (showConsoles !== undefined) this.showConsoles = showConsoles === 'true';
@@ -229,6 +233,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'show_consoles', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save consoles setting:', e);
+		}
+	}
+
+	async setShowPlaylists(enabled: boolean) {
+		this.showPlaylists = enabled;
+		try {
+			await invoke('set_setting', { key: 'show_playlists', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save playlists setting:', e);
 		}
 	}
 

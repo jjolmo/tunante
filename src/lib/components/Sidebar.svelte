@@ -363,6 +363,7 @@
 			<span class="track-count">{libraryStore.favedCount}</span>
 		</button>
 
+		{#if settingsStore.showPlaylists}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="sidebar-section">
 			<div
@@ -438,6 +439,7 @@
 				{/if}
 			{/each}
 		</div>
+		{/if}
 
 		{#if settingsStore.showConsoles && consolesStore.consolesWithCounts.length > 0}
 			<div class="sidebar-section">

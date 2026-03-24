@@ -96,21 +96,23 @@ class FilesStore {
 		const root = settingsStore.monitoredFolders.find((f) =>
 			this.currentPath!.startsWith(f.path)
 		);
-		const rootPath = root ? root.path : '';
-		const remaining = this.currentPath.substring(rootPath.length);
-		const segments = remaining.split('/').filter(Boolean);
+		if (!root) return [];
 
-		const crumbs: { name: string; path: string }[] = [];
-		// Add root
-		if (rootPath) {
-			const rootName = rootPath.substring(rootPath.lastIndexOf('/') + 1);
-			crumbs.push({ name: rootName, path: rootPath });
-		}
-		// Add each segment
-		let accumulated = rootPath;
-		for (const seg of segments) {
-			accumulated += '/' + seg;
-			crumbs.push({ name: seg, path: accumulated });
+		const rootPath = root.path;
+		const rootName = rootPath.substring(rootPath.lastIndexOf('/') + 1);
+		const crumbs: { name: string; path: string }[] = [
+			{ name: rootName, path: rootPath },
+		];
+
+		// Only show segments BELOW the root
+		if (this.currentPath.length > rootPath.length) {
+			const remaining = this.currentPath.substring(rootPath.length + 1);
+			const segments = remaining.split('/').filter(Boolean);
+			let accumulated = rootPath;
+			for (const seg of segments) {
+				accumulated += '/' + seg;
+				crumbs.push({ name: seg, path: accumulated });
+			}
 		}
 		return crumbs;
 	}
@@ -147,11 +149,23 @@ class FilesStore {
 
 	navigateUp() {
 		if (!this.currentPath) return;
-		const parent = this.currentPath.substring(0, this.currentPath.lastIndexOf('/'));
-		const isUnderRoot = settingsStore.monitoredFolders.some((f) =>
-			parent.startsWith(f.path) && parent.length >= f.path.length
+		// Find the root this path belongs to
+		const root = settingsStore.monitoredFolders.find((f) =>
+			this.currentPath!.startsWith(f.path)
 		);
-		this.navigateTo(isUnderRoot ? parent : null);
+		if (!root || this.currentPath === root.path) {
+			// Already at root or above — go to top level (show all roots)
+			this.currentPath = null;
+			this.activeFolder = null;
+			return;
+		}
+		const parent = this.currentPath.substring(0, this.currentPath.lastIndexOf('/'));
+		// Don't navigate above the monitored folder root
+		if (parent.length < root.path.length) {
+			this.navigateTo(root.path);
+		} else {
+			this.navigateTo(parent);
+		}
 	}
 
 	setViewMode(mode: 'tree' | 'breadcrumb') {

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { filesStore, type FolderNode } from '$lib/stores/files.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
+	import { playerStore } from '$lib/stores/player.svelte';
 	import { invoke } from '@tauri-apps/api/core';
 
 	let expandSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -16,7 +17,6 @@
 
 	function handleFolderClick(node: FolderNode) {
 		// Batch all state changes: clear other views first, then set files view
-		// Using queueMicrotask to avoid Svelte 5 reactivity cascade crashes
 		playlistsStore.isFavedView = false;
 		playlistsStore.activePlaylistId = null;
 		playlistsStore.playlistTracks = [];
@@ -26,6 +26,16 @@
 		filesStore.selectFolder(node.fullPath);
 		invoke('set_setting', { key: 'session_view', value: 'files' }).catch(() => {});
 		invoke('set_setting', { key: 'session_view_id', value: node.fullPath }).catch(() => {});
+	}
+
+	function handleFolderDblClick(node: FolderNode) {
+		// Select the folder first (shows tracks in TrackList)
+		handleFolderClick(node);
+		// Play the first track with all folder tracks as context
+		const tracks = filesStore.folderTracks;
+		if (tracks.length > 0) {
+			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+		}
 	}
 
 	function handleTreeToggle(e: Event, path: string) {
@@ -72,6 +82,7 @@
 		class:active={filesStore.activeFolder === node.fullPath}
 		style="padding-left: {12 + depth * 16}px"
 		onclick={() => handleFolderClick(node)}
+		ondblclick={() => handleFolderDblClick(node)}
 		title={node.fullPath}
 	>
 		{#if node.children.length > 0}
@@ -148,6 +159,7 @@
 				class="sidebar-item"
 				class:active={filesStore.activeFolder === node.fullPath}
 				onclick={() => handleFolderClick(node)}
+				ondblclick={() => handleFolderDblClick(node)}
 				title={node.fullPath}
 			>
 				<svg class="folder-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
