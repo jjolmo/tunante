@@ -6,6 +6,7 @@
 	let showDesktopModal = $state(false);
 	let desktopResult = $state('');
 	let isLinux = $state(false);
+	const isMacOS = navigator.platform.startsWith('Mac');
 
 	// Check if we're on Linux and get the .desktop path
 	$effect(() => {
@@ -93,6 +94,7 @@
 		</div>
 	</label>
 
+	{#if !isMacOS}
 	<label class="setting-row">
 		<input
 			type="checkbox"
@@ -123,6 +125,7 @@
 			>
 		</div>
 	</label>
+	{/if}
 
 	<label class="setting-row">
 		<input
