@@ -1,7 +1,7 @@
 use crate::commands::library::is_audio_file;
 use crate::metadata;
 use crate::AppState;
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{Config, Event, EventKind, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -9,8 +9,20 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
+/// On macOS, kqueue opens one FD per watched file/directory. Large libraries
+/// (especially cloud-synced folders like Seafile/Dropbox) easily exceed the
+/// 10240 FD limit. PollWatcher uses periodic directory scans instead — no FDs.
+///
+/// On Linux/Windows, the native watchers (inotify/ReadDirectoryChanges) are
+/// efficient and don't have the FD-per-file problem.
+#[cfg(target_os = "macos")]
+type PlatformWatcher = notify::PollWatcher;
+
+#[cfg(not(target_os = "macos"))]
+type PlatformWatcher = notify::RecommendedWatcher;
+
 pub struct FolderWatcher {
-    watcher: Option<RecommendedWatcher>,
+    watcher: Option<PlatformWatcher>,
     watched_paths: HashMap<String, bool>,
     tx: mpsc::Sender<notify::Result<Event>>,
 }
@@ -41,11 +53,19 @@ impl FolderWatcher {
     pub fn start_watching(&mut self, path: &str) -> Result<(), String> {
         if self.watcher.is_none() {
             let tx = self.tx.clone();
-            let watcher = RecommendedWatcher::new(
+
+            #[cfg(target_os = "macos")]
+            let config = Config::default()
+                .with_poll_interval(Duration::from_secs(30));
+
+            #[cfg(not(target_os = "macos"))]
+            let config = Config::default();
+
+            let watcher = PlatformWatcher::new(
                 move |res| {
                     let _ = tx.send(res);
                 },
-                Config::default(),
+                config,
             )
             .map_err(|e| e.to_string())?;
             self.watcher = Some(watcher);
