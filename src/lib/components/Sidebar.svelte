@@ -351,10 +351,11 @@
 			<span class="track-count">{libraryStore.tracks.length}</span>
 		</button>
 
+		{#if settingsStore.showFaved}
 		<button
 			class="sidebar-item"
 			class:active={playlistsStore.isFavedView}
-			onclick={() => { consolesStore.selectConsole(null); playlistsStore.selectFaved(); }}
+			onclick={() => { consolesStore.selectConsole(null); filesStore.selectFolder(null); playlistsStore.selectFaved(); }}
 		>
 			<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 				<path d="M8 1.23l2.18 4.41 4.87.71-3.52 3.43.83 4.85L8 12.26l-4.36 2.37.83-4.85L1 6.35l4.87-.71L8 1.23z" />
@@ -362,6 +363,7 @@
 			<span>Faved</span>
 			<span class="track-count">{libraryStore.favedCount}</span>
 		</button>
+		{/if}
 
 		{#if settingsStore.showPlaylists}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
