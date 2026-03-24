@@ -1,9 +1,18 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { filesStore, type FolderNode } from '$lib/stores/files.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { invoke } from '@tauri-apps/api/core';
 
 	let expandSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	let initialized = $state(false);
+
+	onMount(() => {
+		if (!initialized) {
+			filesStore.init();
+			initialized = true;
+		}
+	});
 
 	function handleFolderClick(node: FolderNode) {
 		// Batch all state changes: clear other views first, then set files view

@@ -157,9 +157,20 @@ class LibraryStore {
 		this.scrollToTrackId = trackId;
 	}
 
+	/** Callbacks to run after tracks are loaded (used by filesStore to rebuild tree) */
+	private _onTracksLoaded: (() => void)[] = [];
+
+	onTracksLoaded(cb: () => void) {
+		this._onTracksLoaded.push(cb);
+	}
+
 	async loadTracks() {
 		try {
 			this.tracks = await invoke<Track[]>('get_all_tracks');
+			// Invalidate filteredTracks cache
+			this._ftCacheKey = '';
+			// Notify listeners (filesStore tree rebuild, etc.)
+			for (const cb of this._onTracksLoaded) cb();
 		} catch (e) {
 			console.error('Failed to load tracks:', e);
 		}
