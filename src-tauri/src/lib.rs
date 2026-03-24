@@ -198,9 +198,51 @@ fn clear_debug_logs() {
     debug_log::clear_logs();
 }
 
+/// Raise the per-process file descriptor soft limit on macOS.
+///
+/// macOS defaults to 256 open files, but the kqueue-based file watcher
+/// (notify crate) opens one FD per watched directory. A large music library
+/// with hundreds of album folders exhausts this limit, causing "Too many
+/// open files" (EMFILE / os error 24) during both watching and scanning.
+///
+/// We raise the soft limit to the hard limit (typically 10240 on macOS),
+/// which is safe and matches what many other apps do (Chrome, VS Code, etc.).
+#[cfg(target_os = "macos")]
+fn raise_fd_limit() {
+    unsafe {
+        let mut rlim = libc::rlimit {
+            rlim_cur: 0,
+            rlim_max: 0,
+        };
+        if libc::getrlimit(libc::RLIMIT_NOFILE, &mut rlim) == 0 {
+            let old = rlim.rlim_cur;
+            // Cap at 10240 to be safe — the hard limit on macOS is usually
+            // the same or higher.  Going above 10240 requires root on some
+            // macOS versions.
+            let target = if rlim.rlim_max > 10240 {
+                10240
+            } else {
+                rlim.rlim_max
+            };
+            if rlim.rlim_cur < target {
+                rlim.rlim_cur = target;
+                if libc::setrlimit(libc::RLIMIT_NOFILE, &rlim) == 0 {
+                    log::info!("Raised file descriptor limit: {} → {}", old, target);
+                } else {
+                    log::warn!("Failed to raise file descriptor limit from {}", old);
+                }
+            }
+        }
+    }
+}
+
 pub fn run() {
     debug_log::init();
     setup_panic_hook();
+
+    // Raise macOS FD limit before anything opens files
+    #[cfg(target_os = "macos")]
+    raise_fd_limit();
 
     // Force X11 backend on Linux for native window decorations.
     //
