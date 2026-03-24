@@ -111,7 +111,8 @@
 		A cross-platform music player focused on video game music formats, inspired by foobar2000.
 	</p>
 
-	<!-- Update section -->
+	<!-- Update section (hidden for local dev builds) -->
+	{#if appVersion !== '0.1.0'}
 	<div class="about-section update-section">
 		<h4 class="about-label">Updates</h4>
 
@@ -140,6 +141,7 @@
 			<button class="update-btn small" onclick={checkForUpdates}>Retry</button>
 		{/if}
 	</div>
+	{/if}
 
 	<div class="about-section">
 		<span class="about-credit">

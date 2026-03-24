@@ -88,11 +88,19 @@
 			// Wait for BOTH library and playlists to finish before restoring session
 			const libReady = libraryStore.init((key) => settingsStore.getSetting(key));
 			const plReady = playlistsStore.init();
-			Promise.all([libReady, plReady]).then(() => {
+			Promise.all([libReady, plReady]).then(async () => {
 				restoreSession();
-				// Update on startup (skip on macOS — no codesigning yet)
+				// Update on startup:
+				// - Skip on local dev builds (version 0.1.0 = not bumped by CI)
+				// - Skip on macOS (no codesigning yet)
 				const isMacOS = navigator.platform.startsWith('Mac');
-				if (!isMacOS) {
+				let isDevBuild = false;
+				try {
+					const { getVersion } = await import('@tauri-apps/api/app');
+					const appVer = await getVersion();
+					isDevBuild = appVer === '0.1.0';
+				} catch {}
+				if (!isMacOS && !isDevBuild) {
 					if (settingsStore.autoUpdateOnStart) {
 						silentAutoUpdate();
 					} else if (settingsStore.checkUpdatesOnStart) {
