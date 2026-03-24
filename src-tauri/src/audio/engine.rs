@@ -95,6 +95,10 @@ pub struct AudioEngine {
     current_duration_ms: u64,
     was_playing: bool,
     has_source: bool,
+    /// Cooldown: ignore track_finished() briefly after play_file() to prevent
+    /// rodio's player.empty() returning true before the mixer starts consuming
+    /// the new source (race condition that causes rapid track-skipping).
+    play_started_at: Instant,
 }
 
 // Safety: AudioEngine is always accessed through a Mutex, ensuring single-threaded access.
@@ -116,6 +120,7 @@ impl AudioEngine {
             current_duration_ms: 0,
             was_playing: false,
             has_source: false,
+            play_started_at: Instant::now(),
         })
     }
 
@@ -226,6 +231,7 @@ impl AudioEngine {
         self.timer.start();
         self.was_playing = true;
         self.has_source = true;
+        self.play_started_at = Instant::now();
 
         Ok(())
     }
@@ -273,6 +279,12 @@ impl AudioEngine {
     }
 
     pub fn track_finished(&self) -> bool {
+        // Ignore for the first second after play_file() — rodio's mixer may
+        // not have started consuming the new source yet, so player.empty()
+        // can briefly return true and trigger an immediate (false) auto-advance.
+        if self.play_started_at.elapsed() < Duration::from_secs(1) {
+            return false;
+        }
         self.was_playing && self.has_source && self.player.empty()
     }
 
