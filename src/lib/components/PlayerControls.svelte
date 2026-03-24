@@ -56,20 +56,27 @@
 		const track = playerStore.currentTrack;
 		if (!track) return;
 
-		// Check if the track is already in the current view
-		const inCurrentView = libraryStore.filteredTracks.some((t) => t.id === track.id);
-		if (inCurrentView) {
+		const { consolesStore, CONSOLE_DEFINITIONS } = await import('$lib/stores/consoles.svelte');
+
+		// Determine which tracks are actually visible in the current view
+		// (must match TrackList's logic: faved → playlist → console → all)
+		const visibleTracks =
+			playlistsStore.isFavedView ? playlistsStore.favedTracks :
+			playlistsStore.activePlaylistId ? playlistsStore.playlistTracks :
+			consolesStore.activeConsoleId ? consolesStore.consoleTracks :
+			libraryStore.filteredTracks;
+
+		// If the track is already visible, just scroll to it
+		if (visibleTracks.some((t) => t.id === track.id)) {
 			libraryStore.requestScrollTo(track.id);
 			return;
 		}
 
 		// Try to find which console contains this track
-		const { consolesStore, CONSOLE_DEFINITIONS } = await import('$lib/stores/consoles.svelte');
 		for (const def of CONSOLE_DEFINITIONS) {
 			if (def.codecs.some((c: string) => c.toUpperCase() === track.codec?.toUpperCase())) {
 				playlistsStore.selectPlaylist(null);
 				consolesStore.selectConsole(def.id);
-				// Wait for view to update before scrolling
 				setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
 				return;
 			}
@@ -77,7 +84,7 @@
 
 		// Fallback: switch to All Tracks
 		playlistsStore.selectAllTracks();
-		import('$lib/stores/consoles.svelte').then(({ consolesStore }) => consolesStore.selectConsole(null));
+		consolesStore.selectConsole(null);
 		setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
 	}
 
