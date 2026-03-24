@@ -424,11 +424,28 @@ pub fn run() {
                         _ => {}
                     }
                 })
-                .on_tray_icon_event(|tray, event| {
+                .on_tray_icon_event({
+                    // Debounce tray clicks — macOS fires the Click event twice
+                    // for a single physical click, causing the window to toggle
+                    // back to its original state.
+                    use std::sync::atomic::{AtomicU64, Ordering};
+                    static LAST_CLICK_MS: AtomicU64 = AtomicU64::new(0);
+
+                    move |tray, event| {
                     if let tauri::tray::TrayIconEvent::Click { button, .. } = event {
                         let app = tray.app_handle();
                         match button {
                             tauri::tray::MouseButton::Left => {
+                                // Debounce: ignore clicks within 500ms of each other
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_millis() as u64;
+                                let prev = LAST_CLICK_MS.swap(now, Ordering::Relaxed);
+                                if now.saturating_sub(prev) < 500 {
+                                    return;
+                                }
+
                                 // Left click: toggle window visibility
                                 if let Some(window) = app.get_webview_window("main") {
                                     if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
@@ -453,7 +470,7 @@ pub fn run() {
                             _ => {}
                         }
                     }
-                })
+                }})
                 .build(app)?;
 
             // Apply initial visibility
