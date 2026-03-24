@@ -90,11 +90,14 @@
 			const plReady = playlistsStore.init();
 			Promise.all([libReady, plReady]).then(() => {
 				restoreSession();
-				// Update on startup
-				if (settingsStore.autoUpdateOnStart) {
-					silentAutoUpdate();
-				} else if (settingsStore.checkUpdatesOnStart) {
-					checkStartupUpdate();
+				// Update on startup (skip on macOS — no codesigning yet)
+				const isMacOS = navigator.platform.startsWith('Mac');
+				if (!isMacOS) {
+					if (settingsStore.autoUpdateOnStart) {
+						silentAutoUpdate();
+					} else if (settingsStore.checkUpdatesOnStart) {
+						checkStartupUpdate();
+					}
 				}
 			});
 		});
