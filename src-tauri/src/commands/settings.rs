@@ -1,7 +1,7 @@
 use crate::db::models::{MonitoredFolder, Setting};
 use crate::AppState;
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use uuid::Uuid;
 
 #[cfg(target_os = "linux")]
@@ -95,25 +95,45 @@ pub fn add_monitored_folder(
 pub fn remove_monitored_folder(
     id: String,
     state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
     let db = state.db.lock();
     let folders = db.get_monitored_folders().map_err(|e| e.to_string())?;
     let folder = folders.iter().find(|f| f.id == id).cloned();
     drop(db);
 
-    if let Some(folder) = folder {
+    if let Some(ref folder) = folder {
+        // Stop file watcher for this folder
         let mut watcher_lock = state.watcher.lock();
         if let Some(ref mut watcher) = *watcher_lock {
             let _ = watcher.stop_watching(&folder.path);
         }
         drop(watcher_lock);
+
+        // Remove all tracks belonging to this folder
+        let db = state.db.lock();
+        match db.remove_tracks_by_folder_path(&folder.path) {
+            Ok(count) => {
+                log::info!("Removed {} tracks from folder: {}", count, folder.path);
+            }
+            Err(e) => {
+                log::error!("Failed to remove tracks for folder {}: {}", folder.path, e);
+            }
+        }
+        drop(db);
     }
 
+    // Remove the folder record from DB
     state
         .db
         .lock()
         .remove_monitored_folder(&id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    // Notify frontend to refresh the track list
+    let _ = app.emit("library-updated", ());
+
+    Ok(())
 }
 
 #[tauri::command]

@@ -7,6 +7,7 @@ use tauri::{Emitter, Manager};
 pub mod audio;
 pub mod commands;
 pub mod db;
+pub mod debug_log;
 pub mod metadata;
 pub mod shortcuts;
 pub mod updater;
@@ -187,7 +188,18 @@ fn setup_global_shortcut_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         .build()
 }
 
+#[tauri::command]
+fn get_debug_logs() -> Vec<debug_log::LogEntry> {
+    debug_log::get_logs()
+}
+
+#[tauri::command]
+fn clear_debug_logs() {
+    debug_log::clear_logs();
+}
+
 pub fn run() {
+    debug_log::init();
     setup_panic_hook();
 
     // Force X11 backend on Linux for native window decorations.
@@ -736,6 +748,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            get_debug_logs,
+            clear_debug_logs,
             commands::player::play_file,
             commands::player::pause,
             commands::player::resume,

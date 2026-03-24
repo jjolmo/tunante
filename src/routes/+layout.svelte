@@ -9,11 +9,13 @@
 	import { settingsStore } from '$lib/stores/settings.svelte';
 
 	import UpdateDialog from '$lib/components/UpdateDialog.svelte';
+	import DebugWindow from '$lib/components/DebugWindow.svelte';
 
 	const APP_TITLE = 'Tunante';
 
 	let { children } = $props();
 	let sessionRestored = $state(false);
+	let showDebugWindow = $state(false);
 	let showUpdateDialog = $state(false);
 	let silentUpdateReady = $state(false);
 	let updateVersion = $state('');
@@ -203,6 +205,15 @@
 	onMount(() => {
 		getCurrentWindow().show();
 
+		// Ctrl+Alt+D: toggle debug window
+		function handleDebugShortcut(e: KeyboardEvent) {
+			if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'd') {
+				e.preventDefault();
+				showDebugWindow = !showDebugWindow;
+			}
+		}
+		window.addEventListener('keydown', handleDebugShortcut);
+
 		// Flush pending saves before window closes so session state is never lost
 		const flushSaves = () => {
 			if (saveTimer) {
@@ -215,7 +226,10 @@
 			pendingSaves.clear();
 		};
 		window.addEventListener('beforeunload', flushSaves);
-		return () => window.removeEventListener('beforeunload', flushSaves);
+		return () => {
+			window.removeEventListener('beforeunload', flushSaves);
+			window.removeEventListener('keydown', handleDebugShortcut);
+		};
 	});
 
 	$effect(() => {
@@ -238,6 +252,10 @@
 </script>
 
 {@render children()}
+
+{#if showDebugWindow}
+	<DebugWindow onclose={() => showDebugWindow = false} />
+{/if}
 
 {#if showUpdateDialog}
 	<UpdateDialog
