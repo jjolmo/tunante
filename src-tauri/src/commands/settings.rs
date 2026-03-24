@@ -124,11 +124,20 @@ pub fn remove_monitored_folder(
     }
 
     // Remove the folder record from DB
-    state
-        .db
-        .lock()
-        .remove_monitored_folder(&id)
+    let db = state.db.lock();
+    db.remove_monitored_folder(&id)
         .map_err(|e| e.to_string())?;
+
+    // If no monitored folders remain, wipe the entire library to ensure no orphans
+    let remaining = db.get_monitored_folders().unwrap_or_default();
+    if remaining.is_empty() {
+        if let Err(e) = db.clear_all_tracks() {
+            log::error!("Failed to clear all tracks: {}", e);
+        } else {
+            log::info!("Last monitored folder removed — cleared all tracks");
+        }
+    }
+    drop(db);
 
     // Notify frontend to refresh the track list
     let _ = app.emit("library-updated", ());
