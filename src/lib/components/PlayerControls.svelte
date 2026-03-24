@@ -57,13 +57,15 @@
 		if (!track) return;
 
 		const { consolesStore, CONSOLE_DEFINITIONS } = await import('$lib/stores/consoles.svelte');
+		const { filesStore } = await import('$lib/stores/files.svelte');
 
 		// Determine which tracks are actually visible in the current view
-		// (must match TrackList's logic: faved → playlist → console → all)
+		// (must match TrackList's logic: faved → playlist → console → files → all)
 		const visibleTracks =
 			playlistsStore.isFavedView ? playlistsStore.favedTracks :
 			playlistsStore.activePlaylistId ? playlistsStore.playlistTracks :
 			consolesStore.activeConsoleId ? consolesStore.consoleTracks :
+			filesStore.activeFolder ? filesStore.folderTracks :
 			libraryStore.filteredTracks;
 
 		// If the track is already visible, just scroll to it
@@ -76,15 +78,27 @@
 		for (const def of CONSOLE_DEFINITIONS) {
 			if (def.codecs.some((c: string) => c.toUpperCase() === track.codec?.toUpperCase())) {
 				playlistsStore.selectPlaylist(null);
+				filesStore.selectFolder(null);
 				consolesStore.selectConsole(def.id);
 				setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
 				return;
 			}
 		}
 
-		// Fallback: switch to All Tracks
+		// Fallback: navigate to track's parent folder if files browser is enabled
+		if (settingsStore.showFiles) {
+			const trackDir = track.path.substring(0, track.path.lastIndexOf('/'));
+			playlistsStore.selectPlaylist(null);
+			consolesStore.selectConsole(null);
+			filesStore.selectFolder(trackDir);
+			setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
+			return;
+		}
+
+		// Last resort: switch to All Tracks
 		playlistsStore.selectAllTracks();
 		consolesStore.selectConsole(null);
+		filesStore.selectFolder(null);
 		setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
 	}
 

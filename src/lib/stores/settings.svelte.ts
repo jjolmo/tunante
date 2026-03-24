@@ -14,6 +14,7 @@ class SettingsStore {
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
 	showConsoles = $state(true);
+	showFiles = $state(false);
 	autoUpdateOnStart = $state(false);
 	checkUpdatesOnStart = $state(true);
 	autoDownloadCoverArt = $state(false);
@@ -66,6 +67,9 @@ class SettingsStore {
 
 		const showConsoles = this._settingsCache.get('show_consoles');
 		if (showConsoles !== undefined) this.showConsoles = showConsoles === 'true';
+
+		const showFiles = this._settingsCache.get('show_files');
+		if (showFiles !== undefined) this.showFiles = showFiles === 'true';
 
 		const autoUpdate = this._settingsCache.get('auto_update_on_start');
 		if (autoUpdate !== undefined) this.autoUpdateOnStart = autoUpdate === 'true';
@@ -225,6 +229,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'show_consoles', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save consoles setting:', e);
+		}
+	}
+
+	async setShowFiles(enabled: boolean) {
+		this.showFiles = enabled;
+		try {
+			await invoke('set_setting', { key: 'show_files', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save files setting:', e);
 		}
 	}
 
