@@ -63,16 +63,11 @@ pub fn add_monitored_folder(
         .add_monitored_folder(&id, &path)
         .map_err(|e| e.to_string())?;
 
-    // Start watching
-    let mut watcher_lock = state.watcher.lock();
-    if let Some(ref mut watcher) = *watcher_lock {
-        if let Err(e) = watcher.start_watching(&path) {
-            log::error!("Failed to start watching {}: {}", path, e);
-        }
-    }
-    drop(watcher_lock);
-
-    // Trigger initial scan in background
+    // Scan first, THEN start watching.
+    // On macOS, PollWatcher traverses the entire directory tree on its first
+    // cycle. Running it concurrently with the initial scan causes FD exhaustion
+    // on large libraries. Scanning first ensures all files are indexed, then
+    // the watcher picks up future changes only.
     let state_inner = state.inner().clone();
     let scan_path = path.clone();
     let id_clone = id.clone();
@@ -80,6 +75,17 @@ pub fn add_monitored_folder(
         crate::commands::library::scan_folder_sync(&state_inner, &app, &scan_path);
         let db = state_inner.db.lock();
         let _ = db.update_folder_scan_time(&id_clone);
+        drop(db);
+
+        // Now start watching for future changes
+        let mut watcher_lock = state_inner.watcher.lock();
+        if let Some(ref mut watcher) = *watcher_lock {
+            if let Err(e) = watcher.start_watching(&scan_path) {
+                log::error!("Failed to start watching {}: {}", scan_path, e);
+            } else {
+                log::info!("Started watching: {}", scan_path);
+            }
+        }
     });
 
     Ok(MonitoredFolder {
