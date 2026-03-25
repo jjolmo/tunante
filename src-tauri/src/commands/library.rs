@@ -687,9 +687,11 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
 
     log::info!("linux_open_path: path={}, folder={}, select={}", path, folder.display(), select_file);
 
-    // xdg-open works universally on all Linux DEs (KDE, GNOME, XFCE, etc.)
+    // Remove GDK_BACKEND=x11 from child environment — Tunante sets this
+    // for its own window but it breaks Dolphin/Nautilus on Wayland.
     let result = std::process::Command::new("xdg-open")
         .arg(folder)
+        .env_remove("GDK_BACKEND")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn();
