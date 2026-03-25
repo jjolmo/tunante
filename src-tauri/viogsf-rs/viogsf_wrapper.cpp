@@ -94,7 +94,7 @@ viogsf_state_t* viogsf_create(uint32_t sample_rate) {
     return state;
 }
 
-int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size) {
+int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size, uint32_t entry_point) {
     if (!state || !data || size == 0) return -1;
 
     /* CPULoadRom allocates bios, RAM, etc. Must be called BEFORE CPUInit. */
@@ -110,6 +110,19 @@ int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size) {
 
     /* Reset CPU (also calls soundReset which initializes internal audio state) */
     CPUReset(state->gba);
+
+    /* Set the GBA program counter to the GSF entry point.
+     * Without this, the CPU starts at the default reset vector
+     * and never reaches the music playback code. */
+    if (entry_point != 0) {
+        state->gba->reg[15].I = entry_point;
+        state->gba->armNextPC = entry_point;
+        state->gba->reg[13].I = 0x03007F00; /* SP = default GBA stack */
+        state->gba->reg[14].I = entry_point; /* LR = entry for return */
+        state->gba->armState = true;
+        state->gba->armIrqEnable = false;
+    }
+    fprintf(stderr, "[viogsf] entry_point=0x%08X\n", entry_point);
 
     /* Set sample rate AFTER reset — soundSetSampleRate calls remake_stereo_buffer
      * which needs the audio state to be initialized by soundReset first */
