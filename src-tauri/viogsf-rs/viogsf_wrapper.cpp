@@ -20,9 +20,15 @@ struct AudioBuffer : public GBASoundOut {
         data.resize(CAPACITY, 0);
     }
 
+    static int write_call_count;
     void write(const void* samples, unsigned long bytes) override {
         const int16_t* src = (const int16_t*)samples;
         size_t count = bytes / sizeof(int16_t);
+        if (write_call_count < 5) {
+            fprintf(stderr, "[viogsf] AudioBuffer::write called: bytes=%lu, samples=%zu, avail=%zu\n",
+                    bytes, count, available);
+            write_call_count++;
+        }
         for (size_t i = 0; i < count; i++) {
             data[write_pos] = src[i];
             write_pos = (write_pos + 1) % CAPACITY;
@@ -91,12 +97,26 @@ int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size) {
     /* Unpause audio */
     soundResume(state->gba);
 
+    fprintf(stderr, "[viogsf] load_rom OK: size=%u, stereo_buffer=%p, gb_apu=%p, output=%p, sampleRate=%ld\n",
+            size, (void*)state->gba->stereo_buffer, (void*)state->gba->gb_apu,
+            (void*)state->gba->output, state->gba->soundSampleRate);
+
     state->loaded = true;
     return 0;
 }
 
+int AudioBuffer::write_call_count = 0;
+
 int viogsf_render(viogsf_state_t* state, int16_t* buf, size_t count) {
     if (!state || !state->loaded || !buf) return -1;
+
+    static int render_call_count = 0;
+    if (render_call_count < 3) {
+        fprintf(stderr, "[viogsf] render called: count=%zu, audio_avail=%zu, gba=%p, stereo_buffer=%p\n",
+                count, state->audio->available, (void*)state->gba,
+                (void*)state->gba->stereo_buffer);
+        render_call_count++;
+    }
 
     size_t samples_needed = count * 2; /* stereo */
     size_t samples_written = 0;
