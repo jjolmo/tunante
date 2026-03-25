@@ -118,13 +118,21 @@
 		playlistsStore.selectPlaylist(id);
 	}
 
+	/** Pick the first track to play — random if shuffle is on, otherwise first in list */
+	function pickStartTrack(tracks: import('$lib/types').Track[]) {
+		if (playerStore.shuffle) {
+			return tracks[Math.floor(Math.random() * tracks.length)];
+		}
+		return tracks[0];
+	}
+
 	async function handlePlayPlaylist(id: string) {
 		consolesStore.selectConsole(null);
 		filesStore.selectFolder(null);
 		await playlistsStore.selectPlaylist(id);
 		const tracks = playlistsStore.playlistTracks;
 		if (tracks.length > 0) {
-			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+			playerStore.playTrack(pickStartTrack(tracks), tracks.map((t) => t.id));
 		}
 	}
 
@@ -140,7 +148,7 @@
 		handleSelectConsole(id);
 		const tracks = consolesStore.consoleTracks;
 		if (tracks.length > 0) {
-			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+			playerStore.playTrack(pickStartTrack(tracks), tracks.map((t) => t.id));
 		}
 	}
 
@@ -148,7 +156,7 @@
 		handleSelectAllTracks();
 		const tracks = libraryStore.filteredTracks;
 		if (tracks.length > 0) {
-			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+			playerStore.playTrack(pickStartTrack(tracks), tracks.map((t) => t.id));
 		}
 	}
 

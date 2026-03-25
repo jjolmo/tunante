@@ -38,10 +38,13 @@
 	function handleFolderDblClick(node: FolderNode) {
 		// Select the folder first (shows tracks in TrackList)
 		handleFolderClick(node);
-		// Play the first track with all folder tracks as context
+		// Play a track — random if shuffle is on, otherwise first
 		const tracks = filesStore.folderTracks;
 		if (tracks.length > 0) {
-			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+			const start = playerStore.shuffle
+				? tracks[Math.floor(Math.random() * tracks.length)]
+				: tracks[0];
+			playerStore.playTrack(start, tracks.map((t) => t.id));
 		}
 	}
 
