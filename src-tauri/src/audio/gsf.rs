@@ -12,10 +12,13 @@ const DEFAULT_DURATION_MS: u64 = 150_000;
 const DEFAULT_FADE_MS: u64 = 10_000;
 /// Sample rate for GBA audio output
 const SAMPLE_RATE: u32 = 44100;
-/// Decode chunk size in stereo frames
-const CHUNK_FRAMES: usize = 1024;
+/// Decode chunk size in stereo frames.
+/// Must be large enough for blip_buf's resampler (32kHz GBA → 44.1kHz output)
+/// to produce smooth output without discontinuities at chunk boundaries.
+/// 4096 frames ≈ 93ms at 44.1kHz — eliminates the clicking artifacts.
+const CHUNK_FRAMES: usize = 4096;
 /// Larger chunk size for seek fast-forward (less overhead per call)
-const SEEK_CHUNK_FRAMES: usize = 4096;
+const SEEK_CHUNK_FRAMES: usize = 8192;
 
 /// rodio::Source implementation wrapping lazygsf for GSF/minigsf playback.
 /// Emulates GBA audio hardware via mGBA to decode Game Boy Advance music.
