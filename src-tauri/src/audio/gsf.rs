@@ -1,4 +1,7 @@
-use viogsf_rs::VioGsfDecoder;
+// TODO: Switch to viogsf_rs::VioGsfDecoder once VBA-M audio output is working.
+// viogsf produces silence — needs more investigation into ROM loading/execution.
+// lazygsf (mGBA) works but has clicking in some games (Metroid Fusion).
+use lazygsf_rs::GsfDecoder;
 use rodio::source::SeekError;
 use rodio::Source;
 use std::num::{NonZeroU16, NonZeroU32};
@@ -11,7 +14,6 @@ const DEFAULT_DURATION_MS: u64 = 150_000;
 /// Default fade duration when not specified in tags
 const DEFAULT_FADE_MS: u64 = 10_000;
 /// Sample rate for GBA audio output.
-/// VBA-M (viogsf) handles internal resampling cleanly at 44100 Hz.
 const SAMPLE_RATE: u32 = 44100;
 /// Decode chunk size in stereo frames.
 /// Must be large enough for blip_buf's resampler (32kHz GBA → 44.1kHz output)
@@ -21,10 +23,9 @@ const CHUNK_FRAMES: usize = 4096;
 /// Larger chunk size for seek fast-forward (less overhead per call)
 const SEEK_CHUNK_FRAMES: usize = 8192;
 
-/// rodio::Source implementation wrapping viogsf (VBA-M) for GSF/minigsf playback.
-/// Uses VBA-M GBA emulator for accurate audio (avoids mGBA crackling bug).
+/// rodio::Source implementation wrapping lazygsf (mGBA) for GSF/minigsf playback.
 pub struct GsfSource {
-    decoder: VioGsfDecoder,
+    decoder: GsfDecoder,
     buffer: Vec<f32>,
     buf_pos: usize,
     total_duration: Option<Duration>,
@@ -44,11 +45,9 @@ unsafe impl Send for GsfSource {}
 impl GsfSource {
     /// Create a new GsfSource for a GSF/minigsf file.
     ///
-    /// Loads the PSF chain (minigsf → gsflib), initializes the VBA-M emulator,
-    /// and prepares for streaming PCM output.
     pub fn new(path: &Path) -> Result<Self, String> {
         let (decoder, tags) =
-            VioGsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("GSF load error: {}", e))?;
+            GsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("GSF load error: {}", e))?;
 
         // Duration from PSF tags, or defaults
         let length_ms = if tags.length_ms > 0 {
