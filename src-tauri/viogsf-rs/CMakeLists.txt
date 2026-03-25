@@ -10,6 +10,9 @@ set(VBAM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../viogsf/vbam")
 # psflib (reuse from lazygsf, rename symbols to avoid collision)
 set(PSFLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../lazygsf-rs/psflib")
 
+# Bundled zlib (fallback for Windows which doesn't have system zlib)
+set(ZLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../hepsf-rs/zlib")
+
 add_library(viogsf STATIC
     # Wrapper
     ${CMAKE_CURRENT_SOURCE_DIR}/viogsf_wrapper.cpp
@@ -51,10 +54,27 @@ target_compile_definitions(viogsf PRIVATE
     -Dpsf2fs_virtual_readfile=viogsf_psf2fs_virtual_readfile
 )
 
-find_package(ZLIB REQUIRED)
-target_link_libraries(viogsf PRIVATE ZLIB::ZLIB)
+# Try system zlib first, fall back to bundled
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    target_link_libraries(viogsf PRIVATE ZLIB::ZLIB)
+else()
+    # Use bundled zlib from hepsf-rs
+    file(GLOB ZLIB_SOURCES "${ZLIB_DIR}/*.c")
+    target_sources(viogsf PRIVATE ${ZLIB_SOURCES})
+    target_include_directories(viogsf PRIVATE ${ZLIB_DIR})
+endif()
+
+# On ARM (macOS aarch64), 'regparm' attribute is not valid.
+# Define it away so __attribute__((regparm(2))) becomes __attribute__(()) which is harmless.
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
+    target_compile_definitions(viogsf PRIVATE "regparm(x)=")
+endif()
 
 # Suppress warnings from VBA-M code
-target_compile_options(viogsf PRIVATE -w)
+target_compile_options(viogsf PRIVATE
+    $<$<CXX_COMPILER_ID:MSVC>:/w>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w>
+)
 
 install(TARGETS viogsf ARCHIVE DESTINATION lib)
