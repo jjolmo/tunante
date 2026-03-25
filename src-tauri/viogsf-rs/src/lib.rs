@@ -11,7 +11,7 @@ use std::path::Path;
 
 extern "C" {
     fn viogsf_create(sample_rate: u32) -> *mut c_void;
-    fn viogsf_load_rom(state: *mut c_void, data: *const u8, size: u32) -> i32;
+    fn viogsf_load_rom(state: *mut c_void, data: *const u8, size: u32, entry_point: u32) -> i32;
     fn viogsf_render(state: *mut c_void, buf: *mut i16, count: usize) -> i32;
     fn viogsf_restart(state: *mut c_void);
     fn viogsf_destroy(state: *mut c_void);
@@ -285,6 +285,7 @@ impl VioGsfDecoder {
                 state,
                 collector.rom_data.as_ptr(),
                 collector.rom_data.len() as u32,
+                collector.entry_point,
             )
         };
 
