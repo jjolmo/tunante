@@ -21,6 +21,11 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
+#ifndef _WIN32
+#include <dirent.h>
+#include <strings.h>
+#endif
+
 #include "PsxCommon.h"
 #include "driver.h"
 
@@ -83,7 +88,7 @@ char *GetFileWithBase(char *f, char *newfile)
 {
   static char *ret;
   char *tp1;
-                       
+
  #if PSS_STYLE==1
      tp1=((char *)strrchr(f,'/'));
  #else
@@ -102,7 +107,7 @@ char *GetFileWithBase(char *f, char *newfile)
       ret=malloc(strlen(newfile)+1);
       strcpy(ret,newfile);
      }
-     else              
+     else
      {
       ret=malloc(tp1-f+2+strlen(newfile));	// 1(NULL), 1(/).
       memcpy(ret,f,tp1-f);
@@ -110,6 +115,49 @@ char *GetFileWithBase(char *f, char *newfile)
       ret[tp1-f+1]=0;
       strcat(ret,newfile);
      }
+
+    /* Case-insensitive fallback for Unix: if exact path doesn't exist,
+       scan the directory for a case-insensitive match. PSF collections
+       made on Windows often have mismatched case in _lib tags. */
+#ifndef _WIN32
+    {
+     FILE *test = fopen(ret, "rb");
+     if(!test && tp1)
+     {
+      /* Extract directory part */
+      size_t dirlen = tp1 - f;
+      char *dir = malloc(dirlen + 1);
+      memcpy(dir, f, dirlen);
+      dir[dirlen] = 0;
+
+      DIR *dp = opendir(dir);
+      if(dp)
+      {
+       struct dirent *ep;
+       while((ep = readdir(dp)))
+       {
+        if(!strcasecmp(ep->d_name, newfile))
+        {
+         free(ret);
+         ret = malloc(dirlen + 2 + strlen(ep->d_name));
+         memcpy(ret, f, dirlen);
+         ret[dirlen] = '/';
+         ret[dirlen + 1] = 0;
+         strcat(ret, ep->d_name);
+         break;
+        }
+       }
+       closedir(dp);
+      }
+      free(dir);
+     }
+     else if(test)
+     {
+      fclose(test);
+     }
+    }
+#endif
+
     return(ret);
 }
 
