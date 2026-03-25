@@ -1,7 +1,4 @@
-// TODO: Switch to viogsf_rs::VioGsfDecoder once VBA-M audio output is working.
-// viogsf produces silence — needs more investigation into ROM loading/execution.
-// lazygsf (mGBA) works but has clicking in some games (Metroid Fusion).
-use lazygsf_rs::GsfDecoder;
+use viogsf_rs::VioGsfDecoder;
 use rodio::source::SeekError;
 use rodio::Source;
 use std::num::{NonZeroU16, NonZeroU32};
@@ -23,9 +20,9 @@ const CHUNK_FRAMES: usize = 4096;
 /// Larger chunk size for seek fast-forward (less overhead per call)
 const SEEK_CHUNK_FRAMES: usize = 8192;
 
-/// rodio::Source implementation wrapping lazygsf (mGBA) for GSF/minigsf playback.
+/// rodio::Source implementation wrapping viogsf (VBA-M) for GSF/minigsf playback.
 pub struct GsfSource {
-    decoder: GsfDecoder,
+    decoder: VioGsfDecoder,
     buffer: Vec<f32>,
     buf_pos: usize,
     total_duration: Option<Duration>,
@@ -47,7 +44,7 @@ impl GsfSource {
     ///
     pub fn new(path: &Path) -> Result<Self, String> {
         let (decoder, tags) =
-            GsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("GSF load error: {}", e))?;
+            VioGsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("GSF load error: {}", e))?;
 
         // Duration from PSF tags, or defaults
         let length_ms = if tags.length_ms > 0 {
