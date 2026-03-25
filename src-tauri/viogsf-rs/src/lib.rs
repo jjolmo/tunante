@@ -163,7 +163,10 @@ unsafe extern "C" fn gsf_upload_callback(
 
     // GSF exe header: 4 bytes entry, 4 bytes offset, 4 bytes size, then ROM data
     let entry = u32::from_le_bytes([*exe, *exe.add(1), *exe.add(2), *exe.add(3)]);
-    let offset = u32::from_le_bytes([*exe.add(4), *exe.add(5), *exe.add(6), *exe.add(7)]);
+    // Mask offset to 25 bits (0x1FFFFFF) — without this, the ROM buffer
+    // is allocated at the full GBA memory address (e.g. 0x08000000 = 128MB)
+    // creating a huge mostly-empty buffer that the emulator can't use properly.
+    let offset = u32::from_le_bytes([*exe.add(4), *exe.add(5), *exe.add(6), *exe.add(7)]) & 0x1FFFFFF;
     let size = u32::from_le_bytes([*exe.add(8), *exe.add(9), *exe.add(10), *exe.add(11)]);
 
     let data_start = 12;
