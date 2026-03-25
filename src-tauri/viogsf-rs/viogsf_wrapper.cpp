@@ -58,14 +58,6 @@ viogsf_state_t* viogsf_create(uint32_t sample_rate) {
     state->sample_rate = sample_rate;
     state->loaded = false;
 
-    /* Initialize the GBA system */
-    CPUInit(state->gba);
-
-    /* Set up audio */
-    state->gba->output = state->audio;
-    soundInit(state->gba, state->audio);
-    soundSetSampleRate(state->gba, sample_rate);
-
     /* Configure for GSF playback (no video, no BIOS) */
     state->gba->useBios = false;
     state->gba->skipBios = true;
@@ -78,9 +70,17 @@ viogsf_state_t* viogsf_create(uint32_t sample_rate) {
 int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size) {
     if (!state || !data || size == 0) return -1;
 
-    /* CPULoadRom expects the ROM data and its size */
+    /* CPULoadRom allocates bios, RAM, etc. Must be called BEFORE CPUInit. */
     int result = CPULoadRom(state->gba, data, size);
-    if (result == 0) return -1; /* CPULoadRom returns 0 on failure */
+    if (result == 0) return -1;
+
+    /* Now safe to initialize CPU (needs bios allocated by CPULoadRom) */
+    CPUInit(state->gba);
+
+    /* Set up audio AFTER ROM is loaded */
+    state->gba->output = state->audio;
+    soundInit(state->gba, state->audio);
+    soundSetSampleRate(state->gba, state->sample_rate);
 
     CPUReset(state->gba);
     state->loaded = true;
