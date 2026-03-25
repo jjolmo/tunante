@@ -277,6 +277,18 @@ unsafe extern "C" fn gsf_upload_callback(
     gsf_upload_section(context, exe, exe_size)
 }
 
+/// Status callback — logs psflib error/status messages for debugging
+unsafe extern "C" fn gsf_status_callback(
+    _context: *mut c_void,
+    message: *const c_char,
+) {
+    if !message.is_null() {
+        if let Ok(msg) = CStr::from_ptr(message).to_str() {
+            eprintln!("[lazygsf] psflib status: {}", msg);
+        }
+    }
+}
+
 // ============================================================================
 // Global init
 // ============================================================================
@@ -352,7 +364,7 @@ impl GsfDecoder {
                 Some(tag_info_callback),
                 &mut collector as *mut TagCollector as *mut c_void,
                 0, // don't want nested tags
-                None,
+                Some(gsf_status_callback),
                 std::ptr::null_mut(),
             )
         };
@@ -362,7 +374,10 @@ impl GsfDecoder {
                 gsf_shutdown(state);
                 libc::free(state);
             }
-            return Err(format!("psf_load failed for: {}", path_str));
+            return Err(format!(
+                "psf_load failed (code={}) for: {}",
+                result, path_str
+            ));
         }
 
         // Set sample rate
