@@ -3,6 +3,7 @@
 	import { filesStore, type FolderNode } from '$lib/stores/files.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
+	import { libraryStore } from '$lib/stores/library.svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
@@ -45,6 +46,7 @@
 				? tracks[Math.floor(Math.random() * tracks.length)]
 				: tracks[0];
 			playerStore.playTrack(start, tracks.map((t) => t.id));
+			setTimeout(() => libraryStore.requestScrollTo(start.id), 50);
 		}
 	}
 
