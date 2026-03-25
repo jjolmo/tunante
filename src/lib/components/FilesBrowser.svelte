@@ -96,6 +96,19 @@
 		}
 	}
 
+	async function handleCreatePlaylistFromFolder(node: FolderNode) {
+		// Select folder first to populate folderTracks
+		handleFolderClick(node);
+		const tracks = filesStore.folderTracks;
+		if (tracks.length === 0) return;
+		const folderName = node.name;
+		await playlistsStore.createPlaylist(folderName);
+		const playlist = playlistsStore.playlists.find((p) => p.name === folderName);
+		if (playlist) {
+			await playlistsStore.addTracksToPlaylist(playlist.id, tracks.map((t) => t.id));
+		}
+	}
+
 	function handleFolderContextMenu(e: MouseEvent, node: FolderNode) {
 		e.preventDefault();
 		contextMenu = {
@@ -105,6 +118,10 @@
 				{
 					label: 'Play folder',
 					action: () => handleFolderDblClick(node),
+				},
+				{
+					label: 'Create as playlist',
+					action: () => handleCreatePlaylistFromFolder(node),
 				},
 				{
 					label: 'Open in file manager',
