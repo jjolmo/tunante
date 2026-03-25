@@ -13,7 +13,7 @@ const DEFAULT_FADE_MS: u64 = 10_000;
 /// Sample rate for PS1 audio output
 const SAMPLE_RATE: u32 = 44100;
 /// Decode chunk size in stereo frames
-const CHUNK_FRAMES: usize = 1024;
+const CHUNK_FRAMES: usize = 4096;
 
 /// rodio::Source implementation wrapping sexypsf for PSF/minipsf playback.
 /// Emulates PS1 R3000 CPU + SPU (with HLE BIOS) to decode PlayStation 1 music.
