@@ -56,6 +56,8 @@ struct viogsf_state {
     bool loaded;
 };
 
+int AudioBuffer::write_call_count = 0;
+
 extern "C" {
 
 viogsf_state_t* viogsf_create(uint32_t sample_rate) {
@@ -105,8 +107,6 @@ int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size) {
     state->loaded = true;
     return 0;
 }
-
-int AudioBuffer::write_call_count = 0;
 
 int viogsf_render(viogsf_state_t* state, int16_t* buf, size_t count) {
     if (!state || !state->loaded || !buf) return -1;
