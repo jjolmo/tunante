@@ -72,6 +72,24 @@
 		}
 	}
 
+	async function copyLogs() {
+		const text = filteredLogs()
+			.map((e) => `${e.timestamp} ${e.level} [${e.target}] ${e.message}`)
+			.join('\n');
+		try {
+			await navigator.clipboard.writeText(text);
+		} catch {
+			// Fallback: select all in container
+			if (logContainer) {
+				const range = document.createRange();
+				range.selectNodeContents(logContainer);
+				const sel = window.getSelection();
+				sel?.removeAllRanges();
+				sel?.addRange(range);
+			}
+		}
+	}
+
 	onMount(() => {
 		loadLogs();
 		// Auto-refresh every 2 seconds
@@ -107,6 +125,7 @@
 					Auto-scroll
 				</label>
 				<button class="btn-small" onclick={loadLogs}>Refresh</button>
+				<button class="btn-small" onclick={copyLogs}>Copy</button>
 				<button class="btn-small btn-danger" onclick={clearLogs}>Clear</button>
 				<button class="btn-close" onclick={onclose}>&#x2715;</button>
 			</div>
@@ -246,6 +265,8 @@
 	.log-entry {
 		display: flex;
 		gap: 8px;
+		user-select: text;
+		cursor: text;
 		padding: 1px 12px;
 		white-space: nowrap;
 	}
@@ -275,7 +296,8 @@
 
 	.log-msg {
 		color: #ddd;
-		overflow: hidden;
+		white-space: pre-wrap;
+		word-break: break-all;
 		text-overflow: ellipsis;
 	}
 
