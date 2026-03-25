@@ -97,43 +97,26 @@ viogsf_state_t* viogsf_create(uint32_t sample_rate) {
 int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size, uint32_t entry_point) {
     if (!state || !data || size == 0) return -1;
 
-    /* CPULoadRom allocates bios, RAM, etc. Must be called BEFORE CPUInit. */
+    /* Follow the exact init sequence from deadbeef_GSFdecoder (working reference):
+     * 1. CPULoadRom — allocate memory and load ROM
+     * 2. soundInit + soundSetSampleRate + soundReset — set up audio pipeline
+     * 3. CPUInit — initialize CPU state (needs bios from CPULoadRom)
+     * 4. CPUReset — reset emulator to start state
+     */
     int result = CPULoadRom(state->gba, data, size);
     if (result == 0) return -1;
 
-    /* Initialize CPU (needs bios allocated by CPULoadRom) */
-    CPUInit(state->gba);
-
-    /* Set up audio output */
     state->gba->output = state->audio;
     soundInit(state->gba, state->audio);
+    soundSetSampleRate(state->gba, state->sample_rate);
+    soundReset(state->gba);
 
-    /* Reset CPU (also calls soundReset which initializes internal audio state) */
+    CPUInit(state->gba);
     CPUReset(state->gba);
 
-    /* Set the GBA program counter to the GSF entry point.
-     * Without this, the CPU starts at the default reset vector
-     * and never reaches the music playback code. */
-    if (entry_point != 0) {
-        state->gba->reg[15].I = entry_point;
-        state->gba->armNextPC = entry_point;
-        state->gba->reg[13].I = 0x03007F00; /* SP = default GBA stack */
-        state->gba->reg[14].I = entry_point; /* LR = entry for return */
-        state->gba->armState = true;
-        state->gba->armIrqEnable = false;
-    }
-    fprintf(stderr, "[viogsf] entry_point=0x%08X\n", entry_point);
-
-    /* Set sample rate AFTER reset — soundSetSampleRate calls remake_stereo_buffer
-     * which needs the audio state to be initialized by soundReset first */
-    soundSetSampleRate(state->gba, state->sample_rate);
-
-    /* Unpause audio */
-    soundResume(state->gba);
-
-    fprintf(stderr, "[viogsf] load_rom OK: size=%u, stereo_buffer=%p, gb_apu=%p, output=%p, sampleRate=%ld\n",
+    fprintf(stderr, "[viogsf] load_rom OK: size=%u, stereo_buffer=%p, gb_apu=%p, sampleRate=%ld\n",
             size, (void*)state->gba->stereo_buffer, (void*)state->gba->gb_apu,
-            (void*)state->gba->output, state->gba->soundSampleRate);
+            state->gba->soundSampleRate);
 
     state->loaded = true;
     return 0;
@@ -155,8 +138,8 @@ int viogsf_render(viogsf_state_t* state, int16_t* buf, size_t count) {
     int empty_frames = 0;
 
     while (samples_written < samples_needed) {
-        /* Run one frame of GBA emulation (~280896 ticks per frame at 16.78MHz) */
-        CPULoop(state->gba, 280896);
+        /* Run emulation (~250000 ticks, matching deadbeef_GSFdecoder reference) */
+        CPULoop(state->gba, 250000);
 
         /* Read available samples from the audio buffer */
         size_t remaining = samples_needed - samples_written;
