@@ -1,15 +1,6 @@
-/* arm_compat.h — included before all sources on non-x86 platforms */
-/* Override GBAcpu.h's regparm definition which is x86-only */
-#define INSN_REGPARM /*nothing*/
-/* Prevent GBAcpu.h from redefining it */
-#define GBACPU_H
-struct GBASystem;
-extern int armExecute(GBASystem *);
-extern int thumbExecute(GBASystem *);
-#ifdef __GNUC__
-# define LIKELY(x) __builtin_expect(!!(x),1)
-# define UNLIKELY(x) __builtin_expect(!!(x),0)
-#else
-# define LIKELY(x) (x)
-# define UNLIKELY(x) (x)
-#endif
+/* arm_compat.h — Fix regparm attribute on non-x86 platforms.
+ * regparm is an x86-only GCC extension. On ARM/aarch64, it doesn't exist.
+ * This header is force-included before all sources to redefine regparm
+ * as a no-op macro, so __attribute__((regparm(2))) becomes
+ * __attribute__((/*nothing*/)) which GCC/Clang accept silently. */
+#define regparm(x) /* nothing */
