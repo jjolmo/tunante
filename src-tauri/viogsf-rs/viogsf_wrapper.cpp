@@ -3,6 +3,7 @@
 #include "viogsf_wrapper.h"
 #include "../viogsf/vbam/gba/GBA.h"
 #include "../viogsf/vbam/gba/Sound.h"
+#include <cstdio>
 
 #include <cstring>
 #include <cstdlib>
