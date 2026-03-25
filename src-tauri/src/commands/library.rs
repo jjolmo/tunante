@@ -715,8 +715,26 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
 
     log::info!("linux_open_path: path={}, folder={}, select={}", path, folder.display(), select_file);
 
-    // Remove GDK_BACKEND=x11 from child environment — Tunante sets this
-    // for its own window but it breaks Dolphin/Nautilus on Wayland.
+    // Try Dolphin first (KDE) — forces a new window so it's always visible.
+    // xdg-open reuses the existing Dolphin instance which may open a tab
+    // in a background window that the user never sees.
+    if let Ok(mut child) = std::process::Command::new("dolphin")
+        .arg("--new-window")
+        .arg(if select_file {
+            format!("--select {}", target.display())
+        } else {
+            folder.to_string_lossy().to_string()
+        })
+        .env_remove("GDK_BACKEND")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+    {
+        log::info!("Opened via dolphin --new-window: {}", folder.display());
+        return Ok(());
+    }
+
+    // Fallback: xdg-open (GNOME, XFCE, etc.)
     let result = std::process::Command::new("xdg-open")
         .arg(folder)
         .env_remove("GDK_BACKEND")
