@@ -118,6 +118,16 @@
 		playlistsStore.selectPlaylist(id);
 	}
 
+	async function handlePlayPlaylist(id: string) {
+		consolesStore.selectConsole(null);
+		filesStore.selectFolder(null);
+		await playlistsStore.selectPlaylist(id);
+		const tracks = playlistsStore.playlistTracks;
+		if (tracks.length > 0) {
+			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+		}
+	}
+
 	function handleSelectConsole(id: string) {
 		playlistsStore.selectPlaylist(null);
 		filesStore.selectFolder(null);
@@ -417,6 +427,7 @@
 						class:dragging={draggingPlaylistId === playlist.id}
 						draggable="true"
 						onclick={() => handleSelectPlaylist(playlist.id)}
+						ondblclick={() => handlePlayPlaylist(playlist.id)}
 						oncontextmenu={(e) => handlePlaylistContextMenu(e, playlist)}
 						ondragstart={(e) => handlePlaylistReorderDragStart(e, playlist.id)}
 						ondragover={(e) => { handlePlaylistDragOver(e, playlist.id); handlePlaylistReorderDragOver(e, playlist.id); }}
