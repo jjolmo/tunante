@@ -674,6 +674,69 @@ pub fn update_track_metadata(
     Ok(())
 }
 
+/// Open a file or folder in the system file manager on Linux.
+/// If `select_file` is true, tries to highlight the file in the file manager.
+/// Tries: 1) KDE kioclient  2) dbus FileManager1  3) xdg-open
+#[cfg(target_os = "linux")]
+fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
+    let target = PathBuf::from(path);
+    let folder = if select_file {
+        target.parent().unwrap_or(&target)
+    } else {
+        &target
+    };
+
+    // 1. KDE: kioclient (works on Plasma/Dolphin, XWayland, Wayland)
+    if select_file {
+        let kde_result = std::process::Command::new("kioclient")
+            .args(["exec", &format!("file://{}", folder.display())])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        if kde_result.is_ok() {
+            log::info!("Opened via kioclient: {}", folder.display());
+            return Ok(());
+        }
+    }
+
+    // 2. DBus FileManager1 (GNOME, some KDE setups)
+    let folder_str = folder.to_string_lossy();
+    let uri_path = if select_file { path } else { &folder_str };
+    let file_uri = format!("file://{}", uri_path);
+    let dbus_method = if select_file { "ShowItems" } else { "ShowFolders" };
+    let dbus_result = std::process::Command::new("dbus-send")
+        .args([
+            "--session",
+            "--dest=org.freedesktop.FileManager1",
+            "--type=method_call",
+            "/org/freedesktop/FileManager1",
+            &format!("org.freedesktop.FileManager1.{}", dbus_method),
+            &format!("array:string:{}", file_uri),
+            "string:",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+
+    if let Ok(output) = dbus_result {
+        if output.status.success() {
+            log::info!("Opened via dbus FileManager1.{}", dbus_method);
+            return Ok(());
+        }
+    }
+
+    // 3. Fallback: xdg-open (always opens the folder, can't select file)
+    log::info!("Falling back to xdg-open: {}", folder.display());
+    std::process::Command::new("xdg-open")
+        .arg(folder)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to open folder: {}", e))?;
+
+    Ok(())
+}
+
 #[tauri::command]
 pub fn open_containing_folder(path: String) -> Result<(), String> {
     // Strip virtual path suffix (#N) for multi-track VGM files
@@ -689,37 +752,7 @@ pub fn open_containing_folder(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        // Use dbus to ask the file manager to show the file (highlights it)
-        // Falls back to xdg-open on the folder if dbus fails
-        let file_uri = format!("file://{}", file_path.display());
-        let dbus_result = std::process::Command::new("dbus-send")
-            .args([
-                "--session",
-                "--dest=org.freedesktop.FileManager1",
-                "--type=method_call",
-                "/org/freedesktop/FileManager1",
-                "org.freedesktop.FileManager1.ShowItems",
-                &format!("array:string:{}", file_uri),
-                "string:",
-            ])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .output();
-
-        match dbus_result {
-            Ok(output) if output.status.success() => {
-                log::info!("Opened via dbus FileManager1");
-            }
-            _ => {
-                log::info!("dbus FileManager1 failed, falling back to xdg-open");
-                std::process::Command::new("xdg-open")
-                    .arg(folder)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn()
-                    .map_err(|e| format!("Failed to open folder: {}", e))?;
-            }
-        }
+        linux_open_path(actual_path, true)?;
     }
 
     #[cfg(target_os = "macos")]
@@ -751,12 +784,7 @@ pub fn open_folder(path: String) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open")
-            .arg(&folder)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| format!("Failed to open folder: {}", e))?;
+        linux_open_path(&path, false)?;
     }
 
     #[cfg(target_os = "macos")]
