@@ -207,6 +207,14 @@ Send me an example. I'll just tell the AI to do it so I can go to the fucking fu
 
 0 (Zero). So you can start reflecting now what kind of future we're moving towards ☀️
 
+**"Why do I need that crap command to run it on macOS?"**
+
+I don't know... ask Apple why we need to pay a fucking $1,000 yearly subscription to release an app without adding paranoid notes saying my app might destroy your family and delete pizza from Earth. The same goes for Windows. I don't have Windows to check if it works. So if it does, send a message, and I'll update the readme. But I guess you will need to authorise opening an "insecure app". I'm not going to give a penny to those fucking extortionists.
+
+**"Do I need this app?"**
+
+Only if you want a multiplatform app that reads almost all video game formats. Otherwise please search for a more serious player that was made by human hearts instead of this idiotic amalgam of data.
+
 ## License
 
 This project is licensed under the **GNU General Public License v2.0** — see the [LICENSE](LICENSE) file for details.
