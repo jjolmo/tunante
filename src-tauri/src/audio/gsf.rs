@@ -10,8 +10,11 @@ use std::time::Duration;
 const DEFAULT_DURATION_MS: u64 = 150_000;
 /// Default fade duration when not specified in tags
 const DEFAULT_FADE_MS: u64 = 10_000;
-/// Sample rate for GBA audio output
-const SAMPLE_RATE: u32 = 44100;
+/// Sample rate for GBA audio output.
+/// Using the native GBA rate (32768 Hz) avoids blip_buf resampling artifacts
+/// inside lazygsf. Rodio handles the final 32768→48000 Hz conversion
+/// with its own high-quality resampler.
+const SAMPLE_RATE: u32 = 32768;
 /// Decode chunk size in stereo frames.
 /// Must be large enough for blip_buf's resampler (32kHz GBA → 44.1kHz output)
 /// to produce smooth output without discontinuities at chunk boundaries.
