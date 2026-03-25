@@ -3,7 +3,7 @@
 	import { getVersion } from '@tauri-apps/api/app';
 
 	let appVersion = $state('0.1.0');
-	let updateStatus = $state<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'done' | 'error'>('idle');
+	let updateStatus = $state<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'done' | 'done-mac' | 'error'>('idle');
 	let updateVersion = $state('');
 	let updateError = $state('');
 	let downloadProgress = $state('');
@@ -86,7 +86,7 @@
 				const url = (window as any).__customUpdateUrl;
 				const msg = await invoke<string>('download_and_apply_update', { downloadUrl: url });
 				downloadProgress = msg;
-				updateStatus = 'done';
+				updateStatus = isMacOS ? 'done-mac' : 'done';
 			}
 		} catch (e) {
 			updateError = String(e);
@@ -111,8 +111,7 @@
 		A cross-platform music player focused on video game music formats, inspired by foobar2000.
 	</p>
 
-	<!-- Update section (hidden for local dev builds) -->
-	{#if appVersion !== '0.1.0'}
+	<!-- Update section -->
 	<div class="about-section update-section">
 		<h4 class="about-label">Updates</h4>
 
@@ -128,7 +127,7 @@
 				<span class="update-new">New version available: <strong>v{updateVersion}</strong></span>
 				<div class="update-actions">
 					<button class="update-btn primary" onclick={downloadAndInstall}>
-						Download & Install
+						{isMacOS ? "Download from GitHub" : "Download & Install"}
 					</button>
 				</div>
 			</div>
@@ -136,12 +135,17 @@
 			<span class="update-status">Downloading update... {downloadProgress}</span>
 		{:else if updateStatus === 'done'}
 			<span class="update-status success">Update installed! Restarting...</span>
+		{:else if updateStatus === 'done-mac'}
+			<div class="update-mac-instructions">
+				<span class="update-status success">Download started in your browser.</span>
+				<p class="mac-hint">After installing, open Terminal and run:</p>
+				<code class="mac-command">xattr -cr /Applications/Tunante.app</code>
+			</div>
 		{:else if updateStatus === 'error'}
 			<span class="update-status error">{updateError}</span>
 			<button class="update-btn small" onclick={checkForUpdates}>Retry</button>
 		{/if}
 	</div>
-	{/if}
 
 	<div class="about-section">
 		<span class="about-credit">
@@ -334,5 +338,29 @@
 		display: flex;
 		gap: 8px;
 		margin-top: 4px;
+	}
+
+	.update-mac-instructions {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.mac-hint {
+		font-size: 11px;
+		color: var(--color-text-secondary);
+		margin: 4px 0 0;
+	}
+
+	.mac-command {
+		font-family: 'JetBrains Mono', 'Fira Code', monospace;
+		font-size: 11px;
+		background-color: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 6px 10px;
+		color: var(--color-accent);
+		user-select: all;
+		cursor: text;
 	}
 </style>
