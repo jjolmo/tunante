@@ -100,9 +100,10 @@ int viogsf_render(viogsf_state_t* state, int16_t* buf, size_t count) {
 
     size_t samples_needed = count * 2; /* stereo */
     size_t samples_written = 0;
+    int empty_frames = 0;
 
     while (samples_written < samples_needed) {
-        /* Run one frame of GBA emulation (~280896 ticks per frame) */
+        /* Run one frame of GBA emulation (~280896 ticks per frame at 16.78MHz) */
         CPULoop(state->gba, 280896);
 
         /* Read available samples from the audio buffer */
@@ -110,11 +111,17 @@ int viogsf_render(viogsf_state_t* state, int16_t* buf, size_t count) {
         size_t got = state->audio->read(buf + samples_written, remaining);
         samples_written += got;
 
-        /* Safety: if no samples produced after a frame, break to avoid infinite loop */
         if (got == 0) {
-            /* Fill remainder with silence */
-            memset(buf + samples_written, 0, (samples_needed - samples_written) * sizeof(int16_t));
-            break;
+            empty_frames++;
+            /* Give the emulator up to 120 empty frames (~2 seconds) to start
+             * producing audio. GBA games need time to initialize. */
+            if (empty_frames > 120) {
+                memset(buf + samples_written, 0,
+                       (samples_needed - samples_written) * sizeof(int16_t));
+                break;
+            }
+        } else {
+            empty_frames = 0;
         }
     }
 
