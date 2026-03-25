@@ -142,6 +142,22 @@
 		</div>
 	</label>
 
+	<label class="setting-row" class:disabled={!settingsStore.autoDownloadCoverArt}>
+		<input
+			type="checkbox"
+			checked={settingsStore.storeCoversInFolder}
+			disabled={!settingsStore.autoDownloadCoverArt}
+			onchange={(e) =>
+				settingsStore.setStoreCoversInFolder((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Store covers in folder</span>
+			<span class="setting-desc"
+				>Save downloaded cover art as cover.jpg in the track's folder for future offline access.</span
+			>
+		</div>
+	</label>
+
 	{#if isLinux}
 		<div class="setting-action">
 			<button class="action-btn" onclick={() => { desktopResult = ''; showDesktopModal = true; }}>

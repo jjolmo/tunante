@@ -20,6 +20,7 @@ class SettingsStore {
 	autoUpdateOnStart = $state(false);
 	checkUpdatesOnStart = $state(true);
 	autoDownloadCoverArt = $state(false);
+	storeCoversInFolder = $state(false);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -87,6 +88,9 @@ class SettingsStore {
 
 		const dlCover = this._settingsCache.get('auto_download_cover_art');
 		if (dlCover !== undefined) this.autoDownloadCoverArt = dlCover === 'true';
+
+		const storeCover = this._settingsCache.get('store_covers_in_folder');
+		if (storeCover !== undefined) this.storeCoversInFolder = storeCover === 'true';
 	}
 
 	private _teardownMediaListener() {
@@ -291,10 +295,23 @@ class SettingsStore {
 	}
 	async setAutoDownloadCoverArt(enabled: boolean) {
 		this.autoDownloadCoverArt = enabled;
+		// If download is disabled, also disable store in folder
+		if (!enabled && this.storeCoversInFolder) {
+			await this.setStoreCoversInFolder(false);
+		}
 		try {
 			await invoke('set_setting', { key: 'auto_download_cover_art', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save auto-download cover art setting:', e);
+		}
+	}
+
+	async setStoreCoversInFolder(enabled: boolean) {
+		this.storeCoversInFolder = enabled;
+		try {
+			await invoke('set_setting', { key: 'store_covers_in_folder', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save store covers setting:', e);
 		}
 	}
 }

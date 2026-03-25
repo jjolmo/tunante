@@ -256,12 +256,28 @@ pub fn get_artwork(track_path: String) -> Result<Option<String>, String> {
     metadata::extract_artwork_base64(&PathBuf::from(actual_path)).map_err(|e| e.to_string())
 }
 
+/// Save cover art bytes to the track's folder as cover.jpg (if store_in_folder is true).
+fn save_cover_to_folder(track_path: &str, bytes: &[u8]) {
+    let path = std::path::Path::new(track_path);
+    if let Some(folder) = path.parent() {
+        let cover_path = folder.join("cover.jpg");
+        if !cover_path.exists() {
+            match std::fs::write(&cover_path, bytes) {
+                Ok(()) => log::info!("Saved cover to: {}", cover_path.display()),
+                Err(e) => log::warn!("Failed to save cover to {}: {}", cover_path.display(), e),
+            }
+        }
+    }
+}
+
 /// Fetch cover art from iTunes Search API with local file cache.
 /// Returns base64 data URI if found, None otherwise.
 #[tauri::command]
 pub async fn fetch_cover_art(
     album: String,
     artist: String,
+    track_path: Option<String>,
+    store_in_folder: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     use sha2::{Sha256, Digest};
@@ -367,6 +383,13 @@ pub async fn fetch_cover_art(
     // 7. Save to cache
     std::fs::write(&cache_path, &bytes)
         .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+
+    // 7b. Save to track's folder if requested
+    if store_in_folder.unwrap_or(false) {
+        if let Some(ref tp) = track_path {
+            save_cover_to_folder(tp, &bytes);
+        }
+    }
 
     // 8. Return as base64 data URI
     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -511,6 +534,8 @@ async fn search_wikipedia_cover(
 pub async fn fetch_vgm_cover_art(
     game_name: String,
     console_name: String,
+    track_path: Option<String>,
+    store_in_folder: Option<bool>,
     app: tauri::AppHandle,
 ) -> Result<Option<String>, String> {
     use sha2::{Sha256, Digest};
@@ -576,6 +601,7 @@ pub async fn fetch_vgm_cover_art(
                     let mime = mime_from_bytes(&bytes);
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
                     log::info!("VGM cover from Libretro: {} [{}] ({})", game_name, full_name, console_name);
+                    if store_in_folder.unwrap_or(false) { if let Some(ref tp) = track_path { save_cover_to_folder(tp, &bytes); } }
                     return Ok(Some(format!("data:{};base64,{}", mime, b64)));
                 }
             }
@@ -590,6 +616,7 @@ pub async fn fetch_vgm_cover_art(
             let mime = mime_from_bytes(&bytes);
             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
             log::info!("VGM cover from Wikipedia: {}", game_name);
+            if store_in_folder.unwrap_or(false) { if let Some(ref tp) = track_path { save_cover_to_folder(tp, &bytes); } }
             return Ok(Some(format!("data:{};base64,{}", mime, b64)));
         }
     }
@@ -625,6 +652,7 @@ pub async fn fetch_vgm_cover_art(
                             let mime = mime_from_bytes(&bytes);
                             let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
                             log::info!("VGM cover from iTunes: {}", game_name);
+                            if store_in_folder.unwrap_or(false) { if let Some(ref tp) = track_path { save_cover_to_folder(tp, &bytes); } }
                             return Ok(Some(format!("data:{};base64,{}", mime, b64)));
                         }
                     }
