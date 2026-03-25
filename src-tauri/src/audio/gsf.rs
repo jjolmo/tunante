@@ -1,4 +1,4 @@
-use lazygsf_rs::GsfDecoder;
+use viogsf_rs::VioGsfDecoder;
 use rodio::source::SeekError;
 use rodio::Source;
 use std::num::{NonZeroU16, NonZeroU32};
@@ -11,10 +11,8 @@ const DEFAULT_DURATION_MS: u64 = 150_000;
 /// Default fade duration when not specified in tags
 const DEFAULT_FADE_MS: u64 = 10_000;
 /// Sample rate for GBA audio output.
-/// Using the native GBA rate (32768 Hz) avoids blip_buf resampling artifacts
-/// inside lazygsf. Rodio handles the final 32768→48000 Hz conversion
-/// with its own high-quality resampler.
-const SAMPLE_RATE: u32 = 32768;
+/// VBA-M (viogsf) handles internal resampling cleanly at 44100 Hz.
+const SAMPLE_RATE: u32 = 44100;
 /// Decode chunk size in stereo frames.
 /// Must be large enough for blip_buf's resampler (32kHz GBA → 44.1kHz output)
 /// to produce smooth output without discontinuities at chunk boundaries.
@@ -23,10 +21,10 @@ const CHUNK_FRAMES: usize = 4096;
 /// Larger chunk size for seek fast-forward (less overhead per call)
 const SEEK_CHUNK_FRAMES: usize = 8192;
 
-/// rodio::Source implementation wrapping lazygsf for GSF/minigsf playback.
-/// Emulates GBA audio hardware via mGBA to decode Game Boy Advance music.
+/// rodio::Source implementation wrapping viogsf (VBA-M) for GSF/minigsf playback.
+/// Uses VBA-M GBA emulator for accurate audio (avoids mGBA crackling bug).
 pub struct GsfSource {
-    decoder: GsfDecoder,
+    decoder: VioGsfDecoder,
     buffer: Vec<f32>,
     buf_pos: usize,
     total_duration: Option<Duration>,
@@ -46,11 +44,11 @@ unsafe impl Send for GsfSource {}
 impl GsfSource {
     /// Create a new GsfSource for a GSF/minigsf file.
     ///
-    /// Loads the PSF chain (minigsf → gsflib), initializes the mGBA emulator,
+    /// Loads the PSF chain (minigsf → gsflib), initializes the VBA-M emulator,
     /// and prepares for streaming PCM output.
     pub fn new(path: &Path) -> Result<Self, String> {
         let (decoder, tags) =
-            GsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("GSF load error: {}", e))?;
+            VioGsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("GSF load error: {}", e))?;
 
         // Duration from PSF tags, or defaults
         let length_ms = if tags.length_ms > 0 {
