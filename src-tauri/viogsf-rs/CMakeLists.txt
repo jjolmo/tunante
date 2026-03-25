@@ -65,10 +65,13 @@ else()
     target_include_directories(viogsf PRIVATE ${ZLIB_DIR})
 endif()
 
-# On ARM (macOS aarch64), 'regparm' attribute is not valid.
-# Define it away so __attribute__((regparm(2))) becomes __attribute__(()) which is harmless.
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm|aarch64|ARM64")
-    target_compile_definitions(viogsf PRIVATE "regparm(x)=")
+# On non-x86 (macOS aarch64, Linux ARM), 'regparm' attribute is not valid.
+# Force-include arm_compat.h which pre-defines GBACPU_H guard + INSN_REGPARM
+# as empty, preventing GBAcpu.h from defining __attribute__((regparm(2))).
+if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|i[3-6]86")
+    target_compile_options(viogsf PRIVATE
+        -include "${CMAKE_CURRENT_SOURCE_DIR}/arm_compat.h"
+    )
 endif()
 
 # Suppress warnings from VBA-M code
