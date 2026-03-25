@@ -77,7 +77,60 @@ extern "C" {
 
 unsafe extern "C" fn psf_fopen(_context: *mut c_void, path: *const c_char) -> *mut c_void {
     let mode = b"rb\0".as_ptr() as *const c_char;
-    libc::fopen(path, mode) as *mut c_void
+
+    // Try the exact path first
+    let handle = libc::fopen(path, mode);
+    if !handle.is_null() {
+        return handle as *mut c_void;
+    }
+
+    // If not found and it's a .gsflib/.psflib/etc, search parent directories.
+    // This handles the common case where minigsf files are in subfolders
+    // but their referenced .lib file is in a parent directory.
+    let path_str = match CStr::from_ptr(path).to_str() {
+        Ok(s) => s,
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let p = std::path::Path::new(path_str);
+    let filename = match p.file_name() {
+        Some(f) => f,
+        None => return std::ptr::null_mut(),
+    };
+
+    // Only search parents for library files (not the minigsf itself)
+    let fname_str = filename.to_string_lossy();
+    let is_lib = fname_str.ends_with("lib")
+        || fname_str.ends_with(".gsflib")
+        || fname_str.ends_with(".psflib")
+        || fname_str.ends_with(".2sflib");
+
+    if !is_lib {
+        return std::ptr::null_mut();
+    }
+
+    // Walk up parent directories (max 5 levels)
+    if let Some(mut dir) = p.parent() {
+        for _ in 0..5 {
+            dir = match dir.parent() {
+                Some(d) => d,
+                None => break,
+            };
+            let candidate = dir.join(filename);
+            if candidate.exists() {
+                let c_candidate = match CString::new(candidate.to_string_lossy().as_bytes()) {
+                    Ok(c) => c,
+                    Err(_) => break,
+                };
+                let h = libc::fopen(c_candidate.as_ptr(), mode);
+                if !h.is_null() {
+                    return h as *mut c_void;
+                }
+            }
+        }
+    }
+
+    std::ptr::null_mut()
 }
 
 unsafe extern "C" fn psf_fread(
