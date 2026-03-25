@@ -15,7 +15,7 @@ const DEFAULT_FADE_MS: u64 = 10_000;
 /// (PS1 uses 33,868,800 / 768 = 44,100 Hz — different!)
 const SAMPLE_RATE: u32 = 48000;
 /// Decode chunk size in stereo frames
-const CHUNK_FRAMES: usize = 1024;
+const CHUNK_FRAMES: usize = 4096;
 /// Larger chunk size for seek fast-forward (less overhead per call).
 /// Bigger = fewer render calls = faster seeking.
 const SEEK_CHUNK_FRAMES: usize = 16384;
