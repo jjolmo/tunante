@@ -718,20 +718,23 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
     // Try Dolphin first (KDE) — forces a new window so it's always visible.
     // xdg-open reuses the existing Dolphin instance which may open a tab
     // in a background window that the user never sees.
-    if let Ok(mut child) = std::process::Command::new("dolphin")
-        .arg("--new-window")
-        .arg(if select_file {
-            format!("--select {}", target.display())
-        } else {
-            folder.to_string_lossy().to_string()
-        })
-        .env_remove("GDK_BACKEND")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
     {
-        log::info!("Opened via dolphin --new-window: {}", folder.display());
-        return Ok(());
+        let mut cmd = std::process::Command::new("dolphin");
+        cmd.arg("--new-window");
+        if select_file {
+            cmd.arg("--select").arg(&target);
+        } else {
+            cmd.arg(folder);
+        }
+        if let Ok(_) = cmd
+            .env_remove("GDK_BACKEND")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            log::info!("Opened via dolphin --new-window: {}", folder.display());
+            return Ok(());
+        }
     }
 
     // Fallback: xdg-open (GNOME, XFCE, etc.)
