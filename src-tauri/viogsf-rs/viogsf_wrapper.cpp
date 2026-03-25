@@ -74,15 +74,23 @@ int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size) {
     int result = CPULoadRom(state->gba, data, size);
     if (result == 0) return -1;
 
-    /* Now safe to initialize CPU (needs bios allocated by CPULoadRom) */
+    /* Initialize CPU (needs bios allocated by CPULoadRom) */
     CPUInit(state->gba);
 
-    /* Set up audio AFTER ROM is loaded */
+    /* Set up audio output */
     state->gba->output = state->audio;
     soundInit(state->gba, state->audio);
+
+    /* Reset CPU (also calls soundReset which initializes internal audio state) */
+    CPUReset(state->gba);
+
+    /* Set sample rate AFTER reset — soundSetSampleRate calls remake_stereo_buffer
+     * which needs the audio state to be initialized by soundReset first */
     soundSetSampleRate(state->gba, state->sample_rate);
 
-    CPUReset(state->gba);
+    /* Unpause audio */
+    soundResume(state->gba);
+
     state->loaded = true;
     return 0;
 }
