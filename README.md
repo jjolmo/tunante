@@ -209,7 +209,7 @@ Send me an example. I'll just tell the AI to do it so I can go to the fucking fu
 
 **"Why do I need that crap command to run it on macOS?"**
 
-I don't know... ask Apple why we need to pay a fucking $1,000 yearly subscription to release an app without adding paranoid notes saying my app might destroy your family and delete pizza from Earth. The same goes for Windows. I don't have Windows to check if it works. So if it does, send a message, and I'll update the readme. But I guess you will need to authorise opening an "insecure app". I'm not going to give a penny to those fucking extortionists.
+I don't know... ask Apple why we need to pay a fucking $1,00 yearly subscription to release an app without adding paranoid notes saying my app might destroy your family and delete pizza from Earth. The same goes for Windows. I don't have Windows to check if it works. So if it does, send a message, and I'll update the readme. But I guess you will need to authorise opening an "insecure app". I'm not going to give a penny to those fucking extortionists.
 
 **"Do I need this app?"**
 
