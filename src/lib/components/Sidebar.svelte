@@ -57,12 +57,16 @@
 							downloaded = await invoke<string | null>('fetch_vgm_cover_art', {
 								gameName: track.album,
 								consoleName: consoleDef?.name || '',
+								trackPath: track.path,
+								storeInFolder: settingsStore.storeCoversInFolder,
 							});
 						} else if (track.album || track.artist) {
 							// Standard track: use iTunes scraper
 							downloaded = await invoke<string | null>('fetch_cover_art', {
 								album: track.album || '',
 								artist: track.artist || '',
+								trackPath: track.path,
+								storeInFolder: settingsStore.storeCoversInFolder,
 							});
 						}
 						// Only update if still on the same track
