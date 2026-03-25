@@ -98,11 +98,13 @@ int viogsf_load_rom(viogsf_state_t* state, const uint8_t* data, uint32_t size, u
     if (!state || !data || size == 0) return -1;
 
     /* Follow the exact init sequence from deadbeef_GSFdecoder (working reference):
-     * 1. CPULoadRom — allocate memory and load ROM
-     * 2. soundInit + soundSetSampleRate + soundReset — set up audio pipeline
-     * 3. CPUInit — initialize CPU state (needs bios from CPULoadRom)
-     * 4. CPUReset — reset emulator to start state
+     * 1. Set cpuIsMultiBoot if entry_point is in multiboot region (0x02xxxxxx)
+     * 2. CPULoadRom — allocate memory and load ROM
+     * 3. soundInit + soundSetSampleRate + soundReset — set up audio pipeline
+     * 4. CPUInit — initialize CPU state (needs bios from CPULoadRom)
+     * 5. CPUReset — reset emulator to start state
      */
+    state->gba->cpuIsMultiBoot = ((entry_point >> 24) == 2);
     int result = CPULoadRom(state->gba, data, size);
     if (result == 0) return -1;
 
