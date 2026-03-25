@@ -132,7 +132,9 @@
 		await playlistsStore.selectPlaylist(id);
 		const tracks = playlistsStore.playlistTracks;
 		if (tracks.length > 0) {
-			playerStore.playTrack(pickStartTrack(tracks), tracks.map((t) => t.id));
+			const start = pickStartTrack(tracks);
+			playerStore.playTrack(start, tracks.map((t) => t.id));
+			setTimeout(() => libraryStore.requestScrollTo(start.id), 50);
 		}
 	}
 
@@ -148,7 +150,9 @@
 		handleSelectConsole(id);
 		const tracks = consolesStore.consoleTracks;
 		if (tracks.length > 0) {
-			playerStore.playTrack(pickStartTrack(tracks), tracks.map((t) => t.id));
+			const start = pickStartTrack(tracks);
+			playerStore.playTrack(start, tracks.map((t) => t.id));
+			setTimeout(() => libraryStore.requestScrollTo(start.id), 50);
 		}
 	}
 
@@ -156,7 +160,9 @@
 		handleSelectAllTracks();
 		const tracks = libraryStore.filteredTracks;
 		if (tracks.length > 0) {
-			playerStore.playTrack(pickStartTrack(tracks), tracks.map((t) => t.id));
+			const start = pickStartTrack(tracks);
+			playerStore.playTrack(start, tracks.map((t) => t.id));
+			setTimeout(() => libraryStore.requestScrollTo(start.id), 50);
 		}
 	}
 
