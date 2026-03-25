@@ -56,17 +56,21 @@ class LibraryStore {
 	}
 
 	get filteredTracks(): Track[] {
-		// Cache key: tracks identity + query + sort config
-		// Only recompute when these actually change
-		const cacheKey = `${this.tracks.length}:${this._activeQuery}:${this.sortConfig.column}:${this.sortConfig.direction}`;
+		// Read all reactive dependencies FIRST so Svelte tracks them
+		// (early return from cache must not skip dependency tracking)
+		const tracks = this.tracks;
+		const query = this._activeQuery;
+		const { column, direction } = this.sortConfig;
+
+		const cacheKey = `${tracks.length}:${query}:${column}:${direction}`;
 		if (cacheKey === this._ftCacheKey && this._ftCache.length > 0) {
 			return this._ftCache;
 		}
 
-		let result = this.tracks;
+		let result = tracks;
 
-		if (this._activeQuery.trim()) {
-			const q = this._activeQuery.toLowerCase();
+		if (query.trim()) {
+			const q = query.toLowerCase();
 			result = result.filter(
 				(t) =>
 					t.title.toLowerCase().includes(q) ||
@@ -75,7 +79,6 @@ class LibraryStore {
 			);
 		}
 
-		const { column, direction } = this.sortConfig;
 		const dir = direction === 'asc' ? 1 : -1;
 		result = [...result].sort((a, b) => {
 			const va = a[column] ?? '';
