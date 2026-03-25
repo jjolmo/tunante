@@ -43,13 +43,9 @@ GSF_unpack_uint32le(const uint8_t *b) {
 static void
 GSF_postAudioBuffer(struct mAVStream * stream, blip_t * left, blip_t * right) {
     gsf_state_t *state = (gsf_state_t *) stream;
-    /* blip_read_samples returns the actual number of samples read, which may
-     * be less than LAZYGSF_BUFFER_SIZE if the blip buffer didn't have enough.
-     * We must use the actual count, not the requested count, to avoid reading
-     * stale data from the end of the buffer. */
-    int avail = blip_read_samples(left, state->samples, LAZYGSF_BUFFER_SIZE, true);
+    blip_read_samples(left, state->samples, LAZYGSF_BUFFER_SIZE, true);
     blip_read_samples(right, state->samples + 1, LAZYGSF_BUFFER_SIZE, true);
-    state->buffered = avail;
+    state->buffered = LAZYGSF_BUFFER_SIZE;
 }
 
 static void
