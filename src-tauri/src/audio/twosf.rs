@@ -13,7 +13,7 @@ const DEFAULT_FADE_MS: u64 = 10_000;
 /// Sample rate for NDS audio output
 const SAMPLE_RATE: u32 = 44100;
 /// Decode chunk size in stereo frames
-const CHUNK_FRAMES: usize = 1024;
+const CHUNK_FRAMES: usize = 4096;
 /// Larger chunk size for seek fast-forward (less overhead per call)
 const SEEK_CHUNK_FRAMES: usize = 16384;
 
