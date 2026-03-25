@@ -25,9 +25,15 @@ struct AudioBuffer : public GBASoundOut {
     void write(const void* samples, unsigned long bytes) override {
         const int16_t* src = (const int16_t*)samples;
         size_t count = bytes / sizeof(int16_t);
-        if (write_call_count < 5) {
-            fprintf(stderr, "[viogsf] AudioBuffer::write called: bytes=%lu, samples=%zu, avail=%zu\n",
-                    bytes, count, available);
+        if (write_call_count < 10) {
+            // Check if samples have actual audio data (not silence)
+            int16_t max_val = 0;
+            for (size_t i = 0; i < count && i < 100; i++) {
+                int16_t abs_val = src[i] < 0 ? -src[i] : src[i];
+                if (abs_val > max_val) max_val = abs_val;
+            }
+            fprintf(stderr, "[viogsf] write: bytes=%lu samples=%zu avail=%zu max_sample=%d\n",
+                    bytes, count, available, max_val);
             write_call_count++;
         }
         for (size_t i = 0; i < count; i++) {
@@ -38,11 +44,22 @@ struct AudioBuffer : public GBASoundOut {
         if (available > CAPACITY) available = CAPACITY;
     }
 
+    static int read_call_count;
     size_t read(int16_t* dst, size_t count) {
         size_t to_read = count < available ? count : available;
         for (size_t i = 0; i < to_read; i++) {
             dst[i] = data[read_pos];
             read_pos = (read_pos + 1) % CAPACITY;
+        }
+        if (read_call_count < 5 && to_read > 0) {
+            int16_t max_val = 0;
+            for (size_t i = 0; i < to_read && i < 100; i++) {
+                int16_t abs_val = dst[i] < 0 ? -dst[i] : dst[i];
+                if (abs_val > max_val) max_val = abs_val;
+            }
+            fprintf(stderr, "[viogsf] read: requested=%zu got=%zu max_out=%d\n",
+                    count, to_read, max_val);
+            read_call_count++;
         }
         available -= to_read;
         return to_read;
@@ -57,6 +74,7 @@ struct viogsf_state {
 };
 
 int AudioBuffer::write_call_count = 0;
+int AudioBuffer::read_call_count = 0;
 
 extern "C" {
 
