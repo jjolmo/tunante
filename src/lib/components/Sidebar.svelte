@@ -136,6 +136,22 @@
 		invoke('set_setting', { key: 'session_view_id', value: id }).catch(() => {});
 	}
 
+	function handlePlayConsole(id: string) {
+		handleSelectConsole(id);
+		const tracks = consolesStore.consoleTracks;
+		if (tracks.length > 0) {
+			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+		}
+	}
+
+	function handlePlayAllTracks() {
+		handleSelectAllTracks();
+		const tracks = libraryStore.filteredTracks;
+		if (tracks.length > 0) {
+			playerStore.playTrack(tracks[0], tracks.map((t) => t.id));
+		}
+	}
+
 	function handleSelectAllTracks() {
 		consolesStore.selectConsole(null);
 		filesStore.selectFolder(null);
@@ -351,6 +367,7 @@
 			class="sidebar-item"
 			class:active={playlistsStore.activePlaylistId === null && !playlistsStore.isFavedView && consolesStore.activeConsoleId === null && filesStore.activeFolder === null}
 			onclick={handleSelectAllTracks}
+			ondblclick={handlePlayAllTracks}
 		>
 			<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 				<path
@@ -465,6 +482,7 @@
 						class="sidebar-item"
 						class:active={consolesStore.activeConsoleId === console.id}
 						onclick={() => handleSelectConsole(console.id)}
+						ondblclick={() => handlePlayConsole(console.id)}
 					>
 						<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 							<path d={console.icon} />
