@@ -80,6 +80,29 @@
 		libraryStore.setSort(column);
 	}
 
+	// Column header sort via mousedown/mouseup instead of onclick.
+	// macOS WebKit suppresses onclick on draggable elements because the
+	// drag gesture detector intercepts the mouse events.
+	let colSortMouseDown: { col: SortColumn; x: number; y: number } | null = null;
+
+	function handleColMouseDown(e: MouseEvent, col: SortColumn) {
+		if (e.button === 0) {
+			colSortMouseDown = { col, x: e.clientX, y: e.clientY };
+		}
+	}
+
+	function handleColMouseUp(e: MouseEvent, col: SortColumn) {
+		if (colSortMouseDown && colSortMouseDown.col === col) {
+			// Only treat as click if mouse didn't move much (not a drag)
+			const dx = e.clientX - colSortMouseDown.x;
+			const dy = e.clientY - colSortMouseDown.y;
+			if (dx * dx + dy * dy < 25) {
+				handleSort(col);
+			}
+		}
+		colSortMouseDown = null;
+	}
+
 	function handleTrackClick(track: Track, event: MouseEvent, idx: number) {
 		libraryStore.selectTrack(track.id, event.ctrlKey || event.metaKey, event.shiftKey, idx, tracks);
 	}
@@ -251,6 +274,7 @@
 
 	// Column drag reorder
 	function handleColDragStart(e: DragEvent, colId: string) {
+		colSortMouseDown = null; // drag started — don't trigger sort on mouseup
 		draggingColId = colId;
 		e.dataTransfer!.effectAllowed = 'move';
 		e.dataTransfer!.setData('text/plain', colId);
@@ -341,7 +365,8 @@
 					class:drag-over-col={dragOverColId === col.id}
 					style={getColumnStyle(col)}
 					data-col-id={col.id}
-					onclick={() => handleSort(col.field)}
+					onmousedown={(e) => handleColMouseDown(e, col.field)}
+					onmouseup={(e) => handleColMouseUp(e, col.field)}
 					draggable="true"
 					ondragstart={(e) => handleColDragStart(e, col.id)}
 					ondragover={(e) => handleColDragOver(e, col.id)}
