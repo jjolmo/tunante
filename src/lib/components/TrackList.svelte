@@ -358,50 +358,35 @@
 		<div class="col col-status">
 			<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 15,8 3,15"/></svg>
 		</div>
+		<!-- Use <div> instead of <button> for column headers because macOS
+		     WebKit ignores draggable="true" on <button> elements, breaking
+		     column drag-to-reorder. -->
 		{#each visibleColumns as col (col.id)}
-			{#if col.sortable}
-				<button
-					class="col"
-					class:drag-over-col={dragOverColId === col.id}
-					style={getColumnStyle(col)}
-					data-col-id={col.id}
-					onmousedown={(e) => handleColMouseDown(e, col.field)}
-					onmouseup={(e) => handleColMouseUp(e, col.field)}
-					draggable="true"
-					ondragstart={(e) => handleColDragStart(e, col.id)}
-					ondragover={(e) => handleColDragOver(e, col.id)}
-					ondragleave={handleColDragLeave}
-					ondrop={(e) => handleColDrop(e, col.id)}
-					ondragend={handleColDragEnd}
-				>
-					{col.label}{sortIndicator(col.field)}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<span
-						class="col-resize-handle"
-						onmousedown={(e) => handleResizeStart(e, col.id)}
-					></span>
-				</button>
-			{:else}
-				<div
-					class="col"
-					class:drag-over-col={dragOverColId === col.id}
-					style={getColumnStyle(col)}
-					data-col-id={col.id}
-					draggable="true"
-					ondragstart={(e) => handleColDragStart(e, col.id)}
-					ondragover={(e) => handleColDragOver(e, col.id)}
-					ondragleave={handleColDragLeave}
-					ondrop={(e) => handleColDrop(e, col.id)}
-					ondragend={handleColDragEnd}
-				>
-					{col.label}
-					<!-- svelte-ignore a11y_no_static_element_interactions -->
-					<span
-						class="col-resize-handle"
-						onmousedown={(e) => handleResizeStart(e, col.id)}
-					></span>
-				</div>
-			{/if}
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="col"
+				class:sortable={col.sortable}
+				class:drag-over-col={dragOverColId === col.id}
+				style={getColumnStyle(col)}
+				data-col-id={col.id}
+				role={col.sortable ? 'button' : undefined}
+				tabindex={col.sortable ? 0 : undefined}
+				onmousedown={col.sortable ? (e) => handleColMouseDown(e, col.field) : undefined}
+				onmouseup={col.sortable ? (e) => handleColMouseUp(e, col.field) : undefined}
+				draggable="true"
+				ondragstart={(e) => handleColDragStart(e, col.id)}
+				ondragover={(e) => handleColDragOver(e, col.id)}
+				ondragleave={handleColDragLeave}
+				ondrop={(e) => handleColDrop(e, col.id)}
+				ondragend={handleColDragEnd}
+			>
+				{col.label}{col.sortable ? sortIndicator(col.field) : ''}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<span
+					class="col-resize-handle"
+					onmousedown={(e) => handleResizeStart(e, col.id)}
+				></span>
+			</div>
 		{/each}
 	</div>
 
@@ -494,19 +479,11 @@
 		flex-shrink: 0;
 	}
 
-	.tracklist-header button {
-		background: none;
-		border: none;
-		color: inherit;
-		font: inherit;
+	.tracklist-header .col.sortable {
 		cursor: pointer;
-		text-align: left;
-		letter-spacing: inherit;
-		text-transform: inherit;
-		position: relative;
 	}
 
-	.tracklist-header button:hover {
+	.tracklist-header .col.sortable:hover {
 		color: var(--color-text-primary);
 	}
 
