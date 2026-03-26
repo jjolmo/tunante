@@ -80,27 +80,49 @@
 		libraryStore.setSort(column);
 	}
 
-	// Column header sort via mousedown/mouseup instead of onclick.
-	// macOS WebKit suppresses onclick on draggable elements because the
-	// drag gesture detector intercepts the mouse events.
-	let colSortMouseDown: { col: SortColumn; x: number; y: number } | null = null;
+	// Unified column header interaction: click-to-sort + drag-to-reorder.
+	// Uses raw mouse events instead of HTML5 Drag & Drop because Tauri's
+	// native drag handler intercepts DOM drag events on macOS, preventing
+	// dragstart from ever firing.
+	let colMouseDown: { colId: string; field: SortColumn | null; x: number; y: number; dragging: boolean } | null = null;
 
-	function handleColMouseDown(e: MouseEvent, col: SortColumn) {
-		if (e.button === 0) {
-			colSortMouseDown = { col, x: e.clientX, y: e.clientY };
+	function handleColMouseDown(e: MouseEvent, colId: string, field: SortColumn | null) {
+		if (e.button !== 0) return;
+		colMouseDown = { colId, field, x: e.clientX, y: e.clientY, dragging: false };
+		window.addEventListener('mousemove', handleColMouseMove);
+		window.addEventListener('mouseup', handleColMouseUpGlobal);
+	}
+
+	function handleColMouseMove(e: MouseEvent) {
+		if (!colMouseDown) return;
+		const dx = e.clientX - colMouseDown.x;
+		const dy = e.clientY - colMouseDown.y;
+		if (!colMouseDown.dragging && dx * dx + dy * dy > 25) {
+			colMouseDown.dragging = true;
+			draggingColId = colMouseDown.colId;
+		}
+		if (colMouseDown.dragging) {
+			// Find which column header the mouse is over
+			const el = document.elementFromPoint(e.clientX, e.clientY);
+			const colEl = el?.closest('[data-col-id]') as HTMLElement | null;
+			const overId = colEl?.dataset.colId ?? null;
+			dragOverColId = overId && overId !== draggingColId ? overId : null;
 		}
 	}
 
-	function handleColMouseUp(e: MouseEvent, col: SortColumn) {
-		if (colSortMouseDown && colSortMouseDown.col === col) {
-			// Only treat as click if mouse didn't move much (not a drag)
-			const dx = e.clientX - colSortMouseDown.x;
-			const dy = e.clientY - colSortMouseDown.y;
-			if (dx * dx + dy * dy < 25) {
-				handleSort(col);
-			}
+	function handleColMouseUpGlobal() {
+		window.removeEventListener('mousemove', handleColMouseMove);
+		window.removeEventListener('mouseup', handleColMouseUpGlobal);
+		if (!colMouseDown) return;
+		if (colMouseDown.dragging && draggingColId && dragOverColId) {
+			libraryStore.moveColumn(draggingColId, dragOverColId);
+		} else if (!colMouseDown.dragging && colMouseDown.field) {
+			// Didn't drag — treat as a click → sort
+			handleSort(colMouseDown.field);
 		}
-		colSortMouseDown = null;
+		draggingColId = null;
+		dragOverColId = null;
+		colMouseDown = null;
 	}
 
 	function handleTrackClick(track: Track, event: MouseEvent, idx: number) {
@@ -272,39 +294,6 @@
 		window.removeEventListener('mouseup', handleResizeEnd);
 	}
 
-	// Column drag reorder
-	function handleColDragStart(e: DragEvent, colId: string) {
-		colSortMouseDown = null; // drag started — don't trigger sort on mouseup
-		draggingColId = colId;
-		e.dataTransfer!.effectAllowed = 'move';
-		e.dataTransfer!.setData('text/plain', colId);
-	}
-
-	function handleColDragOver(e: DragEvent, colId: string) {
-		if (draggingColId && draggingColId !== colId) {
-			e.preventDefault();
-			e.dataTransfer!.dropEffect = 'move';
-			dragOverColId = colId;
-		}
-	}
-
-	function handleColDragLeave() {
-		dragOverColId = null;
-	}
-
-	function handleColDrop(e: DragEvent, colId: string) {
-		e.preventDefault();
-		if (draggingColId && draggingColId !== colId) {
-			libraryStore.moveColumn(draggingColId, colId);
-		}
-		draggingColId = null;
-		dragOverColId = null;
-	}
-
-	function handleColDragEnd() {
-		draggingColId = null;
-		dragOverColId = null;
-	}
 
 	// Drag to playlist
 	function handleDragStart(e: DragEvent, track: Track) {
@@ -358,27 +347,20 @@
 		<div class="col col-status">
 			<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 15,8 3,15"/></svg>
 		</div>
-		<!-- Use <div> instead of <button> for column headers because macOS
-		     WebKit ignores draggable="true" on <button> elements, breaking
-		     column drag-to-reorder. -->
+		<!-- Column headers use custom mouse-based drag instead of HTML5 Drag & Drop
+		     because Tauri's native drag handler intercepts DOM drag events on macOS. -->
 		{#each visibleColumns as col (col.id)}
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="col"
 				class:sortable={col.sortable}
+				class:dragging-col={draggingColId === col.id}
 				class:drag-over-col={dragOverColId === col.id}
 				style={getColumnStyle(col)}
 				data-col-id={col.id}
 				role={col.sortable ? 'button' : undefined}
 				tabindex={col.sortable ? 0 : undefined}
-				onmousedown={col.sortable ? (e) => handleColMouseDown(e, col.field) : undefined}
-				onmouseup={col.sortable ? (e) => handleColMouseUp(e, col.field) : undefined}
-				draggable="true"
-				ondragstart={(e) => handleColDragStart(e, col.id)}
-				ondragover={(e) => handleColDragOver(e, col.id)}
-				ondragleave={handleColDragLeave}
-				ondrop={(e) => handleColDrop(e, col.id)}
-				ondragend={handleColDragEnd}
+				onmousedown={(e) => handleColMouseDown(e, col.id, col.sortable ? col.field : null)}
 			>
 				{col.label}{col.sortable ? sortIndicator(col.field) : ''}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -489,6 +471,10 @@
 
 	.tracklist-header .col {
 		position: relative;
+	}
+
+	.tracklist-header .dragging-col {
+		opacity: 0.5;
 	}
 
 	.tracklist-header .drag-over-col {
