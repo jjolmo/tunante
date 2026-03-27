@@ -1,0 +1,7 @@
+{
+	"bundle": {
+		"resources": {
+			"../update_mac.sh": "update_mac.sh"
+		}
+	}
+}
