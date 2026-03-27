@@ -142,10 +142,8 @@ fn main() {
 
     build.compile("lazyusf2");
 
-    // On macOS, use system zlib
-    if is_macos {
-        println!("cargo:rustc-link-lib=z");
-    }
+    // Link system zlib (psflib and lazyusf2 need inflate/uncompress/adler32)
+    println!("cargo:rustc-link-lib=z");
 
     // Link math library on Unix
     if !is_windows {

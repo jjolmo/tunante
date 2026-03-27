@@ -409,3 +409,28 @@ pub fn read_usf_tags(path: &Path) -> Result<UsfTags, String> {
 
     Ok(collector.tags)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_usf_decode() {
+        let path = std::path::Path::new("/media/cidwel/storage/Seafile/Cidwel/Musica/OST juegos/N64/Star Fox 64/09 Corneria.miniusf");
+        if !path.exists() {
+            eprintln!("Skipping: test file not found");
+            return;
+        }
+        
+        let (mut decoder, tags) = UsfDecoder::new(path, 44100).expect("Failed to load USF");
+        eprintln!("Title: {}", tags.title);
+        eprintln!("Game: {}", tags.game);
+        eprintln!("Length: {}ms", tags.length_ms);
+        
+        let mut buf = vec![0i16; 4096 * 2];
+        decoder.render(&mut buf, 4096).expect("Failed to render");
+        let max = buf.iter().map(|s| s.abs() as u32).max().unwrap_or(0);
+        eprintln!("Max sample amplitude: {}", max);
+        assert!(max > 0, "Output is silence - decoder not working");
+    }
+}
