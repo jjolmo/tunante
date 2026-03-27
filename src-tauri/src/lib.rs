@@ -307,11 +307,17 @@ fn show_volume_popup_gtk(vol_pct: u32) {
         vol_rc.set(vol_pct);
         da.queue_draw();
 
-        // Position near cursor (which is over the tray icon)
+        // Position above the system tray (bottom-right of screen, above panel)
         let display = gtk::gdk::Display::default().unwrap();
-        let seat = display.default_seat().unwrap();
-        let (_, x, y) = seat.pointer().unwrap().position();
-        win.move_(x - 90, y - 44); // center horizontally, above cursor
+        let monitor = display.primary_monitor()
+            .or_else(|| display.monitor(0))
+            .unwrap();
+        let workarea = monitor.workarea(); // excludes panels/taskbar
+        let popup_w = 180;
+        let popup_h = 36;
+        let x = workarea.x() + workarea.width() - popup_w - 8;
+        let y = workarea.y() + workarea.height() - popup_h - 8;
+        win.move_(x, y);
 
         win.show_all();
 
