@@ -75,7 +75,7 @@ unsafe fn install_scroll_hook(userdata: &mut TrayUserData) {
         return;
     }
     SCROLL_HOOK_DATA.store(userdata as *mut _, Ordering::Relaxed);
-    let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(scroll_hook_proc), std::ptr::null_mut(), 0);
+    let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(scroll_hook_proc), 0, 0);
     userdata.mouse_hook = hook;
 }
 
@@ -106,7 +106,7 @@ unsafe extern "system" fn scroll_hook_proc(code: i32, wparam: WPARAM, lparam: LP
             }
         }
     }
-    CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
+    CallNextHookEx(0, code, wparam, lparam)
 }
 
 pub struct TrayIcon {
