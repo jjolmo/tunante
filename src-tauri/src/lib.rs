@@ -130,19 +130,11 @@ fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64)
 fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
     let vol_pct = (volume * 100.0).round() as u32;
 
-    // Linux: update tray tooltip with volume percentage
+    // Linux: pure GTK popup (no WebView — avoids KDE's 200x200 minimum)
     #[cfg(target_os = "linux")]
     {
-        if let Some(tray) = app.tray_by_id("main-tray") {
-            let _ = tray.set_tooltip(Some(&format!("Volume: {}%", vol_pct)));
-        }
-        // Suppress normal tooltip updates for 1.5s
-        let suppress_until = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-            + 1500;
-        VOLUME_TOOLTIP_UNTIL.store(suppress_until, Ordering::Relaxed);
+        show_volume_popup_gtk(vol_pct);
+        let _ = app;
         return;
     }
 
@@ -221,6 +213,128 @@ fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
                 let _ = popup.hide();
             }
         }
+    });
+}
+
+/// Linux: show a pure GTK popup with volume bar near the cursor.
+/// Uses a lightweight GtkWindow + GtkDrawingArea (no WebView).
+#[cfg(target_os = "linux")]
+fn show_volume_popup_gtk(vol_pct: u32) {
+    use gtk::prelude::*;
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    // Shared state for the popup (created once, reused)
+    thread_local! {
+        static POPUP: std::cell::RefCell<Option<(gtk::Window, gtk::DrawingArea, Rc<Cell<u32>>)>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    POPUP.with(|popup_cell| {
+        let mut popup_opt = popup_cell.borrow_mut();
+
+        if popup_opt.is_none() {
+            // Create the popup window
+            let win = gtk::Window::new(gtk::WindowType::Popup);
+            win.set_type_hint(gtk::gdk::WindowTypeHint::Notification);
+            win.set_decorated(false);
+            win.set_skip_taskbar_hint(true);
+            win.set_skip_pager_hint(true);
+            win.set_keep_above(true);
+            win.set_accept_focus(false);
+            win.set_default_size(180, 36);
+            win.set_app_paintable(true);
+
+            let da = gtk::DrawingArea::new();
+            da.set_size_request(180, 36);
+            win.add(&da);
+
+            let vol_rc = Rc::new(Cell::new(vol_pct));
+            let vol_for_draw = vol_rc.clone();
+
+            da.connect_draw(move |_, cr| {
+                let v = vol_for_draw.get();
+                let w = 180.0_f64;
+                let h = 36.0_f64;
+
+                // Background
+                cr.set_source_rgb(0.12, 0.12, 0.12);
+                cr.rectangle(0.0, 0.0, w, h);
+                let _ = cr.fill();
+
+                // Border
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.08);
+                cr.rectangle(0.5, 0.5, w - 1.0, h - 1.0);
+                cr.set_line_width(1.0);
+                let _ = cr.stroke();
+
+                // Volume bar background
+                let bar_x = 14.0;
+                let bar_y = 20.0;
+                let bar_w = 110.0;
+                let bar_h = 4.0;
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.15);
+                cr.rectangle(bar_x, bar_y, bar_w, bar_h);
+                let _ = cr.fill();
+
+                // Volume bar fill
+                let fill_w = bar_w * (v as f64 / 100.0);
+                cr.set_source_rgb(0.29, 0.62, 1.0); // #4a9eff
+                cr.rectangle(bar_x, bar_y, fill_w, bar_h);
+                let _ = cr.fill();
+
+                // "Volume" label
+                cr.set_source_rgba(1.0, 1.0, 1.0, 0.6);
+                cr.set_font_size(10.0);
+                cr.move_to(14.0, 14.0);
+                let _ = cr.show_text("Volume");
+
+                // Percentage text
+                cr.set_source_rgb(1.0, 1.0, 1.0);
+                cr.set_font_size(12.0);
+                let pct_text = format!("{}%", v);
+                let extents = cr.text_extents(&pct_text).unwrap();
+                cr.move_to(bar_x + bar_w + 8.0, 14.0 + extents.height() / 2.0);
+                let _ = cr.show_text(&pct_text);
+
+                gtk::glib::Propagation::Stop
+            });
+
+            *popup_opt = Some((win, da, vol_rc));
+        }
+
+        let (win, da, vol_rc) = popup_opt.as_ref().unwrap();
+        vol_rc.set(vol_pct);
+        da.queue_draw();
+
+        // Position near cursor (which is over the tray icon)
+        let display = gtk::gdk::Display::default().unwrap();
+        let seat = display.default_seat().unwrap();
+        let (_, x, y) = seat.pointer().unwrap().position();
+        win.move_(x - 90, y - 44); // center horizontally, above cursor
+
+        win.show_all();
+
+        // Schedule hide: use VOLUME_TOOLTIP_UNTIL timestamp.
+        // Each scroll resets the timer. The hide callback only hides
+        // if no newer scroll happened.
+        let suppress_until = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + 1500;
+        VOLUME_TOOLTIP_UNTIL.store(suppress_until, Ordering::Relaxed);
+
+        let win_clone = win.clone();
+        gtk::glib::timeout_add_local_once(Duration::from_millis(1600), move || {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            if now >= VOLUME_TOOLTIP_UNTIL.load(Ordering::Relaxed) {
+                win_clone.hide();
+            }
+        });
     });
 }
 
