@@ -125,41 +125,24 @@ fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64)
 }
 
 /// Show a volume feedback popup/notification.
-/// - Linux: native desktop notification with progress bar (works on KDE/GNOME)
+/// - Linux: just update tray tooltip (KDE OSD/notifications have issues)
 /// - macOS/Windows: small WebView popup window near the tray icon
 fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
     let vol_pct = (volume * 100.0).round() as u32;
 
-    // Linux: try KDE native OSD first, fallback to notify-send
+    // Linux: update tray tooltip with volume percentage
     #[cfg(target_os = "linux")]
     {
-        // KDE Plasma OSD: volumeChanged replaces itself on each call (no stacking)
-        if let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) {
-            use gio::glib::prelude::*;
-            let body = gio::glib::Variant::tuple_from_iter([
-                (vol_pct as i32).to_variant(),
-            ]);
-            let msg = gio::DBusMessage::new_method_call(
-                Some("org.kde.plasmashell"),
-                "/org/kde/osdService",
-                Some("org.kde.osdService"),
-                "volumeChanged",
-            );
-            msg.set_body(&body);
-            let _ = conn.send_message(&msg, gio::DBusSendMessageFlags::NONE);
-            return;
+        if let Some(tray) = app.tray_by_id("main-tray") {
+            let _ = tray.set_tooltip(Some(&format!("Volume: {}%", vol_pct)));
         }
-        // Fallback: notify-send
-        let _ = std::process::Command::new("notify-send")
-            .args([
-                "-t", "1500",
-                "-h", &format!("int:value:{}", vol_pct),
-                "-h", "string:synchronous:volume",
-                "-a", "Tunante",
-                "Tunante",
-                &format!("Volume: {}%", vol_pct),
-            ])
-            .spawn();
+        // Suppress normal tooltip updates for 1.5s
+        let suppress_until = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+            + 1500;
+        VOLUME_TOOLTIP_UNTIL.store(suppress_until, Ordering::Relaxed);
         return;
     }
 
