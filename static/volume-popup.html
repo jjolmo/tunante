@@ -4,50 +4,41 @@
 <meta charset="utf-8">
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { background: transparent; overflow: hidden; -webkit-user-select: none; user-select: none; }
+  html, body { background: #1e1e1e; overflow: hidden; -webkit-user-select: none; user-select: none; }
   .popup {
     display: flex; align-items: center; gap: 8px;
     padding: 8px 14px;
-    background: rgba(30, 30, 30, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 8px;
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    background: #1e1e1e;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     color: white;
+    height: 100vh;
   }
   .bar-bg { width: 100px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; overflow: hidden; }
   .bar-fill { height: 100%; background: #4a9eff; border-radius: 2px; transition: width 0.08s ease-out; }
-  .pct { font-size: 13px; font-weight: 600; min-width: 32px; text-align: right; font-variant-numeric: tabular-nums; }
+  .pct { font-size: 13px; font-weight: 600; min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
   svg { flex-shrink: 0; }
 </style>
 </head>
 <body>
 <div class="popup">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="white">
-    <path id="vol-icon" d="M11 5L6 9H2v6h4l5 4V5z"/>
+    <path id="vol-icon" d="M11 5L6 9H2v6h4l5 4V5z M15.54 8.46a1 1 0 00-1.42 1.42 3 3 0 010 4.24 1 1 0 001.42 1.42 5 5 0 000-7.08z"/>
   </svg>
-  <div class="bar-bg"><div class="bar-fill" id="bar"></div></div>
+  <div class="bar-bg"><div class="bar-fill" id="bar" style="width:80%"></div></div>
   <span class="pct" id="pct">80%</span>
 </div>
 <script>
-  const bar = document.getElementById('bar');
-  const pct = document.getElementById('pct');
-  const icon = document.getElementById('vol-icon');
-
-  // Listen for Tauri events
-  if (window.__TAURI__) {
-    window.__TAURI__.event.listen('volume-popup-update', (e) => {
-      const vol = Math.round(e.payload * 100);
-      bar.style.width = vol + '%';
-      pct.textContent = vol + '%';
-      // Update icon path based on volume
-      if (vol === 0) {
-        icon.setAttribute('d', 'M11 5L6 9H2v6h4l5 4V5zM16.5 12l3.5-3.5-1.4-1.4L15 10.6l-3.5-3.5-1.4 1.4L13.6 12l-3.5 3.5 1.4 1.4L15 13.4l3.5 3.5 1.4-1.4z');
-      } else {
-        icon.setAttribute('d', 'M11 5L6 9H2v6h4l5 4V5z M15.54 8.46a1 1 0 00-1.42 1.42 3 3 0 010 4.24 1 1 0 001.42 1.42 5 5 0 000-7.08z');
-      }
-    });
+  // Updated from Rust via webview.eval("setVolume(0.8)")
+  function setVolume(v) {
+    var vol = Math.round(v * 100);
+    document.getElementById('bar').style.width = vol + '%';
+    document.getElementById('pct').textContent = vol + '%';
+    var icon = document.getElementById('vol-icon');
+    if (vol === 0) {
+      icon.setAttribute('d', 'M11 5L6 9H2v6h4l5 4V5z M16.5 12l3.5-3.5-1.4-1.4L15 10.6l-3.5-3.5-1.4 1.4L13.6 12l-3.5 3.5 1.4 1.4L15 13.4l3.5 3.5 1.4-1.4z');
+    } else {
+      icon.setAttribute('d', 'M11 5L6 9H2v6h4l5 4V5z M15.54 8.46a1 1 0 00-1.42 1.42 3 3 0 010 4.24 1 1 0 001.42 1.42 5 5 0 000-7.08z');
+    }
   }
 </script>
 </body>
