@@ -18,6 +18,55 @@ pub(crate) use icon::PlatformIcon;
 use crate::{TrayIconAttributes, TrayIconId};
 use libappindicator::{AppIndicator, AppIndicatorStatus};
 
+/// Connect to the AppIndicator's "scroll-event" GLib signal.
+/// The signal fires with (delta: gint, direction: GdkScrollDirection).
+/// GdkScrollDirection: 0=Up, 1=Down, 2=Left, 3=Right.
+fn connect_scroll_signal(indicator: &AppIndicator, id: TrayIconId) {
+    use glib::translate::ToGlibPtr;
+    use std::os::raw::{c_int, c_uint, c_void};
+
+    unsafe extern "C" fn scroll_cb(
+        _indicator: *mut c_void,
+        delta: c_int,
+        direction: c_uint,
+        user_data: *mut c_void,
+    ) {
+        // direction: 0=Up, 1=Down
+        if direction > 1 {
+            return; // ignore horizontal scroll
+        }
+        let id_ptr = user_data as *const TrayIconId;
+        let tray_id = &*id_ptr;
+        // Up (0) = positive delta, Down (1) = negative delta
+        let normalized = if direction == 0 {
+            delta.abs() as f64
+        } else {
+            -(delta.abs() as f64)
+        };
+        crate::send_scroll_event(tray_id, normalized);
+    }
+
+    // Leak a boxed TrayIconId so the callback can reference it for the lifetime of the indicator
+    let id_box = Box::new(id);
+    let id_ptr = Box::into_raw(id_box) as *mut c_void;
+
+    let signal_name: glib::GString = glib::GString::from("scroll-event");
+    let raw = indicator.as_raw_ptr();
+    unsafe {
+        glib::gobject_ffi::g_signal_connect_data(
+            raw as *mut glib::gobject_ffi::GObject,
+            signal_name.to_glib_none().0,
+            Some(std::mem::transmute::<
+                unsafe extern "C" fn(*mut c_void, c_int, c_uint, *mut c_void),
+                unsafe extern "C" fn(),
+            >(scroll_cb)),
+            id_ptr,
+            None,
+            0, // GConnectFlags: 0 = default
+        );
+    }
+}
+
 pub struct TrayIcon {
     id: TrayIconId,
     indicator: AppIndicator,
@@ -52,6 +101,9 @@ impl TrayIcon {
         if let Some(title) = attrs.title {
             indicator.set_label(title.as_str(), "");
         }
+
+        // Connect to the scroll-event signal so tray scroll changes volume
+        connect_scroll_signal(&indicator, id.clone());
 
         Ok(Self {
             id,
