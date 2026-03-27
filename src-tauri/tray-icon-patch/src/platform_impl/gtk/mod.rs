@@ -31,9 +31,9 @@ fn connect_scroll_signal(indicator: &AppIndicator, id: TrayIconId) {
         direction: c_uint,
         user_data: *mut c_void,
     ) {
-        // direction: 0=Up, 1=Down
-        if direction > 1 {
-            return; // ignore horizontal scroll
+        // direction: 0=Up, 1=Down, 4=Smooth
+        if direction > 1 && direction != 4 {
+            return; // ignore horizontal scroll (2=Left, 3=Right)
         }
         let id_ptr = user_data as *const TrayIconId;
         let tray_id = &*id_ptr;

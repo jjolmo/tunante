@@ -117,90 +117,87 @@ fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64)
     // Emit to main frontend so volume slider updates immediately
     let _ = app.emit("volume-scrolled", new_vol);
 
-    // Show volume popup near tray icon
-    show_volume_popup(app, new_vol);
+    // Show volume popup near tray icon (must run on main thread for GTK/WebKit)
+    let app_clone = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        show_volume_popup(&app_clone, new_vol);
+    });
 }
 
-/// Show or update the volume popup window near the tray icon.
+/// Show a volume feedback popup/notification.
+/// - Linux: native desktop notification with progress bar (works on KDE/GNOME)
+/// - macOS/Windows: small WebView popup window near the tray icon
 fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
-    use tauri::WebviewWindowBuilder;
+    let vol_pct = (volume * 100.0).round() as u32;
 
-    let popup_label = "volume-popup";
-    let popup = app.get_webview_window(popup_label);
+    // Linux: use notify-send with progress bar hint (native OSD)
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("notify-send")
+            .args([
+                "-t", "1500",
+                "-h", &format!("int:value:{}", vol_pct),
+                "-h", "string:synchronous:volume",
+                "-a", "Tunante",
+                "Tunante",
+                &format!("Volume: {}%", vol_pct),
+            ])
+            .spawn();
+        return;
+    }
 
-    // Create popup window if it doesn't exist yet
-    let popup = match popup {
-        Some(w) => w,
-        None => {
-            let url = tauri::WebviewUrl::App("volume-popup.html".into());
-            match WebviewWindowBuilder::new(app, popup_label, url)
-                .title("")
-                .inner_size(200.0, 38.0)
-                .decorations(false)
-                .always_on_top(true)
-                .skip_taskbar(true)
-                .resizable(false)
-                .minimizable(false)
-                .closable(false)
-                .focused(false)
-                .visible(false)
-                .shadow(false)
-                .build()
-            {
-                Ok(w) => w,
-                Err(e) => {
-                    log::warn!("Failed to create volume popup: {}", e);
-                    return;
+    // macOS/Windows: WebView popup window
+    #[cfg(not(target_os = "linux"))]
+    {
+        let popup = match app.get_webview_window("volume-popup") {
+            Some(w) => w,
+            None => return,
+        };
+
+        // Position near tray icon
+        let popup_w = 200.0_f64;
+        let popup_h = 40.0_f64;
+        let mut positioned = false;
+
+        if let Some(tray) = app.tray_by_id("main-tray") {
+            if let Ok(Some(rect)) = tray.rect() {
+                let (px, py) = match rect.position {
+                    tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+                    tauri::Position::Logical(p) => (p.x, p.y),
+                };
+                let (sw, sh) = match rect.size {
+                    tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+                    tauri::Size::Logical(s) => (s.width, s.height),
+                };
+                if px > 0.0 || py > 0.0 {
+                    let x = px - popup_w / 2.0 + sw / 2.0;
+                    #[cfg(target_os = "macos")]
+                    let y = py + sh + 4.0;
+                    #[cfg(not(target_os = "macos"))]
+                    let y = py - popup_h - 4.0;
+                    let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+                    positioned = true;
                 }
             }
         }
-    };
 
-    // Position near tray icon (or fallback to bottom-right corner)
-    let popup_w = 200.0_f64;
-    let popup_h = 38.0_f64;
-    let mut positioned = false;
-
-    if let Some(tray) = app.tray_by_id("main-tray") {
-        if let Ok(Some(rect)) = tray.rect() {
-            let (px, py) = match rect.position {
-                tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
-                tauri::Position::Logical(p) => (p.x, p.y),
-            };
-            let (sw, sh) = match rect.size {
-                tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
-                tauri::Size::Logical(s) => (s.width, s.height),
-            };
-            if px > 0.0 || py > 0.0 {
-                let x = px - popup_w / 2.0 + sw / 2.0;
-                #[cfg(target_os = "macos")]
-                let y = py + sh + 4.0;
-                #[cfg(not(target_os = "macos"))]
-                let y = py - popup_h - 4.0;
-                let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
-                positioned = true;
+        if !positioned {
+            if let Some(main_win) = app.get_webview_window("main") {
+                if let Ok(Some(monitor)) = main_win.primary_monitor() {
+                    let screen = monitor.size();
+                    let x = screen.width as f64 - popup_w - 16.0;
+                    #[cfg(target_os = "macos")]
+                    let y = 30.0;
+                    #[cfg(not(target_os = "macos"))]
+                    let y = screen.height as f64 - popup_h - 60.0;
+                    let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+                }
             }
         }
-    }
 
-    // Fallback: position at bottom-right of the primary monitor
-    if !positioned {
-        if let Some(main_win) = app.get_webview_window("main") {
-            if let Ok(Some(monitor)) = main_win.primary_monitor() {
-                let screen = monitor.size();
-                let x = screen.width as f64 - popup_w - 16.0;
-                #[cfg(target_os = "macos")]
-                let y = 30.0; // below macOS menu bar
-                #[cfg(not(target_os = "macos"))]
-                let y = screen.height as f64 - popup_h - 60.0; // above taskbar
-                let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
-            }
-        }
+        let _ = popup.eval(&format!("setVolume({})", volume));
+        let _ = popup.show();
     }
-
-    // Update popup content via eval (more reliable than events for static HTML)
-    let _ = popup.eval(&format!("setVolume({})", volume));
-    let _ = popup.show();
 
     // Schedule hide after 1.5 seconds
     let suppress_until = std::time::SystemTime::now()
@@ -335,13 +332,21 @@ fn setup_dbus_tray_handler(handle: tauri::AppHandle) {
             }
             Some("Scroll") => {
                 // D-Bus Scroll signature: (i32 delta, String orientation)
+                // KDE sends orientation as "Vertical"/"Horizontal" (capitalized)
+                // and delta as multiples of 120 (like Windows WHEEL_DELTA).
                 use gio::glib::prelude::*;
                 if let Some(body) = msg.body() {
                     let delta: i32 = body.child_value(0).get().unwrap_or(0);
                     let orientation: String = body.child_value(1).get().unwrap_or_default();
-                    if orientation == "vertical" && delta != 0 {
+                    if orientation.eq_ignore_ascii_case("vertical") && delta != 0 {
                         let state = handle.state::<Arc<AppState>>();
-                        handle_tray_scroll(&handle, &state, delta as f64);
+                        // Normalize: KDE sends ±120 per tick, we want ±1.0
+                        let normalized = if delta.abs() >= 60 {
+                            (delta as f64) / 120.0
+                        } else {
+                            delta as f64
+                        };
+                        handle_tray_scroll(&handle, &state, normalized);
                     }
                 }
             }
@@ -711,6 +716,27 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             {
                 disable_app_nap();
+            }
+
+            // Pre-create the volume popup window (hidden) for macOS/Windows.
+            // Linux uses native desktop notifications instead.
+            #[cfg(not(target_os = "linux"))]
+            {
+                use tauri::WebviewWindowBuilder;
+                let url = tauri::WebviewUrl::App("volume-popup.html".into());
+                let _ = WebviewWindowBuilder::new(app, "volume-popup", url)
+                    .title("")
+                    .inner_size(200.0, 40.0)
+                    .decorations(false)
+                    .always_on_top(true)
+                    .skip_taskbar(true)
+                    .resizable(false)
+                    .minimizable(false)
+                    .closable(false)
+                    .focused(false)
+                    .visible(false)
+                    .shadow(false)
+                    .build();
             }
 
             // Register global shortcuts: media keys + user-configured
