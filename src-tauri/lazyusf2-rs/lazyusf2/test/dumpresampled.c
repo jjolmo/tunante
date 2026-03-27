@@ -10,10 +10,10 @@ unsigned char * state = 0;
 unsigned int enable_compare = 0;
 unsigned int enable_fifo_full = 0;
 
-unsigned long length_ms = 3*60*1000;
+unsigned long length_ms = 0;
 unsigned long fade_ms = 0;
 
-static void * stdio_fopen(void * context, const char * path )
+static void * stdio_fopen( const char * path )
 {
     return fopen( path, "rb" );
 }
@@ -41,7 +41,6 @@ static long stdio_ftell( void * f )
 static psf_file_callbacks stdio_callbacks =
 {
     "\\/:",
-    NULL,
     stdio_fopen,
     stdio_fread,
     stdio_fseek,
@@ -148,7 +147,6 @@ int main(int argc, char ** argv)
         usf_set_fifo_full(state, enable_fifo_full);
         
         usf_set_hle_audio(state, 1);
-//         usf_log_start(state);
         
         f = fopen(argv[2], "wb");
         

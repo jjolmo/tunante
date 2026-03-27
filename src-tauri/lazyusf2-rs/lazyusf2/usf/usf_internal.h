@@ -340,7 +340,7 @@ struct usf_state
     unsigned int count_per_op/* = COUNT_PER_OP_DEFAULT*/;
     int llbit, rompause;
     int stop;
-    volatile int abort_flag; /* Set externally to force CPU loop to exit */
+    volatile int abort_flag;
     long long int reg[32], hi, lo;
     unsigned int next_interupt;
     precomp_instr *PC;
