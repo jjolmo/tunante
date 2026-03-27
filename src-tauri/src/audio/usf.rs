@@ -12,8 +12,6 @@ const DEFAULT_DURATION_MS: u64 = 150_000;
 const DEFAULT_FADE_MS: u64 = 10_000;
 const SAMPLE_RATE: u32 = 44100;
 const CHUNK_FRAMES: usize = 2048;
-/// Max time a single render call may take before we consider it stuck
-const RENDER_TIMEOUT: Duration = Duration::from_secs(3);
 
 enum DecodeCmd {
     Continue,
@@ -27,7 +25,6 @@ enum DecodeResult {
     SeekDone,
 }
 
-/// rodio::Source that decodes USF in a background thread with stuck-detection.
 pub struct UsfSource {
     rx: mpsc::Receiver<DecodeResult>,
     tx: mpsc::Sender<DecodeCmd>,
@@ -35,11 +32,7 @@ pub struct UsfSource {
     buf_pos: usize,
     total_duration: Option<Duration>,
     finished: bool,
-    /// Shared flag to tell the decode thread to abort
     abort: Arc<AtomicBool>,
-    /// Raw pointer to the C emulator state — used to set abort_flag directly
-    /// from Drop, which interrupts usf_render_resampled's CPU loop.
-    state_ptr: *mut std::ffi::c_void,
 }
 
 unsafe impl Send for UsfSource {}
@@ -60,9 +53,6 @@ impl UsfSource {
         let abort = Arc::new(AtomicBool::new(false));
         let abort_clone = abort.clone();
 
-        // Save raw pointer BEFORE moving decoder to thread — used for abort
-        let state_ptr = decoder.state_ptr();
-
         std::thread::Builder::new()
             .name("usf-decode".into())
             .spawn(move || {
@@ -79,7 +69,6 @@ impl UsfSource {
             buf_pos: 0,
             total_duration: Some(Duration::from_millis(total_ms)),
             finished: false,
-            state_ptr,
             abort,
         })
     }
@@ -112,7 +101,6 @@ impl UsfSource {
                 }
             }
             Err(mpsc::TryRecvError::Empty) => {
-                // Wait a short time for the decode thread to produce data
                 match self.rx.recv_timeout(Duration::from_millis(50)) {
                     Ok(DecodeResult::Samples(samples)) => {
                         self.buffer = samples;
@@ -124,7 +112,7 @@ impl UsfSource {
                         self.finished = true;
                         false
                     }
-                    _ => false, // Timeout or error — return silence this cycle
+                    _ => false,
                 }
             }
             Err(mpsc::TryRecvError::Disconnected) => {
@@ -137,19 +125,12 @@ impl UsfSource {
 
 impl Drop for UsfSource {
     fn drop(&mut self) {
-        // Set both the Rust-level and C-level abort flags.
-        // The C flag is checked by the patched CPU loop every ~65536 instructions,
-        // forcing usf_render_resampled to return even if the emulator is stuck.
-        self.abort.store(true, Ordering::Relaxed);
-        if !self.state_ptr.is_null() {
-            extern "C" {
-                fn usf_set_abort_flag(state: *mut std::ffi::c_void, abort: std::os::raw::c_int);
-            }
-            unsafe {
-                usf_set_abort_flag(self.state_ptr, 1);
-            }
-        }
+        // Signal abort — the decode thread checks this and calls decoder.set_abort()
+        // We do NOT access state_ptr directly to avoid data races with the decode thread.
+        self.abort.store(true, Ordering::SeqCst);
         let _ = self.tx.send(DecodeCmd::Stop);
+        // Give the decode thread a moment to see the abort and clean up
+        std::thread::sleep(Duration::from_millis(10));
     }
 }
 
@@ -165,7 +146,6 @@ impl Iterator for UsfSource {
                 if self.finished {
                     return None;
                 }
-                // No data yet but not finished — return silence to keep rodio alive
                 return Some(0.0);
             }
         }
@@ -206,10 +186,6 @@ impl Source for UsfSource {
     }
 }
 
-// ============================================================================
-// Background decode thread with stuck-detection
-// ============================================================================
-
 fn decode_thread(
     mut decoder: UsfDecoder,
     cmd_rx: mpsc::Receiver<DecodeCmd>,
@@ -219,62 +195,52 @@ fn decode_thread(
     abort: Arc<AtomicBool>,
 ) {
     let mut frame_no: u64 = 0;
-    /// Number of consecutive stuck detections before giving up on this track
-    const MAX_STUCK: u32 = 2;
-    let mut stuck_count: u32 = 0;
 
     loop {
-        if abort.load(Ordering::Relaxed) {
+        // Check abort BEFORE blocking on recv — if abort is set,
+        // propagate it to the C emulator state so it exits immediately.
+        if abort.load(Ordering::SeqCst) {
+            decoder.set_abort(true);
             return;
         }
 
-        match cmd_rx.recv() {
-            Ok(DecodeCmd::Continue) => {
+        // Use recv_timeout so we periodically check the abort flag
+        // even if no command is pending.
+        let cmd = match cmd_rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(cmd) => cmd,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        };
+
+        match cmd {
+            DecodeCmd::Continue => {
                 if frame_no >= frame_total {
                     let _ = result_tx.send(DecodeResult::Finished);
                     continue;
                 }
 
-                let remaining = (frame_total - frame_no) as usize;
-                let frames = CHUNK_FRAMES.min(remaining);
-
-                // Run render with timeout detection.
-                // usf_render_resampled is blocking C code — we can't interrupt it,
-                // but we can detect when it takes too long and abandon the track.
-                let start = std::time::Instant::now();
-                let mut i16_buf = vec![0i16; frames * 2];
-                let render_ok = decoder.render(&mut i16_buf, frames).is_ok();
-                let elapsed = start.elapsed();
-
-                if !render_ok {
-                    log::warn!("USF render error — ending track");
+                // Set abort flag on the C state before each render call.
+                // If the Rust abort flag was set during the render, the
+                // C loop will see it and exit.
+                if abort.load(Ordering::SeqCst) {
+                    decoder.set_abort(true);
                     let _ = result_tx.send(DecodeResult::Finished);
                     return;
                 }
 
-                if elapsed > RENDER_TIMEOUT {
-                    stuck_count += 1;
-                    log::warn!(
-                        "USF render took {:.1}s (limit {:.0}s) — stuck count {}/{}",
-                        elapsed.as_secs_f64(),
-                        RENDER_TIMEOUT.as_secs_f64(),
-                        stuck_count,
-                        MAX_STUCK
-                    );
-                    if stuck_count >= MAX_STUCK {
-                        log::warn!("USF emulator appears stuck — ending track");
-                        let _ = result_tx.send(DecodeResult::Finished);
-                        return;
-                    }
-                } else {
-                    stuck_count = 0; // Reset on successful fast render
-                }
+                let remaining = (frame_total - frame_no) as usize;
+                let frames = CHUNK_FRAMES.min(remaining);
 
-                if abort.load(Ordering::Relaxed) {
+                let mut i16_buf = vec![0i16; frames * 2];
+                let ok = decoder.render(&mut i16_buf, frames).is_ok();
+
+                // Check if we were aborted during the render
+                if abort.load(Ordering::SeqCst) || !ok {
+                    decoder.set_abort(true);
+                    let _ = result_tx.send(DecodeResult::Finished);
                     return;
                 }
 
-                // Convert to f32 with fade
                 let mut samples = Vec::with_capacity(frames * 2);
                 for i in 0..frames {
                     let gf = frame_no + i as u64;
@@ -296,17 +262,21 @@ fn decode_thread(
                 }
 
                 frame_no += frames as u64;
-                let _ = result_tx.send(DecodeResult::Samples(samples));
+                if result_tx.send(DecodeResult::Samples(samples)).is_err() {
+                    return; // Source was dropped
+                }
             }
-            Ok(DecodeCmd::Seek(target_frame)) => {
+            DecodeCmd::Seek(target_frame) => {
+                decoder.set_abort(false); // Clear abort for the new position
                 decoder.restart();
                 frame_no = 0;
-                stuck_count = 0;
 
                 let mut throwaway = vec![0i16; 8192 * 2];
                 let mut rem = target_frame;
                 while rem > 0 {
-                    if abort.load(Ordering::Relaxed) {
+                    if abort.load(Ordering::SeqCst) {
+                        decoder.set_abort(true);
+                        let _ = result_tx.send(DecodeResult::Finished);
                         return;
                     }
                     let skip = 8192usize.min(rem as usize);
@@ -319,7 +289,8 @@ fn decode_thread(
                 frame_no = target_frame;
                 let _ = result_tx.send(DecodeResult::SeekDone);
             }
-            Ok(DecodeCmd::Stop) | Err(_) => {
+            DecodeCmd::Stop => {
+                decoder.set_abort(true);
                 return;
             }
         }
