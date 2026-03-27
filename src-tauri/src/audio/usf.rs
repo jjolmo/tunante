@@ -73,51 +73,34 @@ impl UsfSource {
         })
     }
 
+    /// Non-blocking buffer fill — NEVER blocks rodio's mixer thread.
+    /// Returns true if buffer was filled, false otherwise.
     fn try_fill_buffer(&mut self) -> bool {
-        match self.rx.try_recv() {
-            Ok(DecodeResult::Samples(samples)) => {
-                self.buffer = samples;
-                self.buf_pos = 0;
-                let _ = self.tx.send(DecodeCmd::Continue);
-                true
-            }
-            Ok(DecodeResult::Finished) => {
-                self.finished = true;
-                false
-            }
-            Ok(DecodeResult::SeekDone) => {
-                let _ = self.tx.send(DecodeCmd::Continue);
-                match self.rx.recv_timeout(Duration::from_millis(500)) {
-                    Ok(DecodeResult::Samples(samples)) => {
-                        self.buffer = samples;
-                        self.buf_pos = 0;
-                        let _ = self.tx.send(DecodeCmd::Continue);
-                        true
-                    }
-                    _ => {
-                        self.finished = true;
-                        false
-                    }
+        // Drain all available messages, keeping the last Samples
+        loop {
+            match self.rx.try_recv() {
+                Ok(DecodeResult::Samples(samples)) => {
+                    self.buffer = samples;
+                    self.buf_pos = 0;
+                    let _ = self.tx.send(DecodeCmd::Continue);
+                    return true;
                 }
-            }
-            Err(mpsc::TryRecvError::Empty) => {
-                match self.rx.recv_timeout(Duration::from_millis(50)) {
-                    Ok(DecodeResult::Samples(samples)) => {
-                        self.buffer = samples;
-                        self.buf_pos = 0;
-                        let _ = self.tx.send(DecodeCmd::Continue);
-                        true
-                    }
-                    Ok(DecodeResult::Finished) => {
-                        self.finished = true;
-                        false
-                    }
-                    _ => false,
+                Ok(DecodeResult::Finished) => {
+                    self.finished = true;
+                    return false;
                 }
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.finished = true;
-                false
+                Ok(DecodeResult::SeekDone) => {
+                    // Request first post-seek chunk and try again
+                    let _ = self.tx.send(DecodeCmd::Continue);
+                    continue;
+                }
+                Err(mpsc::TryRecvError::Empty) => {
+                    return false; // No data yet — caller returns silence
+                }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.finished = true;
+                    return false;
+                }
             }
         }
     }
@@ -127,10 +110,9 @@ impl Drop for UsfSource {
     fn drop(&mut self) {
         // Signal abort — the decode thread checks this and calls decoder.set_abort()
         // We do NOT access state_ptr directly to avoid data races with the decode thread.
+        // No sleep here — this runs on rodio's mixer thread and blocking it corrupts audio.
         self.abort.store(true, Ordering::SeqCst);
         let _ = self.tx.send(DecodeCmd::Stop);
-        // Give the decode thread a moment to see the abort and clean up
-        std::thread::sleep(Duration::from_millis(10));
     }
 }
 
