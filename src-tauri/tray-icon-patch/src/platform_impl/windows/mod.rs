@@ -6,6 +6,8 @@ mod icon;
 mod util;
 use std::ptr;
 
+use std::sync::atomic::{AtomicPtr, Ordering};
+
 use once_cell::sync::Lazy;
 use windows_sys::{
     s,
@@ -17,14 +19,16 @@ use windows_sys::{
                 NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, NOTIFYICONIDENTIFIER,
             },
             WindowsAndMessaging::{
-                ChangeWindowMessageFilterEx, CreateWindowExW, DefWindowProcW, DestroyWindow,
-                GetCursorPos, KillTimer, RegisterClassW, RegisterWindowMessageA, SendMessageW,
-                SetForegroundWindow, SetTimer, TrackPopupMenu, CREATESTRUCTW, CW_USEDEFAULT,
-                GWL_USERDATA, HICON, HMENU, MSGFLT_ALLOW, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
+                CallNextHookEx, ChangeWindowMessageFilterEx, CreateWindowExW, DefWindowProcW,
+                DestroyWindow, GetCursorPos, KillTimer, RegisterClassW, RegisterWindowMessageA,
+                SendMessageW, SetForegroundWindow, SetTimer, SetWindowsHookExW, TrackPopupMenu,
+                UnhookWindowsHookEx, CREATESTRUCTW, CW_USEDEFAULT, GWL_USERDATA, HICON, HMENU,
+                MSLLHOOKSTRUCT, MSGFLT_ALLOW, TPM_BOTTOMALIGN, TPM_LEFTALIGN, WH_MOUSE_LL,
                 WM_CREATE, WM_DESTROY, WM_LBUTTONDBLCLK, WM_LBUTTONDOWN, WM_LBUTTONUP,
-                WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_NCCREATE,
-                WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_TIMER, WNDCLASSW, WS_EX_LAYERED,
-                WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED,
+                WM_MBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+                WM_NCCREATE, WM_RBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_TIMER,
+                WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+                WS_OVERLAPPED,
             },
         },
     },
@@ -60,6 +64,49 @@ struct TrayUserData {
     entered: bool,
     last_position: Option<PhysicalPosition<f64>>,
     menu_on_left_click: bool,
+    mouse_hook: isize, // HHOOK (0 = no hook)
+}
+
+// Global pointer so the WH_MOUSE_LL callback can access tray data.
+static SCROLL_HOOK_DATA: AtomicPtr<TrayUserData> = AtomicPtr::new(std::ptr::null_mut());
+
+unsafe fn install_scroll_hook(userdata: &mut TrayUserData) {
+    if userdata.mouse_hook != 0 {
+        return;
+    }
+    SCROLL_HOOK_DATA.store(userdata as *mut _, Ordering::Relaxed);
+    let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(scroll_hook_proc), std::ptr::null_mut(), 0);
+    userdata.mouse_hook = hook;
+}
+
+unsafe fn remove_scroll_hook(userdata: &mut TrayUserData) {
+    if userdata.mouse_hook != 0 {
+        UnhookWindowsHookEx(userdata.mouse_hook);
+        userdata.mouse_hook = 0;
+        SCROLL_HOOK_DATA.store(std::ptr::null_mut(), Ordering::Relaxed);
+    }
+}
+
+unsafe extern "system" fn scroll_hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if code >= 0 && wparam as u32 == WM_MOUSEWHEEL {
+        let data = SCROLL_HOOK_DATA.load(Ordering::Relaxed);
+        if !data.is_null() {
+            let userdata = &*data;
+            let mhs = &*(lparam as *const MSLLHOOKSTRUCT);
+            // Check if cursor is over the tray icon
+            if let Some(rect) = get_tray_rect(userdata.internal_id, userdata.hwnd) {
+                let in_x = (rect.left..rect.right).contains(&mhs.pt.x);
+                let in_y = (rect.top..rect.bottom).contains(&mhs.pt.y);
+                if in_x && in_y {
+                    // HIWORD of mouseData = wheel delta (multiples of 120)
+                    let delta = (mhs.mouseData >> 16) as i16;
+                    let normalized = delta as f64 / 120.0;
+                    crate::send_scroll_event(&userdata.id, normalized);
+                }
+            }
+        }
+    }
+    CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam)
 }
 
 pub struct TrayIcon {
@@ -95,6 +142,7 @@ impl TrayIcon {
                 entered: false,
                 last_position: None,
                 menu_on_left_click: attrs.menu_on_left_click,
+                mouse_hook: 0,
             };
 
             let hwnd = CreateWindowExW(
@@ -438,6 +486,7 @@ unsafe extern "system" fn tray_proc(
                 },
                 WM_MOUSEMOVE if !userdata.entered => {
                     userdata.entered = true;
+                    install_scroll_hook(userdata);
                     TrayIconEvent::Enter { id, rect, position }
                 }
                 WM_MOUSEMOVE if userdata.entered => {
@@ -486,6 +535,7 @@ unsafe extern "system" fn tray_proc(
                 if !in_x || !in_y {
                     KillTimer(hwnd, WM_USER_LEAVE_TIMER_ID as _);
                     userdata.entered = false;
+                    remove_scroll_hook(userdata);
 
                     TrayIconEvent::send(TrayIconEvent::Leave {
                         id: userdata.id.clone(),

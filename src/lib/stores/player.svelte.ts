@@ -51,6 +51,10 @@ class PlayerStore {
 			this.volume = event.payload.volume;
 		});
 
+		await listen<number>('volume-scrolled', (event) => {
+			this.volume = event.payload;
+		});
+
 		await listen<Track>('track-changed', (event) => {
 			this.currentTrack = event.payload;
 			this.positionMs = 0;
