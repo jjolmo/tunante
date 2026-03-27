@@ -259,12 +259,9 @@ unsafe extern "C" fn usf_upload_callback(
     }
 }
 
-unsafe extern "C" fn usf_status_callback(_context: *mut c_void, message: *const c_char) {
-    if !message.is_null() {
-        if let Ok(msg) = CStr::from_ptr(message).to_str() {
-            eprintln!("[lazyusf2] psflib status: {}", msg);
-        }
-    }
+unsafe extern "C" fn usf_status_callback(_context: *mut c_void, _message: *const c_char) {
+    // Intentionally silent — eprintln! crashes with "broken pipe" (os error 32)
+    // when the app is launched without a terminal (e.g. from .desktop file).
 }
 
 // ============================================================================
