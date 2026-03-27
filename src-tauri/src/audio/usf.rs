@@ -13,7 +13,9 @@ const DEFAULT_FADE_MS: u64 = 10_000;
 /// Sample rate for output audio.
 const SAMPLE_RATE: u32 = 44100;
 /// Decode chunk size in stereo frames.
-const CHUNK_FRAMES: usize = 4096;
+/// Smaller than GSF (4096) to avoid blocking rodio's audio thread too long.
+/// N64 emulation is heavier than GBA — each render call runs the MIPS R4300 CPU.
+const CHUNK_FRAMES: usize = 1024;
 /// Larger chunk size for seek fast-forward
 const SEEK_CHUNK_FRAMES: usize = 8192;
 

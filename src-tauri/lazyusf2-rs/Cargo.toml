@@ -7,5 +7,8 @@ description = "Rust wrapper for lazyusf2 (N64 sound format decoder using Mupen64
 [dependencies]
 libc = "0.2"
 
+[dev-dependencies]
+rodio = "0.22"
+
 [build-dependencies]
 cc = "1"
