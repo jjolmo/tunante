@@ -330,6 +330,9 @@ const char * usf_render(void * state, int16_t * buffer, size_t count, int32_t * 
     USF_STATE->sample_buffer = buffer;
     USF_STATE->sample_buffer_count = count;
 
+    if (USF_STATE->abort_flag)
+        return "aborted";
+
     USF_STATE->stop = 0;
 
     main_run(USF_STATE);
@@ -374,6 +377,9 @@ const char * usf_render_resampled(void * state, int16_t * buffer, size_t count, 
     while ( count )
     {
         const char * err;
+
+        if (USF_STATE->abort_flag)
+            return "aborted";
 
         while ( USF_STATE->samples_in_buffer_2 && resampler_get_free_count(USF_STATE->resampler) )
         {
