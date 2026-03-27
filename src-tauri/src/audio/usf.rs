@@ -3,31 +3,45 @@ use rodio::source::SeekError;
 use rodio::Source;
 use std::num::{NonZeroU16, NonZeroU32};
 use std::path::Path;
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Default play duration when PSF tags don't specify a length (2.5 minutes)
 const DEFAULT_DURATION_MS: u64 = 150_000;
-/// Default fade duration when not specified in tags
 const DEFAULT_FADE_MS: u64 = 10_000;
-/// Sample rate for output audio.
 const SAMPLE_RATE: u32 = 44100;
-/// Decode chunk size in stereo frames.
-/// Smaller than GSF (4096) to avoid blocking rodio's audio thread too long.
-/// N64 emulation is heavier than GBA — each render call runs the MIPS R4300 CPU.
-const CHUNK_FRAMES: usize = 1024;
-/// Larger chunk size for seek fast-forward
-const SEEK_CHUNK_FRAMES: usize = 8192;
+/// Frames per decode chunk in the background thread
+const CHUNK_FRAMES: usize = 2048;
 
-/// rodio::Source implementation wrapping lazyusf2 for USF/miniusf playback.
+/// Messages from UsfSource to the decode thread
+enum DecodeCmd {
+    /// Request more audio
+    Continue,
+    /// Seek to a position (frame number)
+    Seek(u64),
+    /// Stop the decode thread
+    Stop,
+}
+
+/// Messages from the decode thread back to UsfSource
+enum DecodeResult {
+    /// A chunk of f32 stereo samples (already with fade applied)
+    Samples(Vec<f32>),
+    /// Decoding finished (end of track)
+    Finished,
+    /// Seek completed
+    SeekDone,
+}
+
+/// rodio::Source that decodes USF in a background thread.
+/// If the N64 emulator crashes or blocks, rodio's audio thread
+/// continues running (gets silence when buffer is empty).
 pub struct UsfSource {
-    decoder: UsfDecoder,
+    rx: mpsc::Receiver<DecodeResult>,
+    tx: mpsc::Sender<DecodeCmd>,
     buffer: Vec<f32>,
     buf_pos: usize,
     total_duration: Option<Duration>,
-    frame_no: u64,
-    frame_total: u64,
-    frame_fade: u64,
     finished: bool,
 }
 
@@ -38,77 +52,100 @@ impl UsfSource {
         let (decoder, tags) =
             UsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("USF load error: {}", e))?;
 
-        let length_ms = if tags.length_ms > 0 {
-            tags.length_ms
-        } else {
-            DEFAULT_DURATION_MS
-        };
+        let length_ms = if tags.length_ms > 0 { tags.length_ms } else { DEFAULT_DURATION_MS };
         let fade_ms = if tags.fade_ms > 0 {
             tags.fade_ms
-        } else if tags.length_ms > 0 {
-            DEFAULT_FADE_MS
         } else {
             DEFAULT_FADE_MS
         };
-
         let total_ms = length_ms + fade_ms;
         let frame_fade = length_ms * SAMPLE_RATE as u64 / 1000;
         let frame_total = total_ms * SAMPLE_RATE as u64 / 1000;
 
+        let (cmd_tx, cmd_rx) = mpsc::channel::<DecodeCmd>();
+        let (result_tx, result_rx) = mpsc::channel::<DecodeResult>();
+
+        // Spawn decode thread
+        std::thread::Builder::new()
+            .name("usf-decode".into())
+            .spawn(move || {
+                decode_thread(decoder, cmd_rx, result_tx, frame_total, frame_fade);
+            })
+            .map_err(|e| format!("Failed to spawn USF decode thread: {}", e))?;
+
+        // Request first chunk immediately
+        let _ = cmd_tx.send(DecodeCmd::Continue);
+
         Ok(Self {
-            decoder,
+            rx: result_rx,
+            tx: cmd_tx,
             buffer: Vec::new(),
             buf_pos: 0,
             total_duration: Some(Duration::from_millis(total_ms)),
-            frame_no: 0,
-            frame_total,
-            frame_fade,
             finished: false,
         })
     }
 
-    fn decode_next_chunk(&mut self) -> bool {
-        if self.frame_no >= self.frame_total {
-            self.finished = true;
-            return false;
-        }
-
-        let remaining = self.frame_total - self.frame_no;
-        let frames_to_render = CHUNK_FRAMES.min(remaining as usize);
-
-        let mut i16_buf = vec![0i16; frames_to_render * 2];
-        if let Err(e) = self.decoder.render(&mut i16_buf, frames_to_render) {
-            log::warn!("USF decode error: {}", e);
-            self.finished = true;
-            return false;
-        }
-
-        self.buffer.clear();
-        self.buffer.reserve(frames_to_render * 2);
-
-        for i in 0..frames_to_render {
-            let global_frame = self.frame_no + i as u64;
-            let mut left = i16_buf[i * 2] as f32 / 32768.0;
-            let mut right = i16_buf[i * 2 + 1] as f32 / 32768.0;
-
-            if global_frame >= self.frame_total {
-                left = 0.0;
-                right = 0.0;
-            } else if global_frame >= self.frame_fade {
-                let fade_progress = (self.frame_total - global_frame) as f32
-                    / (self.frame_total - self.frame_fade) as f32;
-                let fade = fade_progress * fade_progress;
-                left *= fade;
-                right *= fade;
+    fn try_fill_buffer(&mut self) -> bool {
+        // Try to receive a decoded chunk (non-blocking first, then short block)
+        match self.rx.try_recv() {
+            Ok(DecodeResult::Samples(samples)) => {
+                self.buffer = samples;
+                self.buf_pos = 0;
+                // Request next chunk
+                let _ = self.tx.send(DecodeCmd::Continue);
+                true
             }
-
-            self.buffer.push(left);
-            self.buffer.push(right);
+            Ok(DecodeResult::Finished) => {
+                self.finished = true;
+                false
+            }
+            Ok(DecodeResult::SeekDone) => {
+                // After seek, request next chunk
+                let _ = self.tx.send(DecodeCmd::Continue);
+                // Block briefly waiting for first post-seek chunk
+                match self.rx.recv_timeout(Duration::from_millis(500)) {
+                    Ok(DecodeResult::Samples(samples)) => {
+                        self.buffer = samples;
+                        self.buf_pos = 0;
+                        let _ = self.tx.send(DecodeCmd::Continue);
+                        true
+                    }
+                    Ok(DecodeResult::Finished) => {
+                        self.finished = true;
+                        false
+                    }
+                    _ => false,
+                }
+            }
+            Err(mpsc::TryRecvError::Empty) => {
+                // Buffer empty, block briefly for data
+                match self.rx.recv_timeout(Duration::from_millis(100)) {
+                    Ok(DecodeResult::Samples(samples)) => {
+                        self.buffer = samples;
+                        self.buf_pos = 0;
+                        let _ = self.tx.send(DecodeCmd::Continue);
+                        true
+                    }
+                    Ok(DecodeResult::Finished) => {
+                        self.finished = true;
+                        false
+                    }
+                    _ => false,
+                }
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                // Decode thread crashed or exited
+                self.finished = true;
+                false
+            }
         }
+    }
+}
 
-        self.frame_no += frames_to_render as u64;
-        self.buf_pos = 0;
-        true
+impl Drop for UsfSource {
+    fn drop(&mut self) {
+        let _ = self.tx.send(DecodeCmd::Stop);
     }
 }
 
@@ -120,7 +157,7 @@ impl Iterator for UsfSource {
             return None;
         }
         if self.buf_pos >= self.buffer.len() {
-            if !self.decode_next_chunk() {
+            if !self.try_fill_buffer() {
                 return None;
             }
         }
@@ -153,27 +190,88 @@ impl Source for UsfSource {
 
     fn try_seek(&mut self, pos: Duration) -> Result<(), SeekError> {
         let target_frame = (pos.as_millis() as u64 * SAMPLE_RATE as u64) / 1000;
-
-        self.decoder.restart();
-        self.frame_no = 0;
         self.buffer.clear();
         self.buf_pos = 0;
         self.finished = false;
-
-        let mut throwaway = vec![0i16; SEEK_CHUNK_FRAMES * 2];
-        let mut remaining = target_frame;
-        while remaining > 0 {
-            let skip = SEEK_CHUNK_FRAMES.min(remaining as usize);
-            if let Err(e) = self.decoder.render(&mut throwaway[..skip * 2], skip) {
-                return Err(SeekError::Other(Arc::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("USF seek error: {}", e),
-                ))));
-            }
-            remaining -= skip as u64;
-        }
-
-        self.frame_no = target_frame;
+        let _ = self.tx.send(DecodeCmd::Seek(target_frame));
         Ok(())
+    }
+}
+
+// ============================================================================
+// Background decode thread
+// ============================================================================
+
+fn decode_thread(
+    mut decoder: UsfDecoder,
+    cmd_rx: mpsc::Receiver<DecodeCmd>,
+    result_tx: mpsc::Sender<DecodeResult>,
+    frame_total: u64,
+    frame_fade: u64,
+) {
+    let mut frame_no: u64 = 0;
+
+    loop {
+        match cmd_rx.recv() {
+            Ok(DecodeCmd::Continue) => {
+                if frame_no >= frame_total {
+                    let _ = result_tx.send(DecodeResult::Finished);
+                    continue;
+                }
+
+                let remaining = (frame_total - frame_no) as usize;
+                let frames = CHUNK_FRAMES.min(remaining);
+
+                let mut i16_buf = vec![0i16; frames * 2];
+                if decoder.render(&mut i16_buf, frames).is_err() {
+                    let _ = result_tx.send(DecodeResult::Finished);
+                    return; // Fatal error — exit thread
+                }
+
+                // Convert to f32 with fade
+                let mut samples = Vec::with_capacity(frames * 2);
+                for i in 0..frames {
+                    let gf = frame_no + i as u64;
+                    let mut l = i16_buf[i * 2] as f32 / 32768.0;
+                    let mut r = i16_buf[i * 2 + 1] as f32 / 32768.0;
+
+                    if gf >= frame_total {
+                        l = 0.0;
+                        r = 0.0;
+                    } else if gf >= frame_fade && frame_total > frame_fade {
+                        let progress = (frame_total - gf) as f32 / (frame_total - frame_fade) as f32;
+                        let fade = progress * progress;
+                        l *= fade;
+                        r *= fade;
+                    }
+                    samples.push(l);
+                    samples.push(r);
+                }
+
+                frame_no += frames as u64;
+                let _ = result_tx.send(DecodeResult::Samples(samples));
+            }
+            Ok(DecodeCmd::Seek(target_frame)) => {
+                decoder.restart();
+                frame_no = 0;
+
+                // Fast-forward in large chunks
+                let mut throwaway = vec![0i16; 8192 * 2];
+                let mut rem = target_frame;
+                while rem > 0 {
+                    let skip = 8192usize.min(rem as usize);
+                    if decoder.render(&mut throwaway[..skip * 2], skip).is_err() {
+                        let _ = result_tx.send(DecodeResult::Finished);
+                        return;
+                    }
+                    rem -= skip as u64;
+                }
+                frame_no = target_frame;
+                let _ = result_tx.send(DecodeResult::SeekDone);
+            }
+            Ok(DecodeCmd::Stop) | Err(_) => {
+                return; // Clean exit
+            }
+        }
     }
 }
