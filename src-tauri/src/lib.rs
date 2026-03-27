@@ -133,7 +133,7 @@ fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
         Some(w) => w,
         None => {
             let url = tauri::WebviewUrl::App("volume-popup.html".into());
-            let builder = WebviewWindowBuilder::new(app, popup_label, url)
+            match WebviewWindowBuilder::new(app, popup_label, url)
                 .title("")
                 .inner_size(200.0, 38.0)
                 .decorations(false)
@@ -144,11 +144,8 @@ fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
                 .closable(false)
                 .focused(false)
                 .visible(false)
-                .shadow(false);
-            // transparent() requires macos-private-api on macOS
-            #[cfg(not(target_os = "macos"))]
-            let builder = builder.transparent(true);
-            match builder.build()
+                .shadow(false)
+                .build()
             {
                 Ok(w) => w,
                 Err(e) => {
@@ -159,10 +156,13 @@ fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
         }
     };
 
-    // Position near tray icon
+    // Position near tray icon (or fallback to bottom-right corner)
+    let popup_w = 200.0_f64;
+    let popup_h = 38.0_f64;
+    let mut positioned = false;
+
     if let Some(tray) = app.tray_by_id("main-tray") {
         if let Ok(Some(rect)) = tray.rect() {
-            // Extract physical coordinates from the rect
             let (px, py) = match rect.position {
                 tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
                 tauri::Position::Logical(p) => (p.x, p.y),
@@ -171,20 +171,35 @@ fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
                 tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
                 tauri::Size::Logical(s) => (s.width, s.height),
             };
-            let popup_w = 200.0;
-            let popup_h = 38.0;
-            let x = px - popup_w / 2.0 + sw / 2.0;
-            // macOS: tray is at top, popup goes below. Others: tray at bottom, popup above.
-            #[cfg(target_os = "macos")]
-            let y = py + sh + 4.0;
-            #[cfg(not(target_os = "macos"))]
-            let y = py - popup_h - 4.0;
-            let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+            if px > 0.0 || py > 0.0 {
+                let x = px - popup_w / 2.0 + sw / 2.0;
+                #[cfg(target_os = "macos")]
+                let y = py + sh + 4.0;
+                #[cfg(not(target_os = "macos"))]
+                let y = py - popup_h - 4.0;
+                let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+                positioned = true;
+            }
         }
     }
 
-    // Send volume to the popup page
-    let _ = popup.emit("volume-popup-update", volume);
+    // Fallback: position at bottom-right of the primary monitor
+    if !positioned {
+        if let Some(main_win) = app.get_webview_window("main") {
+            if let Ok(Some(monitor)) = main_win.primary_monitor() {
+                let screen = monitor.size();
+                let x = screen.width as f64 - popup_w - 16.0;
+                #[cfg(target_os = "macos")]
+                let y = 30.0; // below macOS menu bar
+                #[cfg(not(target_os = "macos"))]
+                let y = screen.height as f64 - popup_h - 60.0; // above taskbar
+                let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+            }
+        }
+    }
+
+    // Update popup content via eval (more reliable than events for static HTML)
+    let _ = popup.eval(&format!("setVolume({})", volume));
     let _ = popup.show();
 
     // Schedule hide after 1.5 seconds
