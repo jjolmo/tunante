@@ -100,7 +100,7 @@ fn setup_panic_hook() {
 }
 
 /// Handle a tray scroll event: adjust volume by ±5% per tick and show
-/// a temporary "Volume: XX%" tooltip on the tray icon.
+/// a popup near the tray icon with the current volume level.
 fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64) {
     let mut audio = state.audio.lock();
     let step = 0.05_f32;
@@ -114,20 +114,100 @@ fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64)
     audio.set_volume(new_vol);
     drop(audio);
 
-    // Emit to frontend so volume slider updates immediately
+    // Emit to main frontend so volume slider updates immediately
     let _ = app.emit("volume-scrolled", new_vol);
 
-    // Show volume tooltip for 1.5 seconds
+    // Show volume popup near tray icon
+    show_volume_popup(app, new_vol);
+}
+
+/// Show or update the volume popup window near the tray icon.
+fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
+    use tauri::WebviewWindowBuilder;
+
+    let popup_label = "volume-popup";
+    let popup = app.get_webview_window(popup_label);
+
+    // Create popup window if it doesn't exist yet
+    let popup = match popup {
+        Some(w) => w,
+        None => {
+            let url = tauri::WebviewUrl::App("volume-popup.html".into());
+            match WebviewWindowBuilder::new(app, popup_label, url)
+                .title("")
+                .inner_size(200.0, 38.0)
+                .decorations(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .resizable(false)
+                .minimizable(false)
+                .closable(false)
+                .focused(false)
+                .visible(false)
+                .transparent(true)
+                .shadow(false)
+                .build()
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    log::warn!("Failed to create volume popup: {}", e);
+                    return;
+                }
+            }
+        }
+    };
+
+    // Position near tray icon
     if let Some(tray) = app.tray_by_id("main-tray") {
-        let vol_pct = (new_vol * 100.0).round() as u32;
-        let _ = tray.set_tooltip(Some(&format!("Volume: {}%", vol_pct)));
+        if let Ok(Some(rect)) = tray.rect() {
+            // Extract physical coordinates from the rect
+            let (px, py) = match rect.position {
+                tauri::Position::Physical(p) => (p.x as f64, p.y as f64),
+                tauri::Position::Logical(p) => (p.x, p.y),
+            };
+            let (sw, sh) = match rect.size {
+                tauri::Size::Physical(s) => (s.width as f64, s.height as f64),
+                tauri::Size::Logical(s) => (s.width, s.height),
+            };
+            let popup_w = 200.0;
+            let popup_h = 38.0;
+            let x = px - popup_w / 2.0 + sw / 2.0;
+            // macOS: tray is at top, popup goes below. Others: tray at bottom, popup above.
+            #[cfg(target_os = "macos")]
+            let y = py + sh + 4.0;
+            #[cfg(not(target_os = "macos"))]
+            let y = py - popup_h - 4.0;
+            let _ = popup.set_position(tauri::PhysicalPosition::new(x as i32, y as i32));
+        }
     }
+
+    // Send volume to the popup page
+    let _ = popup.emit("volume-popup-update", volume);
+    let _ = popup.show();
+
+    // Schedule hide after 1.5 seconds
     let suppress_until = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
         + 1500;
     VOLUME_TOOLTIP_UNTIL.store(suppress_until, Ordering::Relaxed);
+
+    // Spawn thread to hide popup after timeout
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(1500));
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        // Only hide if no newer scroll happened
+        if now >= VOLUME_TOOLTIP_UNTIL.load(Ordering::Relaxed) {
+            if let Some(popup) = app_clone.get_webview_window("volume-popup") {
+                let _ = popup.hide();
+            }
+        }
+    });
 }
 
 /// Prevent macOS App Nap from suspending the process when the window is
