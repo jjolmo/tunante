@@ -94,6 +94,74 @@ fn setup_panic_hook() {
     }));
 }
 
+/// Prevent macOS App Nap from suspending the process when the window is
+/// minimized or hidden. Without this, the main run loop pauses and global
+/// shortcuts / CGEventTap stop firing.
+#[cfg(target_os = "macos")]
+fn disable_app_nap() {
+    use objc2_foundation::{NSProcessInfo, NSActivityOptions, NSString};
+
+    let info = NSProcessInfo::processInfo();
+    let reason = NSString::from_str("Audio playback and global shortcuts");
+    // UserInitiatedAllowingIdleSystemSleep: keeps CPU active but lets display sleep
+    let options = NSActivityOptions::UserInitiatedAllowingIdleSystemSleep;
+    let token = info.beginActivityWithOptions_reason(options, &reason);
+    // Leak the token so the activity is never ended
+    std::mem::forget(token);
+}
+
+/// Runs the bundled update_mac.sh script in Terminal.app.
+/// Copies the script to /tmp first (since the app bundle will be replaced).
+#[tauri::command]
+fn run_macos_update_script(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        return Err("This command is only available on macOS".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let resource_dir = app
+            .path()
+            .resource_dir()
+            .map_err(|e| format!("Cannot find resource dir: {}", e))?;
+        let script_path = resource_dir.join("update_mac.sh");
+
+        if !script_path.exists() {
+            return Err(format!(
+                "Update script not found at {}",
+                script_path.display()
+            ));
+        }
+
+        // Copy to temp so it survives app bundle replacement
+        let tmp_script = std::env::temp_dir().join("tunante_update_mac.sh");
+        std::fs::copy(&script_path, &tmp_script)
+            .map_err(|e| format!("Failed to copy script: {}", e))?;
+
+        // Make executable
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp_script, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("Failed to set permissions: {}", e))?;
+
+        // Run in Terminal.app so user sees progress
+        std::process::Command::new("osascript")
+            .arg("-e")
+            .arg(format!(
+                r#"tell application "Terminal"
+                    activate
+                    do script "bash '{}'"
+                end tell"#,
+                tmp_script.display()
+            ))
+            .spawn()
+            .map_err(|e| format!("Failed to open Terminal: {}", e))?;
+
+        Ok(())
+    }
+}
+
 /// Installs a D-Bus message filter on the session bus that handles the
 /// StatusNotifierItem `Activate` method call (sent by KDE on left-click).
 ///
@@ -492,6 +560,13 @@ pub fn run() {
                 setup_dbus_activate_handler(app.handle().clone());
             }
 
+            // Prevent App Nap on macOS so global shortcuts and CGEventTap
+            // keep working when the window is minimized or hidden.
+            #[cfg(target_os = "macos")]
+            {
+                disable_app_nap();
+            }
+
             // Register global shortcuts: media keys + user-configured
             {
                 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Code, Shortcut};
@@ -858,6 +933,7 @@ pub fn run() {
             commands::library::update_track_metadata,
             shortcuts::update_shortcuts,
             shortcuts::get_shortcuts,
+            run_macos_update_script,
             updater::check_for_updates,
             updater::download_and_apply_update,
         ])

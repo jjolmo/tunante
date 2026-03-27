@@ -59,6 +59,8 @@ gio = "0.18"
 core-graphics = { version = "0.25", optional = true }
 core-foundation = { version = "0.10", optional = true }
 libc = "0.2"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSProcessInfo", "NSString"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-global-shortcut = "2.3.1"
