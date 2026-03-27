@@ -47,8 +47,8 @@
 			libraryStore.filteredTracks;
 
 		// Apply search filter to all views (not just All Tracks)
-		// Uses the debounced activeSearchQuery to avoid re-filtering on every keystroke
-		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && !filesStore.activeFolder && result !== libraryStore.filteredTracks) {
+		const isLibraryView = result === libraryStore.filteredTracks;
+		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && !filesStore.activeFolder && !isLibraryView) {
 			const q = libraryStore.activeSearchQuery.toLowerCase();
 			result = result.filter(
 				(t) =>
@@ -56,6 +56,26 @@
 					t.artist.toLowerCase().includes(q) ||
 					t.album.toLowerCase().includes(q)
 			);
+		}
+
+		// Apply sorting to non-library views (library view is already sorted in filteredTracks)
+		if (!isLibraryView) {
+			const { column, direction } = libraryStore.sortConfig;
+			const dir = direction === 'asc' ? 1 : -1;
+			result = [...result].sort((a, b) => {
+				const va = a[column] ?? '';
+				const vb = b[column] ?? '';
+				let cmp: number;
+				if (typeof va === 'number' && typeof vb === 'number') {
+					cmp = (va - vb) * dir;
+				} else {
+					cmp = String(va).localeCompare(String(vb)) * dir;
+				}
+				if (cmp === 0 && column !== 'path') {
+					return (a.path ?? '').localeCompare(b.path ?? '');
+				}
+				return cmp;
+			});
 		}
 		return result;
 	});
@@ -362,7 +382,7 @@
 				tabindex={col.sortable ? 0 : undefined}
 				onmousedown={(e) => handleColMouseDown(e, col.id, col.sortable ? col.field : null)}
 			>
-				{col.label}{col.sortable ? sortIndicator(col.field) : ''}
+				{col.sortable ? sortIndicator(col.field) : ''}{col.label}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<span
 					class="col-resize-handle"
