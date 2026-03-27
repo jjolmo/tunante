@@ -108,8 +108,9 @@ fn main() {
         usf_root.join("ri").join("rdram.c"),
         usf_root.join("ri").join("rdram_detection_hack.c"),
         usf_root.join("ri").join("ri_controller.c"),
-        // RSP
+        // RSP core + LLE (needed even in HLE mode — rsp_core references LLE functions)
         usf_root.join("rsp").join("rsp_core.c"),
+        usf_root.join("rsp_lle").join("rsp.c"),
         // RSP HLE (High-Level Emulation — faster audio processing)
         usf_root.join("rsp_hle").join("alist.c"),
         usf_root.join("rsp_hle").join("alist_audio.c"),
