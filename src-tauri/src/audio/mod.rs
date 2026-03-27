@@ -6,6 +6,7 @@ mod psf;
 mod psf2;
 mod queue;
 mod twosf;
+mod usf;
 pub mod vgm_path;
 mod vgmstream;
 
