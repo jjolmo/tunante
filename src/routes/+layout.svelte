@@ -89,8 +89,6 @@
 			const plReady = playlistsStore.init();
 			Promise.all([libReady, plReady]).then(async () => {
 				restoreSession();
-				// Quick scan for new music in monitored folders (background, non-blocking)
-				invoke('quick_scan').catch(() => {});
 				// Update on startup:
 				// - Skip on local dev builds (version 0.1.0 = not bumped by CI)
 				// - Skip on macOS (no codesigning yet)

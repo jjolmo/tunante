@@ -172,15 +172,6 @@ impl Database {
         Ok(tracks.pop())
     }
 
-    /// Returns all track paths as a HashSet for fast membership checks.
-    pub fn get_all_track_paths(&self) -> Result<std::collections::HashSet<String>, DbError> {
-        let mut stmt = self.conn.prepare("SELECT path FROM tracks")?;
-        let paths = stmt
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect::<Result<std::collections::HashSet<_>, _>>()?;
-        Ok(paths)
-    }
-
     pub fn get_track_by_path(&self, path: &str) -> Result<Option<Track>, DbError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
