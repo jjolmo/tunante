@@ -1,11 +1,10 @@
-use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_psf2_file, is_twosf_file, is_usf_file};
+use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_psf2_file, is_twosf_file};
 use crate::db::models::Track;
 use crate::metadata::gme_reader;
 use crate::metadata::gsf_reader;
 use crate::metadata::psf_reader;
 use crate::metadata::psf2_reader;
 use crate::metadata::twosf_reader;
-use crate::metadata::usf_reader;
 use crate::metadata::vgmstream_reader;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
@@ -22,8 +21,6 @@ pub enum MetadataError {
     Io(#[from] std::io::Error),
     #[error("GME error: {0}")]
     Gme(String),
-    #[error("USF error: {0}")]
-    Usf(String),
     #[error("Vgmstream error: {0}")]
     Vgmstream(String),
     #[error("GSF error: {0}")]
@@ -70,9 +67,6 @@ pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
     }
     if is_gsf_file(path) {
         return gsf_reader::read_gsf_metadata(path).map_err(MetadataError::Gsf);
-    }
-    if is_usf_file(path) {
-        return usf_reader::read_usf_metadata(path).map_err(MetadataError::Usf);
     }
     if is_twosf_file(path) {
         return twosf_reader::read_twosf_metadata(path).map_err(MetadataError::TwoSf);

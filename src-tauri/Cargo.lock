@@ -2359,14 +2359,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazyusf2-rs"
-version = "0.1.0"
-dependencies = [
- "cc",
- "libc",
-]
-
-[[package]]
 name = "leb128fmt"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5599,7 +5591,6 @@ dependencies = [
  "gtk",
  "hepsf-rs",
  "lazygsf-rs",
- "lazyusf2-rs",
  "libc",
  "lofty",
  "log",

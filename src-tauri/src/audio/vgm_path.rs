@@ -17,9 +17,6 @@ const PSF_EXTENSIONS: &[&str] = &["psf", "minipsf"];
 /// PSF2 (PlayStation 2 Sound Format) extensions
 const PSF2_EXTENSIONS: &[&str] = &["psf2", "minipsf2"];
 
-/// USF (N64 Sound Format) extensions
-const USF_EXTENSIONS: &[&str] = &["usf", "miniusf"];
-
 /// Parse a potentially multi-track path into (file_path, sub_track_index).
 /// Format: "/path/to/file.nsf#3" → ("/path/to/file.nsf", Some(3))
 /// Regular paths return None for the index.
@@ -73,19 +70,6 @@ pub fn is_twosf_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
         .map(|e| is_twosf_format(e))
-        .unwrap_or(false)
-}
-
-/// Check if an extension is a USF format (N64 Sound Format)
-pub fn is_usf_format(ext: &str) -> bool {
-    USF_EXTENSIONS.contains(&ext.to_lowercase().as_str())
-}
-
-/// Check if a file path is a USF format
-pub fn is_usf_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|e| e.to_str())
-        .map(|e| is_usf_format(e))
         .unwrap_or(false)
 }
 

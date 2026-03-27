@@ -4,7 +4,7 @@
 //! - PSF-family files (GSF, PSF, 2SF): Modify the [TAG] section at end of file
 //! - Standard audio files (MP3, FLAC, OGG, etc.): Write via lofty (Vorbis RATING)
 
-use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file, is_usf_file};
+use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file};
 use std::io::Write;
 use std::path::Path;
 
@@ -29,7 +29,7 @@ pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String>
     let path = Path::new(real_path_str);
 
     // PSF-family formats: write to [TAG] section
-    if is_gsf_file(path) || is_psf_file(path) || is_twosf_file(path) || is_usf_file(path) {
+    if is_gsf_file(path) || is_psf_file(path) || is_twosf_file(path) {
         write_psf_tag_rating(path, rating)?;
         return Ok(true);
     }

@@ -4,8 +4,7 @@ use super::opus::OggOpusSource;
 use super::psf::PsfSource;
 use super::psf2::Psf2Source;
 use super::twosf::TwoSfSource;
-use super::usf::UsfSource;
-use super::vgm_path::{is_gme_format, is_gsf_format, is_psf_format, is_psf2_format, is_twosf_format, is_usf_format, parse_vgm_path};
+use super::vgm_path::{is_gme_format, is_gsf_format, is_psf_format, is_psf2_format, is_twosf_format, parse_vgm_path};
 use super::vgmstream::VgmstreamSource;
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
@@ -162,14 +161,6 @@ impl AudioEngine {
         } else if is_gsf_format(ext) {
             // GSF/minigsf format (GBA Sound Format via mGBA)
             let source = GsfSource::new(actual_path)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
-        } else if is_usf_format(ext) {
-            // USF/miniusf format (N64 Sound Format via lazyusf2/Mupen64Plus)
-            let source = UsfSource::new(actual_path)
                 .map_err(|e| AudioError::DecoderError(e))?;
             let duration = source.total_duration();
             self.player.append(source);

@@ -1227,7 +1227,6 @@ pub fn run() {
             commands::library::open_containing_folder,
             commands::library::open_folder,
             commands::library::resync_library,
-            commands::library::quick_scan,
             commands::library::update_track_metadata,
             shortcuts::update_shortcuts,
             shortcuts::get_shortcuts,
