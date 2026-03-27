@@ -3,6 +3,7 @@ use rodio::source::SeekError;
 use rodio::Source;
 use std::num::{NonZeroU16, NonZeroU32};
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,32 +11,23 @@ use std::time::Duration;
 const DEFAULT_DURATION_MS: u64 = 150_000;
 const DEFAULT_FADE_MS: u64 = 10_000;
 const SAMPLE_RATE: u32 = 44100;
-/// Frames per decode chunk in the background thread
 const CHUNK_FRAMES: usize = 2048;
+/// Max time a single render call may take before we consider it stuck
+const RENDER_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Messages from UsfSource to the decode thread
 enum DecodeCmd {
-    /// Request more audio
     Continue,
-    /// Seek to a position (frame number)
     Seek(u64),
-    /// Stop the decode thread
     Stop,
 }
 
-/// Messages from the decode thread back to UsfSource
 enum DecodeResult {
-    /// A chunk of f32 stereo samples (already with fade applied)
     Samples(Vec<f32>),
-    /// Decoding finished (end of track)
     Finished,
-    /// Seek completed
     SeekDone,
 }
 
-/// rodio::Source that decodes USF in a background thread.
-/// If the N64 emulator crashes or blocks, rodio's audio thread
-/// continues running (gets silence when buffer is empty).
+/// rodio::Source that decodes USF in a background thread with stuck-detection.
 pub struct UsfSource {
     rx: mpsc::Receiver<DecodeResult>,
     tx: mpsc::Sender<DecodeCmd>,
@@ -43,6 +35,8 @@ pub struct UsfSource {
     buf_pos: usize,
     total_duration: Option<Duration>,
     finished: bool,
+    /// Shared flag to tell the decode thread to abort
+    abort: Arc<AtomicBool>,
 }
 
 unsafe impl Send for UsfSource {}
@@ -53,27 +47,23 @@ impl UsfSource {
             UsfDecoder::new(path, SAMPLE_RATE).map_err(|e| format!("USF load error: {}", e))?;
 
         let length_ms = if tags.length_ms > 0 { tags.length_ms } else { DEFAULT_DURATION_MS };
-        let fade_ms = if tags.fade_ms > 0 {
-            tags.fade_ms
-        } else {
-            DEFAULT_FADE_MS
-        };
+        let fade_ms = if tags.fade_ms > 0 { tags.fade_ms } else { DEFAULT_FADE_MS };
         let total_ms = length_ms + fade_ms;
         let frame_fade = length_ms * SAMPLE_RATE as u64 / 1000;
         let frame_total = total_ms * SAMPLE_RATE as u64 / 1000;
 
         let (cmd_tx, cmd_rx) = mpsc::channel::<DecodeCmd>();
         let (result_tx, result_rx) = mpsc::channel::<DecodeResult>();
+        let abort = Arc::new(AtomicBool::new(false));
+        let abort_clone = abort.clone();
 
-        // Spawn decode thread
         std::thread::Builder::new()
             .name("usf-decode".into())
             .spawn(move || {
-                decode_thread(decoder, cmd_rx, result_tx, frame_total, frame_fade);
+                decode_thread(decoder, cmd_rx, result_tx, frame_total, frame_fade, abort_clone);
             })
             .map_err(|e| format!("Failed to spawn USF decode thread: {}", e))?;
 
-        // Request first chunk immediately
         let _ = cmd_tx.send(DecodeCmd::Continue);
 
         Ok(Self {
@@ -83,16 +73,15 @@ impl UsfSource {
             buf_pos: 0,
             total_duration: Some(Duration::from_millis(total_ms)),
             finished: false,
+            abort,
         })
     }
 
     fn try_fill_buffer(&mut self) -> bool {
-        // Try to receive a decoded chunk (non-blocking first, then short block)
         match self.rx.try_recv() {
             Ok(DecodeResult::Samples(samples)) => {
                 self.buffer = samples;
                 self.buf_pos = 0;
-                // Request next chunk
                 let _ = self.tx.send(DecodeCmd::Continue);
                 true
             }
@@ -101,9 +90,7 @@ impl UsfSource {
                 false
             }
             Ok(DecodeResult::SeekDone) => {
-                // After seek, request next chunk
                 let _ = self.tx.send(DecodeCmd::Continue);
-                // Block briefly waiting for first post-seek chunk
                 match self.rx.recv_timeout(Duration::from_millis(500)) {
                     Ok(DecodeResult::Samples(samples)) => {
                         self.buffer = samples;
@@ -111,16 +98,15 @@ impl UsfSource {
                         let _ = self.tx.send(DecodeCmd::Continue);
                         true
                     }
-                    Ok(DecodeResult::Finished) => {
+                    _ => {
                         self.finished = true;
                         false
                     }
-                    _ => false,
                 }
             }
             Err(mpsc::TryRecvError::Empty) => {
-                // Buffer empty, block briefly for data
-                match self.rx.recv_timeout(Duration::from_millis(100)) {
+                // Wait a short time for the decode thread to produce data
+                match self.rx.recv_timeout(Duration::from_millis(50)) {
                     Ok(DecodeResult::Samples(samples)) => {
                         self.buffer = samples;
                         self.buf_pos = 0;
@@ -131,11 +117,10 @@ impl UsfSource {
                         self.finished = true;
                         false
                     }
-                    _ => false,
+                    _ => false, // Timeout or error — return silence this cycle
                 }
             }
             Err(mpsc::TryRecvError::Disconnected) => {
-                // Decode thread crashed or exited
                 self.finished = true;
                 false
             }
@@ -145,6 +130,8 @@ impl UsfSource {
 
 impl Drop for UsfSource {
     fn drop(&mut self) {
+        // Signal abort so any stuck render call exits
+        self.abort.store(true, Ordering::Relaxed);
         let _ = self.tx.send(DecodeCmd::Stop);
     }
 }
@@ -158,7 +145,11 @@ impl Iterator for UsfSource {
         }
         if self.buf_pos >= self.buffer.len() {
             if !self.try_fill_buffer() {
-                return None;
+                if self.finished {
+                    return None;
+                }
+                // No data yet but not finished — return silence to keep rodio alive
+                return Some(0.0);
             }
         }
         let sample = self.buffer[self.buf_pos];
@@ -199,7 +190,7 @@ impl Source for UsfSource {
 }
 
 // ============================================================================
-// Background decode thread
+// Background decode thread with stuck-detection
 // ============================================================================
 
 fn decode_thread(
@@ -208,10 +199,18 @@ fn decode_thread(
     result_tx: mpsc::Sender<DecodeResult>,
     frame_total: u64,
     frame_fade: u64,
+    abort: Arc<AtomicBool>,
 ) {
     let mut frame_no: u64 = 0;
+    /// Number of consecutive stuck detections before giving up on this track
+    const MAX_STUCK: u32 = 2;
+    let mut stuck_count: u32 = 0;
 
     loop {
+        if abort.load(Ordering::Relaxed) {
+            return;
+        }
+
         match cmd_rx.recv() {
             Ok(DecodeCmd::Continue) => {
                 if frame_no >= frame_total {
@@ -222,10 +221,40 @@ fn decode_thread(
                 let remaining = (frame_total - frame_no) as usize;
                 let frames = CHUNK_FRAMES.min(remaining);
 
+                // Run render with timeout detection.
+                // usf_render_resampled is blocking C code — we can't interrupt it,
+                // but we can detect when it takes too long and abandon the track.
+                let start = std::time::Instant::now();
                 let mut i16_buf = vec![0i16; frames * 2];
-                if decoder.render(&mut i16_buf, frames).is_err() {
+                let render_ok = decoder.render(&mut i16_buf, frames).is_ok();
+                let elapsed = start.elapsed();
+
+                if !render_ok {
+                    log::warn!("USF render error — ending track");
                     let _ = result_tx.send(DecodeResult::Finished);
-                    return; // Fatal error — exit thread
+                    return;
+                }
+
+                if elapsed > RENDER_TIMEOUT {
+                    stuck_count += 1;
+                    log::warn!(
+                        "USF render took {:.1}s (limit {:.0}s) — stuck count {}/{}",
+                        elapsed.as_secs_f64(),
+                        RENDER_TIMEOUT.as_secs_f64(),
+                        stuck_count,
+                        MAX_STUCK
+                    );
+                    if stuck_count >= MAX_STUCK {
+                        log::warn!("USF emulator appears stuck — ending track");
+                        let _ = result_tx.send(DecodeResult::Finished);
+                        return;
+                    }
+                } else {
+                    stuck_count = 0; // Reset on successful fast render
+                }
+
+                if abort.load(Ordering::Relaxed) {
+                    return;
                 }
 
                 // Convert to f32 with fade
@@ -239,7 +268,8 @@ fn decode_thread(
                         l = 0.0;
                         r = 0.0;
                     } else if gf >= frame_fade && frame_total > frame_fade {
-                        let progress = (frame_total - gf) as f32 / (frame_total - frame_fade) as f32;
+                        let progress =
+                            (frame_total - gf) as f32 / (frame_total - frame_fade) as f32;
                         let fade = progress * progress;
                         l *= fade;
                         r *= fade;
@@ -254,11 +284,14 @@ fn decode_thread(
             Ok(DecodeCmd::Seek(target_frame)) => {
                 decoder.restart();
                 frame_no = 0;
+                stuck_count = 0;
 
-                // Fast-forward in large chunks
                 let mut throwaway = vec![0i16; 8192 * 2];
                 let mut rem = target_frame;
                 while rem > 0 {
+                    if abort.load(Ordering::Relaxed) {
+                        return;
+                    }
                     let skip = 8192usize.min(rem as usize);
                     if decoder.render(&mut throwaway[..skip * 2], skip).is_err() {
                         let _ = result_tx.send(DecodeResult::Finished);
@@ -270,7 +303,7 @@ fn decode_thread(
                 let _ = result_tx.send(DecodeResult::SeekDone);
             }
             Ok(DecodeCmd::Stop) | Err(_) => {
-                return; // Clean exit
+                return;
             }
         }
     }
