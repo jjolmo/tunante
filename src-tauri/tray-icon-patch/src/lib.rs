@@ -644,6 +644,27 @@ impl TrayIconEvent {
     }
 }
 
+// --- Scroll callback (bypasses TrayIconEvent to avoid Tauri's todo!() panic) ---
+
+type ScrollHandler = Box<dyn Fn(&TrayIconId, f64) + Send + Sync + 'static>;
+static SCROLL_HANDLER: OnceCell<Option<ScrollHandler>> = OnceCell::new();
+
+/// Register a handler for scroll events on tray icons.
+///
+/// Delta is positive for scroll-up, negative for scroll-down.
+/// Approximately ±1.0 per scroll notch (platform-normalized).
+pub fn set_scroll_handler<F: Fn(&TrayIconId, f64) + Send + Sync + 'static>(f: F) {
+    let _ = SCROLL_HANDLER.set(Some(Box::new(f)));
+}
+
+/// Dispatch a scroll event. Called by platform implementations.
+#[allow(unused)]
+pub(crate) fn send_scroll_event(id: &TrayIconId, delta: f64) {
+    if let Some(Some(handler)) = SCROLL_HANDLER.get() {
+        handler(id, delta);
+    }
+}
+
 #[cfg(test)]
 mod tests {
 

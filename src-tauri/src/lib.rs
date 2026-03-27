@@ -1,8 +1,13 @@
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
+
+/// Timestamp (ms since epoch) until which the tray tooltip should show volume
+/// instead of track info. Set by scroll handlers, checked by state update thread.
+static VOLUME_TOOLTIP_UNTIL: AtomicU64 = AtomicU64::new(0);
 
 pub mod audio;
 pub mod commands;
@@ -94,6 +99,37 @@ fn setup_panic_hook() {
     }));
 }
 
+/// Handle a tray scroll event: adjust volume by ±5% per tick and show
+/// a temporary "Volume: XX%" tooltip on the tray icon.
+fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64) {
+    let mut audio = state.audio.lock();
+    let step = 0.05_f32;
+    let new_vol = if delta > 0.0 {
+        (audio.volume() + step).min(1.0)
+    } else if delta < 0.0 {
+        (audio.volume() - step).max(0.0)
+    } else {
+        return;
+    };
+    audio.set_volume(new_vol);
+    drop(audio);
+
+    // Emit to frontend so volume slider updates immediately
+    let _ = app.emit("volume-scrolled", new_vol);
+
+    // Show volume tooltip for 1.5 seconds
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let vol_pct = (new_vol * 100.0).round() as u32;
+        let _ = tray.set_tooltip(Some(&format!("Volume: {}%", vol_pct)));
+    }
+    let suppress_until = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+        + 1500;
+    VOLUME_TOOLTIP_UNTIL.store(suppress_until, Ordering::Relaxed);
+}
+
 /// Prevent macOS App Nap from suspending the process when the window is
 /// minimized or hidden. Without this, the main run loop pauses and global
 /// shortcuts / CGEventTap stop firing.
@@ -162,17 +198,16 @@ fn run_macos_update_script(app: tauri::AppHandle) -> Result<(), String> {
     }
 }
 
-/// Installs a D-Bus message filter on the session bus that handles the
-/// StatusNotifierItem `Activate` method call (sent by KDE on left-click).
+/// Installs a D-Bus message filter on the session bus that handles
+/// StatusNotifierItem methods: `Activate` (left-click) and `Scroll` (wheel).
 ///
 /// libayatana-appindicator 0.5.x does not implement `Activate` in its D-Bus
 /// interface, so KDE falls back to showing the context menu on left-click.
-/// This filter intercepts `Activate`, toggles the main window, and sends a
-/// success reply before the "no such method" error is synthesised.
+/// This filter intercepts both methods and sends success replies.
 #[cfg(target_os = "linux")]
-fn setup_dbus_activate_handler(handle: tauri::AppHandle) {
+fn setup_dbus_tray_handler(handle: tauri::AppHandle) {
     let Ok(connection) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) else {
-        log::warn!("Could not get D-Bus session bus for Activate handler");
+        log::warn!("Could not get D-Bus session bus for tray handler");
         return;
     };
 
@@ -181,33 +216,45 @@ fn setup_dbus_activate_handler(handle: tauri::AppHandle) {
             return Some(msg.to_owned());
         }
 
-        let is_activate = msg.message_type() == gio::DBusMessageType::MethodCall
-            && msg.member().as_deref() == Some("Activate")
+        let is_sni = msg.message_type() == gio::DBusMessageType::MethodCall
             && msg.interface().as_deref() == Some("org.kde.StatusNotifierItem");
 
-        if !is_activate {
+        if !is_sni {
             return Some(msg.to_owned());
         }
 
-        // Toggle main window visibility
-        if let Some(window) = handle.get_webview_window("main") {
-            if window.is_visible().unwrap_or(false) {
-                let _ = window.hide();
-            } else {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
+        match msg.member().as_deref() {
+            Some("Activate") => {
+                // Toggle main window visibility
+                if let Some(window) = handle.get_webview_window("main") {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
             }
+            Some("Scroll") => {
+                // D-Bus Scroll signature: (i32 delta, String orientation)
+                use gio::glib::prelude::*;
+                if let Some(body) = msg.body() {
+                    let delta: i32 = body.child_value(0).get().unwrap_or(0);
+                    let orientation: String = body.child_value(1).get().unwrap_or_default();
+                    if orientation == "vertical" && delta != 0 {
+                        let state = handle.state::<Arc<AppState>>();
+                        handle_tray_scroll(&handle, &state, delta as f64);
+                    }
+                }
+            }
+            _ => return Some(msg.to_owned()),
         }
 
-        // Send a success reply so KDE knows the call was handled.
-        // (Returning None causes GLib to auto-synthesise an error reply,
-        // but D-Bus ignores duplicate replies for the same serial.)
+        // Send a success reply
         let reply = msg.to_owned();
         let method_reply = gio::DBusMessage::new_method_reply(&reply);
         let _ = conn.send_message(&method_reply, gio::DBusSendMessageFlags::NONE);
-
-        // Consume the message so normal dispatch doesn't see it.
         None
     });
 }
@@ -544,20 +591,22 @@ pub fn run() {
             // Apply initial visibility
             let _ = tray.set_visible(show_in_tray);
 
-            // Linux: install a D-Bus message filter to handle the `Activate`
-            // method on the StatusNotifierItem interface.
-            //
-            // libayatana-appindicator 0.5.x does NOT expose the `Activate`
-            // D-Bus method (only `SecondaryActivate` and `Scroll`). When KDE
-            // Plasma sends `Activate` on left-click, the call fails and KDE
-            // falls back to showing the context menu.
-            //
-            // Our filter intercepts the incoming `Activate` method call,
-            // toggles the main window, and sends a success reply so KDE
-            // knows the action was handled.
+            // Linux: install a D-Bus message filter to handle StatusNotifierItem
+            // methods: Activate (left-click toggle) and Scroll (volume control).
             #[cfg(target_os = "linux")]
             {
-                setup_dbus_activate_handler(app.handle().clone());
+                setup_dbus_tray_handler(app.handle().clone());
+            }
+
+            // Register tray scroll handler for volume control (macOS + Windows).
+            // Linux handles scroll via D-Bus directly in setup_dbus_tray_handler.
+            #[cfg(not(target_os = "linux"))]
+            {
+                let scroll_state = state.clone();
+                let scroll_handle = app.handle().clone();
+                tray_icon::set_scroll_handler(move |_id, delta| {
+                    handle_tray_scroll(&scroll_handle, &scroll_state, delta);
+                });
             }
 
             // Prevent App Nap on macOS so global shortcuts and CGEventTap
@@ -790,10 +839,17 @@ pub fn run() {
                         }
                     };
                     if tooltip != last_tooltip {
-                        if let Some(tray) = handle.tray_by_id("main-tray") {
-                            let _ = tray.set_tooltip(Some(&tooltip));
+                        // Don't overwrite the "Volume: XX%" tooltip while it's showing
+                        let now_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64;
+                        if now_ms >= VOLUME_TOOLTIP_UNTIL.load(Ordering::Relaxed) {
+                            if let Some(tray) = handle.tray_by_id("main-tray") {
+                                let _ = tray.set_tooltip(Some(&tooltip));
+                            }
+                            last_tooltip = tooltip;
                         }
-                        last_tooltip = tooltip;
                     }
 
                     let _ = handle.emit(

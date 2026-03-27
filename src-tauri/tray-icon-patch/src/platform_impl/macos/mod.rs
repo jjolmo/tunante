@@ -406,6 +406,15 @@ define_class!(
             }
         }
 
+        #[unsafe(method(scrollWheel:))]
+        fn on_scroll_wheel(&self, event: &NSEvent) {
+            let delta_y = unsafe { event.deltaY() };
+            if delta_y.abs() > 0.001 {
+                let tray_id = TrayIconId(self.ivars().id.to_string());
+                crate::send_scroll_event(&tray_id, delta_y);
+            }
+        }
+
         #[unsafe(method(mouseEntered:))]
         fn on_mouse_entered(&self, event: &NSEvent) {
             send_mouse_event(self, event, MouseEventType::Enter, None);
