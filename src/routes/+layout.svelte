@@ -42,9 +42,10 @@
 				const update = await check();
 				if (update) {
 					await update.downloadAndInstall();
-					const { relaunch } = await import('@tauri-apps/plugin-process');
-					setTimeout(() => relaunch(), 1000);
-					return; // Success — app will relaunch
+					// Show toast instead of auto-restarting
+					updateVersion = info.latest_version;
+					silentUpdateReady = true;
+					return;
 				}
 			} catch {
 				// Plugin failed — fall through to platform-specific fallback
@@ -53,11 +54,9 @@
 			// 2. Linux AppImage: download and self-replace, then prompt restart
 			const result = await invoke<string>('download_and_apply_update', { downloadUrl: info.download_url });
 			if (result.includes('applied')) {
-				// Linux: AppImage was replaced — show restart toast
 				updateVersion = info.latest_version;
 				silentUpdateReady = true;
 			}
-			// macOS/Windows fallback: browser was opened silently, no toast needed
 		} catch {}
 	}
 

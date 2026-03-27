@@ -78,9 +78,6 @@
 					}
 				});
 				updateStatus = 'done';
-				// Auto-relaunch after 2 seconds
-				const { relaunch } = await import('@tauri-apps/plugin-process');
-				setTimeout(() => relaunch(), 2000);
 			} else {
 				// Custom updater fallback (Linux AppImage)
 				const url = (window as any).__customUpdateUrl;
@@ -153,7 +150,15 @@
 		{:else if updateStatus === 'downloading'}
 			<span class="update-status">Downloading update... {downloadProgress}</span>
 		{:else if updateStatus === 'done'}
-			<span class="update-status success">Update installed! Restarting...</span>
+			<div class="update-available">
+				<span class="update-status success">Update downloaded!</span>
+				<button class="update-btn primary" onclick={async () => {
+					try {
+						const { relaunch } = await import('@tauri-apps/plugin-process');
+						await relaunch();
+					} catch {}
+				}}>Restart to apply</button>
+			</div>
 		{:else if updateStatus === 'done-mac'}
 			<div class="update-mac-instructions">
 				<span class="update-status success">Download started in your browser.</span>
