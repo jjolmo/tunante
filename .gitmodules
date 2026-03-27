@@ -4,3 +4,6 @@
 [submodule "src-tauri/viogsf"]
 	path = src-tauri/viogsf
 	url = https://github.com/kode54/viogsf.git
+[submodule "src-tauri/lazyusf2-rs/lazyusf2"]
+	path = src-tauri/lazyusf2-rs/lazyusf2
+	url = https://github.com/derselbst/lazyusf2.git
