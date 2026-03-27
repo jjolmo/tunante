@@ -861,7 +861,21 @@ pub fn run() {
             updater::check_for_updates,
             updater::download_and_apply_update,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS: clicking the dock icon while the window is hidden sends Reopen
+            // (the single-instance plugin doesn't fire because no second process is launched)
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { has_visible_windows, .. } = event {
+                if !has_visible_windows {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+        });
 }
 // Auto-updater test bump 1774267730
