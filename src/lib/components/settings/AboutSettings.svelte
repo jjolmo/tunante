@@ -3,7 +3,7 @@
 	import { getVersion } from '@tauri-apps/api/app';
 
 	let appVersion = $state('0.1.0');
-	let updateStatus = $state<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'done' | 'done-mac' | 'error'>('idle');
+	let updateStatus = $state<'idle' | 'checking' | 'available' | 'up-to-date' | 'downloading' | 'done' | 'done-mac' | 'done-mac-script' | 'error'>('idle');
 	let updateVersion = $state('');
 	let updateError = $state('');
 	let downloadProgress = $state('');
@@ -93,6 +93,16 @@
 			updateStatus = 'error';
 		}
 	}
+
+	async function runMacUpdateScript() {
+		try {
+			await invoke('run_macos_update_script');
+			updateStatus = 'done-mac-script';
+		} catch (e) {
+			updateError = String(e);
+			updateStatus = 'error';
+		}
+	}
 </script>
 
 <div class="about-settings">
@@ -126,9 +136,18 @@
 			<div class="update-available">
 				<span class="update-new">New version available: <strong>v{updateVersion}</strong></span>
 				<div class="update-actions">
-					<button class="update-btn primary" onclick={downloadAndInstall}>
-						{isMacOS ? "Download from GitHub" : "Download & Install"}
-					</button>
+					{#if isMacOS}
+						<button class="update-btn primary" onclick={runMacUpdateScript}>
+							Download & Install
+						</button>
+						<button class="update-btn small" onclick={downloadAndInstall}>
+							Open in browser
+						</button>
+					{:else}
+						<button class="update-btn primary" onclick={downloadAndInstall}>
+							Download & Install
+						</button>
+					{/if}
 				</div>
 			</div>
 		{:else if updateStatus === 'downloading'}
@@ -141,6 +160,8 @@
 				<p class="mac-hint">After installing, open Terminal and run:</p>
 				<code class="mac-command">xattr -cr /Applications/Tunante.app</code>
 			</div>
+		{:else if updateStatus === 'done-mac-script'}
+			<span class="update-status success">Update script opened in Terminal. Follow the instructions there.</span>
 		{:else if updateStatus === 'error'}
 			<span class="update-status error">{updateError}</span>
 			<button class="update-btn small" onclick={checkForUpdates}>Retry</button>

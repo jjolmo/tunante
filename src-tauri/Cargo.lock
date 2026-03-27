@@ -5570,9 +5570,12 @@ dependencies = [
  "gio",
  "hepsf-rs",
  "lazygsf-rs",
+ "libc",
  "lofty",
  "log",
  "notify",
+ "objc2",
+ "objc2-foundation",
  "ogg",
  "open",
  "opus-decoder",
@@ -5597,6 +5600,7 @@ dependencies = [
  "uuid",
  "vgmstream-rs",
  "vio2sf-rs",
+ "viogsf-rs",
  "walkdir",
 ]
 
@@ -5773,6 +5777,14 @@ name = "vio2sf-rs"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "libc",
+]
+
+[[package]]
+name = "viogsf-rs"
+version = "0.1.0"
+dependencies = [
+ "cmake",
  "libc",
 ]
 
