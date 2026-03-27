@@ -5588,6 +5588,7 @@ dependencies = [
  "evdev",
  "game-music-emu",
  "gio",
+ "gtk",
  "hepsf-rs",
  "lazygsf-rs",
  "libc",
