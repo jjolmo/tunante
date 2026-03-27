@@ -412,16 +412,14 @@ fn run_macos_update_script(app: tauri::AppHandle) -> Result<(), String> {
     }
 }
 
-/// Installs a D-Bus message filter on the session bus that handles the
-/// StatusNotifierItem `Activate` method (left-click on KDE tray icon).
+/// Installs a D-Bus message filter on the session bus that handles
+/// StatusNotifierItem methods: `Activate` (left-click) and `Scroll` (wheel).
 ///
 /// libayatana-appindicator 0.5.x does not implement `Activate` in its D-Bus
 /// interface, so KDE falls back to showing the context menu on left-click.
-/// This filter intercepts `Activate` and sends a success reply.
-///
-/// Note: `Scroll` is NOT handled here — libappindicator processes it
-/// internally and emits a GLib `scroll-event` signal, which we connect
-/// to in tray-icon-patch/src/platform_impl/gtk/mod.rs.
+/// The `Scroll` method is also intercepted here because our D-Bus filter
+/// runs before libappindicator sees the message — this is the primary
+/// scroll path on Linux.
 #[cfg(target_os = "linux")]
 fn setup_dbus_tray_handler(handle: tauri::AppHandle) {
     let Ok(connection) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) else {
@@ -434,23 +432,43 @@ fn setup_dbus_tray_handler(handle: tauri::AppHandle) {
             return Some(msg.to_owned());
         }
 
-        let is_activate = msg.message_type() == gio::DBusMessageType::MethodCall
-            && msg.member().as_deref() == Some("Activate")
+        let is_sni = msg.message_type() == gio::DBusMessageType::MethodCall
             && msg.interface().as_deref() == Some("org.kde.StatusNotifierItem");
 
-        if !is_activate {
+        if !is_sni {
             return Some(msg.to_owned());
         }
 
-        // Toggle main window visibility
-        if let Some(window) = handle.get_webview_window("main") {
-            if window.is_visible().unwrap_or(false) {
-                let _ = window.hide();
-            } else {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
+        match msg.member().as_deref() {
+            Some("Activate") => {
+                // Toggle main window visibility
+                if let Some(window) = handle.get_webview_window("main") {
+                    if window.is_visible().unwrap_or(false) {
+                        let _ = window.hide();
+                    } else {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
             }
+            Some("Scroll") => {
+                use gio::glib::prelude::*;
+                if let Some(body) = msg.body() {
+                    let delta: i32 = body.child_value(0).get().unwrap_or(0);
+                    let orientation: String = body.child_value(1).get().unwrap_or_default();
+                    if orientation.eq_ignore_ascii_case("vertical") && delta != 0 {
+                        let state = handle.state::<Arc<AppState>>();
+                        let normalized = if delta.abs() >= 60 {
+                            (delta as f64) / 120.0
+                        } else {
+                            delta as f64
+                        };
+                        handle_tray_scroll(&handle, &state, normalized);
+                    }
+                }
+            }
+            _ => return Some(msg.to_owned()),
         }
 
         // Send a success reply
