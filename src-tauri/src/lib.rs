@@ -133,7 +133,7 @@ fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
         Some(w) => w,
         None => {
             let url = tauri::WebviewUrl::App("volume-popup.html".into());
-            match WebviewWindowBuilder::new(app, popup_label, url)
+            let builder = WebviewWindowBuilder::new(app, popup_label, url)
                 .title("")
                 .inner_size(200.0, 38.0)
                 .decorations(false)
@@ -144,9 +144,11 @@ fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
                 .closable(false)
                 .focused(false)
                 .visible(false)
-                .transparent(true)
-                .shadow(false)
-                .build()
+                .shadow(false);
+            // transparent() requires macos-private-api on macOS
+            #[cfg(not(target_os = "macos"))]
+            let builder = builder.transparent(true);
+            match builder.build()
             {
                 Ok(w) => w,
                 Err(e) => {
