@@ -130,9 +130,37 @@ fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64)
 fn show_volume_popup(app: &tauri::AppHandle, volume: f32) {
     let vol_pct = (volume * 100.0).round() as u32;
 
-    // Linux: use notify-send with progress bar hint (native OSD)
+    // Linux: try KDE native OSD first, fallback to notify-send
     #[cfg(target_os = "linux")]
     {
+        // KDE Plasma OSD: org.kde.osdService.mediaPlayerVolumeChanged(percent, name, icon)
+        if let Ok(conn) = gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) {
+            let icon = if vol_pct == 0 {
+                "audio-volume-muted"
+            } else if vol_pct < 33 {
+                "audio-volume-low"
+            } else if vol_pct < 66 {
+                "audio-volume-medium"
+            } else {
+                "audio-volume-high"
+            };
+            use gio::glib::prelude::*;
+            let body = gio::glib::Variant::tuple_from_iter([
+                (vol_pct as i32).to_variant(),
+                "Tunante".to_variant(),
+                icon.to_variant(),
+            ]);
+            let msg = gio::DBusMessage::new_method_call(
+                Some("org.kde.plasmashell"),
+                "/org/kde/osdService",
+                Some("org.kde.osdService"),
+                "mediaPlayerVolumeChanged",
+            );
+            msg.set_body(&body);
+            let _ = conn.send_message(&msg, gio::DBusSendMessageFlags::NONE);
+            return;
+        }
+        // Fallback: notify-send
         let _ = std::process::Command::new("notify-send")
             .args([
                 "-t", "1500",
