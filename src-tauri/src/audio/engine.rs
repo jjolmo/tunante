@@ -169,12 +169,12 @@ impl AudioEngine {
             self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
         } else if is_usf_format(ext) {
             // USF/miniusf format (N64 Sound Format via lazyusf2/Mupen64Plus)
-            // TODO: USF playback crashes rodio's audio thread on some tracks.
-            // The decoder works (verified via cargo test) but something in the
-            // render loop kills the mixer. Needs investigation.
-            return Err(AudioError::DecoderError(
-                "USF playback temporarily disabled (under investigation)".to_string()
-            ));
+            let source = UsfSource::new(actual_path)
+                .map_err(|e| AudioError::DecoderError(e))?;
+            let duration = source.total_duration();
+            self.player.append(source);
+            self.player.play();
+            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
         } else if is_twosf_format(ext) {
             // 2SF/mini2sf format (NDS Sound Format via DeSmuME)
             let source = TwoSfSource::new(actual_path)

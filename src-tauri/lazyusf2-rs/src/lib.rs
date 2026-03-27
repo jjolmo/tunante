@@ -170,6 +170,11 @@ pub struct UsfTags {
     pub length_ms: u64,
     pub fade_ms: u64,
     pub rating: i32,
+    /// If true, the N64 Compare register interrupt must be enabled.
+    /// Without this, some games loop the CPU indefinitely.
+    pub enable_compare: bool,
+    /// If true, the AI FIFO full flag must be enabled for correct timing.
+    pub enable_fifo_full: bool,
 }
 
 struct TagCollector {
@@ -235,6 +240,9 @@ unsafe extern "C" fn tag_info_callback(
         "length" => collector.tags.length_ms = parse_psf_time(&value),
         "fade" => collector.tags.fade_ms = parse_psf_time(&value),
         "rating" => collector.tags.rating = value.trim().parse::<i32>().unwrap_or(0).clamp(0, 5),
+        // These tags control N64 CPU emulation timing — their presence (any value) enables the flag
+        "_enablecompare" => collector.tags.enable_compare = true,
+        "_enablefifofull" => collector.tags.enable_fifo_full = true,
         _ => {}
     }
 
@@ -323,11 +331,11 @@ impl UsfDecoder {
             return Err(format!("psf_load failed (code={}) for: {}", result, path_str));
         }
 
-        // Configure emulator
+        // Configure emulator — apply flags from PSF tags
         unsafe {
-            usf_set_hle_audio(state, 1); // HLE = faster, sufficient for music
-            usf_set_compare(state, 0);
-            usf_set_fifo_full(state, 0);
+            usf_set_hle_audio(state, 1);
+            usf_set_compare(state, if collector.tags.enable_compare { 1 } else { 0 });
+            usf_set_fifo_full(state, if collector.tags.enable_fifo_full { 1 } else { 0 });
         }
 
         Ok((
