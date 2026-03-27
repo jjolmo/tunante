@@ -1,5 +1,6 @@
 use parking_lot::Mutex;
 use std::collections::VecDeque;
+use std::io::Write;
 use std::sync::OnceLock;
 
 const MAX_LOG_ENTRIES: usize = 2000;
@@ -41,9 +42,10 @@ impl log::Log for DebugLogger {
             message: format!("{}", record.args()),
         };
 
-        // Print to stderr for terminal debugging
-        eprintln!(
-            "[{}] {} [{}] {}",
+        // Print to stderr for terminal debugging (ignore broken pipe when no terminal)
+        let _ = write!(
+            std::io::stderr(),
+            "[{}] {} [{}] {}\n",
             entry.timestamp, entry.level, entry.target, entry.message
         );
 
