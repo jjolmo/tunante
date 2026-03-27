@@ -41,8 +41,8 @@
 							if (total > 0) downloadProgress = `${Math.round((downloaded / total) * 100)}%`;
 						}
 					});
-					const { relaunch } = await import('@tauri-apps/plugin-process');
-					setTimeout(() => relaunch(), 1000);
+					downloadComplete = true;
+					downloadProgress = 'Download complete.';
 					return;
 				}
 			} catch {
