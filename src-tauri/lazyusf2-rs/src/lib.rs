@@ -29,6 +29,7 @@ extern "C" {
     ) -> *const c_char;
     fn usf_restart(state: *mut c_void);
     fn usf_shutdown(state: *mut c_void);
+    fn usf_set_abort_flag(state: *mut c_void, abort: c_int);
 }
 
 // --- psflib ---
@@ -364,6 +365,19 @@ impl UsfDecoder {
         unsafe {
             usf_restart(self.state);
         }
+    }
+
+    /// Set the abort flag to force the CPU emulation loop to exit.
+    /// Safe to call from another thread — the flag is checked every ~65536 instructions.
+    pub fn set_abort(&self, abort: bool) {
+        unsafe {
+            usf_set_abort_flag(self.state, if abort { 1 } else { 0 });
+        }
+    }
+
+    /// Get the raw state pointer (for sharing with the abort mechanism).
+    pub fn state_ptr(&self) -> *mut c_void {
+        self.state
     }
 }
 

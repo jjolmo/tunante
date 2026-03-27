@@ -37,6 +37,9 @@ pub struct UsfSource {
     finished: bool,
     /// Shared flag to tell the decode thread to abort
     abort: Arc<AtomicBool>,
+    /// Raw pointer to the C emulator state — used to set abort_flag directly
+    /// from Drop, which interrupts usf_render_resampled's CPU loop.
+    state_ptr: *mut std::ffi::c_void,
 }
 
 unsafe impl Send for UsfSource {}
@@ -57,6 +60,9 @@ impl UsfSource {
         let abort = Arc::new(AtomicBool::new(false));
         let abort_clone = abort.clone();
 
+        // Save raw pointer BEFORE moving decoder to thread — used for abort
+        let state_ptr = decoder.state_ptr();
+
         std::thread::Builder::new()
             .name("usf-decode".into())
             .spawn(move || {
@@ -73,6 +79,7 @@ impl UsfSource {
             buf_pos: 0,
             total_duration: Some(Duration::from_millis(total_ms)),
             finished: false,
+            state_ptr,
             abort,
         })
     }
@@ -130,8 +137,18 @@ impl UsfSource {
 
 impl Drop for UsfSource {
     fn drop(&mut self) {
-        // Signal abort so any stuck render call exits
+        // Set both the Rust-level and C-level abort flags.
+        // The C flag is checked by the patched CPU loop every ~65536 instructions,
+        // forcing usf_render_resampled to return even if the emulator is stuck.
         self.abort.store(true, Ordering::Relaxed);
+        if !self.state_ptr.is_null() {
+            extern "C" {
+                fn usf_set_abort_flag(state: *mut std::ffi::c_void, abort: std::os::raw::c_int);
+            }
+            unsafe {
+                usf_set_abort_flag(self.state_ptr, 1);
+            }
+        }
         let _ = self.tx.send(DecodeCmd::Stop);
     }
 }

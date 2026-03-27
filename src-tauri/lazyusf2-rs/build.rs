@@ -35,28 +35,18 @@ fn main() {
         build.define("_CRT_NONSTDC_NO_DEPRECATE", None);
     }
 
-    // Architecture-specific: dynamic recompiler on x86_64, interpreter elsewhere
+    // Use cached interpreter on ALL platforms (no dynarec).
+    // The dynarec JIT runs native code that never checks the abort_flag,
+    // making stuck emulators impossible to kill. The cached interpreter
+    // checks abort_flag in ADD_TO_PC() after every instruction.
+    // This is ~2x slower than dynarec but allows clean thread termination.
     if is_x86_64 {
-        build.define("DYNAREC", None);
+        // Still define ARCH_MIN_SSE2 for SIMD optimizations in other code
         build.define("ARCH_MIN_SSE2", None);
-        // x86_64 recompiler sources
-        let x64 = usf_root.join("r4300").join("x86_64");
-        build.files(&[
-            x64.join("assemble.c"),
-            x64.join("gbc.c"),
-            x64.join("gcop0.c"),
-            x64.join("gcop1.c"),
-            x64.join("gcop1_d.c"),
-            x64.join("gcop1_l.c"),
-            x64.join("gcop1_s.c"),
-            x64.join("gcop1_w.c"),
-            x64.join("gr4300.c"),
-            x64.join("gregimm.c"),
-            x64.join("gspecial.c"),
-            x64.join("gtlb.c"),
-            x64.join("regcache.c"),
-            x64.join("rjump.c"),
-        ]);
+        // Do NOT define DYNAREC — forces cached interpreter
+        // Include empty_dynarec.c as stub
+        build.file(usf_root.join("r4300").join("empty_dynarec.c"));
+        // No dynarec files — using cached interpreter
     } else {
         // ARM64 and others: use empty dynarec (cached interpreter)
         if target.contains("aarch64") {
