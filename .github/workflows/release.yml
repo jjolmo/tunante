@@ -184,6 +184,8 @@ jobs:
     needs: [version, build-linux, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -239,6 +241,7 @@ jobs:
             }
           }
           ENDJSON
+          cp update_mac.sh release/
           ls -la release/
 
       - name: Create GitHub Release
