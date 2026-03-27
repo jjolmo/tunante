@@ -158,12 +158,27 @@
 			});
 		}
 
-		// Restore last track (show in player bar but don't auto-play)
+		// Restore last track
 		const lastTrackId = gs('session_last_track_id');
 		if (lastTrackId) {
 			const track = libraryStore.tracks.find((t) => t.id === lastTrackId);
 			if (track) {
 				playerStore.currentTrack = track;
+
+				// Auto-resume if app was closed less than 5 minutes ago while playing
+				const wasPlaying = gs('session_was_playing') === 'true';
+				const closedAt = parseInt(gs('session_closed_at') || '0', 10);
+				const posMs = parseInt(gs('session_position_ms') || '0', 10);
+				const elapsed = Date.now() - closedAt;
+
+				if (wasPlaying && closedAt > 0 && elapsed < 5 * 60 * 1000) {
+					// Play the track and seek to saved position
+					invoke('play_file', { path: track.path }).then(() => {
+						if (posMs > 0) {
+							invoke('seek', { positionMs: posMs }).catch(() => {});
+						}
+					}).catch(() => {});
+				}
 			}
 		}
 
@@ -230,8 +245,13 @@
 		}
 		window.addEventListener('keydown', handleDebugShortcut);
 
-		// Flush pending saves before window closes so session state is never lost
+		// Flush pending saves + snapshot playback state before window closes
 		const flushSaves = () => {
+			// Snapshot current playback state for resume-on-reopen
+			pendingSaves.set('session_position_ms', String(Math.floor(playerStore.positionMs)));
+			pendingSaves.set('session_was_playing', String(playerStore.isPlaying));
+			pendingSaves.set('session_closed_at', String(Date.now()));
+
 			if (saveTimer) {
 				clearTimeout(saveTimer);
 				saveTimer = null;
