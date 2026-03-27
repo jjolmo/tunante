@@ -64,26 +64,26 @@ struct TrayUserData {
     entered: bool,
     last_position: Option<PhysicalPosition<f64>>,
     menu_on_left_click: bool,
-    mouse_hook: isize, // HHOOK (0 = no hook)
+    mouse_hook: *mut std::ffi::c_void, // HHOOK
 }
 
 // Global pointer so the WH_MOUSE_LL callback can access tray data.
 static SCROLL_HOOK_DATA: AtomicPtr<TrayUserData> = AtomicPtr::new(std::ptr::null_mut());
 
 unsafe fn install_scroll_hook(userdata: &mut TrayUserData) {
-    if userdata.mouse_hook != 0 {
+    if !userdata.mouse_hook.is_null() {
         return;
     }
     SCROLL_HOOK_DATA.store(userdata as *mut _, Ordering::Relaxed);
-    let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(scroll_hook_proc), 0, 0);
+    let hook = SetWindowsHookExW(WH_MOUSE_LL, Some(scroll_hook_proc), ptr::null_mut(), 0);
     userdata.mouse_hook = hook;
 }
 
 unsafe fn remove_scroll_hook(userdata: &mut TrayUserData) {
-    if userdata.mouse_hook != 0 {
+    if !userdata.mouse_hook.is_null() {
         UnhookWindowsHookEx(userdata.mouse_hook);
-        userdata.mouse_hook = 0;
-        SCROLL_HOOK_DATA.store(std::ptr::null_mut(), Ordering::Relaxed);
+        userdata.mouse_hook = ptr::null_mut();
+        SCROLL_HOOK_DATA.store(ptr::null_mut(), Ordering::Relaxed);
     }
 }
 
@@ -106,7 +106,7 @@ unsafe extern "system" fn scroll_hook_proc(code: i32, wparam: WPARAM, lparam: LP
             }
         }
     }
-    CallNextHookEx(0, code, wparam, lparam)
+    CallNextHookEx(ptr::null_mut(), code, wparam, lparam)
 }
 
 pub struct TrayIcon {
@@ -142,7 +142,7 @@ impl TrayIcon {
                 entered: false,
                 last_position: None,
                 menu_on_left_click: attrs.menu_on_left_click,
-                mouse_hook: 0,
+                mouse_hook: ptr::null_mut(),
             };
 
             let hwnd = CreateWindowExW(
