@@ -19,8 +19,6 @@
  *   51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.          *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifdef DYNAREC
-
 #include <stdio.h>
 
 #include "usf/usf.h"
@@ -581,4 +579,4 @@ void genbgezall_idle(usf_state_t * state)
    genbgezall(state);
 #endif
 }
-#endif
+

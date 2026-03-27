@@ -32,6 +32,8 @@
 
 #include "hle.h"
 
+extern void rsp_lle_run_task(usf_state_t * state);
+
 /* Global functions needed by HLE core */
 void HleVerboseMessage(void* user_defined, const char *message, ...)
 {
@@ -118,7 +120,7 @@ void HleProcessRdpList(void* user_defined)
 
 void HleShowCFB(void* user_defined)
 {
-    /* disabled */
+    rsp_lle_run_task((usf_state_t *)user_defined);
 }
 
 int HleForwardTask(void* user_defined)

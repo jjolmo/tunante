@@ -135,9 +135,9 @@ m64p_error main_start(usf_state_t * state)
 
     /* take the r4300 emulator mode from the config file at this point and cache it in a global variable */
 #ifdef DEBUG_INFO
-    state->r4300emu = CORE_PURE_INTERPRETER;
+    state->r4300emu = 0;
 #else
-    state->r4300emu = CORE_INTERPRETER; /* Use cached interpreter — supports abort_flag */
+    state->r4300emu = 1; /* CORE_INTERPRETER: supports abort_flag */
 #endif
 
     /* set some other core parameters based on the config file values */
@@ -185,6 +185,15 @@ m64p_error main_start(usf_state_t * state)
         state->g_delay_pi = 1;
         state->g_delay_dp = 1;
         state->enable_hle_audio = 0;
+    }
+
+    // Assume it's a proper rip
+    if (state->enablecompare && state->enableFIFOfull)
+    {
+        state->g_delay_si = 1;
+        state->g_delay_ai = 1;
+        state->g_delay_pi = 1;
+        state->g_delay_dp = 1;
     }
 
     return M64ERR_SUCCESS;

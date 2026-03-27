@@ -13,7 +13,7 @@ unsigned int enable_fifo_full = 0;
 
 unsigned long length_ms = 0;
 
-static void * stdio_fopen(void * context, const char * path )
+static void * stdio_fopen( const char * path )
 {
     return fopen( path, "rb" );
 }
@@ -37,6 +37,16 @@ static long stdio_ftell( void * f )
 {
     return ftell( (FILE*) f );
 }
+
+static psf_file_callbacks stdio_callbacks =
+{
+    "\\/:",
+    stdio_fopen,
+    stdio_fread,
+    stdio_fseek,
+    stdio_fclose,
+    stdio_ftell
+};
 
 static int usf_loader(void * context, const uint8_t * exe, size_t exe_size,
                       const uint8_t * reserved, size_t reserved_size)
@@ -134,17 +144,6 @@ int main(int argc, char ** argv)
 
         usf_clear(state);
 
-        psf_file_callbacks stdio_callbacks =
-        {
-            "\\/:",
-            NULL,
-            stdio_fopen,
-            stdio_fread,
-            stdio_fseek,
-            stdio_fclose,
-            stdio_ftell
-        };
-
 		if ( psf_load( argv[1], &stdio_callbacks, 0x21, usf_loader, 0, usf_info, 0, 1, print_message, 0 ) <= 0 )
             return 1;
 
@@ -167,7 +166,7 @@ int main(int argc, char ** argv)
           if (samples_last == 6589000)
           {
             fprintf(stderr, "Log started.\n");
-//             usf_log_start(state);
+            usf_log_start(state);
           }
           #endif
           usf_render(state, 0, 1000, &sample_rate);
