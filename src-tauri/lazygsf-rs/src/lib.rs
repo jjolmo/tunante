@@ -280,13 +280,9 @@ unsafe extern "C" fn gsf_upload_callback(
 /// Status callback — logs psflib error/status messages for debugging
 unsafe extern "C" fn gsf_status_callback(
     _context: *mut c_void,
-    message: *const c_char,
+    _message: *const c_char,
 ) {
-    if !message.is_null() {
-        if let Ok(msg) = CStr::from_ptr(message).to_str() {
-            eprintln!("[lazygsf] psflib status: {}", msg);
-        }
-    }
+    // Silent — eprintln! crashes with "broken pipe" when no terminal is attached
 }
 
 // ============================================================================
