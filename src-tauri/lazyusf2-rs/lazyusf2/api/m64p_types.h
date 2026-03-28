@@ -27,23 +27,19 @@
 /* Platform-specific stuff                   */
 /* ----------------------------------------- */
 
-/* necessary headers */
-#if defined(WIN32)
-  #include <windows.h>
-#endif
-
 /* DLL handles and function declaration specifiers */
-#if defined(WIN32)
-  #define IMPORT extern "C" __declspec(dllimport)
-  #define EXPORT __declspec(dllexport)
-  #define CALL   __cdecl
-  typedef HMODULE m64p_dynlib_handle;
-#else
-  #define IMPORT extern "C"
+/* Patched for Tunante: use portable C definitions on all platforms.
+   The original WIN32 path uses 'extern "C"' (C++ syntax) and <windows.h>
+   which don't work when compiling as C. Since we build as a static
+   library (not a DLL), we don't need dllimport/dllexport. */
+#if defined(__GNUC__) || defined(__clang__)
   #define EXPORT __attribute__((visibility("default")))
-  #define CALL
-  typedef void * m64p_dynlib_handle;
+#else
+  #define EXPORT
 #endif
+#define IMPORT extern
+#define CALL
+typedef void * m64p_dynlib_handle;
 
 /* ----------------------------------------- */
 /* Structures and Types for Core library API */
