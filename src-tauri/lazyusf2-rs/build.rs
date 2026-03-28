@@ -151,8 +151,7 @@ fn main() {
     build.compile("lazyusf2");
 
     if is_windows {
-        // __control87_2 (used by fpu.h's fesetround) is in the UCRT
-        println!("cargo:rustc-link-lib=ucrt");
+        // fpu.h patched to use standard C fenv.h instead of __control87_2
     } else {
         // Link system zlib on non-Windows (Windows uses vendored zlib compiled above)
         println!("cargo:rustc-link-lib=z");

@@ -33,13 +33,9 @@
 #ifdef _MSC_VER
   #define M64P_FPU_INLINE static __inline
   #include <float.h>
-  typedef enum { FE_TONEAREST = 0, FE_TOWARDZERO, FE_UPWARD, FE_DOWNWARD } eRoundType;
-  static void fesetround(eRoundType RoundType)
-  {
-    static const unsigned int msRound[4] = { _RC_NEAR, _RC_CHOP, _RC_UP, _RC_DOWN };
-    unsigned int oldX87, oldSSE2;
-    __control87_2(msRound[RoundType], _MCW_RC, &oldX87, &oldSSE2);
-  }
+  #include <fenv.h>
+  /* Use standard C fenv.h on modern MSVC (VS2013+) instead of
+     __control87_2 which requires linking msvcrt internals. */
   static __inline double round(double x) { return floor(x + 0.5); }
   static __inline float roundf(float x) { return (float) floor(x + 0.5); }
   static __inline double trunc(double x) { return (double) (int) x; }
