@@ -152,7 +152,7 @@ fn main() {
 
     if is_windows {
         // __control87_2 (used by fpu.h's fesetround) is in the UCRT
-        println!("cargo:rustc-link-lib=static=libucrt");
+        println!("cargo:rustc-link-lib=ucrt");
     } else {
         // Link system zlib on non-Windows (Windows uses vendored zlib compiled above)
         println!("cargo:rustc-link-lib=z");
