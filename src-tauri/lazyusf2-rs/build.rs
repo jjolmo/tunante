@@ -35,17 +35,7 @@ fn main() {
     if is_windows {
         build.define("_CRT_SECURE_NO_WARNINGS", None);
         build.define("_CRT_NONSTDC_NO_DEPRECATE", None);
-        // m64p_types.h uses 'extern "C"' (C++ syntax) and <windows.h> which
-        // causes errors in C mode. Skip the header entirely and define the
-        // minimal types/macros it provides.
-        build.define("M64P_TYPES_H", None); // skip m64p_types.h include guard
-        build.define("EXPORT", "");
-        build.define("CALL", "");
-        build.define("osal_fastcall", "");
-        // Provide the m64p_error type that headers expect
-        build.define("m64p_error", "int");
-        build.define("m64p_dynlib_handle", "void*");
-        build.define("M64P_FRONTEND_H", None); // skip m64p_frontend.h entirely
+        // m64p_types.h patched to use portable C definitions on all platforms
         // Windows: use vendored zlib (no system zlib available)
         build.include(&zlib_dir);
         build.files(&[
