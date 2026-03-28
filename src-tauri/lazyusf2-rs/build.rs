@@ -29,10 +29,27 @@ fn main() {
         .define("psf_load", "usf_psf_load")
         .define("strrpbrk", "usf_strrpbrk");
 
+    let zlib_dir = base.join("zlib");
+
     // Platform-specific defines
     if is_windows {
         build.define("_CRT_SECURE_NO_WARNINGS", None);
         build.define("_CRT_NONSTDC_NO_DEPRECATE", None);
+        // Windows: use vendored zlib (no system zlib available)
+        build.include(&zlib_dir);
+        build.files(&[
+            zlib_dir.join("adler32.c"),
+            zlib_dir.join("compress.c"),
+            zlib_dir.join("crc32.c"),
+            zlib_dir.join("deflate.c"),
+            zlib_dir.join("infback.c"),
+            zlib_dir.join("inffast.c"),
+            zlib_dir.join("inflate.c"),
+            zlib_dir.join("inftrees.c"),
+            zlib_dir.join("trees.c"),
+            zlib_dir.join("uncompr.c"),
+            zlib_dir.join("zutil.c"),
+        ]);
     }
 
     // Use cached interpreter on ALL platforms (no dynarec).
