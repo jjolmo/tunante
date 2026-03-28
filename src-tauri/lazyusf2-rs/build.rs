@@ -35,6 +35,11 @@ fn main() {
     if is_windows {
         build.define("_CRT_SECURE_NO_WARNINGS", None);
         build.define("_CRT_NONSTDC_NO_DEPRECATE", None);
+        // m64p_types.h uses EXPORT/CALL/IMPORT macros that assume C++ on Windows.
+        // Override them to work in C mode (we compile with /std:c11).
+        build.define("EXPORT", "");
+        build.define("CALL", "");
+        build.define("IMPORT", "extern");
         // Windows: use vendored zlib (no system zlib available)
         build.include(&zlib_dir);
         build.files(&[
