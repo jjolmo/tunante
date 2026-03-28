@@ -150,11 +150,9 @@ fn main() {
 
     build.compile("lazyusf2");
 
-    // Link system zlib (psflib and lazyusf2 need inflate/uncompress/adler32)
-    println!("cargo:rustc-link-lib=z");
-
-    // Link math library on Unix
+    // Link system zlib on non-Windows (Windows uses vendored zlib compiled above)
     if !is_windows {
+        println!("cargo:rustc-link-lib=z");
         println!("cargo:rustc-link-lib=m");
     }
 
