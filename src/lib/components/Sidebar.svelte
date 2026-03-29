@@ -50,9 +50,9 @@
 					// No local artwork — try downloading
 					try {
 						let downloaded: string | null = null;
-						const consoleId = CODEC_TO_CONSOLE.get(track.codec);
+						const consoleId = consolesStore.getTrackConsole(track);
 						if (consoleId && track.album) {
-							// VGM track: use Wikipedia game cover scraper
+							// VGM/console track: use Wikipedia game cover scraper
 							const consoleDef = CONSOLE_DEFINITIONS.find((d) => d.id === consoleId);
 							downloaded = await invoke<string | null>('fetch_vgm_cover_art', {
 								gameName: track.album,
