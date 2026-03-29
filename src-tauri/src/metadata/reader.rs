@@ -11,8 +11,14 @@ use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
 use lofty::tag::{Accessor, ItemKey};
 use std::path::Path;
+use std::sync::mpsc;
+use std::time::Duration;
 use thiserror::Error;
 use uuid::Uuid;
+
+/// Global timeout for reading metadata from any single file (seconds).
+/// Prevents hanging on problematic files (corrupt USF, raw DSP, etc.).
+const METADATA_READ_TIMEOUT_SECS: u64 = 10;
 
 #[derive(Error, Debug)]
 pub enum MetadataError {
@@ -34,6 +40,8 @@ pub enum MetadataError {
     Psf2(String),
     #[error("USF error: {0}")]
     Usf(String),
+    #[error("Metadata read timeout: {0}")]
+    Timeout(String),
 }
 
 /// Check if a file is a vgmstream-only format (not handled by GME or standard decoders)
@@ -63,8 +71,8 @@ fn is_vgmstream_file(path: &Path) -> bool {
     vgmstream_rs::Vgmstream::is_valid(filename)
 }
 
-/// Read metadata, returning potentially multiple tracks for multi-track VGM files.
-pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
+/// Inner implementation without timeout.
+fn read_metadata_all_inner(path: &Path) -> Result<Vec<Track>, MetadataError> {
     if is_gme_file(path) {
         return gme_reader::read_gme_metadata(path).map_err(MetadataError::Gme);
     }
@@ -88,11 +96,31 @@ pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
             .map_err(MetadataError::Vgmstream);
     }
     // Standard format via lofty; if lofty fails, use a fallback based on filename/fs metadata.
-    // This handles formats like minigsf/PSF-family that are in AUDIO_EXTENSIONS
-    // but don't have a metadata reader yet.
     match read_metadata(path) {
         Ok(t) => Ok(vec![t]),
         Err(_) => read_metadata_fallback(path).map(|t| vec![t]),
+    }
+}
+
+/// Read metadata, returning potentially multiple tracks for multi-track VGM files.
+/// Wraps the inner reader with a global timeout to prevent hanging on problematic files.
+pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
+    let path_buf = path.to_path_buf();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = read_metadata_all_inner(&path_buf);
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(Duration::from_secs(METADATA_READ_TIMEOUT_SECS)) {
+        Ok(result) => result,
+        Err(_) => {
+            log::warn!(
+                "Metadata read timeout ({}s) for: {}",
+                METADATA_READ_TIMEOUT_SECS,
+                path.display()
+            );
+            Err(MetadataError::Timeout(path.display().to_string()))
+        }
     }
 }
 
