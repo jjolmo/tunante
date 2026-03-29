@@ -30,22 +30,25 @@ impl GmeSource {
     ///
     /// - `path`: Path to the GME file (NSF, SPC, etc.)
     /// - `track_index`: Sub-track index (0-based)
-    pub fn new(path: &Path, track_index: usize) -> Result<Self, String> {
+    /// - `duration_hint_ms`: Duration from DB (parsed from .m3u by scanner). If > 0, used
+    ///   for fade timing and seeker instead of GME's internal (often wrong) play_length.
+    pub fn new(path: &Path, track_index: usize, duration_hint_ms: i64) -> Result<Self, String> {
         let emu = GameMusicEmu::from_file(path, 44100)
             .map_err(|e| format!("GME load error: {}", e))?;
 
-        let info = emu
-            .track_info(track_index)
-            .map_err(|e| format!("GME track info error: {}", e))?;
-
-        // Calculate play duration:
-        // 1. If play_length is known and positive, use it (GME already computes
-        //    length or intro+loop*2 or default)
-        // 2. Fall back to our default
-        let play_duration_ms = if info.play_length > 0 {
-            info.play_length
+        // Use DB duration hint if available, otherwise fall back to GME's play_length
+        let play_duration_ms = if duration_hint_ms > FADE_MS as i64 {
+            // DB duration already includes fade — subtract it for the play portion
+            (duration_hint_ms - FADE_MS as i64) as i32
         } else {
-            DEFAULT_DURATION_MS
+            let info = emu
+                .track_info(track_index)
+                .map_err(|e| format!("GME track info error: {}", e))?;
+            if info.play_length > 0 {
+                info.play_length
+            } else {
+                DEFAULT_DURATION_MS
+            }
         };
 
         // Start the track first, then set fade — start_track resets

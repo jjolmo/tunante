@@ -125,7 +125,7 @@ impl AudioEngine {
         })
     }
 
-    pub fn play_file(&mut self, path: &Path) -> Result<(), AudioError> {
+    pub fn play_file(&mut self, path: &Path, duration_hint_ms: i64) -> Result<(), AudioError> {
         // Recreate the Player to fully reset rodio's internal resampler state.
         // Without this, switching between tracks with different sample rates
         // (e.g. 48kHz PSF2/Opus → 44.1kHz GSF) can corrupt the resampler,
@@ -153,7 +153,7 @@ impl AudioEngine {
         if is_gme_format(ext) {
             // GME chiptune format (NSF, SPC, GBS, VGM, etc.)
             let track_index = sub_track.unwrap_or(0);
-            let source = GmeSource::new(actual_path, track_index)
+            let source = GmeSource::new(actual_path, track_index, duration_hint_ms)
                 .map_err(|e| AudioError::DecoderError(e))?;
             let duration = source.total_duration();
             self.player.append(source);

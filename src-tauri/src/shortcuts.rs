@@ -41,9 +41,10 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
             let track = queue.next().or_else(|| queue.current().cloned());
             if let Some(track) = track {
                 let path = track.path.clone();
+                let duration_hint = track.duration_ms;
                 drop(queue);
                 let mut audio = state.audio.lock();
-                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
+                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
                     let _ = app.emit("track-changed", track);
                 }
             }
@@ -53,9 +54,10 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
             let track = queue.prev().or_else(|| queue.current().cloned());
             if let Some(track) = track {
                 let path = track.path.clone();
+                let duration_hint = track.duration_ms;
                 drop(queue);
                 let mut audio = state.audio.lock();
-                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path)) {
+                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
                     let _ = app.emit("track-changed", track);
                 }
             }

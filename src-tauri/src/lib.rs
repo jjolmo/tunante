@@ -1108,9 +1108,10 @@ pub fn run() {
                         let mut queue = state.queue.lock();
                         if let Some(next_track) = queue.next() {
                             let path = next_track.path.clone();
+                            let duration_hint = next_track.duration_ms;
                             drop(queue);
                             let mut audio = state.audio.lock();
-                            match audio.play_file(&std::path::PathBuf::from(&path)) {
+                            match audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
                                 Ok(()) => {
                                     let _ = handle.emit("track-changed", next_track);
                                 }
