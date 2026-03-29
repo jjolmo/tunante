@@ -1,14 +1,38 @@
 use crate::audio::vgm_path::build_vgm_path;
 use crate::db::models::Track;
 use std::path::Path;
+use std::sync::mpsc;
+use std::time::Duration;
 use uuid::Uuid;
 use vgmstream_rs::Vgmstream;
+
+/// Timeout for opening a single vgmstream file (seconds).
+/// Some formats (e.g., raw GameCube DSP) can hang vgmstream indefinitely.
+const VGMSTREAM_OPEN_TIMEOUT_SECS: u64 = 5;
+
+/// Open a vgmstream file with a timeout to prevent hanging on problematic files.
+fn open_with_timeout(path: &Path, subsong: i32) -> Result<Vgmstream, String> {
+    let path_buf = path.to_path_buf();
+    let path_display = path.display().to_string();
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let result = Vgmstream::open(&path_buf, subsong);
+        let _ = tx.send(result);
+    });
+    match rx.recv_timeout(Duration::from_secs(VGMSTREAM_OPEN_TIMEOUT_SECS)) {
+        Ok(result) => result,
+        Err(_) => Err(format!(
+            "vgmstream: timeout after {}s opening {} subsong {}",
+            VGMSTREAM_OPEN_TIMEOUT_SECS, path_display, subsong
+        )),
+    }
+}
 
 /// Read metadata from a vgmstream-supported file.
 /// Handles subsongs (multiple streams within a single file).
 pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
     // Open with subsong 0 (default) to get subsong count
-    let vgm = Vgmstream::open(path, 0)?;
+    let vgm = open_with_timeout(path, 0)?;
     let initial_info = vgm.info();
 
     let file_meta = std::fs::metadata(path).map_err(|e| format!("IO error: {}", e))?;
@@ -84,7 +108,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::with_capacity(subsong_count as usize);
 
     for i in 1..=subsong_count {
-        let vgm = match Vgmstream::open(path, i) {
+        let vgm = match open_with_timeout(path, i) {
             Ok(v) => v,
             Err(e) => {
                 log::warn!(
