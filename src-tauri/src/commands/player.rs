@@ -29,11 +29,11 @@ pub fn play_file(
         db.get_all_tracks().map_err(|e| e.to_string())?
     };
 
-    let track_id = db
+    let db_track = db
         .get_track_by_path(&path)
-        .map_err(|e| e.to_string())?
-        .map(|t| t.id)
-        .unwrap_or_default();
+        .map_err(|e| e.to_string())?;
+    let track_id = db_track.as_ref().map(|t| t.id.clone()).unwrap_or_default();
+    let duration_hint_ms = db_track.as_ref().map(|t| t.duration_ms).unwrap_or(0);
     drop(db);
 
     let mut queue = state.queue.lock();
@@ -42,7 +42,7 @@ pub fn play_file(
     drop(queue);
 
     let mut audio = state.audio.lock();
-    audio.play_file(&file_path).map_err(|e| e.to_string())
+    audio.play_file(&file_path, duration_hint_ms).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -108,10 +108,11 @@ pub fn next_track(
     let mut queue = state.queue.lock();
     if let Some(track) = queue.next() {
         let path = track.path.clone();
+        let duration_hint = track.duration_ms;
         let _ = app.emit("track-changed", &track);
         drop(queue);
         let mut audio = state.audio.lock();
-        audio.play_file(&PathBuf::from(&path)).map_err(|e| e.to_string())?;
+        audio.play_file(&PathBuf::from(&path), duration_hint).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -124,10 +125,11 @@ pub fn prev_track(
     let mut queue = state.queue.lock();
     if let Some(track) = queue.prev() {
         let path = track.path.clone();
+        let duration_hint = track.duration_ms;
         let _ = app.emit("track-changed", &track);
         drop(queue);
         let mut audio = state.audio.lock();
-        audio.play_file(&PathBuf::from(&path)).map_err(|e| e.to_string())?;
+        audio.play_file(&PathBuf::from(&path), duration_hint).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
