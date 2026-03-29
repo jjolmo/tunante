@@ -1,4 +1,5 @@
 import { libraryStore } from '$lib/stores/library.svelte';
+import { settingsStore } from '$lib/stores/settings.svelte';
 import type { Track } from '$lib/types';
 
 export interface ConsoleDefinition {
@@ -153,13 +154,72 @@ for (const def of CONSOLE_DEFINITIONS) {
 	}
 }
 
+/** Extract the grandparent folder from a file path (parent of the folder containing the file) */
+function getGrandparent(filePath: string): string | null {
+	const normalized = filePath.replace(/\\/g, '/');
+	const lastSlash = normalized.lastIndexOf('/');
+	if (lastSlash < 0) return null;
+	const parent = normalized.substring(0, lastSlash);
+	const secondSlash = parent.lastIndexOf('/');
+	if (secondSlash < 0) return null;
+	return parent.substring(0, secondSlash);
+}
+
 class ConsolesStore {
 	activeConsoleId = $state<string | null>(null);
+
+	/**
+	 * Builds a map of grandparent folder → console id for folder-based inference.
+	 * Only includes unambiguous mappings (all console-format tracks under a grandparent
+	 * belong to the same console).
+	 */
+	get folderConsoleMap(): Map<string, string> {
+		const grandparentConsoles = new Map<string, Set<string>>();
+
+		for (const track of libraryStore.tracks) {
+			const consoleId = CODEC_TO_CONSOLE.get(track.codec);
+			if (!consoleId) continue;
+
+			const grandparent = getGrandparent(track.path);
+			if (!grandparent) continue;
+
+			let consoles = grandparentConsoles.get(grandparent);
+			if (!consoles) {
+				consoles = new Set();
+				grandparentConsoles.set(grandparent, consoles);
+			}
+			consoles.add(consoleId);
+		}
+
+		// Only keep unambiguous mappings (single console per grandparent)
+		const result = new Map<string, string>();
+		for (const [folder, consoles] of grandparentConsoles) {
+			if (consoles.size === 1) {
+				result.set(folder, consoles.values().next().value!);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Get the console id for a track - either directly from codec or inferred from folder.
+	 * Returns null if no console can be determined.
+	 */
+	getTrackConsole(track: Track): string | null {
+		const direct = CODEC_TO_CONSOLE.get(track.codec);
+		if (direct) return direct;
+
+		if (!settingsStore.consoleGroupByFolder) return null;
+
+		const grandparent = getGrandparent(track.path);
+		if (!grandparent) return null;
+		return this.folderConsoleMap.get(grandparent) ?? null;
+	}
 
 	get consolesWithCounts(): (ConsoleDefinition & { trackCount: number })[] {
 		const counts = new Map<string, number>();
 		for (const track of libraryStore.tracks) {
-			const consoleId = CODEC_TO_CONSOLE.get(track.codec);
+			const consoleId = this.getTrackConsole(track);
 			if (consoleId) {
 				counts.set(consoleId, (counts.get(consoleId) || 0) + 1);
 			}
@@ -179,6 +239,13 @@ class ConsolesStore {
 	get consoleTracks(): Track[] {
 		const console = this.activeConsole;
 		if (!console) return [];
+
+		if (settingsStore.consoleGroupByFolder) {
+			return libraryStore.filteredTracks.filter(
+				(t) => this.getTrackConsole(t) === console.id
+			);
+		}
+
 		const codecSet = new Set(console.codecs);
 		return libraryStore.filteredTracks.filter((t) => codecSet.has(t.codec));
 	}

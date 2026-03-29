@@ -21,6 +21,7 @@ class SettingsStore {
 	checkUpdatesOnStart = $state(true);
 	autoDownloadCoverArt = $state(false);
 	storeCoversInFolder = $state(false);
+	consoleGroupByFolder = $state(false);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -91,6 +92,9 @@ class SettingsStore {
 
 		const storeCover = this._settingsCache.get('store_covers_in_folder');
 		if (storeCover !== undefined) this.storeCoversInFolder = storeCover === 'true';
+
+		const groupByFolder = this._settingsCache.get('console_group_by_folder');
+		if (groupByFolder !== undefined) this.consoleGroupByFolder = groupByFolder === 'true';
 	}
 
 	private _teardownMediaListener() {
@@ -312,6 +316,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'store_covers_in_folder', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save store covers setting:', e);
+		}
+	}
+
+	async setConsoleGroupByFolder(enabled: boolean) {
+		this.consoleGroupByFolder = enabled;
+		try {
+			await invoke('set_setting', { key: 'console_group_by_folder', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save console group by folder setting:', e);
 		}
 	}
 }

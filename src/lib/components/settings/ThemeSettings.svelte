@@ -119,6 +119,20 @@
 		</div>
 	</label>
 
+	<label class="setting-row sub-setting" class:disabled={!settingsStore.showConsoles}>
+		<input
+			type="checkbox"
+			checked={settingsStore.consoleGroupByFolder}
+			disabled={!settingsStore.showConsoles}
+			onchange={(e) =>
+				settingsStore.setConsoleGroupByFolder((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Group folder siblings in consoles</span>
+			<span class="setting-desc">Include MP3/FLAC tracks in console views when they share a parent folder with console-native files (e.g., NES NSF).</span>
+		</div>
+	</label>
+
 	<label class="setting-row">
 		<input
 			type="checkbox"
@@ -330,5 +344,14 @@
 	.setting-desc {
 		font-size: 11px;
 		color: var(--color-text-secondary);
+	}
+
+	.sub-setting {
+		margin-left: 24px;
+	}
+
+	.sub-setting.disabled {
+		opacity: 0.4;
+		pointer-events: none;
 	}
 </style>

@@ -56,7 +56,7 @@
 		const track = playerStore.currentTrack;
 		if (!track) return;
 
-		const { consolesStore, CONSOLE_DEFINITIONS } = await import('$lib/stores/consoles.svelte');
+		const { consolesStore } = await import('$lib/stores/consoles.svelte');
 		const { filesStore } = await import('$lib/stores/files.svelte');
 
 		// Determine which tracks are actually visible in the current view
@@ -74,15 +74,14 @@
 			return;
 		}
 
-		// Try to find which console contains this track
-		for (const def of CONSOLE_DEFINITIONS) {
-			if (def.codecs.some((c: string) => c.toUpperCase() === track.codec?.toUpperCase())) {
-				playlistsStore.selectPlaylist(null);
-				filesStore.selectFolder(null);
-				consolesStore.selectConsole(def.id);
-				setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
-				return;
-			}
+		// Try to find which console contains this track (direct codec or folder inference)
+		const trackConsoleId = consolesStore.getTrackConsole(track);
+		if (trackConsoleId) {
+			playlistsStore.selectPlaylist(null);
+			filesStore.selectFolder(null);
+			consolesStore.selectConsole(trackConsoleId);
+			setTimeout(() => libraryStore.requestScrollTo(track.id), 50);
+			return;
 		}
 
 		// Fallback: navigate to track's parent folder if files browser is enabled
