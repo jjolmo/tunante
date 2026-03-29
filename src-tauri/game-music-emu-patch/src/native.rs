@@ -112,11 +112,16 @@ pub(crate) fn open_file(
         }
 
         // Auto-load matching .m3u playlist (same base name, same directory)
-        let file_path = path.as_ref();
-        let m3u_path = file_path.with_extension("m3u");
+        // NOTE: gme_load_m3u (file path) is broken in our GME fork (Std_File_Reader issue).
+        // Use gme_load_m3u_data (from memory) instead, which works correctly.
+        let m3u_path = path.as_ref().with_extension("m3u");
         if m3u_path.exists() {
-            if let Ok(m3u_cstr) = CString::new(m3u_path.to_string_lossy().as_bytes()) {
-                let _ = gme_load_m3u(emu_ptr, m3u_cstr.as_ptr());
+            if let Ok(m3u_data) = std::fs::read(&m3u_path) {
+                let _ = gme_load_m3u_data(
+                    emu_ptr,
+                    m3u_data.as_ptr() as *const std::ffi::c_void,
+                    m3u_data.len() as std::ffi::c_long,
+                );
             }
         }
 
@@ -351,6 +356,9 @@ unsafe extern "C" {
 
     /// Load m3u playlist file (must be done after loading music)
     fn gme_load_m3u(emu: *const MusicEmu, path: *const c_char) -> *const c_char;
+
+    /// Load m3u playlist from memory (must be done after loading music)
+    fn gme_load_m3u_data(emu: *const MusicEmu, data: *const std::ffi::c_void, size: std::ffi::c_long) -> *const c_char;
 }
 
 #[cfg(test)]
