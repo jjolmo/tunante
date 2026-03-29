@@ -88,8 +88,30 @@ pub(crate) fn open_file(
     path: impl AsRef<Path>,
     sample_rate: u32,
 ) -> Result<EmuHandle, GmeOrIoError> {
-    let buffer = get_file_data(path)?;
-    Ok(open_data(&buffer, sample_rate)?)
+    let path_str = path.as_ref().to_str().ok_or_else(|| {
+        GmeOrIoError::IoError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Invalid UTF-8 in path",
+        ))
+    })?;
+    let c_path = CString::new(path_str).map_err(|_| {
+        GmeOrIoError::IoError(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "Path contains null byte",
+        ))
+    })?;
+    unsafe {
+        let mut emu_ptr: *const MusicEmu = std::ptr::null();
+        let err = gme_open_file(c_path.as_ptr(), &mut emu_ptr, sample_rate as i32);
+        if !err.is_null() {
+            let msg = CStr::from_ptr(err).to_string_lossy().to_string();
+            return Err(GmeOrIoError::Gme(GmeError::new(msg)));
+        }
+        if emu_ptr.is_null() {
+            return Err(GmeOrIoError::Gme(GmeError::new("gme_open_file returned null".to_string())));
+        }
+        Ok(EmuHandle::new(emu_ptr))
+    }
 }
 
 pub(crate) fn play(handle: &EmuHandle, count: usize, buffer: &mut [i16]) -> Result<(), GmeError> {
@@ -262,6 +284,10 @@ type gme_type_t = *const gme_type_t_struct;
 unsafe extern "C" {
     /// Finish using emulator and free memory
     fn gme_delete(emu: *const MusicEmu);
+
+    /// Open a music file from a filesystem path. Automatically loads matching .m3u
+    /// playlist (for track names, durations, and ordering).
+    fn gme_open_file(path: *const c_char, out: *mut *const MusicEmu, sample_rate: i32) -> *const c_char;
 
     /// Determine likely game music type based on first four bytes of file. Returns string
     /// containing proper file suffix (i.e. "NSF", "SPC", etc.) or "" if file header is not
