@@ -165,61 +165,75 @@ function getGrandparent(filePath: string): string | null {
 	return parent.substring(0, secondSlash);
 }
 
+/**
+ * Build a map of grandparent folder → console id for folder-based inference.
+ * Only includes unambiguous mappings (all console-format tracks under a grandparent
+ * belong to the same console).
+ */
+function buildFolderConsoleMap(tracks: Track[]): Map<string, string> {
+	const grandparentConsoles = new Map<string, Set<string>>();
+
+	for (const track of tracks) {
+		const consoleId = CODEC_TO_CONSOLE.get(track.codec);
+		if (!consoleId) continue;
+
+		const grandparent = getGrandparent(track.path);
+		if (!grandparent) continue;
+
+		let consoles = grandparentConsoles.get(grandparent);
+		if (!consoles) {
+			consoles = new Set();
+			grandparentConsoles.set(grandparent, consoles);
+		}
+		consoles.add(consoleId);
+	}
+
+	// Only keep unambiguous mappings (single console per grandparent)
+	const result = new Map<string, string>();
+	for (const [folder, consoles] of grandparentConsoles) {
+		if (consoles.size === 1) {
+			result.set(folder, consoles.values().next().value!);
+		}
+	}
+	return result;
+}
+
+/** Resolve console id for a track: direct codec match, or inferred from folder map */
+function resolveConsole(track: Track, folderMap: Map<string, string> | null): string | null {
+	const direct = CODEC_TO_CONSOLE.get(track.codec);
+	if (direct) return direct;
+	if (!folderMap) return null;
+	const grandparent = getGrandparent(track.path);
+	if (!grandparent) return null;
+	return folderMap.get(grandparent) ?? null;
+}
+
 class ConsolesStore {
 	activeConsoleId = $state<string | null>(null);
 
 	/**
-	 * Builds a map of grandparent folder → console id for folder-based inference.
-	 * Only includes unambiguous mappings (all console-format tracks under a grandparent
-	 * belong to the same console).
-	 */
-	get folderConsoleMap(): Map<string, string> {
-		const grandparentConsoles = new Map<string, Set<string>>();
-
-		for (const track of libraryStore.tracks) {
-			const consoleId = CODEC_TO_CONSOLE.get(track.codec);
-			if (!consoleId) continue;
-
-			const grandparent = getGrandparent(track.path);
-			if (!grandparent) continue;
-
-			let consoles = grandparentConsoles.get(grandparent);
-			if (!consoles) {
-				consoles = new Set();
-				grandparentConsoles.set(grandparent, consoles);
-			}
-			consoles.add(consoleId);
-		}
-
-		// Only keep unambiguous mappings (single console per grandparent)
-		const result = new Map<string, string>();
-		for (const [folder, consoles] of grandparentConsoles) {
-			if (consoles.size === 1) {
-				result.set(folder, consoles.values().next().value!);
-			}
-		}
-		return result;
-	}
-
-	/**
 	 * Get the console id for a track - either directly from codec or inferred from folder.
-	 * Returns null if no console can be determined.
+	 * For use outside hot loops (e.g., single track lookups in PlayerControls/Sidebar).
 	 */
 	getTrackConsole(track: Track): string | null {
 		const direct = CODEC_TO_CONSOLE.get(track.codec);
 		if (direct) return direct;
-
 		if (!settingsStore.consoleGroupByFolder) return null;
-
+		const folderMap = buildFolderConsoleMap(libraryStore.tracks);
 		const grandparent = getGrandparent(track.path);
 		if (!grandparent) return null;
-		return this.folderConsoleMap.get(grandparent) ?? null;
+		return folderMap.get(grandparent) ?? null;
 	}
 
 	get consolesWithCounts(): (ConsoleDefinition & { trackCount: number })[] {
+		// Build folder map ONCE, then reuse for all tracks
+		const folderMap = settingsStore.consoleGroupByFolder
+			? buildFolderConsoleMap(libraryStore.tracks)
+			: null;
+
 		const counts = new Map<string, number>();
 		for (const track of libraryStore.tracks) {
-			const consoleId = this.getTrackConsole(track);
+			const consoleId = resolveConsole(track, folderMap);
 			if (consoleId) {
 				counts.set(consoleId, (counts.get(consoleId) || 0) + 1);
 			}
@@ -241,8 +255,9 @@ class ConsolesStore {
 		if (!console) return [];
 
 		if (settingsStore.consoleGroupByFolder) {
+			const folderMap = buildFolderConsoleMap(libraryStore.tracks);
 			return libraryStore.filteredTracks.filter(
-				(t) => this.getTrackConsole(t) === console.id
+				(t) => resolveConsole(t, folderMap) === console.id
 			);
 		}
 
