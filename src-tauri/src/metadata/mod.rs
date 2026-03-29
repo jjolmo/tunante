@@ -12,7 +12,7 @@ pub use gme_reader::read_gme_metadata;
 pub use gsf_reader::read_gsf_metadata;
 pub use psf_reader::read_psf_metadata;
 pub use psf2_reader::read_psf2_metadata;
-pub use reader::{extract_artwork_base64, read_metadata, read_metadata_all};
+pub use reader::{extract_artwork_base64, read_metadata, read_metadata_all, read_metadata_all_with_opts};
 pub use twosf_reader::read_twosf_metadata;
 pub use usf_reader::read_usf_metadata;
 pub use vgmstream_reader::read_vgmstream_metadata;

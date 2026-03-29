@@ -118,6 +118,19 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
     let scan_path = PathBuf::from(path);
     log::info!("Scan started: {}", path);
 
+    // Check if fast scan is enabled (skips silence detection for GME tracks)
+    let fast_scan = {
+        let db = state.db.lock();
+        db.get_setting("fast_scan")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false)
+    };
+    if fast_scan {
+        log::info!("Fast scan enabled — skipping silence detection");
+    }
+
     let start_time = std::time::Instant::now();
 
     let audio_files: Vec<PathBuf> = WalkDir::new(&scan_path)
@@ -152,7 +165,7 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
             },
         );
 
-        match metadata::read_metadata_all(file_path) {
+        match metadata::read_metadata_all_with_opts(file_path, fast_scan) {
             Ok(tracks) => {
                 let db = state.db.lock();
                 for track in tracks {
