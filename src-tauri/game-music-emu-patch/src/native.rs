@@ -110,6 +110,16 @@ pub(crate) fn open_file(
         if emu_ptr.is_null() {
             return Err(GmeOrIoError::Gme(GmeError::new("gme_open_file returned null".to_string())));
         }
+
+        // Auto-load matching .m3u playlist (same base name, same directory)
+        let file_path = path.as_ref();
+        let m3u_path = file_path.with_extension("m3u");
+        if m3u_path.exists() {
+            if let Ok(m3u_cstr) = CString::new(m3u_path.to_string_lossy().as_bytes()) {
+                let _ = gme_load_m3u(emu_ptr, m3u_cstr.as_ptr());
+            }
+        }
+
         Ok(EmuHandle::new(emu_ptr))
     }
 }
@@ -338,6 +348,9 @@ unsafe extern "C" {
 
     /// Disable automatic end-of-track detection and skipping of silence
     fn gme_ignore_silence(emu: *const MusicEmu, ignore: i32);
+
+    /// Load m3u playlist file (must be done after loading music)
+    fn gme_load_m3u(emu: *const MusicEmu, path: *const c_char) -> *const c_char;
 }
 
 #[cfg(test)]
