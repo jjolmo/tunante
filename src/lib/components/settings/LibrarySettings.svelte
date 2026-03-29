@@ -94,6 +94,19 @@
 		Add Folder
 	</button>
 
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.fastScan}
+			onchange={(e) =>
+				settingsStore.setFastScan((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Fast scan</span>
+			<span class="setting-desc">Skip silence detection for chiptune tracks without duration info. Faster scan but shows default 2:40 for SFX/jingles.</span>
+		</div>
+	</label>
+
 	<div class="resync-section">
 		<h3 class="section-title">Resync Library</h3>
 		<p class="section-desc">
@@ -275,5 +288,39 @@
 	.resync-btn:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.setting-row {
+		display: flex;
+		align-items: flex-start;
+		gap: 10px;
+		padding: 6px 8px;
+		border-radius: 4px;
+	}
+
+	.setting-row:hover {
+		background-color: var(--color-bg-hover);
+	}
+
+	.setting-row input[type='checkbox'] {
+		margin-top: 2px;
+		accent-color: var(--color-accent);
+		cursor: pointer;
+	}
+
+	.setting-text {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.setting-label {
+		font-size: 13px;
+		color: var(--color-text-primary);
+	}
+
+	.setting-desc {
+		font-size: 11px;
+		color: var(--color-text-secondary);
 	}
 </style>

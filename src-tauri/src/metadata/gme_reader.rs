@@ -4,16 +4,54 @@ use game_music_emu::GameMusicEmu;
 use std::path::Path;
 use uuid::Uuid;
 
-/// Default play duration for tracks with unknown length (2.5 minutes)
+/// Default play duration for tracks with unknown length in fast scan mode (2.5 minutes)
 const DEFAULT_DURATION_MS: i64 = 150_000;
 /// Fade duration appended after play_length
 const FADE_MS: i64 = 10_000;
+/// Maximum time to emulate when detecting duration by silence (5 minutes)
+const MAX_DETECT_DURATION_MS: i32 = 300_000;
+/// Chunk size for silence detection (stereo samples per iteration)
+const DETECT_CHUNK_SAMPLES: usize = 2048;
+
+/// Detect the actual play duration of a GME track by emulating until silence.
+/// Returns the duration in milliseconds, or None if the track loops past the max limit.
+fn detect_duration_by_silence(path: &Path, track_index: usize) -> Option<i64> {
+    let emu = GameMusicEmu::from_file(path, 44100).ok()?;
+    // Set a generous fade so track_ended() triggers on actual silence, not artificial cutoff
+    emu.start_track(track_index).ok()?;
+    emu.set_fade(MAX_DETECT_DURATION_MS);
+
+    let mut buf = vec![0i16; DETECT_CHUNK_SAMPLES];
+    loop {
+        if emu.track_ended() {
+            let ms = emu.tell() as i64;
+            return Some(ms);
+        }
+        if emu.tell() as i32 >= MAX_DETECT_DURATION_MS {
+            return None; // Loops forever, use default
+        }
+        if emu.play(DETECT_CHUNK_SAMPLES, &mut buf).is_err() {
+            return None;
+        }
+    }
+}
 
 /// Read all sub-tracks from a GME file, returning one Track per sub-track.
 /// For single-track files (e.g., most SPC files), returns a single Track without #N suffix.
 /// For multi-track files (e.g., NSF with 30 tracks), returns one Track per sub-track with #N suffix.
+///
+/// When `fast_scan` is false, tracks without a known duration are emulated to detect
+/// their actual length via silence detection. This is slower but gives accurate durations.
 pub fn read_gme_metadata(path: &Path) -> Result<Vec<Track>, String> {
-    // Use gme_info_only sample rate (-1) — we just need metadata, not audio
+    read_gme_metadata_inner(path, false)
+}
+
+/// Same as read_gme_metadata but allows controlling fast_scan mode.
+pub fn read_gme_metadata_with_opts(path: &Path, fast_scan: bool) -> Result<Vec<Track>, String> {
+    read_gme_metadata_inner(path, fast_scan)
+}
+
+fn read_gme_metadata_inner(path: &Path, fast_scan: bool) -> Result<Vec<Track>, String> {
     let emu = GameMusicEmu::from_file(path, 44100)
         .map_err(|e| format!("GME error: {}", e))?;
 
@@ -63,12 +101,18 @@ pub fn read_gme_metadata(path: &Path) -> Result<Vec<Track>, String> {
 
         // Duration: play_length already includes GME's logic
         // (length if available, else intro+loop*2, else default 150s)
-        let play_ms = if info.play_length > 0 {
-            info.play_length as i64
+        let duration_ms = if info.play_length > 0 {
+            info.play_length as i64 + FADE_MS
+        } else if !fast_scan {
+            // No known duration — emulate to detect actual length via silence
+            if let Some(detected) = detect_duration_by_silence(path, i) {
+                detected
+            } else {
+                DEFAULT_DURATION_MS + FADE_MS
+            }
         } else {
-            DEFAULT_DURATION_MS
+            DEFAULT_DURATION_MS + FADE_MS
         };
-        let duration_ms = play_ms + FADE_MS;
 
         // Virtual path: only add #N for multi-track files
         let virtual_path = if track_count == 1 {
