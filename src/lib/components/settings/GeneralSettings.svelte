@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { libraryStore } from '$lib/stores/library.svelte';
 	import { invoke } from '@tauri-apps/api/core';
 
 	let desktopEntryPath = $state('');
@@ -7,6 +8,16 @@
 	let desktopResult = $state('');
 	let isLinux = $state(false);
 	const isMacOS = navigator.platform.startsWith('Mac');
+	let thresholdValue = $state(String(libraryStore.shortFilterThresholdSec));
+
+	function handleThresholdChange(e: Event) {
+		const val = (e.target as HTMLInputElement).value;
+		thresholdValue = val;
+		const n = parseInt(val, 10);
+		if (!isNaN(n) && n > 0) {
+			libraryStore.setShortFilterThreshold(n);
+		}
+	}
 
 	// Check if we're on Linux and get the .desktop path
 	$effect(() => {
@@ -158,6 +169,41 @@
 		</div>
 	</label>
 
+	<h3 class="section-title" style="margin-top: 8px;">Playback Filter</h3>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={libraryStore.shortFilterEnabled}
+			onchange={(e) =>
+				libraryStore.setShortFilterEnabled((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Hide short tracks</span>
+			<span class="setting-desc"
+				>Filter out tracks shorter than the specified duration from all views (library, playlists, favorites, consoles, files).</span
+			>
+		</div>
+	</label>
+
+	<div class="setting-row threshold-row" class:disabled={!libraryStore.shortFilterEnabled}>
+		<div class="setting-text">
+			<span class="setting-label">Minimum duration (seconds)</span>
+			<span class="setting-desc"
+				>Tracks shorter than this value will be hidden when the filter is active.</span
+			>
+		</div>
+		<input
+			type="number"
+			min="1"
+			max="999"
+			class="threshold-field"
+			value={thresholdValue}
+			disabled={!libraryStore.shortFilterEnabled}
+			onchange={handleThresholdChange}
+		/>
+	</div>
+
 	{#if isLinux}
 		<div class="setting-action">
 			<button class="action-btn" onclick={() => { desktopResult = ''; showDesktopModal = true; }}>
@@ -238,8 +284,32 @@
 		cursor: not-allowed;
 	}
 
-	.setting-row.disabled input[type='checkbox'] {
+	.setting-row.disabled input[type='checkbox'],
+	.setting-row.disabled input[type='number'] {
 		cursor: not-allowed;
+	}
+
+	.threshold-row {
+		padding-left: 36px;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.threshold-field {
+		width: 70px;
+		padding: 4px 8px;
+		background-color: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-primary);
+		font-size: 13px;
+		text-align: right;
+		flex-shrink: 0;
+	}
+
+	.threshold-field:focus {
+		border-color: var(--color-accent);
+		outline: none;
 	}
 
 	.setting-action {
