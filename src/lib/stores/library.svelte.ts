@@ -33,6 +33,10 @@ class LibraryStore {
 	lastClickedIndex = $state<number | null>(null);
 	scrollToTrackId = $state<string | null>(null);
 
+	/** Short track filter: hide tracks shorter than threshold */
+	shortFilterEnabled = $state(false);
+	shortFilterThresholdSec = $state(3);
+
 	private _searchSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 	private _searchFilterTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -61,13 +65,21 @@ class LibraryStore {
 		const tracks = this.tracks;
 		const query = this._activeQuery;
 		const { column, direction } = this.sortConfig;
+		const sfEnabled = this.shortFilterEnabled;
+		const sfThreshold = this.shortFilterThresholdSec;
 
-		const cacheKey = `${tracks.length}:${query}:${column}:${direction}`;
+		const cacheKey = `${tracks.length}:${query}:${column}:${direction}:${sfEnabled}:${sfThreshold}`;
 		if (cacheKey === this._ftCacheKey && this._ftCache.length > 0) {
 			return this._ftCache;
 		}
 
 		let result = tracks;
+
+		// Apply short track filter (hide tracks shorter than threshold)
+		if (sfEnabled && sfThreshold > 0) {
+			const thresholdMs = sfThreshold * 1000;
+			result = result.filter((t) => t.duration_ms >= thresholdMs);
+		}
 
 		if (query.trim()) {
 			const q = query.toLowerCase();
@@ -125,6 +137,16 @@ class LibraryStore {
 				this.searchQuery = savedQuery;
 				this._activeQuery = savedQuery;
 			}
+
+			const sfEnabled = getSetting('short_filter_enabled');
+			if (sfEnabled !== null) this.shortFilterEnabled = sfEnabled === 'true';
+
+			const sfThreshold = getSetting('short_filter_threshold_sec');
+			if (sfThreshold !== null) {
+				const n = parseInt(sfThreshold, 10);
+				if (!isNaN(n) && n > 0) this.shortFilterThresholdSec = n;
+			}
+
 			this.loadColumnConfigFromCache(getSetting);
 		}
 
@@ -154,6 +176,22 @@ class LibraryStore {
 				// ignore
 			}
 		}, 500);
+	}
+
+	async setShortFilterEnabled(enabled: boolean) {
+		this.shortFilterEnabled = enabled;
+		this._ftCacheKey = '';
+		try {
+			await invoke('set_setting', { key: 'short_filter_enabled', value: String(enabled) });
+		} catch { /* ignore */ }
+	}
+
+	async setShortFilterThreshold(seconds: number) {
+		this.shortFilterThresholdSec = seconds;
+		this._ftCacheKey = '';
+		try {
+			await invoke('set_setting', { key: 'short_filter_threshold_sec', value: String(seconds) });
+		} catch { /* ignore */ }
 	}
 
 	requestScrollTo(trackId: string) {

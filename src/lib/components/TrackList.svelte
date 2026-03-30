@@ -46,8 +46,14 @@
 			filesStore.activeFolder ? filesStore.folderTracks :
 			libraryStore.filteredTracks;
 
-		// Apply search filter to all views (not just All Tracks)
+		// Apply short track filter to non-library views (library view already filters in filteredTracks)
 		const isLibraryView = result === libraryStore.filteredTracks;
+		if (!isLibraryView && libraryStore.shortFilterEnabled && libraryStore.shortFilterThresholdSec > 0) {
+			const thresholdMs = libraryStore.shortFilterThresholdSec * 1000;
+			result = result.filter((t) => t.duration_ms >= thresholdMs);
+		}
+
+		// Apply search filter to all views (not just All Tracks)
 		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && !filesStore.activeFolder && !isLibraryView) {
 			const q = libraryStore.activeSearchQuery.toLowerCase();
 			result = result.filter(
