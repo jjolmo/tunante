@@ -313,7 +313,11 @@ fn read_gme_metadata_inner(path: &Path, fast_scan: bool) -> Result<Vec<Track>, S
         // Map GME game → album (so tracks from the same game group together)
         let game = info.game.clone();
         let album = if game.is_empty() {
-            file_name.clone()
+            // Fallback: use parent folder name as album
+            path.parent()
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| file_name.clone())
         } else {
             game.clone()
         };

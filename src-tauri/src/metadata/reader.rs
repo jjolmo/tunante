@@ -192,7 +192,12 @@ pub fn read_metadata(path: &Path) -> Result<Track, MetadataError> {
         path: path.to_string_lossy().to_string(),
         title: title.unwrap_or(file_name),
         artist: artist.unwrap_or_default(),
-        album: album.unwrap_or_default(),
+        album: album.filter(|a| !a.trim().is_empty()).unwrap_or_else(|| {
+            path.parent()
+                .and_then(|p| p.file_name())
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default()
+        }),
         album_artist: album_artist.unwrap_or_default(),
         track_number,
         disc_number,
