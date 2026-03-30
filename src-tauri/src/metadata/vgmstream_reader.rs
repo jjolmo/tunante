@@ -41,6 +41,12 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
+    // Use parent folder name as album (e.g., "Metroid Prime" from .../wii/Metroid Prime/track.dsp)
+    let parent_folder = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     let codec_ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -83,7 +89,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             path: file_path_str,
             title,
             artist: String::new(),
-            album: file_name,
+            album: parent_folder.clone(),
             album_artist: info.meta_name.clone(),
             track_number: None,
             disc_number: None,
@@ -148,7 +154,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             path: virtual_path,
             title,
             artist: String::new(),
-            album: file_name.clone(),
+            album: parent_folder.clone(),
             album_artist: info.meta_name.clone(),
             track_number: Some(i),
             disc_number: None,
