@@ -3,6 +3,7 @@
 //! Supports:
 //! - PSF-family files (GSF, PSF, 2SF): Modify the [TAG] section at end of file
 //! - Standard audio files (MP3, FLAC, OGG, etc.): Write via lofty (Vorbis RATING)
+//! - GME chiptune files (NSF, SPC, GBS, etc.): Write #RATING comments in companion .m3u
 
 use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file, is_usf_file};
 use std::io::Write;
@@ -34,9 +35,16 @@ pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String>
         return Ok(true);
     }
 
-    // GME formats: no standard rating tag support
+    // GME formats: write rating to companion .m3u file
     if is_gme_file(path) {
-        return Ok(false);
+        // Extract 1-based track number from virtual path (e.g., file.nsf#0 → track 1)
+        let track_number = if let Some(hash_pos) = path_str.rfind('#') {
+            let after_hash = &path_str[hash_pos + 1..];
+            after_hash.parse::<i32>().unwrap_or(0) + 1
+        } else {
+            1
+        };
+        return write_m3u_rating(path, track_number, rating);
     }
 
     // Standard audio formats: try lofty
@@ -171,4 +179,74 @@ fn write_lofty_rating(path: &Path, rating: i32) -> Result<(), String> {
         .map_err(|e| format!("lofty write error: {}", e))?;
 
     Ok(())
+}
+
+/// Write a rating to a GME companion .m3u file using `#RATING:N:R` comment lines.
+///
+/// `track_number` is 1-based. Rating 0 removes the rating line.
+/// Returns Ok(true) if the M3U was modified, Ok(false) if no M3U file exists.
+fn write_m3u_rating(gme_path: &Path, track_number: i32, rating: i32) -> Result<bool, String> {
+    let m3u_path = gme_path.with_extension("m3u");
+    if !m3u_path.exists() {
+        return Ok(false);
+    }
+
+    let content = std::fs::read_to_string(&m3u_path)
+        .map_err(|e| format!("Failed to read M3U file: {}", e))?;
+
+    let mut rating_lines: Vec<String> = Vec::new();
+    let mut other_lines: Vec<&str> = Vec::new();
+
+    for line in content.lines() {
+        if line.starts_with("#RATING:") {
+            // Parse existing rating line — keep other tracks' ratings
+            if let Some(rest) = line.strip_prefix("#RATING:") {
+                if let Some(existing_track) = rest.split(':').next().and_then(|n| n.parse::<i32>().ok()) {
+                    if existing_track == track_number {
+                        // This is the line we're updating — skip it (we'll add the new one below)
+                        continue;
+                    }
+                }
+            }
+            rating_lines.push(line.to_string());
+        } else {
+            other_lines.push(line);
+        }
+    }
+
+    // Add the new rating if > 0
+    if rating > 0 {
+        rating_lines.push(format!("#RATING:{}:{}", track_number, rating));
+    }
+
+    // Sort rating lines by track number
+    rating_lines.sort_by_key(|line| {
+        line.strip_prefix("#RATING:")
+            .and_then(|r| r.split(':').next())
+            .and_then(|n| n.parse::<i32>().ok())
+            .unwrap_or(0)
+    });
+
+    // Rebuild: rating comments first, then original content
+    let mut output = String::new();
+    for line in &rating_lines {
+        output.push_str(line);
+        output.push('\n');
+    }
+    for line in &other_lines {
+        output.push_str(line);
+        output.push('\n');
+    }
+
+    // Preserve original trailing newline style
+    if !content.ends_with('\n') && output.ends_with('\n') {
+        output.pop();
+    }
+
+    std::fs::write(&m3u_path, &output)
+        .map_err(|e| format!("Failed to write M3U file: {}", e))?;
+
+    log::info!("Rating {} written to M3U for track {}: {}", rating, track_number, m3u_path.display());
+
+    Ok(true)
 }
