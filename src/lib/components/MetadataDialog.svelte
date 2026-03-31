@@ -112,16 +112,11 @@
 		if (e.key === 'Escape') onclose();
 	}
 
-	function handleBackdropClick(e: MouseEvent) {
-		if (e.target === e.currentTarget) onclose();
-	}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
 
-<!-- svelte-ignore a11y_click_events_have_key_events -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="metadata-overlay" onclick={handleBackdropClick}>
+<div class="metadata-overlay">
 	<div class="metadata-dialog">
 		<div class="metadata-header">
 			<span class="metadata-title">
