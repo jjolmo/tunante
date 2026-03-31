@@ -412,6 +412,21 @@ fn run_macos_update_script(app: tauri::AppHandle) -> Result<(), String> {
     }
 }
 
+/// Bring the window to the front, above all other windows.
+/// Uses a brief always-on-top toggle to ensure the window is raised
+/// even on window managers that ignore set_focus alone.
+fn raise_window(window: &tauri::WebviewWindow) {
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_focus();
+    let win = window.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let _ = win.set_always_on_top(false);
+    });
+}
+
 /// Installs a D-Bus message filter on the session bus that handles
 /// StatusNotifierItem methods: `Activate` (left-click) and `Scroll` (wheel).
 ///
@@ -446,9 +461,7 @@ fn setup_dbus_tray_handler(handle: tauri::AppHandle) {
                     if window.is_visible().unwrap_or(false) {
                         let _ = window.hide();
                     } else {
-                        let _ = window.show();
-                        let _ = window.unminimize();
-                        let _ = window.set_focus();
+                        raise_window(&window);
                     }
                 }
             }
@@ -606,9 +619,7 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When a second instance is launched, focus the existing window
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.set_focus();
+                raise_window(&window);
             }
         }))
         .setup(|app| {
@@ -743,9 +754,7 @@ pub fn run() {
                                 if window.is_visible().unwrap_or(false) {
                                     let _ = window.hide();
                                 } else {
-                                    let _ = window.show();
-                                    let _ = window.unminimize();
-                                    let _ = window.set_focus();
+                                    raise_window(&window);
                                 }
                             }
                         }
@@ -786,9 +795,7 @@ pub fn run() {
                                     if window.is_visible().unwrap_or(false) && window.is_focused().unwrap_or(false) {
                                         let _ = window.hide();
                                     } else {
-                                        let _ = window.show();
-                                        let _ = window.unminimize();
-                                        let _ = window.set_focus();
+                                        raise_window(&window);
                                     }
                                 }
                             }
