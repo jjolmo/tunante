@@ -1,5 +1,6 @@
 use crate::audio::vgm_path::build_vgm_path;
 use crate::db::models::Track;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Duration;
@@ -28,8 +29,33 @@ fn open_with_timeout(path: &Path, subsong: i32) -> Result<Vgmstream, String> {
     }
 }
 
+/// Parse `#RATING:N:R` comment lines from a companion .m3u file.
+/// Returns a map of 1-based track/subsong number → rating value (0-5).
+fn parse_companion_m3u_ratings(m3u_path: &Path) -> HashMap<i32, i32> {
+    let mut ratings = HashMap::new();
+    let content = match std::fs::read_to_string(m3u_path) {
+        Ok(c) => c,
+        Err(_) => return ratings,
+    };
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("#RATING:") {
+            let parts: Vec<&str> = rest.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                if let (Ok(track_num), Ok(rating_val)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
+                    if (0..=5).contains(&rating_val) && track_num > 0 {
+                        ratings.insert(track_num, rating_val);
+                    }
+                }
+            }
+        }
+    }
+    ratings
+}
+
 /// Read metadata from a vgmstream-supported file.
 /// Handles subsongs (multiple streams within a single file).
+/// Also reads ratings from companion .m3u files (same name, .m3u extension).
 pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
     // Open with subsong 0 (default) to get subsong count
     let vgm = open_with_timeout(path, 0)?;
@@ -60,6 +86,14 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     let file_size = file_meta.len() as i64;
+
+    // Try to load companion .m3u for ratings
+    let m3u_path = path.with_extension("m3u");
+    let m3u_ratings = if m3u_path.exists() {
+        parse_companion_m3u_ratings(&m3u_path)
+    } else {
+        HashMap::new()
+    };
 
     let subsong_count = initial_info.subsong_count;
 
@@ -104,7 +138,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             codec: codec_name,
             file_size,
             has_artwork: false,
-            rating: 0,
+            rating: m3u_ratings.get(&1).copied().unwrap_or(0),
             modified_at,
         }]);
     }
@@ -169,7 +203,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
             codec: codec_name,
             file_size,
             has_artwork: false,
-            rating: 0,
+            rating: m3u_ratings.get(&i).copied().unwrap_or(0),
             modified_at,
         });
     }

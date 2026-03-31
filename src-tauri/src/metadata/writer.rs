@@ -4,6 +4,7 @@
 //! - PSF-family files (GSF, PSF, 2SF): Modify the [TAG] section at end of file
 //! - Standard audio files (MP3, FLAC, OGG, etc.): Write via lofty (Vorbis RATING)
 //! - GME chiptune files (NSF, SPC, GBS, etc.): Write #RATING comments in companion .m3u
+//! - vgmstream/unknown formats: Fall back to companion .m3u (auto-created if needed)
 
 use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file, is_usf_file};
 use std::io::Write;
@@ -11,8 +12,8 @@ use std::path::Path;
 
 /// Write a rating value (0-5) to a file's metadata.
 ///
-/// Returns Ok(true) if the rating was written to the file,
-/// Ok(false) if the format doesn't support rating writing (e.g., GME, vgmstream),
+/// Returns Ok(true) if the rating was written (to file tags or companion .m3u),
+/// Ok(false) if no action was taken (e.g., rating 0 with no existing M3U),
 /// or Err on I/O failure.
 pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String> {
     // Handle virtual paths (e.g., "/path/to/file.nsf#3") — extract the real file path
@@ -62,8 +63,15 @@ pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String>
         return Ok(true);
     }
 
-    // vgmstream or unknown: no rating support
-    Ok(false)
+    // vgmstream or unknown format: fall back to companion .m3u file
+    // Extract track number from virtual path (#N is 1-based for vgmstream, absent for single tracks)
+    let track_number = if let Some(hash_pos) = path_str.rfind('#') {
+        let after_hash = &path_str[hash_pos + 1..];
+        after_hash.parse::<i32>().unwrap_or(1)
+    } else {
+        1
+    };
+    write_m3u_rating(path, track_number, rating)
 }
 
 /// Write rating to a PSF-family file's [TAG] section.
@@ -181,13 +189,36 @@ fn write_lofty_rating(path: &Path, rating: i32) -> Result<(), String> {
     Ok(())
 }
 
-/// Write a rating to a GME companion .m3u file using `#RATING:N:R` comment lines.
+/// Write a rating to a companion .m3u file using `#RATING:N:R` comment lines.
 ///
+/// `file_path` is the audio file path. The M3U is `file_path.with_extension("m3u")`.
 /// `track_number` is 1-based. Rating 0 removes the rating line.
-/// Returns Ok(true) if the M3U was modified, Ok(false) if no M3U file exists.
-fn write_m3u_rating(gme_path: &Path, track_number: i32, rating: i32) -> Result<bool, String> {
-    let m3u_path = gme_path.with_extension("m3u");
+///
+/// If the M3U file doesn't exist and rating > 0, creates a minimal M3U with:
+///   - The `#RATING:N:R` comment
+///   - The audio filename as a playlist entry
+///
+/// Returns Ok(true) if the M3U was modified/created, Ok(false) if no action was taken.
+fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<bool, String> {
+    let m3u_path = file_path.with_extension("m3u");
+
     if !m3u_path.exists() {
+        // No M3U exists — create one if we're setting a rating
+        if rating > 0 {
+            let file_name = file_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown");
+            let content = format!("#RATING:{}:{}\n{}\n", track_number, rating, file_name);
+            std::fs::write(&m3u_path, &content)
+                .map_err(|e| format!("Failed to create M3U file: {}", e))?;
+            log::info!(
+                "Created companion M3U with rating {} for track {}: {}",
+                rating, track_number, m3u_path.display()
+            );
+            return Ok(true);
+        }
+        // Rating 0 + no M3U = nothing to do
         return Ok(false);
     }
 
