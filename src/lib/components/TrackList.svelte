@@ -277,6 +277,48 @@
 			libraryStore.selectAll(tracks);
 		}
 
+		// Arrow keys: move selection up/down
+		if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+			e.preventDefault();
+			const direction = e.key === 'ArrowDown' ? 1 : -1;
+
+			// Find current index from last clicked or first selected
+			let currentIdx = libraryStore.lastClickedIndex ?? -1;
+			if (currentIdx < 0 && libraryStore.selectedTrackIds.size > 0) {
+				const firstId = libraryStore.selectedTrackIds.values().next().value;
+				currentIdx = tracks.findIndex((t) => t.id === firstId);
+			}
+
+			const newIdx = Math.max(0, Math.min(tracks.length - 1, currentIdx + direction));
+			if (newIdx >= 0 && newIdx < tracks.length) {
+				libraryStore.selectTrack(tracks[newIdx].id, false, e.shiftKey, newIdx, tracks);
+
+				// Auto-scroll to keep selection visible
+				if (container) {
+					const rowTop = newIdx * ROW_HEIGHT;
+					const rowBottom = rowTop + ROW_HEIGHT;
+					if (rowTop < container.scrollTop) {
+						container.scrollTop = rowTop;
+					} else if (rowBottom > container.scrollTop + containerHeight) {
+						container.scrollTop = rowBottom - containerHeight;
+					}
+				}
+			}
+		}
+
+		// Enter key: play selected track
+		if (e.key === 'Enter') {
+			const selectedIds = [...libraryStore.selectedTrackIds];
+			if (selectedIds.length === 1) {
+				const track = tracks.find((t) => t.id === selectedIds[0]);
+				if (track) {
+					e.preventDefault();
+					const contextIds = tracks.map((t) => t.id);
+					playerStore.playTrack(track, contextIds);
+				}
+			}
+		}
+
 		// Delete key: remove selected tracks from active playlist
 		if (e.key === 'Delete' && playlistsStore.activePlaylistId) {
 			const selectedIds = [...libraryStore.selectedTrackIds];
