@@ -5,7 +5,7 @@ mod psf2_reader;
 mod reader;
 mod twosf_reader;
 mod usf_reader;
-mod vgmstream_reader;
+pub(crate) mod vgmstream_reader;
 mod writer;
 
 pub use gme_reader::read_gme_metadata;
