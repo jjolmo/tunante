@@ -3,7 +3,7 @@
 //! Supports:
 //! - PSF-family files (GSF, PSF, 2SF): Modify the [TAG] section at end of file
 //! - Standard audio files (MP3, FLAC, OGG, etc.): Write via lofty (Vorbis RATING)
-//! - GME chiptune files (NSF, SPC, GBS, etc.): Write #RATING comments in per-file companion .m3u
+//! - GME chiptune files (NSF, SPC, GBS, etc.): Write #RATING to folder-level `_ratings.m3u`
 //! - vgmstream/unknown formats: Write #RATING to folder-level `_ratings.m3u`
 
 use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file, is_usf_file};
@@ -36,7 +36,7 @@ pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String>
         return Ok(true);
     }
 
-    // GME formats: write rating to companion .m3u file
+    // GME formats: write rating to folder-level _ratings.m3u
     if is_gme_file(path) {
         // Extract 1-based track number from virtual path (e.g., file.nsf#0 → track 1)
         let track_number = if let Some(hash_pos) = path_str.rfind('#') {
@@ -45,7 +45,7 @@ pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String>
         } else {
             1
         };
-        return write_m3u_rating(path, track_number, rating);
+        return write_folder_m3u_rating(path, track_number, rating);
     }
 
     // Standard audio formats: try lofty
@@ -187,86 +187,6 @@ fn write_lofty_rating(path: &Path, rating: i32) -> Result<(), String> {
         .map_err(|e| format!("lofty write error: {}", e))?;
 
     Ok(())
-}
-
-/// Write a rating to a per-file companion .m3u using `#RATING:N:R` comment lines.
-/// Used only for GME formats (NSF, SPC, GBS, etc.) where the M3U also contains track metadata.
-///
-/// `file_path` is the audio file path. The M3U is `file_path.with_extension("m3u")`.
-/// `track_number` is 1-based. Rating 0 removes the rating line.
-fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<bool, String> {
-    let m3u_path = file_path.with_extension("m3u");
-
-    if !m3u_path.exists() {
-        if rating > 0 {
-            let file_name = file_path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown");
-            let content = format!("#RATING:{}:{}\n{}\n", track_number, rating, file_name);
-            std::fs::write(&m3u_path, &content)
-                .map_err(|e| format!("Failed to create M3U file: {}", e))?;
-            log::info!(
-                "Created companion M3U with rating {} for track {}: {}",
-                rating, track_number, m3u_path.display()
-            );
-            return Ok(true);
-        }
-        return Ok(false);
-    }
-
-    let content = std::fs::read_to_string(&m3u_path)
-        .map_err(|e| format!("Failed to read M3U file: {}", e))?;
-
-    let mut rating_lines: Vec<String> = Vec::new();
-    let mut other_lines: Vec<&str> = Vec::new();
-
-    for line in content.lines() {
-        if line.starts_with("#RATING:") {
-            if let Some(rest) = line.strip_prefix("#RATING:") {
-                if let Some(existing_track) = rest.split(':').next().and_then(|n| n.parse::<i32>().ok()) {
-                    if existing_track == track_number {
-                        continue;
-                    }
-                }
-            }
-            rating_lines.push(line.to_string());
-        } else {
-            other_lines.push(line);
-        }
-    }
-
-    if rating > 0 {
-        rating_lines.push(format!("#RATING:{}:{}", track_number, rating));
-    }
-
-    rating_lines.sort_by_key(|line| {
-        line.strip_prefix("#RATING:")
-            .and_then(|r| r.split(':').next())
-            .and_then(|n| n.parse::<i32>().ok())
-            .unwrap_or(0)
-    });
-
-    let mut output = String::new();
-    for line in &rating_lines {
-        output.push_str(line);
-        output.push('\n');
-    }
-    for line in &other_lines {
-        output.push_str(line);
-        output.push('\n');
-    }
-
-    if !content.ends_with('\n') && output.ends_with('\n') {
-        output.pop();
-    }
-
-    std::fs::write(&m3u_path, &output)
-        .map_err(|e| format!("Failed to write M3U file: {}", e))?;
-
-    log::info!("Rating {} written to M3U for track {}: {}", rating, track_number, m3u_path.display());
-
-    Ok(true)
 }
 
 /// Write a rating to a folder-level `_ratings.m3u` file using `#RATING:filename:N:R` comment lines.

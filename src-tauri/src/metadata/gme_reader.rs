@@ -1,5 +1,6 @@
 use crate::audio::vgm_path::build_vgm_path;
 use crate::db::models::Track;
+use crate::metadata::vgmstream_reader::parse_folder_m3u_ratings;
 use game_music_emu::GameMusicEmu;
 use std::collections::HashMap;
 use std::path::Path;
@@ -22,38 +23,21 @@ struct M3uEntry {
     fade_ms: i64,      // -1 if not specified
 }
 
-/// Parsed data from a GME-style .m3u file: track entries + per-track ratings.
+/// Parsed data from a GME-style .m3u file: track entries.
 struct M3uData {
     entries: HashMap<i32, M3uEntry>,
-    ratings: HashMap<i32, i32>,  // track_number (1-based) -> rating (0-5)
 }
 
 /// Parse a GME-style .m3u file and return entries keyed by 1-based track number.
 /// Format: `filename::TYPE,track,title,length,,fade`
 /// or:     `filename,track,title,length,,fade`
-/// Also parses `#RATING:N:R` comment lines for per-track ratings.
 fn parse_gme_m3u(path: &Path) -> Option<M3uData> {
     let content = std::fs::read_to_string(path).ok()?;
     let mut entries = HashMap::new();
-    let mut ratings = HashMap::new();
 
     for line in content.lines() {
         let line = line.trim_end_matches('\r').trim();
-        if line.is_empty() {
-            continue;
-        }
-        if line.starts_with('#') {
-            // Parse #RATING:N:R comments
-            if let Some(rest) = line.strip_prefix("#RATING:") {
-                let parts: Vec<&str> = rest.splitn(2, ':').collect();
-                if parts.len() == 2 {
-                    if let (Ok(track_num), Ok(rating_val)) = (parts[0].parse::<i32>(), parts[1].parse::<i32>()) {
-                        if (0..=5).contains(&rating_val) && track_num > 0 {
-                            ratings.insert(track_num, rating_val);
-                        }
-                    }
-                }
-            }
+        if line.is_empty() || line.starts_with('#') {
             continue;
         }
 
@@ -118,10 +102,10 @@ fn parse_gme_m3u(path: &Path) -> Option<M3uData> {
         });
     }
 
-    if entries.is_empty() && ratings.is_empty() {
+    if entries.is_empty() {
         None
     } else {
-        Some(M3uData { entries, ratings })
+        Some(M3uData { entries })
     }
 }
 
@@ -251,6 +235,22 @@ fn read_gme_metadata_inner(path: &Path, fast_scan: bool) -> Result<Vec<Track>, S
     let m3u_path = path.with_extension("m3u");
     let m3u_entries = parse_gme_m3u(&m3u_path);
 
+    // Read ratings from folder-level _ratings.m3u
+    let full_file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or_default();
+    let m3u_ratings = if let Some(folder) = path.parent() {
+        let folder_m3u = folder.join("_ratings.m3u");
+        if folder_m3u.exists() {
+            parse_folder_m3u_ratings(&folder_m3u, full_file_name)
+        } else {
+            HashMap::new()
+        }
+    } else {
+        HashMap::new()
+    };
+
     // If m3u defines track order, use it; otherwise iterate 0..track_count
     let track_indices: Vec<usize> = if let Some(ref m3u) = m3u_entries {
         // Use m3u track order (1-based → 0-based index for GME)
@@ -360,10 +360,7 @@ fn read_gme_metadata_inner(path: &Path, fast_scan: bool) -> Result<Vec<Track>, S
             codec: codec.clone(),
             file_size,
             has_artwork: false,
-            rating: m3u_entries.as_ref()
-                .and_then(|m| m.ratings.get(&((i as i32) + 1)))
-                .copied()
-                .unwrap_or(0),
+            rating: m3u_ratings.get(&((i as i32) + 1)).copied().unwrap_or(0),
             modified_at,
         });
     }

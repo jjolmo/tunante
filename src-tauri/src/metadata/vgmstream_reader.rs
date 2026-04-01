@@ -32,7 +32,7 @@ fn open_with_timeout(path: &Path, subsong: i32) -> Result<Vgmstream, String> {
 /// Parse `#RATING:filename:N:R` lines from a folder-level `_ratings.m3u` file.
 /// Returns ratings only for the specified filename.
 /// Returns a map of 1-based track/subsong number → rating value (0-5).
-fn parse_folder_m3u_ratings(m3u_path: &Path, target_filename: &str) -> HashMap<i32, i32> {
+pub fn parse_folder_m3u_ratings(m3u_path: &Path, target_filename: &str) -> HashMap<i32, i32> {
     let mut ratings = HashMap::new();
     let content = match std::fs::read_to_string(m3u_path) {
         Ok(c) => c,
