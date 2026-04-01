@@ -3,8 +3,8 @@
 //! Supports:
 //! - PSF-family files (GSF, PSF, 2SF): Modify the [TAG] section at end of file
 //! - Standard audio files (MP3, FLAC, OGG, etc.): Write via lofty (Vorbis RATING)
-//! - GME chiptune files (NSF, SPC, GBS, etc.): Write #RATING comments in companion .m3u
-//! - vgmstream/unknown formats: Fall back to companion .m3u (auto-created if needed)
+//! - GME chiptune files (NSF, SPC, GBS, etc.): Write #RATING comments in per-file companion .m3u
+//! - vgmstream/unknown formats: Write #RATING to folder-level `_ratings.m3u`
 
 use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file, is_usf_file};
 use std::io::Write;
@@ -63,7 +63,7 @@ pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String>
         return Ok(true);
     }
 
-    // vgmstream or unknown format: fall back to companion .m3u file
+    // vgmstream or unknown format: write to folder-level _ratings.m3u
     // Extract track number from virtual path (#N is 1-based for vgmstream, absent for single tracks)
     let track_number = if let Some(hash_pos) = path_str.rfind('#') {
         let after_hash = &path_str[hash_pos + 1..];
@@ -71,7 +71,7 @@ pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String>
     } else {
         1
     };
-    write_m3u_rating(path, track_number, rating)
+    write_folder_m3u_rating(path, track_number, rating)
 }
 
 /// Write rating to a PSF-family file's [TAG] section.
@@ -189,21 +189,15 @@ fn write_lofty_rating(path: &Path, rating: i32) -> Result<(), String> {
     Ok(())
 }
 
-/// Write a rating to a companion .m3u file using `#RATING:N:R` comment lines.
+/// Write a rating to a per-file companion .m3u using `#RATING:N:R` comment lines.
+/// Used only for GME formats (NSF, SPC, GBS, etc.) where the M3U also contains track metadata.
 ///
 /// `file_path` is the audio file path. The M3U is `file_path.with_extension("m3u")`.
 /// `track_number` is 1-based. Rating 0 removes the rating line.
-///
-/// If the M3U file doesn't exist and rating > 0, creates a minimal M3U with:
-///   - The `#RATING:N:R` comment
-///   - The audio filename as a playlist entry
-///
-/// Returns Ok(true) if the M3U was modified/created, Ok(false) if no action was taken.
 fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<bool, String> {
     let m3u_path = file_path.with_extension("m3u");
 
     if !m3u_path.exists() {
-        // No M3U exists — create one if we're setting a rating
         if rating > 0 {
             let file_name = file_path
                 .file_name()
@@ -218,7 +212,6 @@ fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<
             );
             return Ok(true);
         }
-        // Rating 0 + no M3U = nothing to do
         return Ok(false);
     }
 
@@ -230,11 +223,9 @@ fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<
 
     for line in content.lines() {
         if line.starts_with("#RATING:") {
-            // Parse existing rating line — keep other tracks' ratings
             if let Some(rest) = line.strip_prefix("#RATING:") {
                 if let Some(existing_track) = rest.split(':').next().and_then(|n| n.parse::<i32>().ok()) {
                     if existing_track == track_number {
-                        // This is the line we're updating — skip it (we'll add the new one below)
                         continue;
                     }
                 }
@@ -245,12 +236,10 @@ fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<
         }
     }
 
-    // Add the new rating if > 0
     if rating > 0 {
         rating_lines.push(format!("#RATING:{}:{}", track_number, rating));
     }
 
-    // Sort rating lines by track number
     rating_lines.sort_by_key(|line| {
         line.strip_prefix("#RATING:")
             .and_then(|r| r.split(':').next())
@@ -258,7 +247,6 @@ fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<
             .unwrap_or(0)
     });
 
-    // Rebuild: rating comments first, then original content
     let mut output = String::new();
     for line in &rating_lines {
         output.push_str(line);
@@ -269,7 +257,6 @@ fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<
         output.push('\n');
     }
 
-    // Preserve original trailing newline style
     if !content.ends_with('\n') && output.ends_with('\n') {
         output.pop();
     }
@@ -278,6 +265,109 @@ fn write_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<
         .map_err(|e| format!("Failed to write M3U file: {}", e))?;
 
     log::info!("Rating {} written to M3U for track {}: {}", rating, track_number, m3u_path.display());
+
+    Ok(true)
+}
+
+/// Write a rating to a folder-level `_ratings.m3u` file using `#RATING:filename:N:R` comment lines.
+/// Used for vgmstream and unknown formats that don't support embedded metadata tags.
+///
+/// `file_path` is the audio file path. The M3U is `file_path.parent()/_ratings.m3u`.
+/// `track_number` is 1-based. Rating 0 removes the rating line.
+/// If `_ratings.m3u` becomes empty after removal, it is deleted.
+fn write_folder_m3u_rating(file_path: &Path, track_number: i32, rating: i32) -> Result<bool, String> {
+    let folder = file_path
+        .parent()
+        .ok_or_else(|| "Cannot determine parent folder".to_string())?;
+    let m3u_path = folder.join("_ratings.m3u");
+    let file_name = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Cannot determine file name".to_string())?;
+
+    if !m3u_path.exists() {
+        if rating > 0 {
+            let content = format!("#RATING:{}:{}:{}\n", file_name, track_number, rating);
+            std::fs::write(&m3u_path, &content)
+                .map_err(|e| format!("Failed to create _ratings.m3u: {}", e))?;
+            log::info!(
+                "Created _ratings.m3u with rating {} for {}:{} in {}",
+                rating, file_name, track_number, folder.display()
+            );
+            return Ok(true);
+        }
+        return Ok(false);
+    }
+
+    let content = std::fs::read_to_string(&m3u_path)
+        .map_err(|e| format!("Failed to read _ratings.m3u: {}", e))?;
+
+    let mut rating_lines: Vec<String> = Vec::new();
+    let mut other_lines: Vec<&str> = Vec::new();
+
+    for line in content.lines() {
+        if let Some(rest) = line.strip_prefix("#RATING:") {
+            // Format: filename:track_number:rating
+            let parts: Vec<&str> = rest.rsplitn(3, ':').collect();
+            // rsplitn(3, ':') on "file.adx:1:5" → ["5", "1", "file.adx"]
+            if parts.len() == 3 {
+                let existing_file = parts[2];
+                let existing_track = parts[1].parse::<i32>().unwrap_or(0);
+                if existing_file == file_name && existing_track == track_number {
+                    // Skip — we'll add the updated line below
+                    continue;
+                }
+            }
+            rating_lines.push(line.to_string());
+        } else {
+            other_lines.push(line);
+        }
+    }
+
+    if rating > 0 {
+        rating_lines.push(format!("#RATING:{}:{}:{}", file_name, track_number, rating));
+    }
+
+    // Sort by filename then track number
+    rating_lines.sort_by(|a, b| {
+        let key = |line: &str| -> (String, i32) {
+            if let Some(rest) = line.strip_prefix("#RATING:") {
+                let parts: Vec<&str> = rest.rsplitn(3, ':').collect();
+                if parts.len() == 3 {
+                    return (parts[2].to_string(), parts[1].parse::<i32>().unwrap_or(0));
+                }
+            }
+            (String::new(), 0)
+        };
+        key(a).cmp(&key(b))
+    });
+
+    // If no rating lines remain, delete the file
+    if rating_lines.is_empty() {
+        let _ = std::fs::remove_file(&m3u_path);
+        log::info!("Removed empty _ratings.m3u in {}", folder.display());
+        return Ok(true);
+    }
+
+    let mut output = String::new();
+    for line in &rating_lines {
+        output.push_str(line);
+        output.push('\n');
+    }
+    for line in &other_lines {
+        if !line.is_empty() {
+            output.push_str(line);
+            output.push('\n');
+        }
+    }
+
+    std::fs::write(&m3u_path, &output)
+        .map_err(|e| format!("Failed to write _ratings.m3u: {}", e))?;
+
+    log::info!(
+        "Rating {} written to _ratings.m3u for {}:{} in {}",
+        rating, file_name, track_number, folder.display()
+    );
 
     Ok(true)
 }

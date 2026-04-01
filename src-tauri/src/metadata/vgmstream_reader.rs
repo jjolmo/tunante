@@ -29,9 +29,35 @@ fn open_with_timeout(path: &Path, subsong: i32) -> Result<Vgmstream, String> {
     }
 }
 
-/// Parse `#RATING:N:R` comment lines from a companion .m3u file.
+/// Parse `#RATING:filename:N:R` lines from a folder-level `_ratings.m3u` file.
+/// Returns ratings only for the specified filename.
 /// Returns a map of 1-based track/subsong number → rating value (0-5).
-fn parse_companion_m3u_ratings(m3u_path: &Path) -> HashMap<i32, i32> {
+fn parse_folder_m3u_ratings(m3u_path: &Path, target_filename: &str) -> HashMap<i32, i32> {
+    let mut ratings = HashMap::new();
+    let content = match std::fs::read_to_string(m3u_path) {
+        Ok(c) => c,
+        Err(_) => return ratings,
+    };
+    for line in content.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("#RATING:") {
+            // Format: filename:track_number:rating (use rsplitn to handle filenames with colons)
+            let parts: Vec<&str> = rest.rsplitn(3, ':').collect();
+            if parts.len() == 3 {
+                let filename = parts[2];
+                if let (Ok(track_num), Ok(rating_val)) = (parts[1].parse::<i32>(), parts[0].parse::<i32>()) {
+                    if filename == target_filename && (0..=5).contains(&rating_val) && track_num > 0 {
+                        ratings.insert(track_num, rating_val);
+                    }
+                }
+            }
+        }
+    }
+    ratings
+}
+
+/// Parse old-style `#RATING:N:R` lines from a per-file companion .m3u (backwards compat).
+fn parse_legacy_m3u_ratings(m3u_path: &Path) -> HashMap<i32, i32> {
     let mut ratings = HashMap::new();
     let content = match std::fs::read_to_string(m3u_path) {
         Ok(c) => c,
@@ -55,7 +81,7 @@ fn parse_companion_m3u_ratings(m3u_path: &Path) -> HashMap<i32, i32> {
 
 /// Read metadata from a vgmstream-supported file.
 /// Handles subsongs (multiple streams within a single file).
-/// Also reads ratings from companion .m3u files (same name, .m3u extension).
+/// Reads ratings from folder-level `_ratings.m3u`, with fallback to old per-file `.m3u`.
 pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
     // Open with subsong 0 (default) to get subsong count
     let vgm = open_with_timeout(path, 0)?;
@@ -66,6 +92,10 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
     let file_name = path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let full_file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
         .unwrap_or_default();
     // Use parent folder name as album (e.g., "Metroid Prime" from .../wii/Metroid Prime/track.dsp)
     let parent_folder = path
@@ -87,10 +117,20 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
         .unwrap_or(0);
     let file_size = file_meta.len() as i64;
 
-    // Try to load companion .m3u for ratings
-    let m3u_path = path.with_extension("m3u");
-    let m3u_ratings = if m3u_path.exists() {
-        parse_companion_m3u_ratings(&m3u_path)
+    // Try folder-level _ratings.m3u first, then fall back to old per-file .m3u
+    let m3u_ratings = if let Some(folder) = path.parent() {
+        let folder_m3u = folder.join("_ratings.m3u");
+        if folder_m3u.exists() {
+            parse_folder_m3u_ratings(&folder_m3u, full_file_name)
+        } else {
+            // Backwards compat: try old per-file .m3u
+            let legacy_m3u = path.with_extension("m3u");
+            if legacy_m3u.exists() {
+                parse_legacy_m3u_ratings(&legacy_m3u)
+            } else {
+                HashMap::new()
+            }
+        }
     } else {
         HashMap::new()
     };
