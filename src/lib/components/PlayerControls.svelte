@@ -247,7 +247,17 @@
 
 			<button
 				class="ctrl-btn play-btn"
-				onclick={() => playerStore.togglePlayPause()}
+				onclick={() => {
+					if (!playerStore.isPlaying && !playerStore.currentTrack) {
+						const selected = libraryStore.selectedTrack;
+						if (selected) {
+							const contextIds = libraryStore.filteredTracks.map((t) => t.id);
+							playerStore.playTrack(selected, contextIds);
+							return;
+						}
+					}
+					playerStore.togglePlayPause();
+				}}
 				title={playerStore.isPlaying ? 'Pause' : 'Play'}
 			>
 				{#if playerStore.isPlaying}
