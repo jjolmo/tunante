@@ -169,6 +169,23 @@
 		</div>
 	</label>
 
+	<h3 class="section-title" style="margin-top: 8px;">Playback</h3>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.continueFromQueue}
+			onchange={(e) =>
+				settingsStore.setContinueFromQueue((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Continue from last queued song</span>
+			<span class="setting-desc"
+				>When the queue finishes, continue playing from the last queued song's album instead of returning to the previous album context.</span
+			>
+		</div>
+	</label>
+
 	<h3 class="section-title" style="margin-top: 8px;">Playback Filter</h3>
 
 	<label class="setting-row">

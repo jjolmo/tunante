@@ -1114,9 +1114,33 @@ pub fn run() {
                     if track_finished {
                         let mut queue = state.queue.lock();
                         if let Some(next_track) = queue.next() {
+                            // If a queued track is not in the current context,
+                            // update context to the track's folder so playback
+                            // continues from there when the queue empties.
+                            if let Some(queued) = queue.pending_context_update().cloned() {
+                                let track_path = std::path::Path::new(&queued.path);
+                                if let Some(parent) = track_path.parent() {
+                                    let folder = parent.to_string_lossy().to_string();
+                                    let queued_id = queued.id.clone();
+                                    drop(queue);
+                                    let db = state.db.lock();
+                                    if let Ok(folder_tracks) = db.get_tracks_by_folder(&folder) {
+                                        drop(db);
+                                        let mut queue = state.queue.lock();
+                                        queue.update_context(folder_tracks, &queued_id);
+                                        drop(queue);
+                                    } else {
+                                        drop(db);
+                                    }
+                                } else {
+                                    drop(queue);
+                                }
+                            } else {
+                                drop(queue);
+                            }
+
                             let path = next_track.path.clone();
                             let duration_hint = next_track.duration_ms;
-                            drop(queue);
                             let mut audio = state.audio.lock();
                             match audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
                                 Ok(()) => {
@@ -1204,6 +1228,7 @@ pub fn run() {
             commands::player::is_in_queue,
             commands::player::set_shuffle,
             commands::player::set_repeat,
+            commands::player::set_continue_from_queue,
             commands::library::get_all_tracks,
             commands::library::set_track_rating,
             commands::library::get_faved_tracks,
