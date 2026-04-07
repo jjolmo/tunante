@@ -93,7 +93,7 @@ impl PlayQueue {
                 let next_idx = match self.current_index {
                     Some(i) => {
                         if self.shuffle {
-                            self.next_shuffle_index(i)
+                            self.next_shuffle_index(i).0
                         } else {
                             (i + 1) % self.tracks.len()
                         }
@@ -107,10 +107,10 @@ impl PlayQueue {
                 let next_idx = match self.current_index {
                     Some(i) => {
                         if self.shuffle {
-                            let ni = self.next_shuffle_index(i);
-                            if ni <= i {
+                            let (ni, wrapped) = self.next_shuffle_index(i);
+                            if wrapped {
                                 return None;
-                            } // wrapped around
+                            }
                             ni
                         } else {
                             i + 1
@@ -219,16 +219,19 @@ impl PlayQueue {
         self.pending_context_update = None;
     }
 
-    fn next_shuffle_index(&self, current_real_index: usize) -> usize {
+    /// Returns (next_real_index, wrapped) where `wrapped` is true when
+    /// the shuffle order has looped back to the start.
+    fn next_shuffle_index(&self, current_real_index: usize) -> (usize, bool) {
         if let Some(pos) = self
             .shuffle_order
             .iter()
             .position(|&i| i == current_real_index)
         {
             let next_pos = (pos + 1) % self.shuffle_order.len();
-            self.shuffle_order[next_pos]
+            let wrapped = pos + 1 >= self.shuffle_order.len();
+            (self.shuffle_order[next_pos], wrapped)
         } else {
-            0
+            (0, false)
         }
     }
 }
