@@ -597,6 +597,47 @@ impl Database {
         Ok(ids.iter().filter_map(|id| tracks_map.get(id).cloned()).collect())
     }
 
+    /// Fetch all tracks whose path starts with the given folder prefix,
+    /// ordered by disc/track number (album order).
+    pub fn get_tracks_by_folder(&self, folder: &str) -> Result<Vec<Track>, DbError> {
+        let prefix = if folder.ends_with('/') {
+            folder.to_string()
+        } else {
+            format!("{}/", folder)
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+             FROM tracks WHERE path LIKE ?1
+             ORDER BY disc_number, track_number, title",
+        )?;
+
+        let tracks = stmt
+            .query_map(params![format!("{}%", prefix)], |row| {
+                Ok(Track {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    title: row.get(2)?,
+                    artist: row.get(3)?,
+                    album: row.get(4)?,
+                    album_artist: row.get(5)?,
+                    track_number: row.get(6)?,
+                    disc_number: row.get(7)?,
+                    duration_ms: row.get(8)?,
+                    sample_rate: row.get(9)?,
+                    channels: row.get(10)?,
+                    bitrate: row.get(11)?,
+                    codec: row.get(12)?,
+                    file_size: row.get(13)?,
+                    has_artwork: row.get(14)?,
+                    rating: row.get(15)?,
+                    modified_at: 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(tracks)
+    }
+
     pub fn clear_all_tracks(&self) -> Result<(), DbError> {
         self.conn.execute_batch(
             "DELETE FROM tracks; DELETE FROM tracks_fts;"

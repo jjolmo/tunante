@@ -23,6 +23,7 @@ class SettingsStore {
 	storeCoversInFolder = $state(false);
 	consoleGroupByFolder = $state(false);
 	fastScan = $state(false);
+	continueFromQueue = $state(true);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -99,6 +100,12 @@ class SettingsStore {
 
 		const fastScan = this._settingsCache.get('fast_scan');
 		if (fastScan !== undefined) this.fastScan = fastScan === 'true';
+
+		const continueFromQueue = this._settingsCache.get('continue_from_queue');
+		if (continueFromQueue !== undefined) this.continueFromQueue = continueFromQueue === 'true';
+
+		// Sync continue_from_queue to the backend queue
+		invoke('set_continue_from_queue', { enabled: this.continueFromQueue }).catch(() => {});
 	}
 
 	private _teardownMediaListener() {
@@ -329,6 +336,16 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'fast_scan', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save fast scan setting:', e);
+		}
+	}
+
+	async setContinueFromQueue(enabled: boolean) {
+		this.continueFromQueue = enabled;
+		try {
+			await invoke('set_setting', { key: 'continue_from_queue', value: String(enabled) });
+			await invoke('set_continue_from_queue', { enabled });
+		} catch (e) {
+			console.error('Failed to save continue from queue setting:', e);
 		}
 	}
 

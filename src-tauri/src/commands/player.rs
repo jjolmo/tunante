@@ -194,6 +194,12 @@ pub fn set_shuffle(enabled: bool, state: State<'_, Arc<AppState>>) -> Result<(),
 }
 
 #[tauri::command]
+pub fn set_continue_from_queue(enabled: bool, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.queue.lock().set_continue_from_queue(enabled);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_repeat(mode: String, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     let repeat = match mode.as_str() {
         "all" => RepeatMode::All,

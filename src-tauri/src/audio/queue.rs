@@ -14,6 +14,10 @@ pub struct PlayQueue {
     repeat: RepeatMode,
     shuffle_order: Vec<usize>,
     user_queue: Vec<Track>,
+    continue_from_queue: bool,
+    /// When a queued track is not found in the current context, store it here
+    /// so the caller (event loop) can update the context from the DB.
+    pending_context_update: Option<Track>,
 }
 
 impl PlayQueue {
@@ -25,6 +29,8 @@ impl PlayQueue {
             repeat: RepeatMode::Off,
             shuffle_order: Vec::new(),
             user_queue: Vec::new(),
+            continue_from_queue: true,
+            pending_context_update: None,
         }
     }
 
@@ -59,8 +65,21 @@ impl PlayQueue {
     pub fn next(&mut self) -> Option<Track> {
         // User queue takes priority
         if !self.user_queue.is_empty() {
-            return Some(self.user_queue.remove(0));
+            let track = self.user_queue.remove(0);
+            if self.continue_from_queue {
+                // Try to find the queued track in the current context
+                if let Some(idx) = self.tracks.iter().position(|t| t.id == track.id) {
+                    self.current_index = Some(idx);
+                    self.pending_context_update = None;
+                } else {
+                    // Track not in context — signal that caller should update context
+                    self.pending_context_update = Some(track.clone());
+                }
+            }
+            return Some(track);
         }
+
+        self.pending_context_update = None;
 
         if self.tracks.is_empty() {
             return None;
@@ -177,6 +196,27 @@ impl PlayQueue {
 
     pub fn clear_user_queue(&mut self) {
         self.user_queue.clear();
+    }
+
+    pub fn set_continue_from_queue(&mut self, enabled: bool) {
+        self.continue_from_queue = enabled;
+    }
+
+    pub fn continue_from_queue(&self) -> bool {
+        self.continue_from_queue
+    }
+
+    /// Returns the queued track that needs a context update (not found in current context).
+    pub fn pending_context_update(&self) -> Option<&Track> {
+        self.pending_context_update.as_ref()
+    }
+
+    /// Replace context tracks and set current index to the given track, preserving user queue.
+    pub fn update_context(&mut self, tracks: Vec<Track>, current_id: &str) {
+        self.tracks = tracks;
+        self.current_index = self.tracks.iter().position(|t| t.id == current_id);
+        self.regenerate_shuffle();
+        self.pending_context_update = None;
     }
 
     fn next_shuffle_index(&self, current_real_index: usize) -> usize {
