@@ -405,6 +405,26 @@
 		}
 		libraryStore.scrollToTrackId = null;
 	});
+
+	// Scroll to currently playing track when window is restored from minimized
+	$effect(() => {
+		function onVisibilityChange() {
+			if (document.hidden || !container) return;
+			const track = playerStore.currentTrack;
+			if (!track) return;
+			const idx = tracks.findIndex((t) => t.id === track.id);
+			if (idx < 0) return;
+			// Check if the playing track is already visible on screen
+			const trackTop = idx * ROW_HEIGHT;
+			const viewTop = container.scrollTop;
+			const viewBottom = viewTop + containerHeight;
+			if (trackTop >= viewTop && trackTop + ROW_HEIGHT <= viewBottom) return;
+			// Scroll to center the playing track
+			container.scrollTop = trackTop - containerHeight / 2 + ROW_HEIGHT / 2;
+		}
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+	});
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
