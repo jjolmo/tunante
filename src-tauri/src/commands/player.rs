@@ -29,9 +29,7 @@ pub fn play_file(
         db.get_all_tracks().map_err(|e| e.to_string())?
     };
 
-    let db_track = db
-        .get_track_by_path(&path)
-        .map_err(|e| e.to_string())?;
+    let db_track = db.get_track_by_path(&path).map_err(|e| e.to_string())?;
     let track_id = db_track.as_ref().map(|t| t.id.clone()).unwrap_or_default();
     let duration_hint_ms = db_track.as_ref().map(|t| t.duration_ms).unwrap_or(0);
     drop(db);
@@ -42,7 +40,9 @@ pub fn play_file(
     drop(queue);
 
     let mut audio = state.audio.lock();
-    audio.play_file(&file_path, duration_hint_ms).map_err(|e| e.to_string())
+    audio
+        .play_file(&file_path, duration_hint_ms)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -101,10 +101,7 @@ pub fn set_volume(volume: f32, state: State<'_, Arc<AppState>>) -> Result<(), St
 }
 
 #[tauri::command]
-pub fn next_track(
-    state: State<'_, Arc<AppState>>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+pub fn next_track(state: State<'_, Arc<AppState>>, app: tauri::AppHandle) -> Result<(), String> {
     let mut queue = state.queue.lock();
     if let Some(track) = queue.next() {
         let path = track.path.clone();
@@ -112,16 +109,15 @@ pub fn next_track(
         let _ = app.emit("track-changed", &track);
         drop(queue);
         let mut audio = state.audio.lock();
-        audio.play_file(&PathBuf::from(&path), duration_hint).map_err(|e| e.to_string())?;
+        audio
+            .play_file(&PathBuf::from(&path), duration_hint)
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn prev_track(
-    state: State<'_, Arc<AppState>>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+pub fn prev_track(state: State<'_, Arc<AppState>>, app: tauri::AppHandle) -> Result<(), String> {
     let mut queue = state.queue.lock();
     if let Some(track) = queue.prev() {
         let path = track.path.clone();
@@ -129,7 +125,9 @@ pub fn prev_track(
         let _ = app.emit("track-changed", &track);
         drop(queue);
         let mut audio = state.audio.lock();
-        audio.play_file(&PathBuf::from(&path), duration_hint).map_err(|e| e.to_string())?;
+        audio
+            .play_file(&PathBuf::from(&path), duration_hint)
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -194,8 +192,26 @@ pub fn set_shuffle(enabled: bool, state: State<'_, Arc<AppState>>) -> Result<(),
 }
 
 #[tauri::command]
-pub fn set_continue_from_queue(enabled: bool, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+pub fn set_continue_from_queue(
+    enabled: bool,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
     state.queue.lock().set_continue_from_queue(enabled);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_short_filter(
+    enabled: bool,
+    threshold_sec: i64,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let threshold_ms = if enabled && threshold_sec > 0 {
+        threshold_sec * 1000
+    } else {
+        0
+    };
+    state.queue.lock().set_short_filter(threshold_ms);
     Ok(())
 }
 

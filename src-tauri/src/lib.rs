@@ -630,7 +630,22 @@ pub fn run() {
             let db = db::Database::new(&db_path).expect("Failed to initialize database");
             let audio_engine =
                 audio::AudioEngine::new().expect("Failed to initialize audio engine");
-            let queue = audio::PlayQueue::new();
+            let mut queue = audio::PlayQueue::new();
+
+            // Initialize short track filter from saved settings
+            {
+                let sf_enabled = db.get_setting("short_filter_enabled")
+                    .ok().flatten()
+                    .map(|v| v == "true")
+                    .unwrap_or(false);
+                let sf_threshold = db.get_setting("short_filter_threshold_sec")
+                    .ok().flatten()
+                    .and_then(|v| v.parse::<i64>().ok())
+                    .unwrap_or(0);
+                if sf_enabled && sf_threshold > 0 {
+                    queue.set_short_filter(sf_threshold * 1000);
+                }
+            }
 
             // Load user shortcut bindings from DB
             let user_bindings: std::collections::HashMap<String, String> = db
@@ -1228,6 +1243,7 @@ pub fn run() {
             commands::player::is_in_queue,
             commands::player::set_shuffle,
             commands::player::set_repeat,
+            commands::player::set_short_filter,
             commands::player::set_continue_from_queue,
             commands::library::get_all_tracks,
             commands::library::set_track_rating,

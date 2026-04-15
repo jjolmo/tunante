@@ -183,6 +183,7 @@ class LibraryStore {
 		this._ftCacheKey = '';
 		try {
 			await invoke('set_setting', { key: 'short_filter_enabled', value: String(enabled) });
+			await invoke('set_short_filter', { enabled, thresholdSec: this.shortFilterThresholdSec });
 		} catch { /* ignore */ }
 	}
 
@@ -191,6 +192,7 @@ class LibraryStore {
 		this._ftCacheKey = '';
 		try {
 			await invoke('set_setting', { key: 'short_filter_threshold_sec', value: String(seconds) });
+			await invoke('set_short_filter', { enabled: this.shortFilterEnabled, thresholdSec: seconds });
 		} catch { /* ignore */ }
 	}
 
