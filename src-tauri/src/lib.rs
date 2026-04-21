@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::menu::{IconMenuItemBuilder, MenuBuilder, MenuItemBuilder};
-use tauri::image::Image;
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 
@@ -705,9 +704,17 @@ pub fn run() {
             //                   the full context menu.
             //   Linux (GNOME)— GNOME's AppIndicator extension always shows the menu
             //                   on any click. The "Show / Hide" item is at the top.
-            let play_icon = Image::from_bytes(include_bytes!("../icons/menu/play.png"))?;
-            let next_icon = Image::from_bytes(include_bytes!("../icons/menu/next.png"))?;
-            let prev_icon = Image::from_bytes(include_bytes!("../icons/menu/prev.png"))?;
+            let decode_png = |bytes: &[u8]| -> tauri::image::Image<'static> {
+                let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+                let mut reader = decoder.read_info().expect("Failed to decode menu icon PNG");
+                let mut buf = vec![0u8; reader.output_buffer_size()];
+                let info = reader.next_frame(&mut buf).expect("Failed to read menu icon frame");
+                buf.truncate(info.buffer_size());
+                tauri::image::Image::new_owned(buf, info.width, info.height)
+            };
+            let play_icon = decode_png(include_bytes!("../icons/menu/play.png"));
+            let next_icon = decode_png(include_bytes!("../icons/menu/next.png"));
+            let prev_icon = decode_png(include_bytes!("../icons/menu/prev.png"));
 
             let show_hide_item = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
             let play_pause_item = IconMenuItemBuilder::with_id("play_pause", "Play / Pause")
