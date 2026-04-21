@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{IconMenuItemBuilder, MenuBuilder, MenuItemBuilder};
+use tauri::image::Image;
 use tauri::tray::TrayIconBuilder;
 use tauri::{Emitter, Manager};
 
@@ -704,10 +705,20 @@ pub fn run() {
             //                   the full context menu.
             //   Linux (GNOME)— GNOME's AppIndicator extension always shows the menu
             //                   on any click. The "Show / Hide" item is at the top.
+            let play_icon = Image::from_bytes(include_bytes!("../icons/menu/play.png"))?;
+            let next_icon = Image::from_bytes(include_bytes!("../icons/menu/next.png"))?;
+            let prev_icon = Image::from_bytes(include_bytes!("../icons/menu/prev.png"))?;
+
             let show_hide_item = MenuItemBuilder::with_id("show_hide", "Show / Hide").build(app)?;
-            let play_pause_item = MenuItemBuilder::with_id("play_pause", "Play / Pause").build(app)?;
-            let next_item = MenuItemBuilder::with_id("next_track", "Next").build(app)?;
-            let prev_item = MenuItemBuilder::with_id("prev_track", "Previous").build(app)?;
+            let play_pause_item = IconMenuItemBuilder::with_id("play_pause", "Play / Pause")
+                .icon(play_icon)
+                .build(app)?;
+            let next_item = IconMenuItemBuilder::with_id("next_track", "Next")
+                .icon(next_icon)
+                .build(app)?;
+            let prev_item = IconMenuItemBuilder::with_id("prev_track", "Previous")
+                .icon(prev_icon)
+                .build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
             let tray_menu = MenuBuilder::new(app)
                 .item(&show_hide_item)
