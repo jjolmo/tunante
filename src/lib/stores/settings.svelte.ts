@@ -24,6 +24,8 @@ class SettingsStore {
 	consoleGroupByFolder = $state(false);
 	fastScan = $state(false);
 	continueFromQueue = $state(true);
+	fadeOnTrackChange = $state(false);
+	fadeSeconds = $state(2);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -104,8 +106,21 @@ class SettingsStore {
 		const continueFromQueue = this._settingsCache.get('continue_from_queue');
 		if (continueFromQueue !== undefined) this.continueFromQueue = continueFromQueue === 'true';
 
+		const fadeOnTrackChange = this._settingsCache.get('fade_on_track_change');
+		if (fadeOnTrackChange !== undefined) this.fadeOnTrackChange = fadeOnTrackChange === 'true';
+
+		const fadeSeconds = this._settingsCache.get('fade_seconds');
+		if (fadeSeconds !== undefined) {
+			const parsed = parseFloat(fadeSeconds);
+			if (!isNaN(parsed)) this.fadeSeconds = Math.max(0, Math.min(10, parsed));
+		}
+
 		// Sync continue_from_queue to the backend queue
 		invoke('set_continue_from_queue', { enabled: this.continueFromQueue }).catch(() => {});
+
+		// Sync fade settings to the backend audio engine
+		invoke('set_fade_on_track_change', { enabled: this.fadeOnTrackChange }).catch(() => {});
+		invoke('set_fade_seconds', { seconds: this.fadeSeconds }).catch(() => {});
 	}
 
 	private _teardownMediaListener() {
@@ -355,6 +370,27 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'console_group_by_folder', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save console group by folder setting:', e);
+		}
+	}
+
+	async setFadeOnTrackChange(enabled: boolean) {
+		this.fadeOnTrackChange = enabled;
+		try {
+			await invoke('set_setting', { key: 'fade_on_track_change', value: String(enabled) });
+			await invoke('set_fade_on_track_change', { enabled });
+		} catch (e) {
+			console.error('Failed to save fade-on-track-change setting:', e);
+		}
+	}
+
+	async setFadeSeconds(seconds: number) {
+		const clamped = Math.max(0, Math.min(10, seconds));
+		this.fadeSeconds = clamped;
+		try {
+			await invoke('set_setting', { key: 'fade_seconds', value: String(clamped) });
+			await invoke('set_fade_seconds', { seconds: clamped });
+		} catch (e) {
+			console.error('Failed to save fade-seconds setting:', e);
 		}
 	}
 }

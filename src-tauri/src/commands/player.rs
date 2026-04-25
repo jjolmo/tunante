@@ -3,12 +3,129 @@ use crate::db::models::Track;
 use crate::AppState;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{Emitter, State};
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Clone, serde::Serialize)]
-struct PlaybackErrorPayload {
-    message: String,
+pub(crate) struct PlaybackErrorPayload {
+    pub message: String,
+    pub path: String,
+}
+
+const FADE_TICK_MS: u64 = 25;
+
+/// Play a file, optionally with a fade-out of the current track and a fade-in
+/// of the new one. The fade is performed entirely in Rust without touching the
+/// user-visible volume, so the UI volume slider stays at its current value.
+///
+/// When fade is disabled, this behaves the same as calling `audio.play_file`
+/// directly. When enabled, work is done on a background thread; this function
+/// returns immediately.
+pub fn play_with_fade(
+    state: Arc<AppState>,
+    app: AppHandle,
     path: String,
+    duration_hint_ms: i64,
+    track_for_event: Option<Track>,
+) {
+    let (fade_enabled, fade_seconds, has_source) = {
+        let audio = state.audio.lock();
+        (
+            audio.fade_on_track_change(),
+            audio.fade_seconds(),
+            audio.has_source(),
+        )
+    };
+
+    if !fade_enabled || fade_seconds <= 0.0 {
+        let mut audio = state.audio.lock();
+        match audio.play_file(&PathBuf::from(&path), duration_hint_ms) {
+            Ok(()) => {
+                drop(audio);
+                if let Some(t) = track_for_event {
+                    let _ = app.emit("track-changed", &t);
+                }
+            }
+            Err(e) => {
+                drop(audio);
+                let _ = app.emit(
+                    "playback-error",
+                    PlaybackErrorPayload {
+                        message: e.to_string(),
+                        path: path.clone(),
+                    },
+                );
+            }
+        }
+        return;
+    }
+
+    std::thread::spawn(move || {
+        let generation = state.audio.lock().bump_fade_generation();
+
+        let half_secs = (fade_seconds / 2.0).max(0.0);
+        let half_ms = (half_secs * 1000.0) as u64;
+        let steps = (half_ms / FADE_TICK_MS).max(1);
+        let tick = Duration::from_millis(FADE_TICK_MS);
+
+        let is_current = |gen_id: u64| -> bool {
+            state.audio.lock().fade_generation() == gen_id
+        };
+
+        if has_source {
+            for i in 1..=steps {
+                if !is_current(generation) {
+                    return;
+                }
+                let factor = 1.0 - (i as f32 / steps as f32);
+                let user_vol = state.audio.lock().volume();
+                state.audio.lock().set_player_volume_raw(user_vol * factor);
+                std::thread::sleep(tick);
+            }
+        }
+
+        if !is_current(generation) {
+            return;
+        }
+
+        {
+            let mut audio = state.audio.lock();
+            match audio.play_file_at_volume(&PathBuf::from(&path), duration_hint_ms, 0.0) {
+                Ok(()) => {
+                    drop(audio);
+                    if let Some(t) = &track_for_event {
+                        let _ = app.emit("track-changed", t);
+                    }
+                }
+                Err(e) => {
+                    drop(audio);
+                    let _ = app.emit(
+                        "playback-error",
+                        PlaybackErrorPayload {
+                            message: e.to_string(),
+                            path: path.clone(),
+                        },
+                    );
+                    return;
+                }
+            }
+        }
+
+        for i in 1..=steps {
+            if !is_current(generation) {
+                return;
+            }
+            let factor = i as f32 / steps as f32;
+            let user_vol = state.audio.lock().volume();
+            state.audio.lock().set_player_volume_raw(user_vol * factor);
+            std::thread::sleep(tick);
+        }
+
+        if is_current(generation) {
+            let user_vol = state.audio.lock().volume();
+            state.audio.lock().set_player_volume_raw(user_vol);
+        }
+    });
 }
 
 /// Play a file. If `track_ids` is provided, those tracks become the queue context
@@ -18,9 +135,8 @@ pub fn play_file(
     path: String,
     track_ids: Option<Vec<String>>,
     state: State<'_, Arc<AppState>>,
+    app: AppHandle,
 ) -> Result<(), String> {
-    let file_path = PathBuf::from(&path);
-
     // Load context tracks into queue
     let db = state.db.lock();
     let context_tracks = if let Some(ids) = track_ids {
@@ -39,10 +155,8 @@ pub fn play_file(
     queue.play_track_by_id(&track_id);
     drop(queue);
 
-    let mut audio = state.audio.lock();
-    audio
-        .play_file(&file_path, duration_hint_ms)
-        .map_err(|e| e.to_string())
+    play_with_fade(state.inner().clone(), app, path, duration_hint_ms, db_track);
+    Ok(())
 }
 
 #[tauri::command]
@@ -106,12 +220,9 @@ pub fn next_track(state: State<'_, Arc<AppState>>, app: tauri::AppHandle) -> Res
     if let Some(track) = queue.next() {
         let path = track.path.clone();
         let duration_hint = track.duration_ms;
-        let _ = app.emit("track-changed", &track);
+        let track_clone = track.clone();
         drop(queue);
-        let mut audio = state.audio.lock();
-        audio
-            .play_file(&PathBuf::from(&path), duration_hint)
-            .map_err(|e| e.to_string())?;
+        play_with_fade(state.inner().clone(), app, path, duration_hint, Some(track_clone));
     }
     Ok(())
 }
@@ -122,12 +233,9 @@ pub fn prev_track(state: State<'_, Arc<AppState>>, app: tauri::AppHandle) -> Res
     if let Some(track) = queue.prev() {
         let path = track.path.clone();
         let duration_hint = track.duration_ms;
-        let _ = app.emit("track-changed", &track);
+        let track_clone = track.clone();
         drop(queue);
-        let mut audio = state.audio.lock();
-        audio
-            .play_file(&PathBuf::from(&path), duration_hint)
-            .map_err(|e| e.to_string())?;
+        play_with_fade(state.inner().clone(), app, path, duration_hint, Some(track_clone));
     }
     Ok(())
 }
@@ -223,5 +331,20 @@ pub fn set_repeat(mode: String, state: State<'_, Arc<AppState>>) -> Result<(), S
         _ => RepeatMode::Off,
     };
     state.queue.lock().set_repeat(repeat);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_fade_on_track_change(
+    enabled: bool,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    state.audio.lock().set_fade_on_track_change(enabled);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_fade_seconds(seconds: f32, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.audio.lock().set_fade_seconds(seconds);
     Ok(())
 }

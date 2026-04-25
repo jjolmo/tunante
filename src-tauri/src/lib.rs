@@ -18,12 +18,6 @@ pub mod shortcuts;
 pub mod updater;
 pub mod watcher;
 
-#[derive(Clone, serde::Serialize)]
-struct PlaybackErrorPayload {
-    message: String,
-    path: String,
-}
-
 pub struct AppState {
     pub audio: parking_lot::Mutex<audio::AudioEngine>,
     pub db: parking_lot::Mutex<db::Database>,
@@ -1174,26 +1168,13 @@ pub fn run() {
 
                             let path = next_track.path.clone();
                             let duration_hint = next_track.duration_ms;
-                            let mut audio = state.audio.lock();
-                            match audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
-                                Ok(()) => {
-                                    let _ = handle.emit("track-changed", next_track);
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to play {}: {}", path, e);
-                                    let _ = handle.emit(
-                                        "playback-error",
-                                        PlaybackErrorPayload {
-                                            message: e.to_string(),
-                                            path: path.clone(),
-                                        },
-                                    );
-                                    // Reset state so we don't loop on the same error
-                                    audio.stop();
-                                    drop(audio);
-                                    let _ = handle.emit("playback-stopped", ());
-                                }
-                            }
+                            commands::player::play_with_fade(
+                                state.inner().clone(),
+                                handle.clone(),
+                                path,
+                                duration_hint,
+                                Some(next_track),
+                            );
                         }
                     }
                 }
@@ -1263,6 +1244,8 @@ pub fn run() {
             commands::player::set_repeat,
             commands::player::set_short_filter,
             commands::player::set_continue_from_queue,
+            commands::player::set_fade_on_track_change,
+            commands::player::set_fade_seconds,
             commands::library::get_all_tracks,
             commands::library::set_track_rating,
             commands::library::get_faved_tracks,
