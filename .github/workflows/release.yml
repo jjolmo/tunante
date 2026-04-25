@@ -69,6 +69,9 @@ jobs:
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+      - name: Patch viogsf for ARM build
+        run: |
+          sed -i 's@^#ifdef __GNUC__$@#if defined(__GNUC__) \&\& (defined(__i386__) || defined(__x86_64__))@' src-tauri/viogsf/vbam/gba/GBAcpu.h
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -115,6 +118,10 @@ jobs:
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+      - name: Patch viogsf for ARM build
+        shell: bash
+        run: |
+          sed -i 's@^#ifdef __GNUC__$@#if defined(__GNUC__) \&\& (defined(__i386__) || defined(__x86_64__))@' src-tauri/viogsf/vbam/gba/GBAcpu.h
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -155,6 +162,9 @@ jobs:
           sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+      - name: Patch viogsf for ARM build
+        run: |
+          sed -i '' 's@^#ifdef __GNUC__$@#if defined(__GNUC__) \&\& (defined(__i386__) || defined(__x86_64__))@' src-tauri/viogsf/vbam/gba/GBAcpu.h
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
