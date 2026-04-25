@@ -314,6 +314,21 @@
 					{/if}
 				</svg>
 			</button>
+
+			<button
+				class="ctrl-btn fade-btn"
+				class:active={settingsStore.fadeOnTrackChange}
+				onclick={() => settingsStore.setFadeOnTrackChange(!settingsStore.fadeOnTrackChange)}
+				title={settingsStore.fadeOnTrackChange
+					? `Fade on track change: ON (${settingsStore.fadeSeconds}s) — click to disable`
+					: 'Fade on track change: OFF — click to enable'}
+			>
+				<svg width="20" height="20" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M2 13 L7 3 L7 13 Z" fill="currentColor" stroke="none" />
+					<path d="M9 13 L14 3" />
+					<path d="M9 13 L14 13" />
+				</svg>
+			</button>
 		</div>
 
 		<div class="controls-right">
@@ -480,6 +495,14 @@
 
 	.fav-btn.active:hover {
 		color: #d4a810;
+	}
+
+	.fade-btn.active {
+		color: var(--color-accent);
+	}
+
+	.fade-btn.active:hover {
+		opacity: 0.85;
 	}
 
 	.repeat-one {
