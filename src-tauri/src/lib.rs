@@ -1166,15 +1166,36 @@ pub fn run() {
                                 drop(queue);
                             }
 
+                            // Auto-advance plays without fade — fade only applies
+                            // to user-initiated track changes. Bump the fade
+                            // generation so any in-progress fade thread bails
+                            // out instead of clobbering the new track's volume.
                             let path = next_track.path.clone();
                             let duration_hint = next_track.duration_ms;
-                            commands::player::play_with_fade(
-                                state.inner().clone(),
-                                handle.clone(),
-                                path,
-                                duration_hint,
-                                Some(next_track),
-                            );
+                            let mut audio = state.audio.lock();
+                            audio.bump_fade_generation();
+                            let user_vol = audio.volume();
+                            match audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
+                                Ok(()) => {
+                                    audio.set_player_volume_raw(user_vol);
+                                    drop(audio);
+                                    let _ = handle.emit("track-changed", &next_track);
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to play {}: {}", path, e);
+                                    audio.stop();
+                                    audio.set_player_volume_raw(user_vol);
+                                    drop(audio);
+                                    let _ = handle.emit(
+                                        "playback-error",
+                                        commands::player::PlaybackErrorPayload {
+                                            message: e.to_string(),
+                                            path: path.clone(),
+                                        },
+                                    );
+                                    let _ = handle.emit("playback-stopped", ());
+                                }
+                            }
                         }
                     }
                 }
