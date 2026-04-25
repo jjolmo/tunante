@@ -9,6 +9,7 @@
 	let isLinux = $state(false);
 	const isMacOS = navigator.platform.startsWith('Mac');
 	let thresholdValue = $state(String(libraryStore.shortFilterThresholdSec));
+	let fadeSecondsValue = $state(String(settingsStore.fadeSeconds));
 
 	function handleThresholdChange(e: Event) {
 		const val = (e.target as HTMLInputElement).value;
@@ -16,6 +17,15 @@
 		const n = parseInt(val, 10);
 		if (!isNaN(n) && n > 0) {
 			libraryStore.setShortFilterThreshold(n);
+		}
+	}
+
+	function handleFadeSecondsChange(e: Event) {
+		const val = (e.target as HTMLInputElement).value;
+		fadeSecondsValue = val;
+		const n = parseFloat(val);
+		if (!isNaN(n) && n >= 0) {
+			settingsStore.setFadeSeconds(Math.min(10, n));
 		}
 	}
 
@@ -185,6 +195,40 @@
 			>
 		</div>
 	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.fadeOnTrackChange}
+			onchange={(e) =>
+				settingsStore.setFadeOnTrackChange((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Fade out / fade in on track change</span>
+			<span class="setting-desc"
+				>Smoothly fade the audio out before switching tracks and fade the next one in. The volume slider stays put — fading is internal.</span
+			>
+		</div>
+	</label>
+
+	<div class="setting-row threshold-row" class:disabled={!settingsStore.fadeOnTrackChange}>
+		<div class="setting-text">
+			<span class="setting-label">Total fade duration (seconds)</span>
+			<span class="setting-desc"
+				>Half is used for fade-out, half for fade-in. Maximum 10 seconds.</span
+			>
+		</div>
+		<input
+			type="number"
+			min="0"
+			max="10"
+			step="0.5"
+			class="threshold-field"
+			value={fadeSecondsValue}
+			disabled={!settingsStore.fadeOnTrackChange}
+			onchange={handleFadeSecondsChange}
+		/>
+	</div>
 
 	<h3 class="section-title" style="margin-top: 8px;">Playback Filter</h3>
 

@@ -100,6 +100,11 @@ pub struct AudioEngine {
     /// rodio's player.empty() returning true before the mixer starts consuming
     /// the new source (race condition that causes rapid track-skipping).
     play_started_at: Instant,
+    fade_on_track_change: bool,
+    fade_seconds: f32,
+    /// Bumped on each new fade run; in-progress fades check this and abort
+    /// when superseded so rapid track changes don't overlap fades.
+    fade_generation: u64,
 }
 
 // Safety: AudioEngine is always accessed through a Mutex, ensuring single-threaded access.
@@ -122,10 +127,22 @@ impl AudioEngine {
             was_playing: false,
             has_source: false,
             play_started_at: Instant::now(),
+            fade_on_track_change: false,
+            fade_seconds: 2.0,
+            fade_generation: 0,
         })
     }
 
     pub fn play_file(&mut self, path: &Path, duration_hint_ms: i64) -> Result<(), AudioError> {
+        self.play_file_at_volume(path, duration_hint_ms, self.volume)
+    }
+
+    pub fn play_file_at_volume(
+        &mut self,
+        path: &Path,
+        duration_hint_ms: i64,
+        initial_volume: f32,
+    ) -> Result<(), AudioError> {
         // Recreate the Player to fully reset rodio's internal resampler state.
         // Without this, switching between tracks with different sample rates
         // (e.g. 48kHz PSF2/Opus → 44.1kHz GSF) can corrupt the resampler,
@@ -137,7 +154,7 @@ impl AudioEngine {
         // a new one, or the C globals (sexypsf, lazygsf, etc.) will conflict.
         std::thread::sleep(Duration::from_millis(50));
         self.player = Player::connect_new(&self._device.mixer());
-        self.player.set_volume(self.volume);
+        self.player.set_volume(initial_volume.clamp(0.0, 1.0));
 
         let path_str = path.to_string_lossy();
         let (actual_path_str, sub_track) = parse_vgm_path(&path_str);
@@ -286,6 +303,44 @@ impl AudioEngine {
 
     pub fn volume(&self) -> f32 {
         self.volume
+    }
+
+    /// Set the rodio player's playback volume without changing the user-visible
+    /// volume (`self.volume`). Used by the fade orchestrator so the UI slider
+    /// stays at the user's setting while the actual output is ramped.
+    pub fn set_player_volume_raw(&mut self, volume: f32) {
+        self.player.set_volume(volume.clamp(0.0, 1.0));
+    }
+
+    pub fn fade_on_track_change(&self) -> bool {
+        self.fade_on_track_change
+    }
+
+    pub fn fade_seconds(&self) -> f32 {
+        self.fade_seconds
+    }
+
+    pub fn set_fade_on_track_change(&mut self, enabled: bool) {
+        self.fade_on_track_change = enabled;
+    }
+
+    pub fn set_fade_seconds(&mut self, seconds: f32) {
+        self.fade_seconds = seconds.clamp(0.0, 10.0);
+    }
+
+    pub fn has_source(&self) -> bool {
+        self.has_source
+    }
+
+    /// Bump the fade generation counter and return the new value. Any in-progress
+    /// fade comparing against an older value should bail out.
+    pub fn bump_fade_generation(&mut self) -> u64 {
+        self.fade_generation = self.fade_generation.wrapping_add(1);
+        self.fade_generation
+    }
+
+    pub fn fade_generation(&self) -> u64 {
+        self.fade_generation
     }
 
     pub fn is_playing(&self) -> bool {
