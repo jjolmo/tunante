@@ -26,6 +26,7 @@ class SettingsStore {
 	continueFromQueue = $state(true);
 	fadeOnTrackChange = $state(false);
 	fadeSeconds = $state(2);
+	trayMiddleClickAction = $state<'none' | 'play_pause' | 'stop' | 'next_track' | 'next_track_with_fade'>('play_pause');
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -113,6 +114,17 @@ class SettingsStore {
 		if (fadeSeconds !== undefined) {
 			const parsed = parseFloat(fadeSeconds);
 			if (!isNaN(parsed)) this.fadeSeconds = Math.max(0, Math.min(10, parsed));
+		}
+
+		const trayMid = this._settingsCache.get('tray_middle_click_action');
+		if (
+			trayMid === 'none' ||
+			trayMid === 'play_pause' ||
+			trayMid === 'stop' ||
+			trayMid === 'next_track' ||
+			trayMid === 'next_track_with_fade'
+		) {
+			this.trayMiddleClickAction = trayMid;
 		}
 
 		// Sync continue_from_queue to the backend queue
@@ -380,6 +392,17 @@ class SettingsStore {
 			await invoke('set_fade_on_track_change', { enabled });
 		} catch (e) {
 			console.error('Failed to save fade-on-track-change setting:', e);
+		}
+	}
+
+	async setTrayMiddleClickAction(
+		action: 'none' | 'play_pause' | 'stop' | 'next_track' | 'next_track_with_fade'
+	) {
+		this.trayMiddleClickAction = action;
+		try {
+			await invoke('set_setting', { key: 'tray_middle_click_action', value: action });
+		} catch (e) {
+			console.error('Failed to save tray middle-click action:', e);
 		}
 	}
 

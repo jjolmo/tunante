@@ -11,6 +11,7 @@ pub const ACTION_IDS: &[(&str, &str)] = &[
     ("stop", "Stop"),
     ("prev_track", "Previous Track"),
     ("next_track", "Next Track"),
+    ("next_track_with_fade", "Next Track (with fade)"),
     ("volume_up", "Volume Up"),
     ("volume_down", "Volume Down"),
     ("mute", "Mute / Unmute"),
@@ -47,6 +48,23 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
                 if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
                     let _ = app.emit("track-changed", track);
                 }
+            }
+        }
+        "next_track_with_fade" => {
+            let mut queue = state.queue.lock();
+            let track = queue.next().or_else(|| queue.current().cloned());
+            if let Some(track) = track {
+                let path = track.path.clone();
+                let duration_hint = track.duration_ms;
+                drop(queue);
+                crate::commands::player::play_with_fade_opts(
+                    state.clone(),
+                    app.clone(),
+                    path,
+                    duration_hint,
+                    Some(track),
+                    true,
+                );
             }
         }
         "prev_track" => {

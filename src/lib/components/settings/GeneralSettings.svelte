@@ -115,6 +115,34 @@
 		</div>
 	</label>
 
+	<div class="setting-row threshold-row" class:disabled={!settingsStore.showInTray}>
+		<div class="setting-text">
+			<span class="setting-label">Tray middle-click action</span>
+			<span class="setting-desc"
+				>Action to perform when clicking the tray icon with the middle mouse button.</span
+			>
+		</div>
+		<select
+			disabled={!settingsStore.showInTray}
+			value={settingsStore.trayMiddleClickAction}
+			onchange={(e) =>
+				settingsStore.setTrayMiddleClickAction(
+					(e.target as HTMLSelectElement).value as
+						| 'none'
+						| 'play_pause'
+						| 'stop'
+						| 'next_track'
+						| 'next_track_with_fade'
+				)}
+		>
+			<option value="none">Do nothing</option>
+			<option value="play_pause">Play / Pause</option>
+			<option value="stop">Stop music</option>
+			<option value="next_track">Next song</option>
+			<option value="next_track_with_fade">Next song (with fade transition)</option>
+		</select>
+	</div>
+
 	{#if !isMacOS}
 	<label class="setting-row">
 		<input
@@ -371,6 +399,26 @@
 	.threshold-field:focus {
 		border-color: var(--color-accent);
 		outline: none;
+	}
+
+	.threshold-row select {
+		padding: 4px 8px;
+		background-color: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-primary);
+		font-size: 13px;
+		flex-shrink: 0;
+	}
+
+	.threshold-row select:focus {
+		border-color: var(--color-accent);
+		outline: none;
+	}
+
+	.threshold-row select:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.setting-action {
