@@ -495,6 +495,178 @@ async fn try_download_image(client: &reqwest::Client, url: &str) -> Option<Vec<u
     resp.bytes().await.ok().map(|b| b.to_vec())
 }
 
+/// Strip the noise commonly found in game-music album/folder names so
+/// downstream lookups (Libretro, Wikidata, Wikipedia) actually match.
+///
+/// Removes:
+/// - Parenthesised metadata: `(1987-08-22)(Nintendo EAD)(Nintendo)`, `(USA)`, `(v1.0)`
+/// - Bracketed alternate names: `[Estpolis Denki II]`, `[Lufia]`
+/// - Curly-braced annotations: `{NTSC}`
+/// - Trailing/leading punctuation and stray dashes
+/// - Collapsed whitespace
+pub(crate) fn sanitize_game_name(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut depth_paren = 0i32;
+    let mut depth_bracket = 0i32;
+    let mut depth_curly = 0i32;
+    for ch in raw.chars() {
+        match ch {
+            '(' => depth_paren += 1,
+            ')' => depth_paren = (depth_paren - 1).max(0),
+            '[' => depth_bracket += 1,
+            ']' => depth_bracket = (depth_bracket - 1).max(0),
+            '{' => depth_curly += 1,
+            '}' => depth_curly = (depth_curly - 1).max(0),
+            _ if depth_paren == 0 && depth_bracket == 0 && depth_curly == 0 => {
+                out.push(ch);
+            }
+            _ => {}
+        }
+    }
+    // Collapse whitespace and trim stray dashes/commas at the edges.
+    let collapsed: String = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    collapsed
+        .trim_matches(|c: char| c.is_whitespace() || c == '-' || c == ',' || c == '_' || c == '.')
+        .to_string()
+}
+
+/// Build an ordered list of unique, non-empty candidate names to feed to
+/// the cover-art lookups. Falls back to the parent folder name when the
+/// album metadata is too sparse.
+fn build_game_candidates(game_name: &str, track_path: Option<&str>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push_unique = |s: String| {
+        let trimmed = s.trim().to_string();
+        if trimmed.len() >= 2 && !out.iter().any(|x| x.eq_ignore_ascii_case(&trimmed)) {
+            out.push(trimmed);
+        }
+    };
+
+    let sanitized = sanitize_game_name(game_name);
+    if !sanitized.is_empty() {
+        push_unique(sanitized);
+    }
+
+    if let Some(tp) = track_path {
+        let (real_path, _) = parse_vgm_path(tp);
+        let path = std::path::Path::new(real_path);
+        if let Some(folder) = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()) {
+            let folder_sanitized = sanitize_game_name(folder);
+            if !folder_sanitized.is_empty() {
+                push_unique(folder_sanitized);
+            }
+        }
+    }
+
+    // Last-ditch: the raw album name as provided.
+    let raw = game_name.trim().to_string();
+    if !raw.is_empty() {
+        push_unique(raw);
+    }
+    out
+}
+
+/// Search Wikidata for an entity that is an instance of "video game" (Q7889)
+/// or a subclass, then resolve its P18 (image) claim to a Wikimedia Commons URL.
+///
+/// This is keyless and authoritative: filtering by P31 avoids the Wikipedia
+/// disambiguation problem (where "Final Fantasy" returns the franchise page,
+/// not a specific game).
+async fn search_wikidata_cover(client: &reqwest::Client, game_name: &str) -> Option<String> {
+    // Items whose P31 (instance of) we accept as "this is a video game".
+    // Includes plain video game (Q7889), expansion packs, mods, demos, etc.
+    const VIDEO_GAME_QIDS: &[&str] = &[
+        "Q7889",   // video game
+        "Q21125433", // role-playing video game franchise (rare but seen)
+        "Q1066707", // game soundtrack — fallback
+        "Q865493",  // video game series (last-resort)
+    ];
+
+    let search_url = format!(
+        "https://www.wikidata.org/w/api.php?action=wbsearchentities&search={}&language=en&type=item&limit=10&format=json",
+        urlencoding::encode(game_name)
+    );
+    let resp = client.get(&search_url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let candidates = data["search"].as_array()?;
+
+    // Collect Q-IDs in order. Wikidata search ranks roughly by relevance.
+    let qids: Vec<String> = candidates
+        .iter()
+        .filter_map(|c| c["id"].as_str().map(String::from))
+        .take(8)
+        .collect();
+    if qids.is_empty() {
+        return None;
+    }
+
+    // Batch-fetch claims for the candidates.
+    let ids_param = qids.join("|");
+    let entities_url = format!(
+        "https://www.wikidata.org/w/api.php?action=wbgetentities&ids={}&props=claims|labels&languages=en&format=json",
+        urlencoding::encode(&ids_param)
+    );
+    let resp = client.get(&entities_url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let data: serde_json::Value = resp.json().await.ok()?;
+    let entities = data["entities"].as_object()?;
+
+    // Iterate in the original search order so the most relevant match wins.
+    for qid in &qids {
+        let entity = match entities.get(qid) {
+            Some(e) => e,
+            None => continue,
+        };
+
+        let claims = match entity["claims"].as_object() {
+            Some(c) => c,
+            None => continue,
+        };
+
+        // Check P31 (instance of) — accept any of our whitelist.
+        let p31 = match claims.get("P31").and_then(|v| v.as_array()) {
+            Some(a) => a,
+            None => continue,
+        };
+        let is_video_game = p31.iter().any(|claim| {
+            claim["mainsnak"]["datavalue"]["value"]["id"]
+                .as_str()
+                .map(|id| VIDEO_GAME_QIDS.contains(&id))
+                .unwrap_or(false)
+        });
+        if !is_video_game {
+            continue;
+        }
+
+        // Read P18 (image) — the value is a Commons file name.
+        let image_filename = claims
+            .get("P18")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+            .and_then(|claim| claim["mainsnak"]["datavalue"]["value"].as_str())
+            .map(String::from);
+
+        if let Some(filename) = image_filename {
+            // Skip vector logos — boxart is what we want.
+            if filename.to_lowercase().ends_with(".svg") {
+                continue;
+            }
+            let url = format!(
+                "https://commons.wikimedia.org/wiki/Special:FilePath/{}?width=600",
+                urlencoding::encode(&filename)
+            );
+            log::info!("Wikidata match for '{}': {} → {}", game_name, qid, filename);
+            return Some(url);
+        }
+    }
+    None
+}
+
 /// Search Wikipedia for a game's page image (box art).
 async fn search_wikipedia_cover(
     client: &reqwest::Client,
@@ -563,10 +735,17 @@ async fn search_wikipedia_cover(
 }
 
 /// Fetch cover art for video game music.
-/// Searches multiple sources in priority order:
-///   1. Libretro thumbnails (retro game box art database, direct URL)
-///   2. Wikipedia (game article page image)
-///   3. iTunes (music album artwork, last resort)
+///
+/// The album/folder names embedded in chiptune metadata are notoriously dirty
+/// (`Lufia II - Rise of the Sinistrals [Estpolis Denki II] [Lufia] (1995)(Neverland)(Taito)`,
+/// `ct-102a.spc`, etc), so this command:
+/// 1. Builds a list of sanitised candidate names (album → parent folder → raw)
+/// 2. For each candidate, tries multiple keyless free sources in priority order:
+///      a. Libretro thumbnails (retro box art database — exact No-Intro names)
+///      b. Wikidata (P31=video game filtered → P18 image on Commons)
+///      c. Wikipedia article page image
+///      d. iTunes soundtrack (last resort)
+/// 3. Caches hits and misses on disk so we don't hammer the network.
 #[tauri::command]
 pub async fn fetch_vgm_cover_art(
     game_name: String,
@@ -579,18 +758,26 @@ pub async fn fetch_vgm_cover_art(
     use base64::Engine;
     use tauri::Manager;
 
-    if game_name.is_empty() {
+    if game_name.is_empty() && track_path.is_none() {
         return Ok(None);
     }
 
-    // 1. Compute cache key
+    // 1. Build candidate names (sanitised album, sanitised parent folder, raw album).
+    let candidates = build_game_candidates(&game_name, track_path.as_deref());
+    if candidates.is_empty() {
+        return Ok(None);
+    }
+    let primary = candidates[0].clone();
+
+    // 2. Compute cache key from the primary sanitised name + console.
+    //    Bumping the namespace ("vgm3") invalidates stale `.miss` files from
+    //    the previous algorithm so users get a fresh chance.
     let cache_key = {
-        let input = format!("vgm2\0{}\0{}", game_name.to_lowercase(), console_name.to_lowercase());
+        let input = format!("vgm3\0{}\0{}", primary.to_lowercase(), console_name.to_lowercase());
         let hash = Sha256::digest(input.as_bytes());
         format!("{:x}", hash)[..16].to_string()
     };
 
-    // 2. Resolve cache directory
     let cache_dir = app.path().app_data_dir()
         .map_err(|e| format!("Cannot get app data dir: {}", e))?
         .join("covers");
@@ -600,7 +787,6 @@ pub async fn fetch_vgm_cover_art(
     let cache_path = cache_dir.join(format!("{}.img", cache_key));
     let miss_path = cache_dir.join(format!("{}.miss", cache_key));
 
-    // 3. Check cache
     if cache_path.exists() {
         let bytes = std::fs::read(&cache_path)
             .map_err(|e| format!("Cannot read cached cover: {}", e))?;
@@ -617,50 +803,67 @@ pub async fn fetch_vgm_cover_art(
         .build()
         .map_err(|e| e.to_string())?;
 
-    // === SOURCE 1: Libretro thumbnails (retro game box art) ===
-    // Libretro uses No-Intro ROM names which include region suffixes like "(USA)".
-    // Try the exact name first, then common region variants.
-    if let Some(system) = libretro_system_name(&console_name) {
-        let clean_name = libretro_game_name(&game_name);
-        let base = "https://thumbnails.libretro.com";
-        let encoded_system = urlencoding::encode(system);
+    // Helper closure to finalize a successful fetch: persist cache, optionally
+    // mirror to the track's folder, return as base64 data URI.
+    let finalize = |bytes: Vec<u8>| -> Result<Option<String>, String> {
+        std::fs::write(&cache_path, &bytes)
+            .map_err(|e| format!("Failed to cache cover art: {}", e))?;
+        if store_in_folder.unwrap_or(false) {
+            if let Some(ref tp) = track_path {
+                save_cover_to_folder(tp, &bytes);
+            }
+        }
+        let mime = mime_from_bytes(&bytes);
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        Ok(Some(format!("data:{};base64,{}", mime, b64)))
+    };
 
-        let region_suffixes = ["", " (USA)", " (USA, Europe)", " (Europe)", " (Japan)", " (World)"];
-        for suffix in &region_suffixes {
-            let full_name = format!("{}{}", clean_name, suffix);
-            let encoded_name = urlencoding::encode(&full_name);
-            let libretro_url = format!("{}/{}/Named_Boxarts/{}.png", base, encoded_system, encoded_name);
+    log::info!("VGM cover lookup for '{}' [{}] — candidates: {:?}", game_name, console_name, candidates);
 
-            if let Some(bytes) = try_download_image(&client, &libretro_url).await {
-                if bytes.len() > 100 { // Sanity check: not an error page
-                    std::fs::write(&cache_path, &bytes)
-                        .map_err(|e| format!("Failed to cache cover art: {}", e))?;
-                    let mime = mime_from_bytes(&bytes);
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    log::info!("VGM cover from Libretro: {} [{}] ({})", game_name, full_name, console_name);
-                    if store_in_folder.unwrap_or(false) { if let Some(ref tp) = track_path { save_cover_to_folder(tp, &bytes); } }
-                    return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+    for candidate in &candidates {
+        // === SOURCE 1: Libretro thumbnails (retro game box art) ===
+        if let Some(system) = libretro_system_name(&console_name) {
+            let clean_name = libretro_game_name(candidate);
+            let base = "https://thumbnails.libretro.com";
+            let encoded_system = urlencoding::encode(system);
+            let region_suffixes = ["", " (USA)", " (USA, Europe)", " (Europe)", " (Japan)", " (World)"];
+            for suffix in &region_suffixes {
+                let full_name = format!("{}{}", clean_name, suffix);
+                let encoded_name = urlencoding::encode(&full_name);
+                let url = format!("{}/{}/Named_Boxarts/{}.png", base, encoded_system, encoded_name);
+                if let Some(bytes) = try_download_image(&client, &url).await {
+                    if bytes.len() > 100 {
+                        log::info!("VGM cover from Libretro: '{}' → '{}'", candidate, full_name);
+                        return finalize(bytes);
+                    }
+                }
+            }
+        }
+
+        // === SOURCE 2: Wikidata (entity-typed video game with P18 image) ===
+        if let Some(artwork_url) = search_wikidata_cover(&client, candidate).await {
+            if let Some(bytes) = try_download_image(&client, &artwork_url).await {
+                if bytes.len() > 100 {
+                    log::info!("VGM cover from Wikidata: '{}'", candidate);
+                    return finalize(bytes);
+                }
+            }
+        }
+
+        // === SOURCE 3: Wikipedia article page image ===
+        if let Some(artwork_url) = search_wikipedia_cover(&client, candidate, &console_name).await {
+            if let Some(bytes) = try_download_image(&client, &artwork_url).await {
+                if bytes.len() > 100 {
+                    log::info!("VGM cover from Wikipedia: '{}'", candidate);
+                    return finalize(bytes);
                 }
             }
         }
     }
 
-    // === SOURCE 2: Wikipedia (game article page image) ===
-    if let Some(artwork_url) = search_wikipedia_cover(&client, &game_name, &console_name).await {
-        if let Some(bytes) = try_download_image(&client, &artwork_url).await {
-            std::fs::write(&cache_path, &bytes)
-                .map_err(|e| format!("Failed to cache cover art: {}", e))?;
-            let mime = mime_from_bytes(&bytes);
-            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-            log::info!("VGM cover from Wikipedia: {}", game_name);
-            if store_in_folder.unwrap_or(false) { if let Some(ref tp) = track_path { save_cover_to_folder(tp, &bytes); } }
-            return Ok(Some(format!("data:{};base64,{}", mime, b64)));
-        }
-    }
-
-    // === SOURCE 3: iTunes (music soundtrack, last resort) ===
+    // === SOURCE 4: iTunes soundtrack search (cross-candidate, last resort) ===
     {
-        let query = format!("{} soundtrack", game_name);
+        let query = format!("{} soundtrack", primary);
         let url = format!(
             "https://itunes.apple.com/search?term={}&media=music&entity=album&limit=3",
             urlencoding::encode(&query)
@@ -668,13 +871,13 @@ pub async fn fetch_vgm_cover_art(
         if let Ok(response) = client.get(&url).send().await {
             if response.status().is_success() {
                 if let Ok(data) = response.json::<serde_json::Value>().await {
-                    let game_lower = game_name.to_lowercase();
+                    let primary_lower = primary.to_lowercase();
                     let artwork_url = data["results"].as_array()
                         .and_then(|arr| {
                             arr.iter()
                                 .find(|r| {
                                     r["collectionName"].as_str()
-                                        .map(|n| n.to_lowercase().contains(&game_lower))
+                                        .map(|n| n.to_lowercase().contains(&primary_lower))
                                         .unwrap_or(false)
                                 })
                                 .or_else(|| arr.first())
@@ -684,13 +887,10 @@ pub async fn fetch_vgm_cover_art(
 
                     if let Some(art_url) = artwork_url {
                         if let Some(bytes) = try_download_image(&client, &art_url).await {
-                            std::fs::write(&cache_path, &bytes)
-                                .map_err(|e| format!("Failed to cache cover art: {}", e))?;
-                            let mime = mime_from_bytes(&bytes);
-                            let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                            log::info!("VGM cover from iTunes: {}", game_name);
-                            if store_in_folder.unwrap_or(false) { if let Some(ref tp) = track_path { save_cover_to_folder(tp, &bytes); } }
-                            return Ok(Some(format!("data:{};base64,{}", mime, b64)));
+                            if bytes.len() > 100 {
+                                log::info!("VGM cover from iTunes: '{}'", primary);
+                                return finalize(bytes);
+                            }
                         }
                     }
                 }
@@ -698,7 +898,6 @@ pub async fn fetch_vgm_cover_art(
         }
     }
 
-    // No source found — cache the miss
     let _ = std::fs::write(&miss_path, b"");
     Ok(None)
 }
