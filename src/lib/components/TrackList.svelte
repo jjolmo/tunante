@@ -164,7 +164,11 @@
 	function handleMiddleClick(track: Track, event: MouseEvent) {
 		if (event.button === 1) {
 			event.preventDefault();
-			playerStore.enqueueTracks([track.id]);
+			if (playerStore.isInQueue(track.id)) {
+				playerStore.dequeueTracks([track.id]);
+			} else {
+				playerStore.enqueueTracks([track.id]);
+			}
 		}
 	}
 
