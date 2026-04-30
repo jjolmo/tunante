@@ -12,3 +12,4 @@ target/
 .dev-libs/
 src-tauri/.cargo/
 run-dev.sh
+.claude/
