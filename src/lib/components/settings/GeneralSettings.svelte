@@ -402,13 +402,30 @@
 	}
 
 	.threshold-row select {
-		padding: 4px 8px;
+		appearance: none;
+		-webkit-appearance: none;
+		padding: 4px 28px 4px 8px;
 		background-color: var(--color-bg-primary);
+		background-image: linear-gradient(45deg, transparent 50%, var(--color-text-primary) 50%),
+			linear-gradient(135deg, var(--color-text-primary) 50%, transparent 50%);
+		background-position:
+			calc(100% - 14px) 50%,
+			calc(100% - 9px) 50%;
+		background-size:
+			5px 5px,
+			5px 5px;
+		background-repeat: no-repeat;
 		border: 1px solid var(--color-border);
 		border-radius: 4px;
 		color: var(--color-text-primary);
 		font-size: 13px;
 		flex-shrink: 0;
+		cursor: pointer;
+	}
+
+	.threshold-row select option {
+		background-color: var(--color-bg-secondary);
+		color: var(--color-text-primary);
 	}
 
 	.threshold-row select:focus {
