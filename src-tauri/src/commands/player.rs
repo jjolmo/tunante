@@ -28,7 +28,21 @@ pub fn play_with_fade(
     duration_hint_ms: i64,
     track_for_event: Option<Track>,
 ) {
-    let (fade_enabled, fade_seconds, has_source) = {
+    play_with_fade_opts(state, app, path, duration_hint_ms, track_for_event, false);
+}
+
+/// Like [`play_with_fade`] but with a `force_fade` flag that requests a fade
+/// transition regardless of the user's `fade_on_track_change` setting. Used by
+/// on-demand actions (e.g. tray middle-click → "Next Song with fade").
+pub fn play_with_fade_opts(
+    state: Arc<AppState>,
+    app: AppHandle,
+    path: String,
+    duration_hint_ms: i64,
+    track_for_event: Option<Track>,
+    force_fade: bool,
+) {
+    let (cfg_fade, fade_seconds, has_source) = {
         let audio = state.audio.lock();
         (
             audio.fade_on_track_change(),
@@ -36,6 +50,7 @@ pub fn play_with_fade(
             audio.has_source(),
         )
     };
+    let fade_enabled = force_fade || cfg_fade;
 
     if !fade_enabled || fade_seconds <= 0.0 {
         let mut audio = state.audio.lock();

@@ -93,6 +93,23 @@ fn setup_panic_hook() {
     }));
 }
 
+/// Read the configured tray middle-click action (default: `play_pause`) and
+/// dispatch it. Returning early on `none` lets users disable the binding.
+fn dispatch_tray_middle_click(app: &tauri::AppHandle) {
+    let state = app.state::<Arc<AppState>>();
+    let action = {
+        let db = state.db.lock();
+        db.get_setting("tray_middle_click_action")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "play_pause".to_string())
+    };
+    if action == "none" || action.is_empty() {
+        return;
+    }
+    shortcuts::handle_action(&action, app, &state);
+}
+
 /// Handle a tray scroll event: adjust volume by ±5% per tick and show
 /// a popup near the tray icon with the current volume level.
 fn handle_tray_scroll(app: &tauri::AppHandle, state: &Arc<AppState>, delta: f64) {
@@ -458,6 +475,10 @@ fn setup_dbus_tray_handler(handle: tauri::AppHandle) {
                         raise_window(&window);
                     }
                 }
+            }
+            Some("SecondaryActivate") => {
+                // Middle-click on the tray icon: dispatch the user-configured action.
+                dispatch_tray_middle_click(&handle);
             }
             Some("Scroll") => {
                 use gio::glib::prelude::*;
@@ -827,14 +848,7 @@ pub fn run() {
                                 }
                             }
                             tauri::tray::MouseButton::Middle => {
-                                // Middle click: toggle pause/resume
-                                let state = app.state::<Arc<AppState>>();
-                                let mut audio = state.audio.lock();
-                                if audio.is_playing() {
-                                    audio.pause();
-                                } else {
-                                    audio.resume();
-                                }
+                                dispatch_tray_middle_click(app);
                             }
                             _ => {}
                         }
