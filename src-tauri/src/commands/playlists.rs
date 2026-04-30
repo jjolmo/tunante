@@ -1,4 +1,4 @@
-use crate::commands::library::is_audio_file;
+use crate::commands::library::{augment_ratings, is_audio_file};
 use crate::db::models::{Playlist, Track};
 use crate::metadata;
 use crate::AppState;
@@ -21,11 +21,13 @@ pub fn get_playlist_tracks(
     playlist_id: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<Track>, String> {
-    state
+    let mut tracks = state
         .db
         .lock()
         .get_playlist_tracks(&playlist_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    augment_ratings(&state, &mut tracks);
+    Ok(tracks)
 }
 
 #[tauri::command]

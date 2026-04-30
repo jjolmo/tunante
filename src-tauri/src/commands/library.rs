@@ -56,13 +56,32 @@ pub fn is_audio_file(path: &std::path::Path) -> bool {
     false
 }
 
+/// Augment in-memory tracks with ratings read from folder-level `_ratings.m3u`
+/// files (for tracks whose DB rating is 0), and persist any new ratings back
+/// to the DB so subsequent reads — including filtered ones like
+/// `get_faved_tracks` — see them.
+pub(crate) fn augment_ratings(state: &Arc<AppState>, tracks: &mut [Track]) {
+    let updates = metadata::ratings_sync::apply_file_ratings(tracks);
+    if updates.is_empty() {
+        return;
+    }
+    let db = state.db.lock();
+    for (id, rating) in updates {
+        if let Err(e) = db.set_track_rating(&id, rating) {
+            log::warn!("Failed to persist file-derived rating for {}: {}", id, e);
+        }
+    }
+}
+
 #[tauri::command]
 pub fn get_all_tracks(state: State<'_, Arc<AppState>>) -> Result<Vec<Track>, String> {
-    state
+    let mut tracks = state
         .db
         .lock()
         .get_all_tracks()
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    augment_ratings(&state, &mut tracks);
+    Ok(tracks)
 }
 
 #[tauri::command]
@@ -100,11 +119,16 @@ pub fn set_track_rating(
 
 #[tauri::command]
 pub fn get_faved_tracks(state: State<'_, Arc<AppState>>) -> Result<Vec<Track>, String> {
-    state
+    // First sync ratings from `_ratings.m3u` for the whole library, so tracks
+    // that are only rated in files (e.g. synced from another machine) become
+    // visible here too. Subsequent calls are cheap once the DB is in sync.
+    let mut all = state
         .db
         .lock()
-        .get_faved_tracks()
-        .map_err(|e| e.to_string())
+        .get_all_tracks()
+        .map_err(|e| e.to_string())?;
+    augment_ratings(&state, &mut all);
+    Ok(all.into_iter().filter(|t| t.rating > 0).collect())
 }
 
 #[derive(Clone, serde::Serialize)]

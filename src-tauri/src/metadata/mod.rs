@@ -2,6 +2,7 @@ mod gme_reader;
 mod gsf_reader;
 mod psf_reader;
 mod psf2_reader;
+pub mod ratings_sync;
 mod reader;
 mod twosf_reader;
 mod usf_reader;
