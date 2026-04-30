@@ -10,6 +10,21 @@
 	const isMacOS = navigator.platform.startsWith('Mac');
 	let thresholdValue = $state(String(libraryStore.shortFilterThresholdSec));
 	let fadeSecondsValue = $state(String(settingsStore.fadeSeconds));
+	let clearingCovers = $state(false);
+	let clearCoversResult = $state('');
+
+	async function handleClearCoverCache() {
+		clearingCovers = true;
+		clearCoversResult = '';
+		try {
+			const removed = await invoke<number>('clear_cover_cache');
+			clearCoversResult = `Cleared ${removed} cached file${removed === 1 ? '' : 's'}.`;
+		} catch (e) {
+			clearCoversResult = `Failed: ${e}`;
+		} finally {
+			clearingCovers = false;
+		}
+	}
 
 	function handleThresholdChange(e: Event) {
 		const val = (e.target as HTMLInputElement).value;
@@ -206,6 +221,23 @@
 			>
 		</div>
 	</label>
+
+	<div class="setting-row">
+		<div class="setting-text">
+			<span class="setting-label">Cover cache</span>
+			<span class="setting-desc"
+				>Wipe the local cache of downloaded covers and previously-failed lookups, so the next playback re-runs the search.</span
+			>
+		</div>
+		<div class="setting-action">
+			<button class="action-btn" disabled={clearingCovers} onclick={handleClearCoverCache}>
+				{clearingCovers ? 'Clearing…' : 'Clear cover cache'}
+			</button>
+			{#if clearCoversResult}
+				<span class="action-result">{clearCoversResult}</span>
+			{/if}
+		</div>
+	</div>
 
 	<h3 class="section-title" style="margin-top: 8px;">Playback</h3>
 
