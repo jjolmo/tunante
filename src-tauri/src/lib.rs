@@ -1289,6 +1289,7 @@ pub fn run() {
             commands::library::get_artwork,
             commands::library::fetch_cover_art,
             commands::library::fetch_vgm_cover_art,
+            commands::library::clear_cover_cache,
             commands::playlists::get_playlists,
             commands::playlists::get_playlist_tracks,
             commands::playlists::create_playlist,

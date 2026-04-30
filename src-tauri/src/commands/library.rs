@@ -293,6 +293,34 @@ pub fn get_artwork(track_path: String) -> Result<Option<String>, String> {
     metadata::extract_artwork_base64(&PathBuf::from(actual_path)).map_err(|e| e.to_string())
 }
 
+/// Wipe the downloaded cover-art cache (`<app_data>/covers/`). Both successful
+/// hits (`.img`/`.jpg`) and miss markers (`.miss`) are removed so subsequent
+/// playback re-runs the full lookup pipeline. Returns the number of files deleted.
+#[tauri::command]
+pub fn clear_cover_cache(app: tauri::AppHandle) -> Result<u32, String> {
+    use tauri::Manager;
+    let cache_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Cannot get app data dir: {}", e))?
+        .join("covers");
+    if !cache_dir.exists() {
+        return Ok(0);
+    }
+    let mut count = 0u32;
+    let entries = std::fs::read_dir(&cache_dir)
+        .map_err(|e| format!("Cannot read covers cache dir: {}", e))?;
+    for entry in entries.flatten() {
+        if entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            if std::fs::remove_file(entry.path()).is_ok() {
+                count += 1;
+            }
+        }
+    }
+    log::info!("Cleared cover cache: {} files removed", count);
+    Ok(count)
+}
+
 /// Save cover art bytes to the track's folder as cover.jpg (if store_in_folder is true).
 fn save_cover_to_folder(track_path: &str, bytes: &[u8]) {
     let path = std::path::Path::new(track_path);
@@ -820,13 +848,16 @@ pub async fn fetch_vgm_cover_art(
 
     log::info!("VGM cover lookup for '{}' [{}] — candidates: {:?}", game_name, console_name, candidates);
 
-    for candidate in &candidates {
-        // === SOURCE 1: Libretro thumbnails (retro game box art) ===
-        if let Some(system) = libretro_system_name(&console_name) {
+    // === SOURCE 1: Libretro thumbnails (most precise — exact box-art database) ===
+    // Try every candidate against Libretro before falling back to fuzzier
+    // sources, so an exact match on a sanitized folder name wins over a
+    // best-effort Wikipedia hit on a dirty album field like "Lufia 2".
+    if let Some(system) = libretro_system_name(&console_name) {
+        let base = "https://thumbnails.libretro.com";
+        let encoded_system = urlencoding::encode(system);
+        let region_suffixes = ["", " (USA)", " (USA, Europe)", " (Europe)", " (Japan)", " (World)"];
+        for candidate in &candidates {
             let clean_name = libretro_game_name(candidate);
-            let base = "https://thumbnails.libretro.com";
-            let encoded_system = urlencoding::encode(system);
-            let region_suffixes = ["", " (USA)", " (USA, Europe)", " (Europe)", " (Japan)", " (World)"];
             for suffix in &region_suffixes {
                 let full_name = format!("{}{}", clean_name, suffix);
                 let encoded_name = urlencoding::encode(&full_name);
@@ -839,8 +870,10 @@ pub async fn fetch_vgm_cover_art(
                 }
             }
         }
+    }
 
-        // === SOURCE 2: Wikidata (entity-typed video game with P18 image) ===
+    // === SOURCE 2: Wikidata (entity-typed video game with P18 image) ===
+    for candidate in &candidates {
         if let Some(artwork_url) = search_wikidata_cover(&client, candidate).await {
             if let Some(bytes) = try_download_image(&client, &artwork_url).await {
                 if bytes.len() > 100 {
@@ -849,8 +882,10 @@ pub async fn fetch_vgm_cover_art(
                 }
             }
         }
+    }
 
-        // === SOURCE 3: Wikipedia article page image ===
+    // === SOURCE 3: Wikipedia article page image (fuzzy — last keyless source) ===
+    for candidate in &candidates {
         if let Some(artwork_url) = search_wikipedia_cover(&client, candidate, &console_name).await {
             if let Some(bytes) = try_download_image(&client, &artwork_url).await {
                 if bytes.len() > 100 {
