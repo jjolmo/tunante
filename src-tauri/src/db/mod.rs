@@ -490,6 +490,67 @@ impl Database {
         Ok(deleted)
     }
 
+    /// Remove all tracks under `folder_path`, EXCEPT those that also fall under
+    /// one of `keep_prefixes` (other monitored folders that still cover them).
+    /// This prevents data loss when removing a folder that overlaps another
+    /// monitored folder. Also cleans up FTS and playlist references.
+    pub fn remove_tracks_by_folder_path_excluding(
+        &self,
+        folder_path: &str,
+        keep_prefixes: &[String],
+    ) -> Result<usize, DbError> {
+        let prefix = if folder_path.ends_with('/') || folder_path.ends_with('\\') {
+            folder_path.to_string()
+        } else {
+            format!("{}/", folder_path)
+        };
+
+        // Build the shared selector predicate and its parameters once.
+        // ?1 = "<prefix>%", ?2 = exact folder path, ?3.. = keep prefixes ("<kp>%").
+        let mut sel = String::from("(path LIKE ?1 OR path = ?2)");
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+            Box::new(format!("{}%", prefix)),
+            Box::new(folder_path.to_string()),
+        ];
+        for kp in keep_prefixes {
+            let kp_prefix = if kp.ends_with('/') || kp.ends_with('\\') {
+                kp.clone()
+            } else {
+                format!("{}/", kp)
+            };
+            params.push(Box::new(format!("{}%", kp_prefix)));
+            sel.push_str(&format!(" AND path NOT LIKE ?{}", params.len()));
+        }
+
+        let refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+        // FTS entries for matching tracks
+        self.conn.execute(
+            &format!(
+                "DELETE FROM tracks_fts WHERE rowid IN (SELECT rowid FROM tracks WHERE {})",
+                sel
+            ),
+            refs.as_slice(),
+        )?;
+
+        // Playlist references for matching tracks
+        self.conn.execute(
+            &format!(
+                "DELETE FROM playlist_tracks WHERE track_id IN (SELECT id FROM tracks WHERE {})",
+                sel
+            ),
+            refs.as_slice(),
+        )?;
+
+        // The tracks themselves
+        let deleted = self.conn.execute(
+            &format!("DELETE FROM tracks WHERE {}", sel),
+            refs.as_slice(),
+        )?;
+
+        Ok(deleted)
+    }
+
     pub fn toggle_folder_watching(&self, id: &str, enabled: bool) -> Result<(), DbError> {
         self.conn.execute(
             "UPDATE monitored_folders SET watching_enabled = ?2 WHERE id = ?1",

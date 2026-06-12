@@ -17,6 +17,7 @@ class SettingsStore {
 	showPlaylists = $state(true);
 	showConsoles = $state(true);
 	showFiles = $state(false);
+	showFolders = $state(true);
 	autoUpdateOnStart = $state(false);
 	checkUpdatesOnStart = $state(true);
 	autoDownloadCoverArt = $state(false);
@@ -85,6 +86,9 @@ class SettingsStore {
 
 		const showFiles = this._settingsCache.get('show_files');
 		if (showFiles !== undefined) this.showFiles = showFiles === 'true';
+
+		const showFolders = this._settingsCache.get('show_folders');
+		if (showFolders !== undefined) this.showFolders = showFolders === 'true';
 
 		const autoUpdate = this._settingsCache.get('auto_update_on_start');
 		if (autoUpdate !== undefined) this.autoUpdateOnStart = autoUpdate === 'true';
@@ -190,11 +194,14 @@ class SettingsStore {
 	async addMonitoredFolder(path: string) {
 		try {
 			libraryStore.isScanning = true;
-			const folder = await invoke<MonitoredFolder>('add_monitored_folder', { path });
-			this.monitoredFolders = [...this.monitoredFolders, folder];
+			await invoke<MonitoredFolder>('add_monitored_folder', { path });
+			// Reload the full list: the backend may absorb (remove) child folders
+			// that became redundant once this parent folder was added.
+			await this.loadMonitoredFolders();
 		} catch (e) {
 			console.error('Failed to add monitored folder:', e);
 			libraryStore.isScanning = false;
+			throw e;
 		}
 	}
 
@@ -310,6 +317,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'show_files', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save files setting:', e);
+		}
+	}
+
+	async setShowFolders(enabled: boolean) {
+		this.showFolders = enabled;
+		try {
+			await invoke('set_setting', { key: 'show_folders', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save folders setting:', e);
 		}
 	}
 
