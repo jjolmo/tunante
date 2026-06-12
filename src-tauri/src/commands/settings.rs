@@ -1,4 +1,4 @@
-use crate::db::models::{MonitoredFolder, Setting};
+use crate::db::models::{MonitoredFolder, PinnedFolder, Setting};
 use crate::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
@@ -50,7 +50,7 @@ pub fn get_monitored_folders(
 }
 
 /// True if `inner` is the same path as `outer` or nested inside it.
-fn is_path_within(inner: &str, outer: &str) -> bool {
+pub(crate) fn is_path_within(inner: &str, outer: &str) -> bool {
     if inner == outer {
         return true;
     }
@@ -174,17 +174,23 @@ pub fn remove_monitored_folder(
         }
         drop(watcher_lock);
 
-        // Remove tracks belonging to this folder, but keep any that are still
-        // covered by another monitored folder (defends against pre-existing
-        // overlapping folders so we never orphan shared tracks).
+        // Remove tracks belonging to this folder, but keep any still covered by
+        // another monitored folder OR a pinned folder, so we never orphan tracks
+        // that a remaining entry still relies on.
         let db = state.db.lock();
-        let keep_prefixes: Vec<String> = db
+        let mut keep_prefixes: Vec<String> = db
             .get_monitored_folders()
             .unwrap_or_default()
             .into_iter()
             .filter(|f| f.id != id)
             .map(|f| f.path)
             .collect();
+        keep_prefixes.extend(
+            db.get_pinned_folders()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|p| p.path),
+        );
         match db.remove_tracks_by_folder_path_excluding(&folder.path, &keep_prefixes) {
             Ok(count) => {
                 log::info!("Removed {} tracks from folder: {}", count, folder.path);
@@ -248,6 +254,128 @@ pub fn toggle_folder_watching(
         }
     }
 
+    Ok(())
+}
+
+// --- Pinned folders ---
+// A pinned folder is a folder-based "playlist": it shows in the sidebar Folders
+// list and its contents are derived live from the library by path prefix, so it
+// auto-updates as files are added/removed. Unlike monitored folders, pinned
+// folders MAY nest inside a monitored folder, and unpinning never deletes tracks
+// that are still covered by a monitored folder or another pin.
+
+#[tauri::command]
+pub fn get_pinned_folders(state: State<'_, Arc<AppState>>) -> Result<Vec<PinnedFolder>, String> {
+    state
+        .db
+        .lock()
+        .get_pinned_folders()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_pinned_folder(
+    path: String,
+    state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<PinnedFolder, String> {
+    let id = Uuid::new_v4().to_string();
+
+    // Reject redundant pins.
+    let covered_by_monitored = {
+        let db = state.db.lock();
+        let monitored = db.get_monitored_folders().map_err(|e| e.to_string())?;
+        if monitored.iter().any(|f| f.path == path) {
+            return Err("This folder is already a monitored folder.".to_string());
+        }
+        let pins = db.get_pinned_folders().map_err(|e| e.to_string())?;
+        if pins.iter().any(|p| p.path == path) {
+            return Err("This folder is already pinned.".to_string());
+        }
+        monitored.iter().any(|f| is_path_within(&path, &f.path))
+    };
+
+    state
+        .db
+        .lock()
+        .add_pinned_folder(&id, &path)
+        .map_err(|e| e.to_string())?;
+
+    // Scan the folder so its tracks are present (idempotent upsert), then start
+    // an independent watcher only if no monitored folder already covers it
+    // (avoids double-watching the same files).
+    let state_inner = state.inner().clone();
+    let scan_path = path.clone();
+    std::thread::spawn(move || {
+        crate::commands::library::scan_folder_sync(&state_inner, &app, &scan_path);
+        if !covered_by_monitored {
+            let mut watcher_lock = state_inner.watcher.lock();
+            if let Some(ref mut watcher) = *watcher_lock {
+                if let Err(e) = watcher.start_watching(&scan_path) {
+                    log::error!("Failed to watch pinned folder {}: {}", scan_path, e);
+                } else {
+                    log::info!("Started watching pinned folder: {}", scan_path);
+                }
+            }
+        }
+    });
+
+    Ok(PinnedFolder {
+        id,
+        path,
+        added_at: 0,
+    })
+}
+
+#[tauri::command]
+pub fn remove_pinned_folder(
+    id: String,
+    state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let db = state.db.lock();
+    let pins = db.get_pinned_folders().map_err(|e| e.to_string())?;
+    let pin = pins.iter().find(|p| p.id == id).cloned();
+    drop(db);
+
+    let pin = match pin {
+        Some(p) => p,
+        None => return Ok(()),
+    };
+
+    // Stop any independent watcher on this path. If the path was only covered by
+    // a monitored folder's recursive watch (never watched individually), this is
+    // a harmless no-op and does NOT disturb the parent watch.
+    {
+        let mut watcher_lock = state.watcher.lock();
+        if let Some(ref mut watcher) = *watcher_lock {
+            let _ = watcher.stop_watching(&pin.path);
+        }
+    }
+
+    // Remove this folder's tracks, but keep any still covered by a monitored
+    // folder or another pinned folder — so unpinning never orphans shared tracks.
+    let db = state.db.lock();
+    let mut keep: Vec<String> = db
+        .get_monitored_folders()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|f| f.path)
+        .collect();
+    keep.extend(
+        db.get_pinned_folders()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| p.id != id)
+            .map(|p| p.path),
+    );
+    if let Err(e) = db.remove_tracks_by_folder_path_excluding(&pin.path, &keep) {
+        log::error!("Failed to remove tracks for pinned folder {}: {}", pin.path, e);
+    }
+    db.remove_pinned_folder(&id).map_err(|e| e.to_string())?;
+    drop(db);
+
+    let _ = app.emit("library-updated", ());
     Ok(())
 }
 

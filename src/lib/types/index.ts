@@ -104,4 +104,10 @@ export interface MonitoredFolder {
 	added_at: number;
 }
 
+export interface PinnedFolder {
+	id: string;
+	path: string;
+	added_at: number;
+}
+
 export type Theme = 'dark' | 'light' | 'system';

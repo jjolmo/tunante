@@ -60,4 +60,12 @@ CREATE TABLE IF NOT EXISTS monitored_folders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_monitored_folders_path ON monitored_folders(path);
+
+CREATE TABLE IF NOT EXISTS pinned_folders (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL UNIQUE,
+    added_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_pinned_folders_path ON pinned_folders(path);
 "#;

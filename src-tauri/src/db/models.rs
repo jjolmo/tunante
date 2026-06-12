@@ -43,3 +43,10 @@ pub struct MonitoredFolder {
     pub last_scanned_at: i64,
     pub added_at: i64,
 }
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PinnedFolder {
+    pub id: String,
+    pub path: String,
+    pub added_at: i64,
+}

@@ -4,6 +4,7 @@
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { libraryStore } from '$lib/stores/library.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
@@ -127,6 +128,12 @@
 				{
 					label: 'Create as playlist',
 					action: () => handleCreatePlaylistFromFolder(node),
+				},
+				{
+					label: 'Pin to Folders',
+					action: () => {
+						settingsStore.addPinnedFolder(node.fullPath).catch(() => {});
+					},
 				},
 				{
 					label: 'Open in file manager',

@@ -1,11 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { MonitoredFolder, Setting, Theme } from '$lib/types';
+import type { MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
 import { libraryStore } from '$lib/stores/library.svelte';
 
 class SettingsStore {
 	theme = $state<Theme>('system');
 	monitoredFolders = $state<MonitoredFolder[]>([]);
+	pinnedFolders = $state<PinnedFolder[]>([]);
 	isSettingsOpen = $state(false);
 	activeCategory = $state('general');
 	showTrackInTitlebar = $state(true);
@@ -46,6 +47,7 @@ class SettingsStore {
 				return [] as Setting[];
 			}),
 			this.loadMonitoredFolders(),
+			this.loadPinnedFolders(),
 		]);
 
 		// Build cache for other stores to use
@@ -188,6 +190,35 @@ class SettingsStore {
 			this.monitoredFolders = await invoke<MonitoredFolder[]>('get_monitored_folders');
 		} catch (e) {
 			console.error('Failed to load monitored folders:', e);
+		}
+	}
+
+	async loadPinnedFolders() {
+		try {
+			this.pinnedFolders = await invoke<PinnedFolder[]>('get_pinned_folders');
+		} catch (e) {
+			console.error('Failed to load pinned folders:', e);
+		}
+	}
+
+	async addPinnedFolder(path: string) {
+		libraryStore.isScanning = true;
+		try {
+			const folder = await invoke<PinnedFolder>('add_pinned_folder', { path });
+			this.pinnedFolders = [...this.pinnedFolders, folder];
+		} catch (e) {
+			console.error('Failed to add pinned folder:', e);
+			libraryStore.isScanning = false;
+			throw e;
+		}
+	}
+
+	async removePinnedFolder(id: string) {
+		try {
+			await invoke('remove_pinned_folder', { id });
+			this.pinnedFolders = this.pinnedFolders.filter((f) => f.id !== id);
+		} catch (e) {
+			console.error('Failed to remove pinned folder:', e);
 		}
 	}
 

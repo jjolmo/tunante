@@ -117,19 +117,6 @@
 		</div>
 	</label>
 
-	<label class="setting-row">
-		<input
-			type="checkbox"
-			checked={settingsStore.showFolders}
-			onchange={(e) =>
-				settingsStore.setShowFolders((e.target as HTMLInputElement).checked)}
-		/>
-		<div class="setting-text">
-			<span class="setting-label">Show Folders list</span>
-			<span class="setting-desc">Show your monitored folders as a quick-access list at the top of the sidebar. Click a folder to view all of its tracks; "All Tracks" stays the union of every monitored folder.</span>
-		</div>
-	</label>
-
 	<div class="resync-section">
 		<h3 class="section-title">Resync Library</h3>
 		<p class="section-desc">

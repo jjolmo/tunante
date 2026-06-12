@@ -688,19 +688,35 @@ pub fn run() {
                 *state.watcher.lock() = Some(fw);
 
                 let db = state.db.lock();
-                if let Ok(folders) = db.get_monitored_folders() {
-                    drop(db);
-                    let mut watcher_lock = state.watcher.lock();
-                    if let Some(ref mut w) = *watcher_lock {
-                        for folder in folders {
-                            if folder.watching_enabled {
-                                if let Err(e) = w.start_watching(&folder.path) {
-                                    log::error!(
-                                        "Failed to start watching {}: {}",
-                                        folder.path,
-                                        e
-                                    );
-                                }
+                let monitored = db.get_monitored_folders().unwrap_or_default();
+                let pinned = db.get_pinned_folders().unwrap_or_default();
+                drop(db);
+                let mut watcher_lock = state.watcher.lock();
+                if let Some(ref mut w) = *watcher_lock {
+                    for folder in &monitored {
+                        if folder.watching_enabled {
+                            if let Err(e) = w.start_watching(&folder.path) {
+                                log::error!(
+                                    "Failed to start watching {}: {}",
+                                    folder.path,
+                                    e
+                                );
+                            }
+                        }
+                    }
+                    // Watch pinned folders that aren't already covered by a
+                    // monitored folder's recursive watch.
+                    for pin in &pinned {
+                        let covered = monitored
+                            .iter()
+                            .any(|f| commands::settings::is_path_within(&pin.path, &f.path));
+                        if !covered {
+                            if let Err(e) = w.start_watching(&pin.path) {
+                                log::error!(
+                                    "Failed to start watching pinned folder {}: {}",
+                                    pin.path,
+                                    e
+                                );
                             }
                         }
                     }
@@ -1307,6 +1323,9 @@ pub fn run() {
             commands::settings::add_monitored_folder,
             commands::settings::remove_monitored_folder,
             commands::settings::toggle_folder_watching,
+            commands::settings::get_pinned_folders,
+            commands::settings::add_pinned_folder,
+            commands::settings::remove_pinned_folder,
             commands::settings::set_tray_visible,
             commands::settings::get_desktop_entry_path,
             commands::settings::create_desktop_entry,
