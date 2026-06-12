@@ -145,6 +145,19 @@
 			<span class="setting-desc">Display a folder tree browser in the sidebar for navigating music by filesystem location.</span>
 		</div>
 	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.showFolders}
+			onchange={(e) =>
+				settingsStore.setShowFolders((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Show Folders list</span>
+			<span class="setting-desc">Show a quick-access list of monitored and pinned folders in the sidebar. Click one to view all of its tracks; pin any folder (even inside a watched one) via the + button or a folder's right-click menu.</span>
+		</div>
+	</label>
 </div>
 
 <style>

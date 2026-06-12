@@ -142,25 +142,61 @@
 		}
 	}
 
-	// --- Folders (monitored folders quick-access) ---
+	// --- Folders (monitored + pinned folders quick-access) ---
+	// Pinned folders may nest inside a monitored folder, so entries can overlap.
+	// Count each entry independently (no early break) for accurate per-entry totals.
 	let folderCounts = $derived.by(() => {
 		const counts = new Map<string, number>();
-		const folders = settingsStore.monitoredFolders;
-		if (folders.length === 0) return counts;
-		const prefixes = folders.map((f) => ({
-			path: f.path,
-			prefix: f.path.endsWith('/') ? f.path : f.path + '/'
+		const paths = new Set<string>();
+		for (const f of settingsStore.monitoredFolders) paths.add(f.path);
+		for (const f of settingsStore.pinnedFolders) paths.add(f.path);
+		if (paths.size === 0) return counts;
+		const prefixes = [...paths].map((p) => ({
+			path: p,
+			prefix: p.endsWith('/') ? p : p + '/'
 		}));
 		for (const t of libraryStore.tracks) {
 			for (const f of prefixes) {
 				if (t.path.startsWith(f.prefix)) {
 					counts.set(f.path, (counts.get(f.path) || 0) + 1);
-					break;
 				}
 			}
 		}
 		return counts;
 	});
+
+	async function handleAddPin() {
+		const selected = await open({ directory: true, multiple: false });
+		if (selected) {
+			try {
+				await settingsStore.addPinnedFolder(selected as string);
+			} catch {
+				// Backend rejects duplicates / already-monitored paths; the folder
+				// is already visible in the list, so nothing more to do.
+			}
+		}
+	}
+
+	function handlePinnedContextMenu(e: MouseEvent, pin: { id: string; path: string }) {
+		e.preventDefault();
+		contextMenu = {
+			x: e.clientX,
+			y: e.clientY,
+			items: [
+				{
+					label: 'Open in file manager',
+					action: () => {
+						invoke('open_folder', { path: pin.path }).catch(() => {});
+					}
+				},
+				{ separator: true, label: '', action: () => {} },
+				{
+					label: 'Unpin folder',
+					action: () => settingsStore.removePinnedFolder(pin.id)
+				}
+			]
+		};
+	}
 
 	function folderName(path: string): string {
 		const parts = path.split(/[/\\]/).filter(Boolean);
@@ -451,10 +487,15 @@
 		</button>
 		{/if}
 
-		{#if settingsStore.showFolders && settingsStore.monitoredFolders.length > 0}
+		{#if settingsStore.showFolders && (settingsStore.monitoredFolders.length > 0 || settingsStore.pinnedFolders.length > 0)}
 			<div class="sidebar-section">
 				<div class="section-header">
 					<span>Folders</span>
+					<button class="icon-btn small" onclick={handleAddPin} title="Pin a folder">
+						<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+							<path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z" />
+						</svg>
+					</button>
 				</div>
 
 				{#each settingsStore.monitoredFolders as folder (folder.id)}
@@ -470,6 +511,23 @@
 						</svg>
 						<span class="folder-name">{folderName(folder.path)}</span>
 						<span class="track-count">{folderCounts.get(folder.path) ?? 0}</span>
+					</button>
+				{/each}
+
+				{#each settingsStore.pinnedFolders as pin (pin.id)}
+					<button
+						class="sidebar-item"
+						class:active={filesStore.activeFolder === pin.path}
+						onclick={() => handleSelectFolder(pin.path)}
+						ondblclick={() => handlePlayFolder(pin.path)}
+						oncontextmenu={(e) => handlePinnedContextMenu(e, pin)}
+						title={pin.path}
+					>
+						<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+							<path d="M9.5 1l-.7.7 1 1L6 6.5l-2-.5-.7.7L6 9.4l-3 3V14h1.6l3-3 2.7 2.7.7-.7-.5-2 3.8-3.8 1 1 .7-.7L9.5 1z" />
+						</svg>
+						<span class="folder-name">{folderName(pin.path)}</span>
+						<span class="track-count">{folderCounts.get(pin.path) ?? 0}</span>
 					</button>
 				{/each}
 			</div>

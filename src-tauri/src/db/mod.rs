@@ -1,7 +1,7 @@
 pub mod models;
 mod schema;
 
-use models::{MonitoredFolder, Playlist, Setting, Track};
+use models::{MonitoredFolder, PinnedFolder, Playlist, Setting, Track};
 use rusqlite::{params, Connection};
 use std::path::Path;
 use thiserror::Error;
@@ -549,6 +549,38 @@ impl Database {
         )?;
 
         Ok(deleted)
+    }
+
+    // --- Pinned Folders ---
+
+    pub fn get_pinned_folders(&self) -> Result<Vec<PinnedFolder>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, path, added_at FROM pinned_folders ORDER BY added_at, path",
+        )?;
+        let folders = stmt
+            .query_map([], |row| {
+                Ok(PinnedFolder {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    added_at: row.get(2)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(folders)
+    }
+
+    pub fn add_pinned_folder(&self, id: &str, path: &str) -> Result<(), DbError> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO pinned_folders (id, path) VALUES (?1, ?2)",
+            params![id, path],
+        )?;
+        Ok(())
+    }
+
+    pub fn remove_pinned_folder(&self, id: &str) -> Result<(), DbError> {
+        self.conn
+            .execute("DELETE FROM pinned_folders WHERE id = ?1", params![id])?;
+        Ok(())
     }
 
     pub fn toggle_folder_watching(&self, id: &str, enabled: bool) -> Result<(), DbError> {
