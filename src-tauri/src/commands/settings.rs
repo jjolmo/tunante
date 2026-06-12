@@ -49,6 +49,19 @@ pub fn get_monitored_folders(
         .map_err(|e| e.to_string())
 }
 
+/// True if `inner` is the same path as `outer` or nested inside it.
+fn is_path_within(inner: &str, outer: &str) -> bool {
+    if inner == outer {
+        return true;
+    }
+    let prefix = if outer.ends_with('/') || outer.ends_with('\\') {
+        outer.to_string()
+    } else {
+        format!("{}/", outer)
+    };
+    inner.starts_with(&prefix)
+}
+
 #[tauri::command]
 pub fn add_monitored_folder(
     path: String,
@@ -56,6 +69,51 @@ pub fn add_monitored_folder(
     app: tauri::AppHandle,
 ) -> Result<MonitoredFolder, String> {
     let id = Uuid::new_v4().to_string();
+
+    // --- Overlap handling: monitored folders must never nest inside each other ---
+    // Otherwise a recursive scan/watch would cover the same files twice, and
+    // removing one folder would delete tracks still owned by the other.
+    let existing = state
+        .db
+        .lock()
+        .get_monitored_folders()
+        .map_err(|e| e.to_string())?;
+
+    // Case A: the new folder is already covered by an existing monitored folder.
+    if let Some(parent) = existing.iter().find(|f| is_path_within(&path, &f.path)) {
+        return Err(format!(
+            "This folder is already covered by monitored folder: {}",
+            parent.path
+        ));
+    }
+
+    // Case B: the new folder is a parent of one or more existing folders.
+    // Absorb them — drop their records and watchers, but keep their tracks
+    // (this folder's scan will re-own them).
+    let children: Vec<MonitoredFolder> = existing
+        .iter()
+        .filter(|f| is_path_within(&f.path, &path))
+        .cloned()
+        .collect();
+    if !children.is_empty() {
+        let mut watcher_lock = state.watcher.lock();
+        for child in &children {
+            if let Some(ref mut watcher) = *watcher_lock {
+                let _ = watcher.stop_watching(&child.path);
+            }
+        }
+        drop(watcher_lock);
+
+        let db = state.db.lock();
+        for child in &children {
+            if let Err(e) = db.remove_monitored_folder(&child.id) {
+                log::error!("Failed to absorb child folder {}: {}", child.path, e);
+            } else {
+                log::info!("Absorbed child folder into {}: {}", path, child.path);
+            }
+        }
+        drop(db);
+    }
 
     state
         .db
@@ -116,9 +174,18 @@ pub fn remove_monitored_folder(
         }
         drop(watcher_lock);
 
-        // Remove all tracks belonging to this folder
+        // Remove tracks belonging to this folder, but keep any that are still
+        // covered by another monitored folder (defends against pre-existing
+        // overlapping folders so we never orphan shared tracks).
         let db = state.db.lock();
-        match db.remove_tracks_by_folder_path(&folder.path) {
+        let keep_prefixes: Vec<String> = db
+            .get_monitored_folders()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|f| f.id != id)
+            .map(|f| f.path)
+            .collect();
+        match db.remove_tracks_by_folder_path_excluding(&folder.path, &keep_prefixes) {
             Ok(count) => {
                 log::info!("Removed {} tracks from folder: {}", count, folder.path);
             }

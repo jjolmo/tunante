@@ -142,6 +142,47 @@
 		}
 	}
 
+	// --- Folders (monitored folders quick-access) ---
+	let folderCounts = $derived.by(() => {
+		const counts = new Map<string, number>();
+		const folders = settingsStore.monitoredFolders;
+		if (folders.length === 0) return counts;
+		const prefixes = folders.map((f) => ({
+			path: f.path,
+			prefix: f.path.endsWith('/') ? f.path : f.path + '/'
+		}));
+		for (const t of libraryStore.tracks) {
+			for (const f of prefixes) {
+				if (t.path.startsWith(f.prefix)) {
+					counts.set(f.path, (counts.get(f.path) || 0) + 1);
+					break;
+				}
+			}
+		}
+		return counts;
+	});
+
+	function folderName(path: string): string {
+		const parts = path.split(/[/\\]/).filter(Boolean);
+		return parts[parts.length - 1] || path;
+	}
+
+	function handleSelectFolder(path: string) {
+		playlistsStore.selectPlaylist(null);
+		consolesStore.selectConsole(null);
+		filesStore.selectFolder(path);
+	}
+
+	function handlePlayFolder(path: string) {
+		handleSelectFolder(path);
+		const tracks = filesStore.folderTracks;
+		if (tracks.length > 0) {
+			const start = pickStartTrack(tracks);
+			playerStore.playTrack(start, tracks.map((t) => t.id));
+			setTimeout(() => libraryStore.requestScrollTo(start.id), 50);
+		}
+	}
+
 	function handleSelectConsole(id: string) {
 		playlistsStore.selectPlaylist(null);
 		filesStore.selectFolder(null);
@@ -410,6 +451,30 @@
 		</button>
 		{/if}
 
+		{#if settingsStore.showFolders && settingsStore.monitoredFolders.length > 0}
+			<div class="sidebar-section">
+				<div class="section-header">
+					<span>Folders</span>
+				</div>
+
+				{#each settingsStore.monitoredFolders as folder (folder.id)}
+					<button
+						class="sidebar-item"
+						class:active={filesStore.activeFolder === folder.path}
+						onclick={() => handleSelectFolder(folder.path)}
+						ondblclick={() => handlePlayFolder(folder.path)}
+						title={folder.path}
+					>
+						<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+							<path d="M14.5 3H7.71l-.85-.85L6.51 2H1.5l-.5.5v11l.5.5h13l.5-.5v-10L14.5 3zm-.51 8.49V7H7.99l-.85-.85L6.79 6H2V3h4.29l.85.85.35.15H14v7.49z" />
+						</svg>
+						<span class="folder-name">{folderName(folder.path)}</span>
+						<span class="track-count">{folderCounts.get(folder.path) ?? 0}</span>
+					</button>
+				{/each}
+			</div>
+		{/if}
+
 		{#if settingsStore.showPlaylists}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="sidebar-section">
@@ -663,6 +728,13 @@
 		margin-left: auto;
 		color: var(--color-text-muted);
 		font-size: 11px;
+	}
+
+	.sidebar-item .folder-name {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.sidebar-item .scanning-icon {

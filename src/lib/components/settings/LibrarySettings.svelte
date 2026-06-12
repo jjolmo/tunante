@@ -7,6 +7,7 @@
 	import { libraryStore } from '$lib/stores/library.svelte';
 
 	let isResyncing = $state(false);
+	let addError = $state<string | null>(null);
 
 	onMount(() => {
 		const unlisten = listen('scan-complete', () => {
@@ -20,7 +21,12 @@
 	async function handleAddFolder() {
 		const selected = await open({ directory: true, multiple: false });
 		if (selected) {
-			await settingsStore.addMonitoredFolder(selected as string);
+			addError = null;
+			try {
+				await settingsStore.addMonitoredFolder(selected as string);
+			} catch (e) {
+				addError = typeof e === 'string' ? e : 'Failed to add folder';
+			}
 		}
 	}
 
@@ -87,6 +93,10 @@
 		{/each}
 	</div>
 
+	{#if addError}
+		<p class="add-error">{addError}</p>
+	{/if}
+
 	<button class="add-folder-btn" onclick={handleAddFolder}>
 		<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 			<path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z" />
@@ -104,6 +114,19 @@
 		<div class="setting-text">
 			<span class="setting-label">Fast scan</span>
 			<span class="setting-desc">Skip silence detection for chiptune tracks without duration info. Faster scan but shows default 2:40 for SFX/jingles.</span>
+		</div>
+	</label>
+
+	<label class="setting-row">
+		<input
+			type="checkbox"
+			checked={settingsStore.showFolders}
+			onchange={(e) =>
+				settingsStore.setShowFolders((e.target as HTMLInputElement).checked)}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Show Folders list</span>
+			<span class="setting-desc">Show your monitored folders as a quick-access list at the top of the sidebar. Click a folder to view all of its tracks; "All Tracks" stays the union of every monitored folder.</span>
 		</div>
 	</label>
 
@@ -256,6 +279,12 @@
 
 	.add-folder-btn:hover {
 		background-color: var(--color-bg-hover);
+	}
+
+	.add-error {
+		font-size: 12px;
+		color: #e74c3c;
+		margin: 0;
 	}
 
 	.resync-section {
