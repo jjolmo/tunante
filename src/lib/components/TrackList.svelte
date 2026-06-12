@@ -53,8 +53,11 @@
 			result = result.filter((t) => t.duration_ms >= thresholdMs);
 		}
 
-		// Apply search filter to all views (not just All Tracks)
-		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && !filesStore.activeFolder && !isLibraryView) {
+		// Apply search filter to all views (not just All Tracks).
+		// Console views are excluded because consoleTracks already derives from
+		// libraryStore.filteredTracks (search applied); folder views are NOT —
+		// folderTracks reads the unfiltered library, so search must run here.
+		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && !isLibraryView) {
 			const q = libraryStore.activeSearchQuery.toLowerCase();
 			result = result.filter(
 				(t) =>
