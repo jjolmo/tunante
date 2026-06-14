@@ -973,6 +973,17 @@ pub fn update_track_metadata(
     Ok(())
 }
 
+/// Build a `file://` URI from an absolute path, percent-encoding each segment
+/// (spaces, commas, etc.) while keeping the path separators intact.
+#[cfg(target_os = "linux")]
+fn path_to_file_uri(path: &str) -> String {
+    let encoded: Vec<String> = path
+        .split('/')
+        .map(|seg| urlencoding::encode(seg).into_owned())
+        .collect();
+    format!("file://{}", encoded.join("/"))
+}
+
 /// Open a file or folder in the system file manager on Linux.
 /// If `select_file` is true, tries to highlight the file in the file manager.
 #[cfg(target_os = "linux")]
@@ -986,16 +997,47 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
 
     log::info!("linux_open_path: path={}, folder={}, select={}", path, folder.display(), select_file);
 
-    // Try Dolphin first (KDE) — forces a new window so it's always visible.
-    // xdg-open reuses the existing Dolphin instance which may open a tab
-    // in a background window that the user never sees.
+    // When highlighting a file, prefer the freedesktop FileManager1 D-Bus
+    // interface — the standard, desktop-agnostic way to show a file *selected*
+    // in the file manager. Implemented by Dolphin (KDE), Nautilus (GNOME) and
+    // Nemo (Cinnamon), and D-Bus-activated if the manager isn't running yet.
+    //
+    // This replaces `dolphin --new-window --select`, where `--select` is ignored
+    // when combined with `--new-window`, so the file never got highlighted.
+    if select_file {
+        let uri = path_to_file_uri(path);
+        let status = std::process::Command::new("dbus-send")
+            .args([
+                "--session",
+                "--print-reply",
+                "--dest=org.freedesktop.FileManager1",
+                "/org/freedesktop/FileManager1",
+                "org.freedesktop.FileManager1.ShowItems",
+            ])
+            .arg(format!("array:string:{}", uri))
+            .arg("string:")
+            .env_remove("GDK_BACKEND")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if let Ok(s) = status {
+            if s.success() {
+                log::info!("Opened via FileManager1.ShowItems: {}", uri);
+                return Ok(());
+            }
+        }
+        log::warn!("FileManager1.ShowItems unavailable — falling back");
+    }
+
+    // Fallback: Dolphin directly. Force a new window when just opening a folder
+    // (xdg-open would reuse an existing Dolphin instance, possibly as a tab in a
+    // background window). For selection, use plain `--select` (no `--new-window`).
     {
         let mut cmd = std::process::Command::new("dolphin");
-        cmd.arg("--new-window");
         if select_file {
             cmd.arg("--select").arg(&target);
         } else {
-            cmd.arg(folder);
+            cmd.arg("--new-window").arg(folder);
         }
         if let Ok(_) = cmd
             .env_remove("GDK_BACKEND")
@@ -1003,12 +1045,12 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
             .stderr(std::process::Stdio::null())
             .spawn()
         {
-            log::info!("Opened via dolphin --new-window: {}", folder.display());
+            log::info!("Opened via dolphin (select={}): {}", select_file, path);
             return Ok(());
         }
     }
 
-    // Fallback: xdg-open (GNOME, XFCE, etc.)
+    // Last resort: xdg-open the folder (no selection support).
     let result = std::process::Command::new("xdg-open")
         .arg(folder)
         .env_remove("GDK_BACKEND")
