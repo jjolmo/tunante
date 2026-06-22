@@ -7,10 +7,13 @@ use super::twosf::TwoSfSource;
 use super::usf::UsfSource;
 use super::vgm_path::{is_gme_format, is_gsf_format, is_psf_format, is_psf2_format, is_twosf_format, is_usf_format, parse_vgm_path};
 use super::vgmstream::VgmstreamSource;
+use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
@@ -88,6 +91,93 @@ fn is_standard_format(ext: &str) -> bool {
     )
 }
 
+/// User's chosen audio output: follow the OS default, or a specific device by name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OutputSelection {
+    /// Follow whatever the operating system reports as the default output, and
+    /// re-follow it automatically when it changes (e.g. Bluetooth headphones).
+    System,
+    /// A specific device, selected by its name.
+    Device(String),
+}
+
+impl OutputSelection {
+    /// Parse the persisted setting value. Empty / "system" → follow the system default.
+    pub fn from_setting(value: &str) -> Self {
+        if value.is_empty() || value == "system" {
+            OutputSelection::System
+        } else {
+            OutputSelection::Device(value.to_string())
+        }
+    }
+
+    /// Serialize for persistence in the settings table.
+    pub fn to_setting(&self) -> String {
+        match self {
+            OutputSelection::System => "system".to_string(),
+            OutputSelection::Device(name) => name.clone(),
+        }
+    }
+}
+
+/// List the names of all available output devices.
+pub fn list_output_devices() -> Vec<String> {
+    let host = rodio::cpal::default_host();
+    match host.output_devices() {
+        Ok(devices) => {
+            let mut names: Vec<String> = devices.filter_map(|d| d.name().ok()).collect();
+            names.dedup();
+            names
+        }
+        Err(e) => {
+            log::warn!("[audio] could not enumerate output devices: {e}");
+            Vec::new()
+        }
+    }
+}
+
+/// Name of the current system default output device, if any.
+pub fn default_output_device_name() -> Option<String> {
+    rodio::cpal::default_host()
+        .default_output_device()
+        .and_then(|d| d.name().ok())
+}
+
+/// Open an OS audio sink for the given selection, attaching an error callback that
+/// flags the engine for a rebuild when the underlying stream fails (e.g. the device
+/// is unplugged). Returns the opened sink and the actual device name.
+fn open_device_sink(
+    selection: &OutputSelection,
+    rebuild_flag: Arc<AtomicBool>,
+) -> Result<(MixerDeviceSink, String), AudioError> {
+    let host = rodio::cpal::default_host();
+
+    let device = match selection {
+        OutputSelection::System => host.default_output_device(),
+        OutputSelection::Device(name) => host
+            .output_devices()
+            .ok()
+            .and_then(|mut devs| devs.find(|d| d.name().ok().as_deref() == Some(name.as_str())))
+            // Selected device is gone → fall back to the system default so the
+            // user still hears audio instead of silence.
+            .or_else(|| host.default_output_device()),
+    }
+    .ok_or_else(|| AudioError::OutputError("no output device available".to_string()))?;
+
+    let name = device.name().unwrap_or_else(|_| "unknown".to_string());
+
+    let sink = DeviceSinkBuilder::from_device(device)
+        .map_err(|e| AudioError::OutputError(e.to_string()))?
+        .with_error_callback(move |err: rodio::cpal::StreamError| {
+            log::warn!("[audio] output stream error ({err}); scheduling rebuild");
+            rebuild_flag.store(true, Ordering::SeqCst);
+        })
+        .open_stream()
+        .map_err(|e| AudioError::OutputError(e.to_string()))?;
+
+    Ok((sink, name))
+}
+
 pub struct AudioEngine {
     _device: MixerDeviceSink,
     player: Player,
@@ -105,6 +195,17 @@ pub struct AudioEngine {
     /// Bumped on each new fade run; in-progress fades check this and abort
     /// when superseded so rapid track changes don't overlap fades.
     fade_generation: u64,
+    /// Desired output device (system default vs a specific device).
+    desired_output: OutputSelection,
+    /// Name of the device the current stream is actually open on.
+    active_device_name: Option<String>,
+    /// Set by the cpal error callback when the stream dies (device unplugged);
+    /// polled by the output supervisor to trigger a rebuild.
+    rebuild_flag: Arc<AtomicBool>,
+    /// The path (incl. any vgm subsong suffix) of the current track, so the
+    /// output can be rebuilt without losing what's playing.
+    current_path: Option<String>,
+    current_duration_hint: i64,
 }
 
 // Safety: AudioEngine is always accessed through a Mutex, ensuring single-threaded access.
@@ -113,8 +214,15 @@ unsafe impl Sync for AudioEngine {}
 
 impl AudioEngine {
     pub fn new() -> Result<Self, AudioError> {
-        let device = DeviceSinkBuilder::open_default_sink()
-            .map_err(|e| AudioError::OutputError(e.to_string()))?;
+        let rebuild_flag = Arc::new(AtomicBool::new(false));
+        let (device, active_name) = open_device_sink(&OutputSelection::System, rebuild_flag.clone())
+            // Fall back to rodio's resilient default-sink chain if the direct
+            // open fails. No error callback in that case, but the app still boots.
+            .or_else(|_| {
+                DeviceSinkBuilder::open_default_sink()
+                    .map(|d| (d, "default".to_string()))
+                    .map_err(|e| AudioError::OutputError(e.to_string()))
+            })?;
         let player = Player::connect_new(&device.mixer());
         player.set_volume(0.8);
 
@@ -130,6 +238,11 @@ impl AudioEngine {
             fade_on_track_change: false,
             fade_seconds: 2.0,
             fade_generation: 0,
+            desired_output: OutputSelection::System,
+            active_device_name: Some(active_name),
+            rebuild_flag,
+            current_path: None,
+            current_duration_hint: 0,
         })
     }
 
@@ -143,6 +256,11 @@ impl AudioEngine {
         duration_hint_ms: i64,
         initial_volume: f32,
     ) -> Result<(), AudioError> {
+        // Remember what's playing so the output device can be rebuilt (on a
+        // device switch/unplug) by reopening this same source at its position.
+        self.current_path = Some(path.to_string_lossy().to_string());
+        self.current_duration_hint = duration_hint_ms;
+
         // Recreate the Player to fully reset rodio's internal resampler state.
         // Without this, switching between tracks with different sample rates
         // (e.g. 48kHz PSF2/Opus → 44.1kHz GSF) can corrupt the resampler,
@@ -285,6 +403,7 @@ impl AudioEngine {
         self.was_playing = false;
         self.has_source = false;
         self.current_duration_ms = 0;
+        self.current_path = None;
     }
 
     pub fn seek(&mut self, position_ms: u64) -> Result<(), String> {
@@ -363,5 +482,95 @@ impl AudioEngine {
 
     pub fn duration_ms(&self) -> u64 {
         self.current_duration_ms
+    }
+
+    // ---- Output device management ----
+
+    /// The currently desired output (system default vs a specific device).
+    pub fn output_selection(&self) -> OutputSelection {
+        self.desired_output.clone()
+    }
+
+    /// Name of the device the stream is actually open on right now.
+    pub fn active_device_name(&self) -> Option<String> {
+        self.active_device_name.clone()
+    }
+
+    /// Change the desired output and rebuild the stream immediately, preserving
+    /// the current track and playback position.
+    pub fn set_output_selection(&mut self, selection: OutputSelection) -> Result<(), AudioError> {
+        self.desired_output = selection;
+        self.rebuild_output()
+    }
+
+    /// Re-open the OS audio sink for the currently desired output and resume the
+    /// current track at its previous position. A rodio source cannot be moved
+    /// between mixers, so we re-open the current file and seek back.
+    pub fn rebuild_output(&mut self) -> Result<(), AudioError> {
+        let pos = self.timer.position_ms();
+        let was_playing = self.was_playing;
+        let had_source = self.has_source;
+        let path = self.current_path.clone();
+        let hint = self.current_duration_hint;
+
+        self.rebuild_flag.store(false, Ordering::SeqCst);
+        let (device, name) = open_device_sink(&self.desired_output, self.rebuild_flag.clone())?;
+
+        // Drop the old stream and connect a fresh player to the new device.
+        self.player.stop();
+        std::thread::sleep(Duration::from_millis(50));
+        self._device = device;
+        self.active_device_name = Some(name);
+        self.player = Player::connect_new(&self._device.mixer());
+        self.player.set_volume(self.volume);
+
+        // Restore the current track at its previous position and play state.
+        if had_source {
+            if let Some(p) = path {
+                self.play_file_at_volume(Path::new(&p), hint, self.volume)?;
+                let _ = self.seek(pos);
+                if !was_playing {
+                    self.pause();
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Called periodically by the output supervisor. Rebuilds the stream when it
+    /// reported an error (device unplugged) or when the effective target device
+    /// changed (system default switched to freshly-connected headphones). Returns
+    /// the new active device name when a rebuild happened, so the UI can be told.
+    pub fn reconcile_output(&mut self) -> Option<String> {
+        let flagged = self.rebuild_flag.swap(false, Ordering::SeqCst);
+        let target = self.resolve_target_name();
+        let changed = match (&target, &self.active_device_name) {
+            (Some(t), Some(a)) => t != a,
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if flagged || changed {
+            match self.rebuild_output() {
+                Ok(()) => return self.active_device_name.clone(),
+                Err(e) => log::error!("[audio] output rebuild failed: {e}"),
+            }
+        }
+        None
+    }
+
+    /// The device name we *should* currently be playing on. For a specific device
+    /// that has gone away, this falls back to the system default so we don't try
+    /// to reopen a missing device on every supervisor tick.
+    fn resolve_target_name(&self) -> Option<String> {
+        match &self.desired_output {
+            OutputSelection::System => default_output_device_name(),
+            OutputSelection::Device(name) => {
+                if list_output_devices().iter().any(|n| n == name) {
+                    Some(name.clone())
+                } else {
+                    default_output_device_name()
+                }
+            }
+        }
     }
 }

@@ -10,5 +10,5 @@ mod usf;
 pub mod vgm_path;
 mod vgmstream;
 
-pub use engine::AudioEngine;
+pub use engine::{list_output_devices, AudioEngine, OutputSelection};
 pub use queue::{PlayQueue, RepeatMode};
