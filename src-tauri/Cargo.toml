@@ -1,6 +1,6 @@
 [package]
 name = "tunante"
-version = "0.2.0"
+version = "0.1.0"
 edition = "2021"
 description = "Cross-platform music player for video game music and standard audio formats"
 license = "GPL-2.0"
