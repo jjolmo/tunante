@@ -13,6 +13,29 @@
 	let clearingCovers = $state(false);
 	let clearCoversResult = $state('');
 
+	let audioOutputs = $state<string[]>([]);
+	let selectedOutput = $state('system');
+
+	// Load available output devices and the saved selection.
+	$effect(() => {
+		invoke<string[]>('list_audio_outputs')
+			.then((d) => (audioOutputs = d))
+			.catch(() => {});
+		invoke<string>('get_audio_output')
+			.then((s) => (selectedOutput = s || 'system'))
+			.catch(() => {});
+	});
+
+	async function handleAudioOutputChange(e: Event) {
+		const val = (e.target as HTMLSelectElement).value;
+		selectedOutput = val;
+		try {
+			await invoke('set_audio_output', { selection: val });
+		} catch (err) {
+			console.error('Failed to set audio output:', err);
+		}
+	}
+
 	async function handleClearCoverCache() {
 		clearingCovers = true;
 		clearCoversResult = '';
@@ -240,6 +263,25 @@
 	</div>
 
 	<h3 class="section-title" style="margin-top: 8px;">Playback</h3>
+
+	<div class="setting-row threshold-row">
+		<div class="setting-text">
+			<span class="setting-label">Audio output device</span>
+			<span class="setting-desc"
+				>Where Tunante sends sound. "Defined by system" follows your OS default and switches
+				automatically when you connect headphones or change the default device.</span
+			>
+		</div>
+		<select value={selectedOutput} onchange={handleAudioOutputChange}>
+			<option value="system">Defined by system</option>
+			{#each audioOutputs as dev}
+				<option value={dev}>{dev}</option>
+			{/each}
+			{#if selectedOutput !== 'system' && !audioOutputs.includes(selectedOutput)}
+				<option value={selectedOutput}>{selectedOutput} (unavailable)</option>
+			{/if}
+		</select>
+	</div>
 
 	<label class="setting-row">
 		<input

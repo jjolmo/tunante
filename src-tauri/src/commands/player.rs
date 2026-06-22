@@ -363,3 +363,44 @@ pub fn set_fade_seconds(seconds: f32, state: State<'_, Arc<AppState>>) -> Result
     state.audio.lock().set_fade_seconds(seconds);
     Ok(())
 }
+
+// ---- Audio output device ----
+
+/// Names of the available output devices (to populate the Settings dropdown).
+#[tauri::command]
+pub fn list_audio_outputs() -> Result<Vec<String>, String> {
+    Ok(crate::audio::list_output_devices())
+}
+
+/// The persisted output selection: "system" or a specific device name.
+#[tauri::command]
+pub fn get_audio_output(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    let stored = state
+        .db
+        .lock()
+        .get_setting("audio_output_device")
+        .map_err(|e| e.to_string())?;
+    Ok(stored.unwrap_or_else(|| "system".to_string()))
+}
+
+/// Persist and apply a new output selection. "system" (or empty) follows the OS
+/// default; any other value selects that device by name. Applies immediately,
+/// preserving the current track and position.
+#[tauri::command]
+pub fn set_audio_output(
+    selection: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    let sel = crate::audio::OutputSelection::from_setting(&selection);
+    state
+        .db
+        .lock()
+        .set_setting("audio_output_device", &sel.to_setting())
+        .map_err(|e| e.to_string())?;
+    state
+        .audio
+        .lock()
+        .set_output_selection(sel)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}

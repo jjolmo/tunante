@@ -681,6 +681,37 @@ pub fn run() {
 
             app.manage(state.clone());
 
+            // Restore the saved audio output device, then start the supervisor that
+            // follows the system default and recovers from device unplugs (e.g.
+            // connecting Bluetooth headphones mid-playback).
+            {
+                let saved = state
+                    .db
+                    .lock()
+                    .get_setting("audio_output_device")
+                    .ok()
+                    .flatten();
+                if let Some(value) = saved {
+                    let sel = audio::OutputSelection::from_setting(&value);
+                    if sel != audio::OutputSelection::System {
+                        if let Err(e) = state.audio.lock().set_output_selection(sel) {
+                            log::error!("Failed to restore audio output device: {}", e);
+                        }
+                    }
+                }
+
+                let state_for_audio = state.clone();
+                let app_for_audio = app.handle().clone();
+                std::thread::spawn(move || loop {
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                    let changed = state_for_audio.audio.lock().reconcile_output();
+                    if let Some(name) = changed {
+                        log::info!("[audio] output switched to: {}", name);
+                        let _ = app_for_audio.emit("audio-output-changed", name);
+                    }
+                });
+            }
+
             // Initialize file watcher
             {
                 let fw =
@@ -1297,6 +1328,9 @@ pub fn run() {
             commands::player::set_continue_from_queue,
             commands::player::set_fade_on_track_change,
             commands::player::set_fade_seconds,
+            commands::player::list_audio_outputs,
+            commands::player::get_audio_output,
+            commands::player::set_audio_output,
             commands::library::get_all_tracks,
             commands::library::set_track_rating,
             commands::library::get_faved_tracks,
