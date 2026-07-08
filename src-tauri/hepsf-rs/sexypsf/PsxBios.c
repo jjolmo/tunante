@@ -312,15 +312,15 @@ static void bios_strcat() { // 0x15
 	dest=a0;
 	src=a1;
 
-	while(PSXMu8(dest) != 0) dest++; /* Move to end of first string. */
-	while(PSXMu8(src) != 0) 
+	while(PSXMuR8(dest) != 0) dest++; /* Move to end of first string. */
+	while(PSXMuR8(src) != 0)
 	{
 	 if(PSXM(dest) && PSXM(src))
 	  PSXMu8(dest)=PSXMu8(src);
 	 src++;
 	 dest++;
 	}
-	PSXMu8(dest) = 0;	/* Append null character. */
+	if(PSXM(dest)) PSXMu8(dest) = 0;	/* Append null character. */
 	//strcat(Ra0, Ra1);
 
 	v0 = a0; 
@@ -336,8 +336,8 @@ static void bios_strncat()
         src=a1;
         count=a2;
 
-        while(PSXMu8(dest) != 0) dest++; /* Move to end of first string. */
-        while(PSXMu8(src) != 0 && count)
+        while(PSXMuR8(dest) != 0) dest++; /* Move to end of first string. */
+        while(PSXMuR8(src) != 0 && count)
         {
          if(PSXM(dest) && PSXM(src))
           PSXMu8(dest)=PSXMu8(src);
@@ -345,7 +345,7 @@ static void bios_strncat()
          dest++;
 	 count--;
         }
-        PSXMu8(dest) = 0;       /* Append null character. */
+        if(PSXM(dest)) PSXMu8(dest) = 0;       /* Append null character. */
 
  //strncat(Ra0, Ra1, a2); 
  v0 = a0; 
@@ -394,12 +394,12 @@ static void bios_strcpy()
 
  do
  {
-  val=PSXMu8(src);
-  PSXMu8(dest)=val;
-  src++; 
+  val=PSXMuR8(src);
+  if(PSXM(dest)) PSXMu8(dest)=val;
+  src++;
   dest++;
  } while(val);
- //strcpy(Ra0, Ra1); 
+ //strcpy(Ra0, Ra1);
  v0 = a0; 
  pc0 = ra;
 }
@@ -411,9 +411,9 @@ static void bios_strncpy()
  
  do
  {
-  val=PSXMu8(src); 
-  PSXMu8(dest)=val;
-  src++;   
+  val=PSXMuR8(src);
+  if(PSXM(dest)) PSXMu8(dest)=val;
+  src++;
   dest++;
   max--;
  } while(val && max);
@@ -428,9 +428,9 @@ static void bios_strlen()
 { 
  u32 src=a0;
 
- while(PSXMu8(src)) src++;
+ while(PSXMuR8(src)) src++;
 
- v0 = src-a0;  
+ v0 = src-a0;
  pc0 = ra;
 }
 
@@ -522,11 +522,12 @@ static void bios_bcopy()
 
  while(len--)
  {
-  PSXMu8(dest)=PSXMu8(src);
+  u8 v = PSXMuR8(src);
+  if(PSXM(dest)) PSXMu8(dest)=v;
   dest++;
   src++;
  }
- //memcpy(Ra1,Ra0,a2); 
+ //memcpy(Ra1,Ra0,a2);
  pc0=ra;
 }
 
@@ -552,14 +553,15 @@ static void bios_bcmp()    {v0 = memcmp(Ra0,Ra1,a2); pc0=ra; }
 static void bios_memcpy()  
 {
  u32 dest=a0, src=a1, len=a2;
- 
+
  while(len--)
  {
-  PSXMu8(dest)=PSXMu8(src);
+  u8 v = PSXMuR8(src);
+  if(PSXM(dest)) PSXMu8(dest)=v;
   dest++;
   src++;
  }
- //memcpy(Ra0, Ra1, a2); 
+ //memcpy(Ra0, Ra1, a2);
  v0 = a0; 
  pc0 = ra;
 }
