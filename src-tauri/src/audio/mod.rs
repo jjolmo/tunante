@@ -10,5 +10,8 @@ mod usf;
 pub mod vgm_path;
 mod vgmstream;
 
+#[cfg(test)]
+mod format_smoke;
+
 pub use engine::{list_output_devices, AudioEngine, OutputSelection};
 pub use queue::{PlayQueue, RepeatMode};

@@ -1,0 +1,4 @@
+# Audio fixtures are binary — never apply text/EOL normalization.
+# Without this, a Windows CI checkout would CRLF-mangle these files and the
+# format smoke test would fail only on Windows.
+* binary
