@@ -1,39 +1,38 @@
-//! Minimal PSF crash test — no code between renders
+//! PSF bare-render crash test — exercises the raw `hepsf_rs` decoder (render/close)
+//! directly, complementing the higher-level format smoke test in
+//! `src/audio/format_smoke.rs` (which goes through the app's `PsfSource` wrapper).
 //!
+//! Uses the committed fixture so it always runs (no external file needed).
 //! Run: cargo test --manifest-path src-tauri/Cargo.toml --test psf_seek_test -- --nocapture
 
-use std::path::Path;
+use std::path::PathBuf;
 
-const TEST_PSF: &str = "/tmp/test_psf/FF7 104 Anxious Heart.minipsf";
+fn test_psf() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample.psf")
+}
 
 #[test]
-fn test_psf_bare_renders() {
-    let path = Path::new(TEST_PSF);
-    if !path.exists() {
-        eprintln!("SKIP: test PSF file not found");
-        return;
-    }
+fn psf_bare_renders_without_crashing() {
+    let path = test_psf();
+    assert!(
+        path.exists(),
+        "committed PSF fixture missing: {}",
+        path.display()
+    );
 
-    eprintln!("[1] Loading PSF...");
-    let (mut decoder, _) = hepsf_rs::PsfDecoder::new(path).expect("Failed to load");
-    eprintln!("[2] Loaded OK");
+    let (mut decoder, _tags) = hepsf_rs::PsfDecoder::new(path.as_path()).expect("Failed to load PSF");
 
+    // Render several chunks back-to-back with no work in between — this pattern used
+    // to expose a crash in the sexypsf C globals.
     let mut buf = vec![0i16; 1024 * 2];
-
-    // Render 10 chunks back-to-back with NO code in between
-    eprintln!("[3] Rendering 10 consecutive chunks with NO code between...");
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    decoder.render(&mut buf, 1024);
-    eprintln!("[4] ✅ All 10 chunks rendered OK");
+    let mut peak: i16 = 0;
+    for _ in 0..10 {
+        decoder.render(&mut buf, 1024);
+        for &s in &buf {
+            peak = peak.max(s.abs());
+        }
+    }
+    assert!(peak > 0, "PSF rendered only silence — decoder likely broken");
 
     decoder.close();
-    eprintln!("[5] ✅ Done");
 }
