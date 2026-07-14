@@ -480,7 +480,7 @@
 						ondblclick={() => handleTrackDblClick(track)}
 						onauxclick={(e) => handleMiddleClick(track, e)}
 						oncontextmenu={(e) => handleTrackContextMenu(track, e)}
-						draggable={libraryStore.selectedTrackIds.has(track.id)}
+						draggable={true}
 						ondragstart={(e) => handleDragStart(e, track)}
 					>
 						<div class="col col-status">
