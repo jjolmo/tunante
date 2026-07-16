@@ -163,7 +163,10 @@ class LibraryStore {
 			this._activeQuery = '';
 		} else {
 			this._searchFilterTimeout = setTimeout(() => {
-				this._activeQuery = query;
+				// Guard anti-stale: solo aplicar si el input sigue siendo este query.
+				// Si no, un timeout rezagado dejaba el filtro activo con el buscador
+				// vacío (lista en 0 y "no hay filtros" aparente).
+				if (this.searchQuery === query) this._activeQuery = query;
 			}, 150);
 		}
 

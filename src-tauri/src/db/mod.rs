@@ -351,6 +351,16 @@ impl Database {
         playlist_id: &str,
         track_id: &str,
     ) -> Result<(), DbError> {
+        // Ignorar si la pista ya esta en la playlist (evita duplicados).
+        let exists: bool = self.conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM playlist_tracks WHERE playlist_id = ?1 AND track_id = ?2)",
+            params![playlist_id, track_id],
+            |row| row.get(0),
+        )?;
+        if exists {
+            return Ok(());
+        }
+
         let position: i64 = self
             .conn
             .query_row(

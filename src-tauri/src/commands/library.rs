@@ -987,6 +987,37 @@ fn path_to_file_uri(path: &str) -> String {
 /// Open a file or folder in the system file manager on Linux.
 /// If `select_file` is true, tries to highlight the file in the file manager.
 #[cfg(target_os = "linux")]
+/// Lanza un programa del SISTEMA (xdg-open, dolphin, dbus-send, xdg-mime…) con el
+/// entorno saneado. El runtime del AppImage inyecta LD_LIBRARY_PATH y rutas de
+/// plugins (Qt/GTK) apuntando a las libs del propio AppImage; si el hijo las
+/// hereda, carga librerias equivocadas y falla. Por eso "abrir carpeta" funciona
+/// en dev/ejecutable pelado pero se rompe en el AppImage. Quitando esas variables
+/// el hijo usa las del sistema. (En dev no estan puestas, asi que es no-op.)
+#[cfg(target_os = "linux")]
+fn system_command(program: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    for var in [
+        "LD_LIBRARY_PATH",
+        "LD_PRELOAD",
+        "GDK_BACKEND",
+        "GTK_PATH",
+        "GIO_MODULE_DIR",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GDK_PIXBUF_MODULEDIR",
+        "QT_PLUGIN_PATH",
+        "QT_QPA_PLATFORM_PLUGIN_PATH",
+        "GSETTINGS_SCHEMA_DIR",
+        "GST_PLUGIN_SYSTEM_PATH",
+        "GST_PLUGIN_SYSTEM_PATH_1_0",
+        "PYTHONPATH",
+        "PERLLIB",
+    ] {
+        cmd.env_remove(var);
+    }
+    cmd
+}
+
+#[cfg(target_os = "linux")]
 fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
     let target = PathBuf::from(path);
     let folder = if select_file {
@@ -1003,7 +1034,7 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
     // ever opening a window, so trusting that success left "open containing folder"
     // doing nothing on KDE/Cinnamon setups that use Nemo. For those we skip ShowItems
     // and just open the containing folder (Nemo has no CLI file-select flag anyway).
-    let default_fm = std::process::Command::new("xdg-mime")
+    let default_fm = system_command("xdg-mime")
         .args(["query", "default", "inode/directory"])
         .output()
         .ok()
@@ -1014,7 +1045,7 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
         && (default_fm.contains("dolphin") || default_fm.contains("nautilus") || default_fm.is_empty())
     {
         let uri = path_to_file_uri(path);
-        let status = std::process::Command::new("dbus-send")
+        let status = system_command("dbus-send")
             .args([
                 "--session",
                 "--print-reply",
@@ -1024,7 +1055,6 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
             ])
             .arg(format!("array:string:{}", uri))
             .arg("string:")
-            .env_remove("GDK_BACKEND")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
@@ -1041,10 +1071,9 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
     // explicit --new-window (xdg-open would reuse a background tab); everything else goes
     // through xdg-open, which respects the default handler (Nemo, Nautilus, Thunar, Caja…).
     if default_fm.contains("dolphin") {
-        if std::process::Command::new("dolphin")
+        if system_command("dolphin")
             .arg("--new-window")
             .arg(folder)
-            .env_remove("GDK_BACKEND")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
@@ -1055,9 +1084,8 @@ fn linux_open_path(path: &str, select_file: bool) -> Result<(), String> {
         }
     }
 
-    match std::process::Command::new("xdg-open")
+    match system_command("xdg-open")
         .arg(folder)
-        .env_remove("GDK_BACKEND")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
