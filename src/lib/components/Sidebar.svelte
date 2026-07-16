@@ -3,6 +3,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
+	import { trackDnd } from '$lib/stores/trackDnd.svelte';
 	import { consolesStore, CODEC_TO_CONSOLE, CONSOLE_DEFINITIONS } from '$lib/stores/consoles.svelte';
 	import { filesStore } from '$lib/stores/files.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
@@ -346,6 +347,7 @@
 		dragOverPlaylistId = null;
 		const data = e.dataTransfer?.getData('application/x-tunante-tracks');
 		if (data) {
+			trackDnd.committed = true; // el drop del DOM funcionó (macOS/Windows): que dragend no duplique
 			const trackIds: string[] = JSON.parse(data);
 			await playlistsStore.addTracksToPlaylist(playlistId, trackIds);
 		}
@@ -369,12 +371,25 @@
 		dragOverCreatePlaylist = false;
 		const data = e.dataTransfer?.getData('application/x-tunante-tracks');
 		if (data) {
+			trackDnd.committed = true; // idem: evita el doble commit en dragend
 			const trackIds: string[] = JSON.parse(data);
 			pendingCreateTrackIds = trackIds;
 			showNewPlaylistInput = true;
 			newPlaylistName = '';
 		}
 	}
+
+	// Linux/WebKitGTK: TrackList resuelve el destino en `dragend` (sin `drop` del
+	// DOM) y, si es la cabecera, pide crear playlist por este canal.
+	$effect(() => {
+		const ids = trackDnd.createRequest;
+		if (ids) {
+			pendingCreateTrackIds = ids;
+			showNewPlaylistInput = true;
+			newPlaylistName = '';
+			trackDnd.createRequest = null;
+		}
+	});
 
 	// Playlist reorder drag handlers
 	function handlePlaylistReorderDragStart(e: DragEvent, playlistId: string) {
@@ -538,7 +553,8 @@
 		<div class="sidebar-section">
 			<div
 				class="section-header"
-				class:drag-over-create={dragOverCreatePlaylist}
+				class:drag-over-create={dragOverCreatePlaylist || trackDnd.hoverCreate}
+				data-drop-create
 				ondragover={handleSectionDragOver}
 				ondragleave={handleSectionDragLeave}
 				ondrop={handleSectionDrop}
@@ -580,9 +596,10 @@
 					<button
 						class="sidebar-item"
 						class:active={playlistsStore.activePlaylistId === playlist.id}
-						class:drag-over={dragOverPlaylistId === playlist.id}
+						class:drag-over={dragOverPlaylistId === playlist.id || trackDnd.hoverPlaylistId === playlist.id}
 						class:reorder-over={reorderDragOverId === playlist.id}
 						class:dragging={draggingPlaylistId === playlist.id}
+						data-drop-playlist={playlist.id}
 						draggable="true"
 						onclick={() => handleSelectPlaylist(playlist.id)}
 						ondblclick={() => handlePlayPlaylist(playlist.id)}

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
+	import { trackDnd } from '$lib/stores/trackDnd.svelte';
 	import { consolesStore } from '$lib/stores/consoles.svelte';
 	import { filesStore } from '$lib/stores/files.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
@@ -24,7 +25,6 @@
 	let contextMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
 
 	// Drag state
-	let dragImageEl: HTMLDivElement | undefined = $state();
 
 	// Metadata dialog state
 	let metadataDialogTracks = $state<Track[]>([]);
@@ -39,9 +39,15 @@
 	let dragOverColId = $state<string | null>(null);
 
 	let tracks = $derived.by(() => {
+		// Leer las fuentes pequeñas INCONDICIONALMENTE para que el derived registre
+		// siempre la dependencia. Con la lectura condicional dentro del ternario,
+		// cuando playlistTracks se cargaba async el derived no se re-ejecutaba y la
+		// lista quedaba vacía. (console/folder tracks siguen condicionales por coste.)
+		const favedTracks = playlistsStore.favedTracks;
+		const playlistTracks = playlistsStore.playlistTracks;
 		let result =
-			playlistsStore.isFavedView ? playlistsStore.favedTracks :
-			playlistsStore.activePlaylistId ? playlistsStore.playlistTracks :
+			playlistsStore.isFavedView ? favedTracks :
+			playlistsStore.activePlaylistId ? playlistTracks :
 			consolesStore.activeConsoleId ? consolesStore.consoleTracks :
 			filesStore.activeFolder ? filesStore.folderTracks :
 			libraryStore.filteredTracks;
@@ -87,6 +93,27 @@
 			});
 		}
 		return result;
+	});
+
+	// Al cambiar de vista (playlist/consola/carpeta/all/faved) limpiamos la
+	// búsqueda: un query residual (que además se persiste) filtraba p.ej. una
+	// playlist a CERO resultados y parecía "vacía". No se limpia en el primer
+	// render, para respetar la búsqueda restaurada al arrancar.
+	let _lastViewKey = '__init__';
+	$effect(() => {
+		const key = playlistsStore.isFavedView
+			? 'faved'
+			: playlistsStore.activePlaylistId
+				? `pl:${playlistsStore.activePlaylistId}`
+				: consolesStore.activeConsoleId
+					? `con:${consolesStore.activeConsoleId}`
+					: filesStore.activeFolder
+						? `fold:${filesStore.activeFolder}`
+						: 'all';
+		if (_lastViewKey !== '__init__' && key !== _lastViewKey) {
+			libraryStore.setSearchQuery('');
+		}
+		_lastViewKey = key;
 	});
 
 	let visibleColumns = $derived(libraryStore.visibleColumns);
@@ -155,6 +182,7 @@
 	}
 
 	function handleTrackClick(track: Track, event: MouseEvent, idx: number) {
+		if (suppressClick) { suppressClick = false; return; } // veníamos de arrastrar
 		libraryStore.selectTrack(track.id, event.ctrlKey || event.metaKey, event.shiftKey, idx, tracks);
 	}
 
@@ -370,23 +398,82 @@
 	}
 
 
-	// Drag to playlist
-	function handleDragStart(e: DragEvent, track: Track) {
-		if (!libraryStore.selectedTrackIds.has(track.id)) {
-			libraryStore.selectTrack(track.id);
-		}
-		const ids = [...libraryStore.selectedTrackIds];
-		e.dataTransfer!.setData('application/x-tunante-tracks', JSON.stringify(ids));
-		e.dataTransfer!.effectAllowed = 'copy';
+	// --- Arrastrar pistas a playlists (por eventos de PUNTERO) ---
+	// HTML5 drag-and-drop no es fiable en Tauri/WebKitGTK (con dragDropEnabled:true
+	// el `drop`/`dragover` del DOM no disparan y las coords de `drag` vienen a 0).
+	// Usamos mousedown/mousemove/mouseup, que no dependen de HTML5 DnD y conviven
+	// con el file-drop nativo de carpetas (onDragDropEvent). Ver trackDnd store.
+	const DRAG_THRESHOLD = 5; // px antes de considerar que es un arrastre (no un clic)
+	let pointerDrag: { startX: number; startY: number; ids: string[]; active: boolean } | null = null;
+	let suppressClick = false;
+	let badgeVisible = $state(false);
+	let badgeX = $state(0);
+	let badgeY = $state(0);
+	let badgeCount = $state(0);
 
-		if (dragImageEl) {
-			dragImageEl.textContent = `♫ ${ids.length} track${ids.length > 1 ? 's' : ''}`;
-			dragImageEl.style.display = 'block';
-			e.dataTransfer!.setDragImage(dragImageEl, 0, 0);
-			requestAnimationFrame(() => {
-				if (dragImageEl) dragImageEl.style.display = 'none';
-			});
+	function resolveDropTarget(x: number, y: number) {
+		const el = document.elementFromPoint(x, y) as HTMLElement | null;
+		return {
+			playlistId: el?.closest('[data-drop-playlist]')?.getAttribute('data-drop-playlist') ?? null,
+			create: !!el?.closest('[data-drop-create]')
+		};
+	}
+
+	function handleRowMouseDown(e: MouseEvent, track: Track) {
+		if (e.button !== 0) return; // solo botón izquierdo
+		// Si la fila ya está seleccionada, arrastramos toda la selección; si no,
+		// solo esa pista (sin cambiar la selección todavía; eso pasa en el clic).
+		const ids = libraryStore.selectedTrackIds.has(track.id)
+			? [...libraryStore.selectedTrackIds]
+			: [track.id];
+		pointerDrag = { startX: e.clientX, startY: e.clientY, ids, active: false };
+		window.addEventListener('mousemove', handleWindowMouseMove);
+		window.addEventListener('mouseup', handleWindowMouseUp);
+	}
+
+	function handleWindowMouseMove(e: MouseEvent) {
+		if (!pointerDrag) return;
+		if (!pointerDrag.active) {
+			const dx = e.clientX - pointerDrag.startX;
+			const dy = e.clientY - pointerDrag.startY;
+			if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+			// Umbral superado: empieza el arrastre real.
+			pointerDrag.active = true;
+			trackDnd.active = true;
+			trackDnd.ids = pointerDrag.ids;
+			badgeCount = pointerDrag.ids.length;
+			badgeVisible = true;
+			document.body.style.userSelect = 'none';
 		}
+		badgeX = e.clientX;
+		badgeY = e.clientY;
+		const { playlistId, create } = resolveDropTarget(e.clientX, e.clientY);
+		trackDnd.hoverPlaylistId = playlistId;
+		trackDnd.hoverCreate = create;
+	}
+
+	function handleWindowMouseUp(e: MouseEvent) {
+		window.removeEventListener('mousemove', handleWindowMouseMove);
+		window.removeEventListener('mouseup', handleWindowMouseUp);
+		const pd = pointerDrag;
+		pointerDrag = null;
+		if (!pd || !pd.active) return; // fue un clic, no un arrastre
+
+		const { playlistId, create } = resolveDropTarget(e.clientX, e.clientY);
+		if (playlistId) {
+			playlistsStore.addTracksToPlaylist(playlistId, pd.ids);
+		} else if (create) {
+			trackDnd.createRequest = [...pd.ids];
+		}
+
+		// Limpieza + suprimir el clic que se dispara tras el mouseup.
+		trackDnd.active = false;
+		trackDnd.hoverPlaylistId = null;
+		trackDnd.hoverCreate = false;
+		badgeVisible = false;
+		document.body.style.userSelect = '';
+		suppressClick = true;
+		setTimeout(() => { suppressClick = false; }, 50);
 	}
 
 	$effect(() => {
@@ -470,7 +557,7 @@
 	<div class="tracklist-body" bind:this={container} onscroll={handleScroll}>
 		<div style="height: {totalHeight}px; position: relative;">
 			<div style="transform: translateY({offsetY}px);">
-				{#each visibleTracks as track, i (track.id)}
+				{#each visibleTracks as track, i (startIndex + i)}
 					{@const idx = startIndex + i}
 					<button
 						class="track-row"
@@ -480,8 +567,7 @@
 						ondblclick={() => handleTrackDblClick(track)}
 						onauxclick={(e) => handleMiddleClick(track, e)}
 						oncontextmenu={(e) => handleTrackContextMenu(track, e)}
-						draggable={true}
-						ondragstart={(e) => handleDragStart(e, track)}
+						onmousedown={(e) => handleRowMouseDown(e, track)}
 					>
 						<div class="col col-status">
 							{#if playerStore.currentTrack?.id === track.id && playerStore.isPlaying}
@@ -512,8 +598,12 @@
 		</div>
 	{/if}
 
-	<!-- Drag image element (hidden) -->
-	<div class="drag-image" bind:this={dragImageEl}></div>
+	<!-- Badge flotante durante el arrastre por puntero -->
+	{#if badgeVisible}
+		<div class="pointer-drag-badge" style="left: {badgeX + 12}px; top: {badgeY + 8}px;">
+			♫ {badgeCount} track{badgeCount > 1 ? 's' : ''}
+		</div>
+	{/if}
 </div>
 
 {#if contextMenu}
@@ -682,11 +772,8 @@
 		margin-top: 8px;
 	}
 
-	.drag-image {
+	.pointer-drag-badge {
 		position: fixed;
-		top: -100px;
-		left: -100px;
-		display: none;
 		background-color: var(--color-accent);
 		color: white;
 		padding: 4px 10px;
