@@ -209,6 +209,12 @@ class PlayerStore {
 		}
 	}
 
+	/** Remove every track from the user queue. */
+	async clearQueue() {
+		if (this.userQueue.length === 0) return;
+		await this.dequeueTracks(this.userQueue.map((t) => t.id));
+	}
+
 	async loadQueue() {
 		try {
 			this.userQueue = await invoke<Track[]>('get_queue');

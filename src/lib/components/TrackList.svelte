@@ -45,12 +45,29 @@
 		// lista quedaba vacía. (console/folder tracks siguen condicionales por coste.)
 		const favedTracks = playlistsStore.favedTracks;
 		const playlistTracks = playlistsStore.playlistTracks;
+		const queuedTracks = playerStore.userQueue;
 		let result =
+			playlistsStore.isQueuedView ? queuedTracks :
 			playlistsStore.isFavedView ? favedTracks :
 			playlistsStore.activePlaylistId ? playlistTracks :
 			consolesStore.activeConsoleId ? consolesStore.consoleTracks :
 			filesStore.activeFolder ? filesStore.folderTracks :
 			libraryStore.filteredTracks;
+
+		// The queue is an explicit, ordered user intent: show it exactly as it is.
+		// No short-track filter (it would desync the count from the sidebar) and
+		// no sorting (that would destroy the play order the view exists to show).
+		if (playlistsStore.isQueuedView) {
+			const q = libraryStore.activeSearchQuery.trim().toLowerCase();
+			return q
+				? result.filter(
+						(t) =>
+							t.title.toLowerCase().includes(q) ||
+							t.artist.toLowerCase().includes(q) ||
+							t.album.toLowerCase().includes(q)
+					)
+				: result;
+		}
 
 		// Apply short track filter to non-library views (library view already filters in filteredTracks)
 		const isLibraryView = result === libraryStore.filteredTracks;
@@ -101,7 +118,9 @@
 	// render, para respetar la búsqueda restaurada al arrancar.
 	let _lastViewKey = '__init__';
 	$effect(() => {
-		const key = playlistsStore.isFavedView
+		const key = playlistsStore.isQueuedView
+			? 'queued'
+			: playlistsStore.isFavedView
 			? 'faved'
 			: playlistsStore.activePlaylistId
 				? `pl:${playlistsStore.activePlaylistId}`
@@ -529,6 +548,9 @@
 		<div class="col col-status">
 			<svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 15,8 3,15"/></svg>
 		</div>
+		{#if playlistsStore.isQueuedView}
+			<div class="col col-order" title="Queue order">#</div>
+		{/if}
 		<!-- Column headers use custom mouse-based drag instead of HTML5 Drag & Drop
 		     because Tauri's native drag handler intercepts DOM drag events on macOS. -->
 		{#each visibleColumns as col (col.id)}
@@ -576,6 +598,11 @@
 								<span class="queue-pos">{playerStore.queuePosition(track.id)}</span>
 							{/if}
 						</div>
+						{#if playlistsStore.isQueuedView}
+							<!-- Real queue position, not the row index: the list can be
+							     search-filtered and the order must stay truthful. -->
+							<div class="col col-order">{playerStore.queuePosition(track.id)}</div>
+						{/if}
 						{#each visibleColumns as col (col.id)}
 							<div class="col" style={getColumnStyle(col)}>
 								<span class="cell-text" title={getCellValue(track, col)}>{getCellValue(track, col)}</span>
@@ -736,6 +763,23 @@
 	}
 
 	.tracklist-header .col-status {
+		color: var(--color-text-muted);
+	}
+
+	/* Queue order column: only rendered in the Queued view. */
+	.col-order {
+		width: 34px;
+		min-width: 34px;
+		text-align: right;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		flex-shrink: 0;
+		padding: 0 6px 0 4px;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.tracklist-header .col-order {
 		color: var(--color-text-muted);
 	}
 

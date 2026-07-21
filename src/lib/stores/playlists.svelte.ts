@@ -6,6 +6,10 @@ class PlaylistsStore {
 	activePlaylistId = $state<string | null>(null);
 	playlistTracks = $state<Track[]>([]);
 	isFavedView = $state(false);
+	// Transient view showing the user queue in its play order. Not persisted as
+	// session_view: the queue drains as tracks play, so restoring it on startup
+	// would land on an empty view.
+	isQueuedView = $state(false);
 	favedTracks = $state<Track[]>([]);
 	scanningPlaylistId = $state<string | null>(null);
 
@@ -27,6 +31,7 @@ class PlaylistsStore {
 
 	async selectPlaylist(id: string | null) {
 		this.isFavedView = false;
+		this.isQueuedView = false;
 		this.activePlaylistId = id;
 		if (id) {
 			try {
@@ -44,8 +49,16 @@ class PlaylistsStore {
 	async selectFaved() {
 		this.activePlaylistId = null;
 		this.playlistTracks = [];
+		this.isQueuedView = false;
 		this.isFavedView = true;
 		await this.loadFavedTracks();
+	}
+
+	selectQueued() {
+		this.activePlaylistId = null;
+		this.playlistTracks = [];
+		this.isFavedView = false;
+		this.isQueuedView = true;
 	}
 
 	async loadFavedTracks() {
@@ -132,6 +145,7 @@ class PlaylistsStore {
 
 	selectAllTracks() {
 		this.isFavedView = false;
+		this.isQueuedView = false;
 		this.activePlaylistId = null;
 		this.playlistTracks = [];
 	}
