@@ -256,6 +256,25 @@
 		invoke('set_setting', { key: 'session_view_id', value: '' }).catch(() => {});
 	}
 
+	function handleSelectQueued() {
+		consolesStore.selectConsole(null);
+		filesStore.selectFolder(null);
+		playlistsStore.selectQueued();
+	}
+
+	function handleClearQueue() {
+		playerStore.clearQueue();
+	}
+
+	// The Queued entry only exists while the queue has items. When it drains
+	// (tracks played, or cleared) fall back to All Tracks so we never sit on a
+	// view whose sidebar entry has disappeared.
+	$effect(() => {
+		if (playlistsStore.isQueuedView && playerStore.userQueue.length === 0) {
+			handleSelectAllTracks();
+		}
+	});
+
 	async function handleCreatePlaylist() {
 		if (pendingCreateTrackIds.length > 0) {
 			await handleCreatePlaylistWithTracks();
@@ -475,7 +494,7 @@
 	<div class="sidebar-content">
 		<button
 			class="sidebar-item"
-			class:active={playlistsStore.activePlaylistId === null && !playlistsStore.isFavedView && consolesStore.activeConsoleId === null && filesStore.activeFolder === null}
+			class:active={playlistsStore.activePlaylistId === null && !playlistsStore.isFavedView && !playlistsStore.isQueuedView && consolesStore.activeConsoleId === null && filesStore.activeFolder === null}
 			onclick={handleSelectAllTracks}
 			ondblclick={handlePlayAllTracks}
 		>
@@ -487,6 +506,34 @@
 			<span>All Tracks</span>
 			<span class="track-count">{libraryStore.tracks.length}</span>
 		</button>
+
+		{#if playerStore.userQueue.length > 0}
+			<!-- Wrapper so the clear button can sit inside the row without nesting
+			     a <button> inside the .sidebar-item <button> (invalid HTML). -->
+			<div class="queued-row">
+				<button
+					class="sidebar-item queued-item"
+					class:active={playlistsStore.isQueuedView}
+					onclick={handleSelectQueued}
+				>
+					<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+						<path d="M2 3h9v1H2V3zm0 3h9v1H2V6zm0 3h5v1H2V9zm10.5-3.5L16 8l-3.5 2.5v-5z" />
+					</svg>
+					<span>Queued</span>
+					<span class="track-count">{playerStore.userQueue.length}</span>
+				</button>
+				<button
+					class="icon-btn small clear-queue-btn"
+					onclick={handleClearQueue}
+					title="Clear queue"
+					aria-label="Clear queue"
+				>
+					<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+						<path d="M8 7.06L3.53 2.59 2.47 3.65 6.94 8.12l-4.47 4.47 1.06 1.06L8 9.18l4.47 4.47 1.06-1.06-4.47-4.47 4.47-4.47-1.06-1.06L8 7.06z" />
+					</svg>
+				</button>
+			</div>
+		{/if}
 
 		{#if settingsStore.showFaved}
 		<button
@@ -803,6 +850,27 @@
 		margin-left: auto;
 		color: var(--color-text-muted);
 		font-size: 11px;
+	}
+
+	/* The clear button overlays the right edge of the row so the underlying
+	   .sidebar-item keeps its full-width hover/active highlight. */
+	.queued-row {
+		position: relative;
+	}
+
+	.queued-item {
+		padding-right: 32px;
+	}
+
+	.clear-queue-btn {
+		position: absolute;
+		right: 8px;
+		top: 50%;
+		transform: translateY(-50%);
+	}
+
+	.clear-queue-btn:hover {
+		color: var(--color-accent);
 	}
 
 	.sidebar-item .folder-name {
