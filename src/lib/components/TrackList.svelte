@@ -101,10 +101,10 @@
 				if (typeof va === 'number' && typeof vb === 'number') {
 					cmp = (va - vb) * dir;
 				} else {
-					cmp = String(va).localeCompare(String(vb)) * dir;
+					cmp = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
 				}
 				if (cmp === 0 && column !== 'path') {
-					return (a.path ?? '').localeCompare(b.path ?? '');
+					return (a.path ?? '').localeCompare(b.path ?? '', undefined, { numeric: true, sensitivity: 'base' });
 				}
 				return cmp;
 			});
