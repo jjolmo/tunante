@@ -246,8 +246,8 @@ function buildTree(rootPath: string, dirCounts: Map<string, number>): FolderNode
 	const nodeMap = new Map<string, FolderNode>();
 	nodeMap.set(rootPath, root);
 
-	// Sort directories so parents come before children
-	childDirs.sort();
+	// Sort directories so parents come before children (natural order for siblings)
+	childDirs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
 
 	for (const dir of childDirs) {
 		if (dir === rootPath) {

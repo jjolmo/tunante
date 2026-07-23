@@ -99,12 +99,12 @@ class LibraryStore {
 			if (typeof va === 'number' && typeof vb === 'number') {
 				cmp = (va - vb) * dir;
 			} else {
-				cmp = String(va).localeCompare(String(vb)) * dir;
+				cmp = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
 			}
 			// Secondary sort: when primary values are equal, sort by path
 			// so tracks within the same album/artist stay in filesystem order
 			if (cmp === 0 && column !== 'path') {
-				return (a.path ?? '').localeCompare(b.path ?? '');
+				return (a.path ?? '').localeCompare(b.path ?? '', undefined, { numeric: true, sensitivity: 'base' });
 			}
 			return cmp;
 		});
