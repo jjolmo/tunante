@@ -37,6 +37,18 @@ class LibraryStore {
 	shortFilterEnabled = $state(false);
 	shortFilterThresholdSec = $state(3);
 
+	/**
+	 * The rows TrackList is actually showing: active view (faved / playlist /
+	 * console / folder / all) with its filters AND its sort applied.
+	 *
+	 * `filteredTracks` is library-wide and knows nothing about the active view,
+	 * so anything that needs "what the user is looking at" — above all the queue
+	 * context for auto-advance — must read THIS, not filteredTracks. Using the
+	 * latter from inside e.g. the Faved view queues the whole library in library
+	 * order, and playback jumps somewhere else when the track ends.
+	 */
+	visibleTracks = $state<Track[]>([]);
+
 	private _searchSaveTimeout: ReturnType<typeof setTimeout> | null = null;
 	private _searchFilterTimeout: ReturnType<typeof setTimeout> | null = null;
 
