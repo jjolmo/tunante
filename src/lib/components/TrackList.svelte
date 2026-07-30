@@ -112,6 +112,14 @@
 		return result;
 	});
 
+	// Publicar la lista visible para quien la necesite fuera de este componente
+	// (p.ej. el boton Play de PlayerControls, que montaba el contexto de la cola
+	// con filteredTracks — biblioteca entera — y rompia el auto-avance en
+	// cualquier vista que no fuese All Tracks).
+	$effect(() => {
+		libraryStore.visibleTracks = tracks;
+	});
+
 	// Al cambiar de vista (playlist/consola/carpeta/all/faved) limpiamos la
 	// búsqueda: un query residual (que además se persiste) filtraba p.ej. una
 	// playlist a CERO resultados y parecía "vacía". No se limpia en el primer

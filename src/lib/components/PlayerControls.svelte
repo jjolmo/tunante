@@ -251,7 +251,14 @@
 					if (!playerStore.isPlaying && !playerStore.currentTrack) {
 						const selected = libraryStore.selectedTrack;
 						if (selected) {
-							const contextIds = libraryStore.filteredTracks.map((t) => t.id);
+							// La vista que el usuario tiene delante, no la biblioteca entera:
+							// filteredTracks ignora la vista activa (faved/playlist/consola/
+							// carpeta) y su orden, asi que la cola quedaba en orden de
+							// biblioteca y al acabar la pista saltaba a otra cualquiera.
+							const view = libraryStore.visibleTracks.length
+								? libraryStore.visibleTracks
+								: libraryStore.filteredTracks;
+							const contextIds = view.map((t) => t.id);
 							playerStore.playTrack(selected, contextIds);
 							return;
 						}
