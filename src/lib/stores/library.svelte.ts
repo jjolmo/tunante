@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { Track, SortConfig, ScanProgress, ColumnDef } from '$lib/types';
 import { formatDuration, formatFileSize } from '$lib/types';
+import { normalizeForSearch, trackMatchesSearch } from '$lib/utils/search';
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: 'title', label: 'Title', field: 'title', flex: 3, minWidth: '150px', align: 'left', sortable: true, visible: true },
@@ -93,14 +94,9 @@ class LibraryStore {
 			result = result.filter((t) => t.duration_ms >= thresholdMs);
 		}
 
-		if (query.trim()) {
-			const q = query.toLowerCase();
-			result = result.filter(
-				(t) =>
-					t.title.toLowerCase().includes(q) ||
-					t.artist.toLowerCase().includes(q) ||
-					t.album.toLowerCase().includes(q)
-			);
+		const q = normalizeForSearch(query);
+		if (q) {
+			result = result.filter((t) => trackMatchesSearch(t, q));
 		}
 
 		const dir = direction === 'asc' ? 1 : -1;
