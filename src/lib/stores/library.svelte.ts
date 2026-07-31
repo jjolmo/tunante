@@ -3,6 +3,7 @@ import { listen } from '@tauri-apps/api/event';
 import type { Track, SortConfig, ScanProgress, ColumnDef } from '$lib/types';
 import { formatDuration, formatFileSize } from '$lib/types';
 import { normalizeForSearch, trackMatchesSearch } from '$lib/utils/search';
+import { sortTracks } from '$lib/utils/sort';
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: 'title', label: 'Title', field: 'title', flex: 3, minWidth: '150px', align: 'left', sortable: true, visible: true },
@@ -99,23 +100,7 @@ class LibraryStore {
 			result = result.filter((t) => trackMatchesSearch(t, q));
 		}
 
-		const dir = direction === 'asc' ? 1 : -1;
-		result = [...result].sort((a, b) => {
-			const va = a[column] ?? '';
-			const vb = b[column] ?? '';
-			let cmp: number;
-			if (typeof va === 'number' && typeof vb === 'number') {
-				cmp = (va - vb) * dir;
-			} else {
-				cmp = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
-			}
-			// Secondary sort: when primary values are equal, sort by path
-			// so tracks within the same album/artist stay in filesystem order
-			if (cmp === 0 && column !== 'path') {
-				return (a.path ?? '').localeCompare(b.path ?? '', undefined, { numeric: true, sensitivity: 'base' });
-			}
-			return cmp;
-		});
+		result = sortTracks(result, column, direction);
 
 		this._ftCache = result;
 		this._ftCacheKey = cacheKey;
