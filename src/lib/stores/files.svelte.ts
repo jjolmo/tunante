@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { libraryStore } from '$lib/stores/library.svelte';
 import { settingsStore } from '$lib/stores/settings.svelte';
 import type { Track } from '$lib/types';
+import { normalizeForSearch } from '$lib/utils/search';
 
 export interface FolderNode {
 	name: string;
@@ -60,12 +61,12 @@ class FilesStore {
 
 	// --- Derived: flat list of folders matching search query ---
 	get folderSearchResults(): FolderNode[] {
-		const q = this.folderSearch.trim().toLowerCase();
+		const q = normalizeForSearch(this.folderSearch);
 		if (!q) return [];
 		const results: FolderNode[] = [];
 		const collectMatches = (nodes: FolderNode[]) => {
 			for (const node of nodes) {
-				if (node.name.toLowerCase().includes(q)) {
+				if (normalizeForSearch(node.name).includes(q)) {
 					results.push(node);
 				}
 				collectMatches(node.children);

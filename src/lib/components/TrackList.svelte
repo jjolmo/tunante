@@ -6,6 +6,7 @@
 	import { filesStore } from '$lib/stores/files.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { formatDuration } from '$lib/types';
+	import { normalizeForSearch, trackMatchesSearch } from '$lib/utils/search';
 	import type { Track, SortColumn, ColumnDef } from '$lib/types';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
@@ -58,15 +59,8 @@
 		// No short-track filter (it would desync the count from the sidebar) and
 		// no sorting (that would destroy the play order the view exists to show).
 		if (playlistsStore.isQueuedView) {
-			const q = libraryStore.activeSearchQuery.trim().toLowerCase();
-			return q
-				? result.filter(
-						(t) =>
-							t.title.toLowerCase().includes(q) ||
-							t.artist.toLowerCase().includes(q) ||
-							t.album.toLowerCase().includes(q)
-					)
-				: result;
+			const q = normalizeForSearch(libraryStore.activeSearchQuery);
+			return q ? result.filter((t) => trackMatchesSearch(t, q)) : result;
 		}
 
 		// Apply short track filter to non-library views (library view already filters in filteredTracks)
@@ -80,14 +74,9 @@
 		// Console views are excluded because consoleTracks already derives from
 		// libraryStore.filteredTracks (search applied); folder views are NOT —
 		// folderTracks reads the unfiltered library, so search must run here.
-		if (libraryStore.activeSearchQuery.trim() && !consolesStore.activeConsoleId && !isLibraryView) {
-			const q = libraryStore.activeSearchQuery.toLowerCase();
-			result = result.filter(
-				(t) =>
-					t.title.toLowerCase().includes(q) ||
-					t.artist.toLowerCase().includes(q) ||
-					t.album.toLowerCase().includes(q)
-			);
+		if (!consolesStore.activeConsoleId && !isLibraryView) {
+			const q = normalizeForSearch(libraryStore.activeSearchQuery);
+			if (q) result = result.filter((t) => trackMatchesSearch(t, q));
 		}
 
 		// Apply sorting to non-library views (library view is already sorted in filteredTracks)
