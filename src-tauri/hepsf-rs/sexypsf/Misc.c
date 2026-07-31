@@ -52,36 +52,65 @@ typedef struct {
     u32 SavedS0;
 } PACKSTRUCT EXE_HEADER;
 
+/* Parse a PSF "length"/"fade" timestamp into milliseconds.
+ *
+ * Format is [[hh:]mm:]ss[.fff], and the part after the decimal point is a plain
+ * decimal fraction of a second — so its scale depends on how many digits were
+ * written: ".9" is 900ms, ".97" is 970ms, ".974" is 974ms.
+ *
+ * The original implementation instead read the fraction as a fixed count of
+ * tenths and multiplied the whole accumulator by 100 at the end, which only
+ * happens to be right for a single decimal digit. Two digits came out 10x too
+ * long, three (the usual mm:ss.mmm) 100x, and Shin Megami Tensei's six-digit
+ * "0:28.974162" turned 29 seconds into 27 hours — long enough that the track
+ * never faded out and seeking fast-forwarded through hours of emulation.
+ */
 static long TimeToMS(const char *str)
 {
-             int x,c=0;
-             int acc=0;
 	     char s[100];
+	     char *frac=0;
+	     char *fields[3];
+	     int nfields=0;
+	     int x;
+	     long ms=0, secs=0;
 
 	     strncpy(s,str,100);
 	     s[99]=0;
 
-             for(x=strlen(s);x>=0;x--)
-              if(s[x]=='.' || s[x]==',')
-              {
-               acc=atoi(s+x+1);
-               s[x]=0;
-              }
-              else if(s[x]==':')
-              {
-               if(c==0) acc+=atoi(s+x+1)*10;
-               else if(c==1) acc+=atoi(s+x+(x?1:0))*10*60;
-               c++;
-               s[x]=0;
-              }
-              else if(x==0)
+	     /* Split off the fractional part, if any. */
+	     for(x=0;s[x];x++)
+	      if(s[x]=='.' || s[x]==',')
 	      {
-               if(c==0) acc+=atoi(s+x)*10;
-               else if(c==1) acc+=atoi(s+x)*10*60;
-               else if(c==2) acc+=atoi(s+x)*10*60*60;
+	       s[x]=0;
+	       frac=s+x+1;
+	       break;
 	      }
-             acc*=100;  // To milliseconds.
-	    return(acc);
+
+	     /* Digits after the point: 100ms, 10ms, 1ms. Anything beyond
+		millisecond precision is truncated rather than accumulated. */
+	     if(frac)
+	     {
+	      long scale=100;
+	      for(x=0;frac[x]>='0' && frac[x]<='9' && scale>0;x++)
+	      {
+	       ms+=(frac[x]-'0')*scale;
+	       scale/=10;
+	      }
+	     }
+
+	     /* Split the integer part on ':' — at most hh:mm:ss. */
+	     fields[nfields++]=s;
+	     for(x=0;s[x];x++)
+	      if(s[x]==':')
+	      {
+	       s[x]=0;
+	       if(nfields<3) fields[nfields++]=s+x+1;
+	      }
+
+	     for(x=0;x<nfields;x++)
+	      secs=secs*60+atoi(fields[x]);
+
+	    return(secs*1000+ms);
 }
 
 char *GetFileWithBase(char *f, char *newfile)
