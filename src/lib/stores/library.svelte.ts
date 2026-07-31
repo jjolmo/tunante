@@ -57,8 +57,20 @@ class LibraryStore {
 	// Memoization cache for filteredTracks — avoids creating a new sorted
 	// 16k-element array on every getter access (which caused OOM after
 	// several folder switches in Files view).
+	//
+	// Validity is the source array's identity plus every setting the result depends on.
+	// Identity is the part that matters: the key used to include `tracks.length`, which
+	// missed any change that kept the count the same — rating a track mutates it in
+	// place and reassigns the array, so with the list sorted by rating the row never
+	// moved. Svelte 5 hands out a stable proxy per array and a fresh one on reassign,
+	// so `===` catches exactly the changes that need a recompute.
+	//
+	// The invariant this rests on: anything mutating a track must reassign
+	// `this.tracks` (`this.tracks = [...this.tracks]`), which every mutation site
+	// already does — an in-place mutation with no reassign would go unnoticed.
 	private _ftCache: Track[] = [];
 	private _ftCacheKey = '';
+	private _ftCacheSource: Track[] | null = null;
 
 	/** The debounced search query actually used for filtering */
 	get activeSearchQuery(): string {
@@ -82,8 +94,8 @@ class LibraryStore {
 		const sfEnabled = this.shortFilterEnabled;
 		const sfThreshold = this.shortFilterThresholdSec;
 
-		const cacheKey = `${tracks.length}:${query}:${column}:${direction}:${sfEnabled}:${sfThreshold}`;
-		if (cacheKey === this._ftCacheKey && this._ftCache.length > 0) {
+		const cacheKey = `${query}:${column}:${direction}:${sfEnabled}:${sfThreshold}`;
+		if (this._ftCacheSource === tracks && cacheKey === this._ftCacheKey) {
 			return this._ftCache;
 		}
 
@@ -104,6 +116,7 @@ class LibraryStore {
 
 		this._ftCache = result;
 		this._ftCacheKey = cacheKey;
+		this._ftCacheSource = tracks;
 		return result;
 	}
 
@@ -176,7 +189,6 @@ class LibraryStore {
 
 	async setShortFilterEnabled(enabled: boolean) {
 		this.shortFilterEnabled = enabled;
-		this._ftCacheKey = '';
 		try {
 			await invoke('set_setting', { key: 'short_filter_enabled', value: String(enabled) });
 			await invoke('set_short_filter', { enabled, thresholdSec: this.shortFilterThresholdSec });
@@ -185,7 +197,6 @@ class LibraryStore {
 
 	async setShortFilterThreshold(seconds: number) {
 		this.shortFilterThresholdSec = seconds;
-		this._ftCacheKey = '';
 		try {
 			await invoke('set_setting', { key: 'short_filter_threshold_sec', value: String(seconds) });
 			await invoke('set_short_filter', { enabled: this.shortFilterEnabled, thresholdSec: seconds });
@@ -206,8 +217,6 @@ class LibraryStore {
 	async loadTracks() {
 		try {
 			this.tracks = await invoke<Track[]>('get_all_tracks');
-			// Invalidate filteredTracks cache
-			this._ftCacheKey = '';
 			// Notify listeners (filesStore tree rebuild, etc.)
 			for (const cb of this._onTracksLoaded) cb();
 		} catch (e) {
