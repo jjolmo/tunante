@@ -14,6 +14,17 @@ pub(crate) struct PlaybackErrorPayload {
 
 const FADE_TICK_MS: u64 = 25;
 
+/// Whether a play request should cross-fade rather than start immediately.
+///
+/// A fade is a *transition*: the outgoing track ramps down and the incoming one ramps up
+/// to meet it. That only makes sense when something is currently audible. Starting
+/// playback from stopped, picking a track after the previous one ended, or choosing one
+/// while paused have nothing to fade out of, and the fade-in half on its own is just an
+/// unrequested ramp on a track the user asked to start.
+fn should_fade(fade_enabled: bool, fade_seconds: f32, is_playing: bool) -> bool {
+    fade_enabled && fade_seconds > 0.0 && is_playing
+}
+
 /// Play a file, optionally with a fade-out of the current track and a fade-in
 /// of the new one. The fade is performed entirely in Rust without touching the
 /// user-visible volume, so the UI volume slider stays at its current value.
@@ -42,17 +53,15 @@ pub fn play_with_fade_opts(
     track_for_event: Option<Track>,
     force_fade: bool,
 ) {
-    let (cfg_fade, fade_seconds, has_source) = {
+    let (cfg_fade, fade_seconds, is_playing) = {
         let audio = state.audio.lock();
         (
             audio.fade_on_track_change(),
             audio.fade_seconds(),
-            audio.has_source(),
+            audio.is_playing(),
         )
     };
-    let fade_enabled = force_fade || cfg_fade;
-
-    if !fade_enabled || fade_seconds <= 0.0 {
+    if !should_fade(force_fade || cfg_fade, fade_seconds, is_playing) {
         let mut audio = state.audio.lock();
         match audio.play_file(&PathBuf::from(&path), duration_hint_ms) {
             Ok(()) => {
@@ -87,16 +96,15 @@ pub fn play_with_fade_opts(
             state.audio.lock().fade_generation() == gen_id
         };
 
-        if has_source {
-            for i in 1..=steps {
-                if !is_current(generation) {
-                    return;
-                }
-                let factor = 1.0 - (i as f32 / steps as f32);
-                let user_vol = state.audio.lock().volume();
-                state.audio.lock().set_player_volume_raw(user_vol * factor);
-                std::thread::sleep(tick);
+        // Fade the outgoing track out. Reaching here means something was audible.
+        for i in 1..=steps {
+            if !is_current(generation) {
+                return;
             }
+            let factor = 1.0 - (i as f32 / steps as f32);
+            let user_vol = state.audio.lock().volume();
+            state.audio.lock().set_player_volume_raw(user_vol * factor);
+            std::thread::sleep(tick);
         }
 
         if !is_current(generation) {
@@ -403,4 +411,37 @@ pub fn set_audio_output(
         .set_output_selection(sel)
         .map_err(|e| e.to_string())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_fade;
+
+    /// The fade setting is "fade out / fade in **on track change**". Pressing play from a
+    /// stopped player is not a track change, so it must start at full volume. This used to
+    /// fade in regardless: the gate was `has_source`, which skipped only the fade-*out*
+    /// half, leaving every cold start with an unrequested ramp-up.
+    #[test]
+    fn cold_start_does_not_fade() {
+        assert!(
+            !should_fade(true, 2.0, false),
+            "starting playback with nothing audible must not fade in"
+        );
+        // Same story once a track has ended, or while paused — `is_playing` covers both,
+        // and neither has anything to fade out of.
+    }
+
+    /// Swapping tracks mid-playback is the case the option exists for.
+    #[test]
+    fn track_change_while_playing_fades() {
+        assert!(should_fade(true, 2.0, true));
+    }
+
+    /// Turning the option off, or setting the duration to zero, disables it either way.
+    #[test]
+    fn disabled_or_zero_duration_never_fades() {
+        assert!(!should_fade(false, 2.0, true));
+        assert!(!should_fade(true, 0.0, true));
+        assert!(!should_fade(true, -1.0, true));
+    }
 }
