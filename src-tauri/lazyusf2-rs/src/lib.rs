@@ -78,47 +78,77 @@ unsafe extern "C" fn psf_fopen(_context: *mut c_void, path: *const c_char) -> *m
         return handle as *mut c_void;
     }
 
-    // Search parent directories for .usflib files
     let path_str = match CStr::from_ptr(path).to_str() {
         Ok(s) => s,
         Err(_) => return std::ptr::null_mut(),
     };
-
-    let p = std::path::Path::new(path_str);
-    let filename = match p.file_name() {
-        Some(f) => f,
+    let resolved = match resolve_lib_path(std::path::Path::new(path_str)) {
+        Some(p) => p,
         None => return std::ptr::null_mut(),
     };
+    let c_candidate = match CString::new(resolved.to_string_lossy().as_bytes()) {
+        Ok(c) => c,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    libc::fopen(c_candidate.as_ptr(), mode) as *mut c_void
+}
 
-    let fname_str = filename.to_string_lossy();
-    let is_lib = fname_str.ends_with("lib")
-        || fname_str.ends_with(".usflib");
-
-    if !is_lib {
-        return std::ptr::null_mut();
+/// Locate the `.usflib` a miniusf's `_lib` tag points at when the literal path misses.
+///
+/// The tag is a filename baked in at rip time and drifts from disk in ways that are
+/// harmless on case-insensitive filesystems and fatal on Linux: different case, the lib
+/// living in a parent directory, or the tag naming a different region's lib than the one
+/// shipped. Only ever applied to library files — a missing miniusf stays a hard error.
+fn resolve_lib_path(requested: &std::path::Path) -> Option<std::path::PathBuf> {
+    let filename = requested.file_name()?.to_string_lossy().to_string();
+    if !filename.to_lowercase().ends_with("lib") {
+        return None;
     }
+    let dir = requested.parent()?;
 
-    if let Some(mut dir) = p.parent() {
-        for _ in 0..5 {
-            dir = match dir.parent() {
-                Some(d) => d,
-                None => break,
-            };
-            let candidate = dir.join(filename);
-            if candidate.exists() {
-                let c_candidate = match CString::new(candidate.to_string_lossy().as_bytes()) {
-                    Ok(c) => c,
-                    Err(_) => break,
-                };
-                let h = libc::fopen(c_candidate.as_ptr(), mode);
-                if !h.is_null() {
-                    return h as *mut c_void;
-                }
-            }
+    // Case-insensitive match, in the containing directory then up to 5 parents.
+    let mut search = Some(dir);
+    for _ in 0..6 {
+        let d = match search {
+            Some(d) => d,
+            None => break,
+        };
+        if let Some(hit) = find_ci(d, &filename) {
+            return Some(hit);
         }
+        search = d.parent();
     }
 
-    std::ptr::null_mut()
+    // Tag names a lib that isn't here at all. If the folder holds exactly one library
+    // file it's unambiguous — anything else, refuse to guess.
+    let ext = std::path::Path::new(&filename)
+        .extension()?
+        .to_string_lossy()
+        .to_lowercase();
+    let mut libs = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .map(|e| e.to_string_lossy().to_lowercase() == ext)
+                .unwrap_or(false)
+        });
+    let only = libs.next()?;
+    if libs.next().is_some() {
+        return None;
+    }
+    Some(only)
+}
+
+/// Case-insensitive filename lookup within a single directory.
+fn find_ci(dir: &std::path::Path, filename: &str) -> Option<std::path::PathBuf> {
+    let target = filename.to_lowercase();
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().to_lowercase() == target)
+        .map(|e| e.path())
 }
 
 unsafe extern "C" fn psf_fread(

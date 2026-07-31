@@ -56,7 +56,7 @@ type PsfInfoCallback =
     Option<unsafe extern "C" fn(*mut c_void, *const libc::c_char, *const libc::c_char) -> libc::c_int>;
 type PsfStatusCallback = Option<unsafe extern "C" fn(*mut c_void, *const libc::c_char)>;
 
-// File I/O callbacks (same as lazygsf-rs but with parent directory search)
+// File I/O callbacks (same as lazygsf-rs but with library lookup fallbacks)
 unsafe extern "C" fn psf_fopen(_context: *mut c_void, path: *const libc::c_char) -> *mut c_void {
     let mode = b"rb\0".as_ptr() as *const libc::c_char;
     let handle = libc::fopen(path, mode);
@@ -64,40 +64,83 @@ unsafe extern "C" fn psf_fopen(_context: *mut c_void, path: *const libc::c_char)
         return handle as *mut c_void;
     }
 
-    // Search parent directories for .gsflib files
     let path_str = match std::ffi::CStr::from_ptr(path).to_str() {
         Ok(s) => s,
         Err(_) => return std::ptr::null_mut(),
     };
-    let p = std::path::Path::new(path_str);
-    let filename = match p.file_name() {
-        Some(f) => f,
+    let resolved = match resolve_lib_path(std::path::Path::new(path_str)) {
+        Some(p) => p,
         None => return std::ptr::null_mut(),
     };
-    let fname_str = filename.to_string_lossy();
-    if !fname_str.ends_with("lib") && !fname_str.ends_with(".gsflib") {
-        return std::ptr::null_mut();
+    let c = match CString::new(resolved.to_string_lossy().as_bytes()) {
+        Ok(c) => c,
+        Err(_) => return std::ptr::null_mut(),
+    };
+    libc::fopen(c.as_ptr(), mode) as *mut c_void
+}
+
+/// Locate the `.gsflib` a minigsf's `_lib` tag points at when the literal path misses.
+///
+/// The tag is just a filename string baked into the set at rip time, so it drifts from
+/// what's actually on disk in three ways we can recover from — all harmless on
+/// case-insensitive filesystems, all fatal on Linux:
+///
+///   1. Case drift: the tag says `AGB-A3UJ-JPN.gsflib`, the file is `agb-a3uj-jpn.gsflib`.
+///   2. The lib sits in a parent directory (minigsfs sorted into subfolders).
+///   3. The tag names a different region's lib than the one shipped (e.g. `-JPN` on disk,
+///      `-EUR` in the tag). Only resolvable by picking the folder's lone library file.
+///
+/// Only ever applied to library files — a missing minigsf must stay a hard error.
+fn resolve_lib_path(requested: &std::path::Path) -> Option<std::path::PathBuf> {
+    let filename = requested.file_name()?.to_string_lossy().to_string();
+    if !filename.to_lowercase().ends_with("lib") {
+        return None;
     }
-    if let Some(mut dir) = p.parent() {
-        for _ in 0..5 {
-            dir = match dir.parent() {
-                Some(d) => d,
-                None => break,
-            };
-            let candidate = dir.join(filename);
-            if candidate.exists() {
-                let c = match CString::new(candidate.to_string_lossy().as_bytes()) {
-                    Ok(c) => c,
-                    Err(_) => break,
-                };
-                let h = libc::fopen(c.as_ptr(), mode);
-                if !h.is_null() {
-                    return h as *mut c_void;
-                }
-            }
+    let dir = requested.parent()?;
+
+    // 1 + 2: case-insensitive match, in the containing directory then up to 5 parents.
+    let mut search = Some(dir);
+    for _ in 0..6 {
+        let d = match search {
+            Some(d) => d,
+            None => break,
+        };
+        if let Some(hit) = find_ci(d, &filename) {
+            return Some(hit);
         }
+        search = d.parent();
     }
-    std::ptr::null_mut()
+
+    // 3: the tag names a lib that simply isn't here. If the folder holds exactly one
+    // library file, it's unambiguous — anything else, refuse to guess.
+    let ext = std::path::Path::new(&filename)
+        .extension()?
+        .to_string_lossy()
+        .to_lowercase();
+    let mut libs = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .map(|e| e.to_string_lossy().to_lowercase() == ext)
+                .unwrap_or(false)
+        });
+    let only = libs.next()?;
+    if libs.next().is_some() {
+        return None;
+    }
+    Some(only)
+}
+
+/// Case-insensitive filename lookup within a single directory.
+fn find_ci(dir: &std::path::Path, filename: &str) -> Option<std::path::PathBuf> {
+    let target = filename.to_lowercase();
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .find(|e| e.file_name().to_string_lossy().to_lowercase() == target)
+        .map(|e| e.path())
 }
 
 unsafe extern "C" fn psf_fread(buf: *mut c_void, size: usize, count: usize, handle: *mut c_void) -> usize {
