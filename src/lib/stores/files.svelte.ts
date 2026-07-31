@@ -3,6 +3,7 @@ import { libraryStore } from '$lib/stores/library.svelte';
 import { settingsStore } from '$lib/stores/settings.svelte';
 import type { Track } from '$lib/types';
 import { normalizeForSearch } from '$lib/utils/search';
+import { compareText } from '$lib/utils/sort';
 
 export interface FolderNode {
 	name: string;
@@ -248,7 +249,7 @@ function buildTree(rootPath: string, dirCounts: Map<string, number>): FolderNode
 	nodeMap.set(rootPath, root);
 
 	// Sort directories so parents come before children (natural order for siblings)
-	childDirs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+	childDirs.sort(compareText);
 
 	for (const dir of childDirs) {
 		if (dir === rootPath) {

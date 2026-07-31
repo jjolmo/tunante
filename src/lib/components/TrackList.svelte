@@ -7,6 +7,7 @@
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { formatDuration } from '$lib/types';
 	import { normalizeForSearch, trackMatchesSearch } from '$lib/utils/search';
+	import { sortTracks } from '$lib/utils/sort';
 	import type { Track, SortColumn, ColumnDef } from '$lib/types';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
@@ -82,21 +83,7 @@
 		// Apply sorting to non-library views (library view is already sorted in filteredTracks)
 		if (!isLibraryView) {
 			const { column, direction } = libraryStore.sortConfig;
-			const dir = direction === 'asc' ? 1 : -1;
-			result = [...result].sort((a, b) => {
-				const va = a[column] ?? '';
-				const vb = b[column] ?? '';
-				let cmp: number;
-				if (typeof va === 'number' && typeof vb === 'number') {
-					cmp = (va - vb) * dir;
-				} else {
-					cmp = String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' }) * dir;
-				}
-				if (cmp === 0 && column !== 'path') {
-					return (a.path ?? '').localeCompare(b.path ?? '', undefined, { numeric: true, sensitivity: 'base' });
-				}
-				return cmp;
-			});
+			result = sortTracks(result, column, direction);
 		}
 		return result;
 	});
