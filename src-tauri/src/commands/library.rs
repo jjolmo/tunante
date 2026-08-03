@@ -2,7 +2,8 @@ use crate::audio::vgm_path::parse_vgm_path;
 use crate::db::models::Track;
 use crate::metadata;
 use crate::AppState;
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use walkdir::WalkDir;
@@ -213,13 +214,89 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
         }
     }
 
+    let pruned = prune_missing_tracks(state, path, total);
+
     let elapsed = start_time.elapsed();
     log::info!(
-        "Scan complete: {} — {} tracks inserted, {} errors, took {:.1}s",
-        path, inserted, errors, elapsed.as_secs_f64()
+        "Scan complete: {} — {} tracks inserted, {} pruned, {} errors, took {:.1}s",
+        path, inserted, pruned, errors, elapsed.as_secs_f64()
     );
 
     let _ = app.emit("scan-complete", ());
+}
+
+/// Drop tracks under `path` whose file is gone, so moved or deleted folders stop
+/// leaving unplayable rows behind. Returns how many were removed.
+///
+/// `files_found` is the number of audio files the walk just turned up; when it is
+/// zero the prune is skipped entirely. An unmounted drive looks exactly like a
+/// folder whose files were all deleted, and wiping the library on a missing mount
+/// would be far worse than leaving a few stale rows.
+fn prune_missing_tracks(state: &Arc<AppState>, path: &str, files_found: usize) -> usize {
+    if files_found == 0 {
+        log::warn!(
+            "Scan found no audio files in {} — skipping orphan prune (missing mount?)",
+            path
+        );
+        return 0;
+    }
+
+    let known = {
+        let db = state.db.lock();
+        match db.get_track_paths_under(path) {
+            Ok(paths) => paths,
+            Err(e) => {
+                log::error!("Failed to list tracks under {} for pruning: {}", path, e);
+                return 0;
+            }
+        }
+    };
+
+    // Subtunes of one file share a base path ("foo.nsf#0", "foo.nsf#1"), so the
+    // existence check is cached per base path — otherwise a chiptune-heavy
+    // library would stat the same file hundreds of times.
+    let mut exists: HashMap<&str, bool> = HashMap::new();
+    let mut orphans: Vec<String> = Vec::new();
+
+    for track_path in &known {
+        let (base, _) = parse_vgm_path(track_path);
+        let present = *exists
+            .entry(base)
+            .or_insert_with(|| Path::new(base).exists());
+        if !present {
+            orphans.push(track_path.clone());
+        }
+    }
+
+    if orphans.is_empty() {
+        return 0;
+    }
+
+    // A half-mounted or still-syncing network folder looks like a huge deletion.
+    // Refusing to prune past half the folder keeps that from emptying the
+    // library; a genuinely large deletion still clears via a full rescan.
+    if orphans.len() * 2 > known.len() {
+        log::warn!(
+            "Skipping orphan prune under {}: {} of {} tracks appear missing, \
+             which looks like an unavailable folder rather than a deletion",
+            path,
+            orphans.len(),
+            known.len()
+        );
+        return 0;
+    }
+
+    let db = state.db.lock();
+    match db.remove_tracks_by_paths(&orphans) {
+        Ok(n) => {
+            log::info!("Pruned {} tracks with missing files under {}", n, path);
+            n
+        }
+        Err(e) => {
+            log::error!("Failed to prune missing tracks under {}: {}", path, e);
+            0
+        }
+    }
 }
 
 #[tauri::command]

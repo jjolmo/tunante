@@ -829,4 +829,63 @@ impl Database {
         )?;
         Ok(())
     }
+
+    /// Every track path stored under `folder_path`, including `#N` subtune paths.
+    pub fn get_track_paths_under(&self, folder_path: &str) -> Result<Vec<String>, DbError> {
+        let prefix = if folder_path.ends_with('/') {
+            folder_path.to_string()
+        } else {
+            format!("{}/", folder_path)
+        };
+
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM tracks WHERE path LIKE ?1")?;
+        let paths = stmt
+            .query_map(params![format!("{}%", prefix)], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(paths)
+    }
+
+    /// Remove the tracks stored at exactly these paths.
+    ///
+    /// `tracks_fts` is an external-content FTS5 index, so its rows have to be
+    /// deleted explicitly and *before* the tracks themselves — otherwise the
+    /// index keeps pointing at rowids that have been reused, and searches start
+    /// returning unrelated tracks.
+    pub fn remove_tracks_by_paths(&self, paths: &[String]) -> Result<usize, DbError> {
+        let mut deleted = 0usize;
+
+        for chunk in paths.chunks(400) {
+            let placeholders = std::iter::repeat("?")
+                .take(chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+
+            self.conn.execute(
+                &format!(
+                    "DELETE FROM tracks_fts WHERE rowid IN \
+                     (SELECT rowid FROM tracks WHERE path IN ({}))",
+                    placeholders
+                ),
+                rusqlite::params_from_iter(chunk.iter()),
+            )?;
+
+            self.conn.execute(
+                &format!(
+                    "DELETE FROM playlist_tracks WHERE track_id IN \
+                     (SELECT id FROM tracks WHERE path IN ({}))",
+                    placeholders
+                ),
+                rusqlite::params_from_iter(chunk.iter()),
+            )?;
+
+            deleted += self.conn.execute(
+                &format!("DELETE FROM tracks WHERE path IN ({})", placeholders),
+                rusqlite::params_from_iter(chunk.iter()),
+            )?;
+        }
+
+        Ok(deleted)
+    }
 }
