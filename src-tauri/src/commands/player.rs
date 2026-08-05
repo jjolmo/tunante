@@ -422,6 +422,7 @@ pub fn set_audio_output(
 pub struct DspConfig {
     pub mono: bool,
     pub mono_compensate: bool,
+    pub mono_phase_safe: bool,
     pub balance: f32,
     pub width_enabled: bool,
     pub width: f32,
@@ -444,6 +445,7 @@ pub fn set_dsp_config(config: DspConfig, state: State<'_, Arc<AppState>>) -> Res
     let dsp = audio.dsp();
     dsp.mono.set(config.mono);
     dsp.mono_compensate.set(config.mono_compensate);
+    dsp.mono_phase_safe.set(config.mono_phase_safe);
     dsp.balance.set(config.balance.clamp(-1.0, 1.0));
     dsp.width_enabled.set(config.width_enabled);
     dsp.width.set(config.width.clamp(0.0, 2.0));
@@ -465,6 +467,7 @@ pub fn get_dsp_config(state: State<'_, Arc<AppState>>) -> Result<DspConfig, Stri
     Ok(DspConfig {
         mono: dsp.mono.get(),
         mono_compensate: dsp.mono_compensate.get(),
+        mono_phase_safe: dsp.mono_phase_safe.get(),
         balance: dsp.balance.get(),
         width_enabled: dsp.width_enabled.get(),
         width: dsp.width.get(),
