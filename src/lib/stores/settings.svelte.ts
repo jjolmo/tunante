@@ -532,6 +532,17 @@ class SettingsStore {
 	async resetDsp() {
 		await this.applyDsp(defaultDspConfig());
 	}
+
+	/**
+	 * Put a single knob back to its default.
+	 *
+	 * Dragging a slider back to exactly its neutral value is fiddly, and a
+	 * balance left a few percent off centre silently defeats the mono downmix
+	 * (balance runs after mono in the chain), which reads as "mono is broken".
+	 */
+	async resetDspKey<K extends keyof DspConfig>(key: K) {
+		await this.applyDsp({ [key]: defaultDspConfig()[key] } as Partial<DspConfig>);
+	}
 }
 
 export const settingsStore = new SettingsStore();
