@@ -464,6 +464,36 @@ mod tests {
         assert_eq!(out[1], 0.0, "right channel must be silent");
     }
 
+    /// Balance sits *after* the downmix on purpose, so a mono signal can still be
+    /// panned. The cost is that an off-centre balance re-splits what mono just
+    /// collapsed, and mono then reads as broken — even a 15% offset makes every
+    /// frame uneven. Pinned here because it's a deliberate trade-off, not a bug,
+    /// and the settings panel warns about it.
+    #[test]
+    fn balance_after_mono_re_splits_the_downmix() {
+        let settings = DspSettings::default();
+        settings.mono.set(true);
+
+        let input = vec![1.0f32, 0.0]; // hard-left content
+        let centred = drain(DspSource::new(
+            TestSource::new(input.clone(), 2),
+            settings.build_chain(),
+        ));
+        assert_eq!(centred, vec![0.5, 0.5], "mono alone must centre the signal");
+
+        // A slider left slightly off centre is enough to undo it.
+        settings.balance.set(-0.15);
+        let offset = drain(DspSource::new(
+            TestSource::new(input, 2),
+            settings.build_chain(),
+        ));
+        assert!(
+            (offset[0] - offset[1]).abs() > 1e-3,
+            "expected balance to re-split the downmix, got {offset:?}"
+        );
+        assert_eq!(offset[0], 0.5, "the left side keeps unity gain");
+    }
+
     #[test]
     fn width_zero_equals_mono() {
         let settings = DspSettings::default();

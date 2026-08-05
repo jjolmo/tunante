@@ -1,23 +1,80 @@
 <script lang="ts">
-	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { settingsStore, type DspConfig } from '$lib/stores/settings.svelte';
 
 	const dsp = $derived(settingsStore.dsp);
+
+	/**
+	 * Balance sits *after* the mono downmix in the chain, so an off-centre balance
+	 * re-splits what mono just collapsed. That is intentional — it lets you pan a
+	 * mono signal — but a slider left a few percent off centre makes mono look
+	 * completely broken, so say so instead of letting it be a puzzle.
+	 */
+	const monoDefeatedByBalance = $derived(dsp.mono && dsp.balance !== 0);
 
 	function fmtDb(v: number) {
 		return `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`;
 	}
 
 	function fmtBalance(v: number) {
-		if (Math.abs(v) < 0.005) return 'Centre';
-		const side = v < 0 ? 'L' : 'R';
-		return `${side} ${Math.round(Math.abs(v) * 100)}%`;
+		if (v === 0) return 'Centre';
+		return `${v < 0 ? 'L' : 'R'} ${Math.round(Math.abs(v) * 100)}%`;
 	}
 
 	function fmtWidth(v: number) {
-		if (Math.abs(v) < 0.005) return 'Mono';
+		if (v === 0) return 'Mono';
 		return `${Math.round(v * 100)}%`;
 	}
+
+	interface SliderProps {
+		label: string;
+		key: keyof DspConfig;
+		min: number;
+		max: number;
+		step: number;
+		format: (v: number) => string;
+		disabled?: boolean;
+		desc?: string;
+	}
 </script>
+
+{#snippet slider(p: SliderProps)}
+	<div class="setting-row slider-row" class:disabled={p.disabled}>
+		<div class="setting-text">
+			<span class="setting-label">{p.label}</span>
+			{#if p.desc}<span class="setting-desc">{p.desc}</span>{/if}
+		</div>
+		<div class="slider-group">
+			<input
+				type="range"
+				min={p.min}
+				max={p.max}
+				step={p.step}
+				value={dsp[p.key] as number}
+				disabled={p.disabled}
+				oninput={(e) =>
+					settingsStore.applyDsp({
+						[p.key]: parseFloat((e.target as HTMLInputElement).value)
+					} as Partial<DspConfig>)}
+				ondblclick={() => settingsStore.resetDspKey(p.key)}
+				title="Double-click to reset"
+			/>
+			<span class="slider-value">{p.format(dsp[p.key] as number)}</span>
+			<button
+				class="reset-knob"
+				disabled={p.disabled}
+				onclick={() => settingsStore.resetDspKey(p.key)}
+				title="Reset to default"
+				aria-label="Reset {p.label}"
+			>
+				<svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+					<path
+						d="M8 3a5 5 0 104.546 2.914l-.94.437A4 4 0 118 4v2.5l3-2.75L8 1v2z"
+					/>
+				</svg>
+			</button>
+		</div>
+	</div>
+{/snippet}
 
 <div class="settings-section">
 	<h3 class="section-title">DSP</h3>
@@ -42,24 +99,27 @@
 		</div>
 	</label>
 
-	<div class="setting-row slider-row">
-		<div class="setting-text">
-			<span class="setting-label">Balance</span>
-			<span class="setting-desc">Pans between left and right. Attenuates only, never boosts.</span>
+	{#if monoDefeatedByBalance}
+		<div class="warn-row">
+			<span
+				>Balance is at <strong>{fmtBalance(dsp.balance)}</strong> and runs after the downmix,
+				so the output is still uneven. Centre it to hear true mono.</span
+			>
+			<button class="warn-btn" onclick={() => settingsStore.resetDspKey('balance')}
+				>Centre balance</button
+			>
 		</div>
-		<div class="slider-group">
-			<input
-				type="range"
-				min="-1"
-				max="1"
-				step="0.01"
-				value={dsp.balance}
-				oninput={(e) =>
-					settingsStore.applyDsp({ balance: parseFloat((e.target as HTMLInputElement).value) })}
-			/>
-			<span class="slider-value">{fmtBalance(dsp.balance)}</span>
-		</div>
-	</div>
+	{/if}
+
+	{@render slider({
+		label: 'Balance',
+		key: 'balance',
+		min: -1,
+		max: 1,
+		step: 0.01,
+		format: fmtBalance,
+		desc: 'Pans between left and right. Attenuates only, never boosts.'
+	})}
 
 	<label class="setting-row">
 		<input
@@ -77,22 +137,15 @@
 		</div>
 	</label>
 
-	<div class="setting-row slider-row" class:disabled={!dsp.width_enabled}>
-		<span class="slider-label">Width</span>
-		<div class="slider-group">
-			<input
-				type="range"
-				min="0"
-				max="2"
-				step="0.01"
-				value={dsp.width}
-				disabled={!dsp.width_enabled}
-				oninput={(e) =>
-					settingsStore.applyDsp({ width: parseFloat((e.target as HTMLInputElement).value) })}
-			/>
-			<span class="slider-value">{fmtWidth(dsp.width)}</span>
-		</div>
-	</div>
+	{@render slider({
+		label: 'Width',
+		key: 'width',
+		min: 0,
+		max: 2,
+		step: 0.01,
+		format: fmtWidth,
+		disabled: !dsp.width_enabled
+	})}
 
 	<label class="setting-row">
 		<input
@@ -103,30 +156,39 @@
 		/>
 		<div class="setting-text">
 			<span class="setting-label">Equalizer</span>
-			<span class="setting-desc">Three bands: low shelf at 200 Hz, peak at 1 kHz, high shelf at 4 kHz.</span>
+			<span class="setting-desc"
+				>Three bands: low shelf at 200 Hz, peak at 1 kHz, high shelf at 4 kHz.</span
+			>
 		</div>
 	</label>
 
-	{#each [{ key: 'eq_low_db' as const, label: 'Bass (200 Hz)' }, { key: 'eq_mid_db' as const, label: 'Mid (1 kHz)' }, { key: 'eq_high_db' as const, label: 'Treble (4 kHz)' }] as band}
-		<div class="setting-row slider-row" class:disabled={!dsp.eq_enabled}>
-			<span class="slider-label">{band.label}</span>
-			<div class="slider-group">
-				<input
-					type="range"
-					min="-20"
-					max="20"
-					step="0.5"
-					value={dsp[band.key]}
-					disabled={!dsp.eq_enabled}
-					oninput={(e) =>
-						settingsStore.applyDsp({
-							[band.key]: parseFloat((e.target as HTMLInputElement).value)
-						})}
-				/>
-				<span class="slider-value">{fmtDb(dsp[band.key])}</span>
-			</div>
-		</div>
-	{/each}
+	{@render slider({
+		label: 'Bass (200 Hz)',
+		key: 'eq_low_db',
+		min: -20,
+		max: 20,
+		step: 0.5,
+		format: fmtDb,
+		disabled: !dsp.eq_enabled
+	})}
+	{@render slider({
+		label: 'Mid (1 kHz)',
+		key: 'eq_mid_db',
+		min: -20,
+		max: 20,
+		step: 0.5,
+		format: fmtDb,
+		disabled: !dsp.eq_enabled
+	})}
+	{@render slider({
+		label: 'Treble (4 kHz)',
+		key: 'eq_high_db',
+		min: -20,
+		max: 20,
+		step: 0.5,
+		format: fmtDb,
+		disabled: !dsp.eq_enabled
+	})}
 
 	<label class="setting-row">
 		<input
@@ -138,28 +200,22 @@
 		<div class="setting-text">
 			<span class="setting-label">Preamp</span>
 			<span class="setting-desc"
-				>Flat gain, to even out rips that sit at wildly different levels. Turn the limiter on
-				if you push this up.</span
+				>Flat gain, to even out rips that sit at wildly different levels. Summing a
+				hard-panned rip to mono can cost several dB, so this pairs well with it. Turn the
+				limiter on if you push it up.</span
 			>
 		</div>
 	</label>
 
-	<div class="setting-row slider-row" class:disabled={!dsp.preamp_enabled}>
-		<span class="slider-label">Gain</span>
-		<div class="slider-group">
-			<input
-				type="range"
-				min="-20"
-				max="20"
-				step="0.5"
-				value={dsp.preamp_db}
-				disabled={!dsp.preamp_enabled}
-				oninput={(e) =>
-					settingsStore.applyDsp({ preamp_db: parseFloat((e.target as HTMLInputElement).value) })}
-			/>
-			<span class="slider-value">{fmtDb(dsp.preamp_db)}</span>
-		</div>
-	</div>
+	{@render slider({
+		label: 'Gain',
+		key: 'preamp_db',
+		min: -20,
+		max: 20,
+		step: 0.5,
+		format: fmtDb,
+		disabled: !dsp.preamp_enabled
+	})}
 
 	<label class="setting-row">
 		<input
@@ -181,7 +237,8 @@
 	</div>
 
 	<p class="chain-note">
-		Chain order: equalizer → stereo width → mono → balance → preamp → limiter.
+		Chain order: equalizer → stereo width → mono → balance → preamp → limiter. Each slider resets
+		with its button or a double-click.
 	</p>
 </div>
 
@@ -260,11 +317,7 @@
 		justify-content: space-between;
 		align-items: center;
 		cursor: default;
-	}
-
-	.slider-label {
-		font-size: 13px;
-		color: var(--color-text-primary);
+		gap: 16px;
 	}
 
 	.slider-group {
@@ -275,7 +328,7 @@
 	}
 
 	.slider-group input[type='range'] {
-		width: 200px;
+		width: 190px;
 		accent-color: var(--color-accent);
 		cursor: pointer;
 	}
@@ -286,6 +339,57 @@
 		width: 64px;
 		text-align: right;
 		font-variant-numeric: tabular-nums;
+	}
+
+	.reset-knob {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 3px;
+		background: none;
+		border: none;
+		border-radius: 3px;
+		color: var(--color-text-secondary);
+		cursor: pointer;
+	}
+
+	.reset-knob:hover:not(:disabled) {
+		color: var(--color-text-primary);
+		background-color: var(--color-bg-hover);
+	}
+
+	.reset-knob:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.warn-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		margin: -10px 8px 0 36px;
+		padding: 8px 10px;
+		border-radius: 4px;
+		border: 1px solid var(--color-border);
+		background-color: var(--color-bg-secondary);
+		font-size: 11px;
+		color: var(--color-text-secondary);
+	}
+
+	.warn-btn {
+		flex-shrink: 0;
+		padding: 3px 10px;
+		background-color: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text-primary);
+		font-size: 11px;
+		cursor: pointer;
+	}
+
+	.warn-btn:hover {
+		background-color: var(--color-bg-hover);
 	}
 
 	.reset-btn {
