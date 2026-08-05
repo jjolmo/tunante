@@ -6,6 +6,7 @@ import { libraryStore } from '$lib/stores/library.svelte';
 /** Mirrors `DspConfig` in src-tauri/src/commands/player.rs. */
 export interface DspConfig {
 	mono: boolean;
+	mono_compensate: boolean;
 	balance: number;
 	width_enabled: boolean;
 	width: number;
@@ -21,6 +22,7 @@ export interface DspConfig {
 export function defaultDspConfig(): DspConfig {
 	return {
 		mono: false,
+		mono_compensate: true,
 		balance: 0,
 		width_enabled: false,
 		width: 1,

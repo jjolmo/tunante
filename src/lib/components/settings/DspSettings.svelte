@@ -99,6 +99,26 @@
 		</div>
 	</label>
 
+	<label class="setting-row sub-row" class:disabled={!dsp.mono}>
+		<input
+			type="checkbox"
+			checked={dsp.mono_compensate}
+			disabled={!dsp.mono}
+			onchange={(e) =>
+				settingsStore.applyDsp({ mono_compensate: (e.target as HTMLInputElement).checked })}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Compensate level</span>
+			<span class="setting-desc"
+				>Summing to mono costs level, and how much depends on the material: identical
+				channels lose nothing, independent ones lose 3 dB, and out-of-phase ones cancel and
+				lose more. SNES rips are a bad case — the SPC700's volume registers are signed, so
+				games pan voices out of phase, and Seiken Densetsu 3 measures at −4.6 to −6.8 dB.
+				This restores the gap so the downmix lands where the track was.</span
+			>
+		</div>
+	</label>
+
 	{#if monoDefeatedByBalance}
 		<div class="warn-row">
 			<span
@@ -309,6 +329,14 @@
 	}
 
 	.setting-row.disabled input[type='range'] {
+		cursor: not-allowed;
+	}
+
+	.sub-row {
+		margin-left: 28px;
+	}
+
+	.setting-row.disabled input[type='checkbox'] {
 		cursor: not-allowed;
 	}
 

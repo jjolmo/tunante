@@ -116,6 +116,9 @@ impl AtomicFlag {
 #[derive(Clone, Debug)]
 pub struct DspSettings {
     pub mono: AtomicFlag,
+    /// Restore the level a downmix costs. Off-phase material loses far more than
+    /// the textbook 3 dB, so without this mono reads as "quieter and thinner".
+    pub mono_compensate: AtomicFlag,
     /// -1.0 fully left … 0.0 centre … +1.0 fully right.
     pub balance: AtomicF32,
     pub width_enabled: AtomicFlag,
@@ -138,6 +141,7 @@ impl Default for DspSettings {
     fn default() -> Self {
         Self {
             mono: AtomicFlag::new(false),
+            mono_compensate: AtomicFlag::new(true),
             balance: AtomicF32::new(0.0),
             width_enabled: AtomicFlag::new(false),
             width: AtomicF32::new(1.0),
@@ -443,6 +447,7 @@ mod tests {
     fn mono_averages_rather_than_dropping_channels() {
         let settings = DspSettings::default();
         settings.mono.set(true);
+        settings.mono_compensate.set(false); // aqui se mide la suma cruda
         // rodio's own ChannelCountConverter would discard the right channel here;
         // we must get the average instead.
         let out = drain(DspSource::new(
@@ -473,6 +478,7 @@ mod tests {
     fn balance_after_mono_re_splits_the_downmix() {
         let settings = DspSettings::default();
         settings.mono.set(true);
+        settings.mono_compensate.set(false);
 
         let input = vec![1.0f32, 0.0]; // hard-left content
         let centred = drain(DspSource::new(
@@ -492,6 +498,69 @@ mod tests {
             "expected balance to re-split the downmix, got {offset:?}"
         );
         assert_eq!(offset[0], 0.5, "the left side keeps unity gain");
+    }
+
+    /// Anti-correlated channels lose the most to a downmix — measured at 4.6 to
+    /// 6.8 dB on real SNES rips, which use out-of-phase panning. The cancelled
+    /// content is gone for good, but the level must come back.
+    #[test]
+    fn mono_compensation_restores_the_level_lost_to_out_of_phase_content() {
+        // Two tones an octave apart, one inverted on the right: strongly
+        // anti-correlated, so the plain sum collapses.
+        let frames = 200_000;
+        let input: Vec<f32> = (0..frames)
+            .flat_map(|i| {
+                let a = (i as f32 * 0.05).sin() * 0.5;
+                let b = (i as f32 * 0.10).sin() * 0.5;
+                [a + b, -a + b]
+            })
+            .collect();
+
+        let rms = |v: &[f32]| (v.iter().map(|s| s * s).sum::<f32>() / v.len() as f32).sqrt();
+        let input_rms = rms(&input);
+
+        let raw = DspSettings::default();
+        raw.mono.set(true);
+        raw.mono_compensate.set(false);
+        let plain = drain(DspSource::new(
+            TestSource::new(input.clone(), 2),
+            raw.build_chain(),
+        ));
+
+        let compensated_settings = DspSettings::default();
+        compensated_settings.mono.set(true);
+        let compensated = drain(DspSource::new(
+            TestSource::new(input, 2),
+            compensated_settings.build_chain(),
+        ));
+
+        // Only the settled tail matters; the follower needs a moment to converge.
+        let tail = frames; // second half, in samples
+        let plain_rms = rms(&plain[tail..]);
+        let comp_rms = rms(&compensated[tail..]);
+
+        let plain_db = 20.0 * (plain_rms / input_rms).log10();
+        let comp_db = 20.0 * (comp_rms / input_rms).log10();
+        assert!(
+            plain_db < -2.0,
+            "expected the uncompensated sum to lose level, got {plain_db:.1} dB"
+        );
+        assert!(
+            comp_db.abs() < 1.0,
+            "compensated downmix should land within 1 dB of the source, got {comp_db:.1} dB"
+        );
+    }
+
+    /// Compensation must not resurrect silence into noise.
+    #[test]
+    fn mono_compensation_leaves_silence_alone() {
+        let settings = DspSettings::default();
+        settings.mono.set(true);
+        let out = drain(DspSource::new(
+            TestSource::new(vec![0.0; 20_000], 2),
+            settings.build_chain(),
+        ));
+        assert!(out.iter().all(|s| *s == 0.0), "silence gained a level");
     }
 
     #[test]
