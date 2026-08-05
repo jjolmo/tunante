@@ -413,6 +413,77 @@ pub fn set_audio_output(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// DSP chain
+// ---------------------------------------------------------------------------
+
+/// The whole DSP chain state, as sent to and from the UI.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct DspConfig {
+    pub mono: bool,
+    pub balance: f32,
+    pub width_enabled: bool,
+    pub width: f32,
+    pub preamp_enabled: bool,
+    pub preamp_db: f32,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
+    pub limiter: bool,
+}
+
+/// Apply a whole DSP configuration at once.
+///
+/// Every value goes into an atomic the audio thread reads per frame, so this
+/// takes effect on the track that is already playing — no restart, no gap.
+#[tauri::command]
+pub fn set_dsp_config(config: DspConfig, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    let audio = state.audio.lock();
+    let dsp = audio.dsp();
+    dsp.mono.set(config.mono);
+    dsp.balance.set(config.balance.clamp(-1.0, 1.0));
+    dsp.width_enabled.set(config.width_enabled);
+    dsp.width.set(config.width.clamp(0.0, 2.0));
+    dsp.preamp_enabled.set(config.preamp_enabled);
+    dsp.preamp_db.set(config.preamp_db.clamp(-20.0, 20.0));
+    dsp.eq_enabled.set(config.eq_enabled);
+    dsp.eq_low_db.set(config.eq_low_db.clamp(-20.0, 20.0));
+    dsp.eq_mid_db.set(config.eq_mid_db.clamp(-20.0, 20.0));
+    dsp.eq_high_db.set(config.eq_high_db.clamp(-20.0, 20.0));
+    dsp.limiter.set(config.limiter);
+    Ok(())
+}
+
+/// Read back the chain state, so the UI can't drift from the engine.
+#[tauri::command]
+pub fn get_dsp_config(state: State<'_, Arc<AppState>>) -> Result<DspConfig, String> {
+    let audio = state.audio.lock();
+    let dsp = audio.dsp();
+    Ok(DspConfig {
+        mono: dsp.mono.get(),
+        balance: dsp.balance.get(),
+        width_enabled: dsp.width_enabled.get(),
+        width: dsp.width.get(),
+        preamp_enabled: dsp.preamp_enabled.get(),
+        preamp_db: dsp.preamp_db.get(),
+        eq_enabled: dsp.eq_enabled.get(),
+        eq_low_db: dsp.eq_low_db.get(),
+        eq_mid_db: dsp.eq_mid_db.get(),
+        eq_high_db: dsp.eq_high_db.get(),
+        limiter: dsp.limiter.get(),
+    })
+}
+
+/// Ids of the processors, in chain order. Lets the UI list the chain without
+/// hardcoding an order that could drift from the engine's.
+#[tauri::command]
+pub fn list_dsp_processors() -> Vec<String> {
+    crate::audio::DspSettings::processor_ids()
+        .iter()
+        .map(|s| s.to_string())
+        .collect()}
+
 #[cfg(test)]
 mod tests {
     use super::should_fade;

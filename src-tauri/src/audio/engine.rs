@@ -1,3 +1,4 @@
+use super::dsp::{DspSettings, DspSource};
 use super::gme::GmeSource;
 use super::gsf::GsfSource;
 use super::opus::OggOpusSource;
@@ -206,6 +207,9 @@ pub struct AudioEngine {
     /// output can be rebuilt without losing what's playing.
     current_path: Option<String>,
     current_duration_hint: i64,
+    /// DSP parameters, shared with the audio thread through atomics so effects
+    /// can be changed mid-track without rebuilding the player.
+    dsp: DspSettings,
 }
 
 // Safety: AudioEngine is always accessed through a Mutex, ensuring single-threaded access.
@@ -243,11 +247,39 @@ impl AudioEngine {
             rebuild_flag,
             current_path: None,
             current_duration_hint: 0,
+            dsp: DspSettings::default(),
         })
     }
 
     pub fn play_file(&mut self, path: &Path, duration_hint_ms: i64) -> Result<(), AudioError> {
         self.play_file_at_volume(path, duration_hint_ms, self.volume)
+    }
+
+    /// The single point where a decoded source enters the player.
+    ///
+    /// Every format converges here, so the DSP chain is applied once and covers
+    /// all of them — there is no per-decoder wiring to keep in sync, and any
+    /// future effect only has to be added to [`DspSettings::build_chain`].
+    ///
+    /// The chain is always installed, even when every effect is off (it is then a
+    /// bit-exact passthrough costing one atomic load per processor per frame).
+    /// That is what lets the UI toggle effects *while a track plays*: deciding
+    /// here would mean rebuilding the player to apply a change, which cuts the
+    /// sound.
+    fn append_source<S>(&mut self, source: S)
+    where
+        S: Source + Send + 'static,
+    {
+        let duration = source.total_duration();
+        self.player
+            .append(DspSource::new(source, self.dsp.build_chain()));
+        self.player.play();
+        self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+    }
+
+    /// Shared handle to the DSP parameters, for the Tauri commands.
+    pub fn dsp(&self) -> &DspSettings {
+        &self.dsp
     }
 
     pub fn play_file_at_volume(
@@ -288,91 +320,57 @@ impl AudioEngine {
         if is_gme_format(ext) {
             // GME chiptune format (NSF, SPC, GBS, VGM, etc.)
             let track_index = sub_track.unwrap_or(0);
-            let source = GmeSource::new(actual_path, track_index, duration_hint_ms)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(
+                GmeSource::new(actual_path, track_index, duration_hint_ms)
+                    .map_err(|e| AudioError::DecoderError(e))?,
+            );
         } else if is_gsf_format(ext) {
             // GSF/minigsf format (GBA Sound Format via mGBA)
-            let source = GsfSource::new(actual_path)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(
+                GsfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
+            );
         } else if is_usf_format(ext) {
             // USF/miniusf format (N64 Sound Format via lazyusf2/Mupen64Plus)
-            let source = UsfSource::new(actual_path)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(
+                UsfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
+            );
         } else if is_twosf_format(ext) {
             // 2SF/mini2sf format (NDS Sound Format via DeSmuME)
-            let source = TwoSfSource::new(actual_path)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(
+                TwoSfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
+            );
         } else if is_psf2_format(ext) {
             // PSF2/minipsf2 format (PlayStation 2 Sound Format via Highly Experimental)
-            let source = Psf2Source::new(actual_path)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(
+                Psf2Source::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
+            );
         } else if is_psf_format(ext) {
             // PSF/minipsf format (PlayStation 1 Sound Format via sexypsf)
-            let source = PsfSource::new(actual_path)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(
+                PsfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
+            );
         } else if ext.eq_ignore_ascii_case("opus") {
             // Use our custom Opus decoder (symphonia doesn't support Opus)
             let file = BufReader::new(File::open(actual_path)?);
-            let source = OggOpusSource::new(file)
-                .map_err(|e| AudioError::DecoderError(e))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(OggOpusSource::new(file).map_err(|e| AudioError::DecoderError(e))?);
         } else if is_standard_format(ext) {
             // Standard symphonia decoder (MP3, FLAC, AAC, WAV, OGG, etc.)
             let file = File::open(actual_path)?;
-            let source = Decoder::try_from(file)
-                .map_err(|e| AudioError::DecoderError(e.to_string()))?;
-            let duration = source.total_duration();
-            self.player.append(source);
-            self.player.play();
-            self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+            self.append_source(
+                Decoder::try_from(file).map_err(|e| AudioError::DecoderError(e.to_string()))?,
+            );
         } else {
             // Try vgmstream for game audio formats (BCSTM, ADX, HCA, etc.)
             let subsong = sub_track.map(|s| s as i32).unwrap_or(0);
             match VgmstreamSource::new(actual_path, subsong) {
-                Ok(source) => {
-                    let duration = source.total_duration();
-                    self.player.append(source);
-                    self.player.play();
-                    self.current_duration_ms =
-                        duration.map(|d| d.as_millis() as u64).unwrap_or(0);
-                }
+                Ok(source) => self.append_source(source),
                 Err(_) => {
                     // Last resort: try symphonia decoder for unknown formats
                     let file = File::open(actual_path)?;
-                    let source = Decoder::try_from(file)
-                        .map_err(|e| AudioError::DecoderError(e.to_string()))?;
-                    let duration = source.total_duration();
-                    self.player.append(source);
-                    self.player.play();
-                    self.current_duration_ms =
-                        duration.map(|d| d.as_millis() as u64).unwrap_or(0);
+                    self.append_source(
+                        Decoder::try_from(file)
+                            .map_err(|e| AudioError::DecoderError(e.to_string()))?,
+                    );
                 }
             }
         }
