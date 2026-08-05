@@ -22,7 +22,13 @@
 	const engineSummary = $derived.by(() => {
 		if (!engine) return 'engine not responding';
 		const on: string[] = [];
-		if (engine.mono) on.push(engine.mono_compensate ? 'mono (compensated)' : 'mono');
+		if (engine.mono) {
+			const tags = [
+				engine.mono_compensate && 'compensated',
+				engine.mono_phase_safe && 'phase-safe'
+			].filter(Boolean);
+			on.push(tags.length ? `mono (${tags.join(', ')})` : 'mono');
+		}
 		if (engine.balance !== 0) on.push(`balance ${fmtBalance(engine.balance)}`);
 		if (engine.width_enabled && engine.width !== 1) on.push(`width ${fmtWidth(engine.width)}`);
 		if (
@@ -150,6 +156,28 @@
 				lose more. SNES rips are a bad case — the SPC700's volume registers are signed, so
 				games pan voices out of phase, and Seiken Densetsu 3 measures at −4.6 to −6.8 dB.
 				This restores the gap so the downmix lands where the track was.</span
+			>
+		</div>
+	</label>
+
+	<label class="setting-row sub-row" class:disabled={!dsp.mono}>
+		<input
+			type="checkbox"
+			checked={dsp.mono_phase_safe}
+			disabled={!dsp.mono}
+			onchange={(e) =>
+				settingsStore.applyDsp({ mono_phase_safe: (e.target as HTMLInputElement).checked })}
+		/>
+		<div class="setting-text">
+			<span class="setting-label">Phase-safe downmix</span>
+			<span class="setting-desc"
+				>Turn this on if instruments <em>disappear</em> when you go mono. A plain downmix
+				destroys anything that only exists as a difference between the channels — a drum
+				panned as +d left and −d right sums to exactly zero. This inverts the right channel
+				while the two are anti-phase so those parts reinforce instead of cancelling.
+				Measured on Seiken Densetsu 3 SPCs it recovers +2.2 to +5.9 dB of content. It is a
+				real alteration of the signal, not a neutral mix, which is why it is off by
+				default.</span
 			>
 		</div>
 	</label>

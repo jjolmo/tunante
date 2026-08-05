@@ -7,6 +7,7 @@ import { libraryStore } from '$lib/stores/library.svelte';
 export interface DspConfig {
 	mono: boolean;
 	mono_compensate: boolean;
+	mono_phase_safe: boolean;
 	balance: number;
 	width_enabled: boolean;
 	width: number;
@@ -23,6 +24,7 @@ export function defaultDspConfig(): DspConfig {
 	return {
 		mono: false,
 		mono_compensate: true,
+		mono_phase_safe: false,
 		balance: 0,
 		width_enabled: false,
 		width: 1,

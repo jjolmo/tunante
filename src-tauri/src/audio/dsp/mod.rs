@@ -119,6 +119,9 @@ pub struct DspSettings {
     /// Restore the level a downmix costs. Off-phase material loses far more than
     /// the textbook 3 dB, so without this mono reads as "quieter and thinner".
     pub mono_compensate: AtomicFlag,
+    /// Invert the right channel while the two are anti-phase, so content that
+    /// lives in their difference reinforces instead of cancelling.
+    pub mono_phase_safe: AtomicFlag,
     /// -1.0 fully left … 0.0 centre … +1.0 fully right.
     pub balance: AtomicF32,
     pub width_enabled: AtomicFlag,
@@ -142,6 +145,7 @@ impl Default for DspSettings {
         Self {
             mono: AtomicFlag::new(false),
             mono_compensate: AtomicFlag::new(true),
+            mono_phase_safe: AtomicFlag::new(false),
             balance: AtomicF32::new(0.0),
             width_enabled: AtomicFlag::new(false),
             width: AtomicF32::new(1.0),
@@ -549,6 +553,83 @@ mod tests {
             comp_db.abs() < 1.0,
             "compensated downmix should land within 1 dB of the source, got {comp_db:.1} dB"
         );
+    }
+
+    /// The case this exists for: a signal that is only in the *difference*
+    /// between the channels vanishes from a plain downmix. Phase-safe mode must
+    /// keep it.
+    #[test]
+    fn phase_safe_downmix_keeps_anti_phase_content() {
+        let frames = 300_000;
+        // Pure side signal: +d left, -d right. (L+R)/2 is exactly zero.
+        let input: Vec<f32> = (0..frames)
+            .flat_map(|i| {
+                let d = (i as f32 * 0.07).sin() * 0.5;
+                [d, -d]
+            })
+            .collect();
+
+        let rms = |v: &[f32]| (v.iter().map(|s| s * s).sum::<f32>() / v.len() as f32).sqrt();
+
+        let plain = DspSettings::default();
+        plain.mono.set(true);
+        plain.mono_compensate.set(false);
+        let without = drain(DspSource::new(
+            TestSource::new(input.clone(), 2),
+            plain.build_chain(),
+        ));
+        assert!(
+            rms(&without) < 1e-6,
+            "a plain downmix should cancel this signal completely"
+        );
+
+        let safe = DspSettings::default();
+        safe.mono.set(true);
+        safe.mono_compensate.set(false);
+        safe.mono_phase_safe.set(true);
+        let with = drain(DspSource::new(
+            TestSource::new(input.clone(), 2),
+            safe.build_chain(),
+        ));
+
+        // Judge the settled tail: the polarity crossfades in over ~200 ms.
+        let tail = &with[with.len() / 2..];
+        let expected = rms(&input);
+        let got = rms(tail);
+        assert!(
+            (got / expected - 1.0).abs() < 0.05,
+            "phase-safe downmix should recover the signal: got {got:.4}, expected {expected:.4}"
+        );
+    }
+
+    /// It must not damage material that is already in phase.
+    #[test]
+    fn phase_safe_downmix_leaves_in_phase_material_alone() {
+        let frames = 300_000;
+        let input: Vec<f32> = (0..frames)
+            .flat_map(|i| {
+                let v = (i as f32 * 0.07).sin() * 0.5;
+                [v, v] // identical channels
+            })
+            .collect();
+
+        let settings = DspSettings::default();
+        settings.mono.set(true);
+        settings.mono_compensate.set(false);
+        settings.mono_phase_safe.set(true);
+        let out = drain(DspSource::new(
+            TestSource::new(input.clone(), 2),
+            settings.build_chain(),
+        ));
+
+        let tail_out = &out[out.len() / 2..];
+        let tail_in = &input[input.len() / 2..];
+        let diff: f32 = tail_out
+            .iter()
+            .zip(tail_in.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0, f32::max);
+        assert!(diff < 1e-5, "in-phase material was altered, max diff {diff}");
     }
 
     /// Compensation must not resurrect silence into noise.
