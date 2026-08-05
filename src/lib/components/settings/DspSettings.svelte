@@ -11,6 +11,41 @@
 	 */
 	const monoDefeatedByBalance = $derived(dsp.mono && dsp.balance !== 0);
 
+	/**
+	 * What the audio engine reports it is running, read back after every change.
+	 * The panel shows this rather than the local state so a knob that never
+	 * reaches the audio thread is visible here instead of being a listening
+	 * puzzle — which is exactly how the mono downmix was first reported.
+	 */
+	const engine = $derived(settingsStore.dspEngine);
+
+	const engineSummary = $derived.by(() => {
+		if (!engine) return 'engine not responding';
+		const on: string[] = [];
+		if (engine.mono) on.push(engine.mono_compensate ? 'mono (compensated)' : 'mono');
+		if (engine.balance !== 0) on.push(`balance ${fmtBalance(engine.balance)}`);
+		if (engine.width_enabled && engine.width !== 1) on.push(`width ${fmtWidth(engine.width)}`);
+		if (
+			engine.eq_enabled &&
+			(engine.eq_low_db || engine.eq_mid_db || engine.eq_high_db)
+		)
+			on.push('eq');
+		if (engine.preamp_enabled && engine.preamp_db !== 0) on.push(`preamp ${fmtDb(engine.preamp_db)}`);
+		if (engine.limiter) on.push('limiter');
+		return on.length ? on.join(' · ') : 'nothing active — audio is untouched';
+	});
+
+	/** The local state and the engine disagreeing means a change never landed. */
+	const outOfSync = $derived(
+		engine !== null &&
+			(engine.mono !== dsp.mono ||
+				engine.balance !== dsp.balance ||
+				engine.width_enabled !== dsp.width_enabled ||
+				engine.eq_enabled !== dsp.eq_enabled ||
+				engine.preamp_enabled !== dsp.preamp_enabled ||
+				engine.limiter !== dsp.limiter)
+	);
+
 	function fmtDb(v: number) {
 		return `${v > 0 ? '+' : ''}${v.toFixed(1)} dB`;
 	}
@@ -256,6 +291,15 @@
 		<button class="reset-btn" onclick={() => settingsStore.resetDsp()}>Reset all effects</button>
 	</div>
 
+	<div class="engine-row" class:out-of-sync={outOfSync}>
+		<span class="engine-dot" class:live={engine !== null && !outOfSync}></span>
+		<span
+			>Running in the audio engine: <strong>{engineSummary}</strong>{#if outOfSync}
+				— this does not match the controls above, so a change did not reach the audio thread.
+			{/if}</span
+		>
+	</div>
+
 	<p class="chain-note">
 		Chain order: equalizer → stereo width → mono → balance → preamp → limiter. Each slider resets
 		with its button or a double-click.
@@ -418,6 +462,34 @@
 
 	.warn-btn:hover {
 		background-color: var(--color-bg-hover);
+	}
+
+	.engine-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 10px;
+		border-radius: 4px;
+		border: 1px solid var(--color-border);
+		background-color: var(--color-bg-secondary);
+		font-size: 11px;
+		color: var(--color-text-secondary);
+	}
+
+	.engine-row.out-of-sync {
+		border-color: #b4544a;
+	}
+
+	.engine-dot {
+		flex-shrink: 0;
+		width: 7px;
+		height: 7px;
+		border-radius: 50%;
+		background-color: #b4544a;
+	}
+
+	.engine-dot.live {
+		background-color: #5aa469;
 	}
 
 	.reset-btn {

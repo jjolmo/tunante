@@ -62,6 +62,8 @@ class SettingsStore {
 	fadeOnTrackChange = $state(false);
 	fadeSeconds = $state(2);
 	dsp = $state<DspConfig>(defaultDspConfig());
+	/** What the audio engine reports it is actually running. Null if unreadable. */
+	dspEngine = $state<DspConfig | null>(null);
 	trayMiddleClickAction = $state<'none' | 'play_pause' | 'stop' | 'next_track' | 'next_track_with_fade'>('play_pause');
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
@@ -186,7 +188,9 @@ class SettingsStore {
 		// Sync fade settings to the backend audio engine
 		invoke('set_fade_on_track_change', { enabled: this.fadeOnTrackChange }).catch(() => {});
 		invoke('set_fade_seconds', { seconds: this.fadeSeconds }).catch(() => {});
-		invoke('set_dsp_config', { config: this.dsp }).catch(() => {});
+		invoke('set_dsp_config', { config: $state.snapshot(this.dsp) })
+			.then(() => this.refreshDspFromEngine())
+			.catch(() => {});
 	}
 
 	private _teardownMediaListener() {
@@ -521,12 +525,29 @@ class SettingsStore {
 	 */
 	async applyDsp(patch: Partial<DspConfig>) {
 		this.dsp = { ...this.dsp, ...patch };
-		const config = this.dsp;
+		// $state.snapshot: `this.dsp` is a reactive proxy, and handing a proxy to
+		// the IPC layer is the kind of thing that works until it doesn't. Send a
+		// plain object.
+		const config = $state.snapshot(this.dsp) as DspConfig;
 		try {
 			await invoke('set_dsp_config', { config });
 			await invoke('set_setting', { key: 'dsp_config', value: JSON.stringify(config) });
 		} catch (e) {
 			console.error('Failed to apply DSP config:', e);
+		}
+		// Read back what the engine actually holds rather than trusting that the
+		// write landed. This is what the panel displays, so a knob that never
+		// reaches the audio thread is visible instead of being a listening puzzle.
+		await this.refreshDspFromEngine();
+	}
+
+	/** Pull the live chain state out of the audio engine. */
+	async refreshDspFromEngine() {
+		try {
+			this.dspEngine = await invoke<DspConfig>('get_dsp_config');
+		} catch (e) {
+			console.error('Failed to read DSP config back:', e);
+			this.dspEngine = null;
 		}
 	}
 
