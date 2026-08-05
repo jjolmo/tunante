@@ -1,3 +1,4 @@
+pub mod dsp;
 mod engine;
 mod gme;
 mod gsf;
@@ -13,5 +14,6 @@ mod vgmstream;
 #[cfg(test)]
 mod format_smoke;
 
+pub use dsp::DspSettings;
 pub use engine::{list_output_devices, AudioEngine, OutputSelection};
 pub use queue::{PlayQueue, RepeatMode};

@@ -523,3 +523,129 @@ fn real_library_sweep() {
             .join("\n")
     );
 }
+
+/// Pull samples through the DSP chain, checking on the way that every frame came
+/// out with all its channels equal — i.e. the mono downmix really was applied to
+/// this decoder's output, not just to a synthetic test source.
+///
+/// Returns (sample_count, peak_amplitude).
+fn drain_mono<S: rodio::Source>(source: S) -> (usize, f32) {
+    use super::dsp::{DspSettings, DspSource};
+
+    let settings = DspSettings::default();
+    settings.mono.set(true);
+
+    let channels = source.channels().get() as usize;
+    let mut it = DspSource::new(source, settings.build_chain());
+
+    const TARGET: usize = 44_100 * 2;
+    let mut count = 0usize;
+    let mut peak = 0.0f32;
+    let mut frame: Vec<f32> = Vec::with_capacity(channels);
+    let deadline = Instant::now() + Duration::from_secs(30);
+
+    loop {
+        for _ in 0..4096 {
+            match it.next() {
+                Some(s) => {
+                    count += 1;
+                    peak = peak.max(s.abs());
+                    frame.push(s);
+                    if frame.len() == channels {
+                        let first = frame[0];
+                        assert!(
+                            frame.iter().all(|s| (s - first).abs() < 1e-6),
+                            "mono downmix left channels unequal at sample {count}: {frame:?}"
+                        );
+                        frame.clear();
+                    }
+                }
+                None => return (count, peak),
+            }
+        }
+        if count >= TARGET && peak > 1e-4 {
+            return (count, peak);
+        }
+        if Instant::now() >= deadline {
+            return (count, peak);
+        }
+        if peak <= 1e-4 {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+/// The DSP chain over *real* decoder output.
+///
+/// The chain is generic over `rodio::Source`, so if it holds for one backend it
+/// holds for all of them — the unit tests in `audio::dsp` cover the arithmetic for
+/// 1, 2 and 6 channels. What this adds is proof that the wiring survives contact
+/// with actual decoders: their span protocol, their channel counts, their
+/// warm-up silence.
+///
+/// Deliberately limited to the backends with **no C global state** (GME and
+/// vgmstream are per-instance, symphonia and our Opus decoder are pure Rust), so
+/// this can run concurrently with `all_supported_formats_decode` without the two
+/// clashing over PSF/GSF/2SF/USF globals.
+#[test]
+fn dsp_chain_applies_to_real_decoder_output() {
+    let fx = fixtures_dir();
+
+    {
+        let src = GmeSource::new(&fx.join("sample.nsf"), 0, 30_000).expect("GME: open failed");
+        let (n, p) = drain_mono(src);
+        assert_ok("dsp/gme", n, p);
+    }
+    {
+        let src = VgmstreamSource::new(&fx.join("sample.bcstm"), 0).expect("vgmstream: open failed");
+        let (n, p) = drain_mono(src);
+        assert_ok("dsp/vgmstream", n, p);
+    }
+    {
+        let file = BufReader::new(File::open(fx.join("sine.opus")).expect("opus: open failed"));
+        let src = OggOpusSource::new(file).expect("opus: decode failed");
+        let (n, p) = drain_mono(src);
+        assert_ok("dsp/opus", n, p);
+    }
+    for name in ["sine.wav", "sine.flac", "sine.mp3"] {
+        let file = File::open(fx.join(name)).unwrap_or_else(|_| panic!("{name}: open failed"));
+        let src = rodio::Decoder::try_from(file)
+            .unwrap_or_else(|e| panic!("{name}: symphonia decode failed: {e}"));
+        let (n, p) = drain_mono(src);
+        assert_ok(&format!("dsp/{name}"), n, p);
+    }
+}
+
+/// The chain must not add or drop a single sample on a real file — that is what
+/// keeps duration, seek position and rodio's resampler correct.
+#[test]
+fn dsp_chain_preserves_sample_count_on_a_real_file() {
+    use super::dsp::{DspSettings, DspSource};
+
+    let fx = fixtures_dir();
+    let open = || {
+        let file = File::open(fx.join("sine.wav")).expect("wav: open failed");
+        rodio::Decoder::try_from(file).expect("wav: decode failed")
+    };
+
+    let raw = open().count();
+
+    // Everything on at once, so no processor can be silently skipping samples.
+    let settings = DspSettings::default();
+    settings.mono.set(true);
+    settings.balance.set(-0.4);
+    settings.width_enabled.set(true);
+    settings.width.set(1.7);
+    settings.preamp_enabled.set(true);
+    settings.preamp_db.set(6.0);
+    settings.eq_enabled.set(true);
+    settings.eq_low_db.set(9.0);
+    settings.eq_mid_db.set(-4.0);
+    settings.eq_high_db.set(3.0);
+    settings.limiter.set(true);
+
+    let processed = DspSource::new(open(), settings.build_chain()).count();
+
+    assert!(raw > 0, "fixture decoded to nothing");
+    assert_eq!(raw, processed, "DSP chain changed the sample count");
+}

@@ -3,6 +3,37 @@ import { listen } from '@tauri-apps/api/event';
 import type { MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
 import { libraryStore } from '$lib/stores/library.svelte';
 
+/** Mirrors `DspConfig` in src-tauri/src/commands/player.rs. */
+export interface DspConfig {
+	mono: boolean;
+	balance: number;
+	width_enabled: boolean;
+	width: number;
+	preamp_enabled: boolean;
+	preamp_db: number;
+	eq_enabled: boolean;
+	eq_low_db: number;
+	eq_mid_db: number;
+	eq_high_db: number;
+	limiter: boolean;
+}
+
+export function defaultDspConfig(): DspConfig {
+	return {
+		mono: false,
+		balance: 0,
+		width_enabled: false,
+		width: 1,
+		preamp_enabled: false,
+		preamp_db: 0,
+		eq_enabled: false,
+		eq_low_db: 0,
+		eq_mid_db: 0,
+		eq_high_db: 0,
+		limiter: false
+	};
+}
+
 class SettingsStore {
 	theme = $state<Theme>('system');
 	monitoredFolders = $state<MonitoredFolder[]>([]);
@@ -28,6 +59,7 @@ class SettingsStore {
 	continueFromQueue = $state(true);
 	fadeOnTrackChange = $state(false);
 	fadeSeconds = $state(2);
+	dsp = $state<DspConfig>(defaultDspConfig());
 	trayMiddleClickAction = $state<'none' | 'play_pause' | 'stop' | 'next_track' | 'next_track_with_fade'>('play_pause');
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
@@ -136,9 +168,23 @@ class SettingsStore {
 		// Sync continue_from_queue to the backend queue
 		invoke('set_continue_from_queue', { enabled: this.continueFromQueue }).catch(() => {});
 
+		// The DSP chain is stored as one JSON blob rather than a row per knob:
+		// it's applied atomically and there is no reason to read half of it.
+		const dspRaw = this._settingsCache.get('dsp_config');
+		if (dspRaw) {
+			try {
+				// Merged over the defaults so a config saved by an older version
+				// (missing a processor added later) still loads.
+				this.dsp = { ...defaultDspConfig(), ...JSON.parse(dspRaw) };
+			} catch (e) {
+				console.error('Ignoring malformed dsp_config setting:', e);
+			}
+		}
+
 		// Sync fade settings to the backend audio engine
 		invoke('set_fade_on_track_change', { enabled: this.fadeOnTrackChange }).catch(() => {});
 		invoke('set_fade_seconds', { seconds: this.fadeSeconds }).catch(() => {});
+		invoke('set_dsp_config', { config: this.dsp }).catch(() => {});
 	}
 
 	private _teardownMediaListener() {
@@ -462,6 +508,29 @@ class SettingsStore {
 		} catch (e) {
 			console.error('Failed to save fade-seconds setting:', e);
 		}
+	}
+
+	/**
+	 * Push the whole DSP chain to the engine and persist it.
+	 *
+	 * Sent as one config object rather than a command per knob: the backend reads
+	 * these through atomics on the audio thread, so a single call applies to the
+	 * track that is already playing, with no gap.
+	 */
+	async applyDsp(patch: Partial<DspConfig>) {
+		this.dsp = { ...this.dsp, ...patch };
+		const config = this.dsp;
+		try {
+			await invoke('set_dsp_config', { config });
+			await invoke('set_setting', { key: 'dsp_config', value: JSON.stringify(config) });
+		} catch (e) {
+			console.error('Failed to apply DSP config:', e);
+		}
+	}
+
+	/** Put every effect back to neutral. */
+	async resetDsp() {
+		await this.applyDsp(defaultDspConfig());
 	}
 }
 
