@@ -397,12 +397,15 @@ pub fn scan_folder(path: String, state: State<'_, Arc<AppState>>, app: tauri::Ap
 
 #[tauri::command]
 pub fn add_files(paths: Vec<String>, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    // Read before locking: `loop_max_ms` takes the DB lock itself, and
+    // parking_lot mutexes are not reentrant.
+    let loop_max = loop_max_ms(&state);
     let db = state.db.lock();
 
     for path_str in paths {
         let path = PathBuf::from(&path_str);
         if is_audio_file(&path) {
-            match metadata::read_metadata_all(&path) {
+            match metadata::read_metadata_all_with_opts(&path, false, loop_max) {
                 Ok(tracks) => {
                     for track in tracks {
                         if let Err(e) = db.insert_track(&track) {

@@ -191,7 +191,10 @@ impl FolderWatcher {
 
         match kind {
             EventKind::Create(_) | EventKind::Modify(_) => {
-                match metadata::read_metadata_all(path) {
+                // Same endless-track limit the scanner uses, so a file picked up
+                // by the watcher doesn't get a different length than one scanned.
+                let loop_max = crate::commands::library::loop_max_ms(state);
+                match metadata::read_metadata_all_with_opts(path, false, loop_max) {
                     Ok(tracks) => {
                         let db = state.db.lock();
                         // Remove old entries for this file (handles multi-track cleanup)
