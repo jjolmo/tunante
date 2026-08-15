@@ -19,3 +19,9 @@ pub use twosf_reader::read_twosf_metadata;
 pub use usf_reader::read_usf_metadata;
 pub use vgmstream_reader::read_vgmstream_metadata;
 pub use writer::write_rating_to_file;
+
+/// Built-in fallback play time for tracks with no determinable length, used
+/// when the user has not set one in Settings.
+pub fn gme_reader_default_duration_ms() -> i64 {
+    gme_reader::DEFAULT_DURATION_MS
+}

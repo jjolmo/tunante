@@ -7,7 +7,10 @@ use std::path::Path;
 use uuid::Uuid;
 
 /// Default play duration for tracks with unknown length in fast scan mode (2.5 minutes)
-const DEFAULT_DURATION_MS: i64 = 150_000;
+/// Fallback play time for tracks whose real length can't be determined —
+/// in practice, the ones that loop forever. Overridable in Settings; this is
+/// only the value used when no preference is stored.
+pub const DEFAULT_DURATION_MS: i64 = 150_000;
 /// Fade duration appended after play_length
 const FADE_MS: i64 = 10_000;
 /// Maximum time to emulate when detecting duration by silence (5 minutes)
@@ -195,15 +198,23 @@ fn detect_duration_by_silence(path: &Path, track_index: usize) -> Option<i64> {
 /// When `fast_scan` is false, tracks without a known duration are emulated to detect
 /// their actual length via silence detection. This is slower but gives accurate durations.
 pub fn read_gme_metadata(path: &Path) -> Result<Vec<Track>, String> {
-    read_gme_metadata_inner(path, false)
+    read_gme_metadata_inner(path, false, DEFAULT_DURATION_MS)
 }
 
 /// Same as read_gme_metadata but allows controlling fast_scan mode.
-pub fn read_gme_metadata_with_opts(path: &Path, fast_scan: bool) -> Result<Vec<Track>, String> {
-    read_gme_metadata_inner(path, fast_scan)
+pub fn read_gme_metadata_with_opts(
+    path: &Path,
+    fast_scan: bool,
+    loop_max_ms: i64,
+) -> Result<Vec<Track>, String> {
+    read_gme_metadata_inner(path, fast_scan, loop_max_ms)
 }
 
-fn read_gme_metadata_inner(path: &Path, fast_scan: bool) -> Result<Vec<Track>, String> {
+fn read_gme_metadata_inner(
+    path: &Path,
+    fast_scan: bool,
+    loop_max_ms: i64,
+) -> Result<Vec<Track>, String> {
     let emu = GameMusicEmu::from_file(path, 44100)
         .map_err(|e| format!("GME error: {}", e))?;
 
@@ -313,16 +324,16 @@ fn read_gme_metadata_inner(path: &Path, fast_scan: bool) -> Result<Vec<Track>, S
             } else if info.play_length > 0 {
                 info.play_length as i64 + FADE_MS
             } else if !fast_scan {
-                detect_duration_by_silence(path, i).unwrap_or(DEFAULT_DURATION_MS + FADE_MS)
+                detect_duration_by_silence(path, i).unwrap_or(loop_max_ms + FADE_MS)
             } else {
-                DEFAULT_DURATION_MS + FADE_MS
+                loop_max_ms + FADE_MS
             }
         } else if info.play_length > 0 {
             info.play_length as i64 + FADE_MS
         } else if !fast_scan {
-            detect_duration_by_silence(path, i).unwrap_or(DEFAULT_DURATION_MS + FADE_MS)
+            detect_duration_by_silence(path, i).unwrap_or(loop_max_ms + FADE_MS)
         } else {
-            DEFAULT_DURATION_MS + FADE_MS
+            loop_max_ms + FADE_MS
         };
 
         // Virtual path: only add #N for multi-track files

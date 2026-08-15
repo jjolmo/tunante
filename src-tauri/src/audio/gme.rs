@@ -6,7 +6,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// Default play duration for tracks with unknown length (2.5 minutes)
+/// Fallback play time when neither the DB nor the file gives a real length —
+/// in practice, tracks that loop forever. Only used if the caller passes 0 as
+/// `loop_max_ms`, i.e. when no user preference could be read.
 const DEFAULT_DURATION_MS: i32 = 150_000;
 /// Fade duration appended after play_length
 const FADE_MS: i32 = 10_000;
