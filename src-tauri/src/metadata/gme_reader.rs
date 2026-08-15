@@ -198,7 +198,7 @@ fn detect_duration_by_silence(path: &Path, track_index: usize) -> Option<i64> {
 /// When `fast_scan` is false, tracks without a known duration are emulated to detect
 /// their actual length via silence detection. This is slower but gives accurate durations.
 pub fn read_gme_metadata(path: &Path) -> Result<Vec<Track>, String> {
-    read_gme_metadata_inner(path, false, DEFAULT_DURATION_MS)
+    read_gme_metadata_inner(path, false, DEFAULT_DURATION_MS, false)
 }
 
 /// Same as read_gme_metadata but allows controlling fast_scan mode.
@@ -206,14 +206,16 @@ pub fn read_gme_metadata_with_opts(
     path: &Path,
     fast_scan: bool,
     loop_max_ms: i64,
+    cap_all: bool,
 ) -> Result<Vec<Track>, String> {
-    read_gme_metadata_inner(path, fast_scan, loop_max_ms)
+    read_gme_metadata_inner(path, fast_scan, loop_max_ms, cap_all)
 }
 
 fn read_gme_metadata_inner(
     path: &Path,
     fast_scan: bool,
     loop_max_ms: i64,
+    cap_all: bool,
 ) -> Result<Vec<Track>, String> {
     let emu = GameMusicEmu::from_file(path, 44100)
         .map_err(|e| format!("GME error: {}", e))?;
@@ -334,6 +336,18 @@ fn read_gme_metadata_inner(
             detect_duration_by_silence(path, i).unwrap_or(loop_max_ms + FADE_MS)
         } else {
             loop_max_ms + FADE_MS
+        };
+
+        // Optional hard cap over the whole cascade.
+        //
+        // Applied as a ceiling, never as a replacement: a 30 s jingle with its
+        // length written in the `.m3u` stays 30 s, while a 4-minute one gets
+        // trimmed to the limit. Replacing would stretch short tracks to the
+        // limit, which is not what a maximum means.
+        let duration_ms = if cap_all {
+            duration_ms.min(loop_max_ms + FADE_MS)
+        } else {
+            duration_ms
         };
 
         // Virtual path: only add #N for multi-track files

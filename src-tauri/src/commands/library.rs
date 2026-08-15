@@ -98,10 +98,19 @@ pub(crate) fn scan_opts(state: &Arc<AppState>) -> metadata::ScanOpts {
             .map(|v| v == "true")
             .unwrap_or(false)
     };
+    let loop_max_caps_all = {
+        let db = state.db.lock();
+        db.get_setting("loop_max_caps_all")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false)
+    };
     metadata::ScanOpts {
         fast_scan,
         loop_max_ms: loop_max_ms(state),
         vgm_loop_count: vgm_loop_count(state),
+        loop_max_caps_all,
     }
 }
 

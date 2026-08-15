@@ -126,9 +126,9 @@
 	<div class="loop-section">
 		<h3 class="section-title">Endless tracks</h3>
 		<p class="section-desc">
-			How long to play tracks that loop forever and never end on their own. Tracks with a
-			real length &mdash; from their own tags, or from a length in the folder&rsquo;s
-			<code>.m3u</code> &mdash; keep it and ignore this.
+			How long to play tracks that loop forever and never end on their own. By default,
+			tracks with a real length &mdash; from their own tags, or from a length in the
+			folder&rsquo;s <code>.m3u</code> &mdash; keep it and ignore this.
 		</p>
 		<label class="loop-row">
 			<input
@@ -146,6 +146,22 @@
 			Applied while scanning, so tracks already in the library keep their current length
 			until you resync below. A 10 s fade-out is added on top.
 		</p>
+
+		<label class="setting-row">
+			<input
+				type="checkbox"
+				checked={settingsStore.loopMaxCapsAll}
+				onchange={(e) =>
+					settingsStore.setLoopMaxCapsAll((e.target as HTMLInputElement).checked)}
+			/>
+			<div class="setting-text">
+				<span class="setting-label">Cap every track, not just endless ones</span>
+				<span class="setting-desc">
+					Also trims tracks whose length comes from the folder's <code>.m3u</code> or from
+					the file itself. It is a ceiling, so anything already shorter stays as it is.
+				</span>
+			</div>
+		</label>
 
 		<label class="loop-row">
 			<input
