@@ -2,11 +2,11 @@
 //!
 //! Three destinations, chosen by the user in Settings:
 //!
-//! | Clave    | Dónde vive                                             |
+//! | Key      | Where it lives                                          |
 //! |----------|--------------------------------------------------------|
-//! | `file`   | tags del propio fichero de audio                        |
-//! | `folder` | `_ratings.m3u` en la carpeta de la canción              |
-//! | `db`     | la base de datos SQLite de la app                       |
+//! | `file`   | the audio file's own tags                               |
+//! | `folder` | `_ratings.m3u` in the song's folder                     |
+//! | `db`     | the app's SQLite database                               |
 //!
 //! The same ordered list drives both directions:
 //!
@@ -186,7 +186,7 @@ pub fn write_rating(path_str: &str, rating: i32, order: &[RatingSource]) -> Writ
                 // Format has no writable tag area — try the next destination.
                 Ok(false) => skipped.push(RatingSource::File),
                 Err(e) => {
-                    log::warn!("No se pudo escribir el rating en los tags de {path_str}: {e}");
+                    log::warn!("Could not write rating to the tags of {path_str}: {e}");
                     skipped.push(RatingSource::File);
                 }
             },
@@ -198,7 +198,7 @@ pub fn write_rating(path_str: &str, rating: i32, order: &[RatingSource]) -> Writ
                     }
                 }
                 Err(e) => {
-                    log::warn!("No se pudo escribir el rating en _ratings.m3u de {path_str}: {e}");
+                    log::warn!("Could not write rating to _ratings.m3u for {path_str}: {e}");
                     skipped.push(RatingSource::Folder);
                 }
             },
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn completes_partial_and_drops_junk() {
-        // Solo una entrada válida: el resto se completa en orden por defecto.
+        // Only one valid entry: the rest is filled in default order.
         assert_eq!(
             parse_order(Some("folder,nonsense,folder")),
             vec![RatingSource::Folder, RatingSource::Db, RatingSource::File]
