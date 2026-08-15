@@ -38,6 +38,32 @@ export function defaultDspConfig(): DspConfig {
 	};
 }
 
+/** Destinos donde puede vivir el rating de una canción. */
+export type RatingSource = 'file' | 'folder' | 'db';
+
+export const RATING_SOURCES: RatingSource[] = ['db', 'file', 'folder'];
+
+export const RATING_SOURCE_LABELS: Record<RatingSource, string> = {
+	file: 'En el propio archivo (metadatos)',
+	folder: 'En un archivo por carpeta (_ratings.m3u)',
+	db: 'En la base de datos de Tunante'
+};
+
+/**
+ * Normaliza un orden guardado: descarta lo desconocido y lo repetido, y
+ * completa los destinos que falten. Así una config corrupta degrada al valor
+ * por defecto en vez de perder un destino.
+ */
+export function parseRatingPriority(raw: string | undefined): RatingSource[] {
+	const out: RatingSource[] = [];
+	for (const part of (raw ?? '').split(',')) {
+		const key = part.trim() as RatingSource;
+		if (RATING_SOURCES.includes(key) && !out.includes(key)) out.push(key);
+	}
+	for (const key of RATING_SOURCES) if (!out.includes(key)) out.push(key);
+	return out;
+}
+
 class SettingsStore {
 	theme = $state<Theme>('system');
 	monitoredFolders = $state<MonitoredFolder[]>([]);
@@ -67,6 +93,10 @@ class SettingsStore {
 	/** What the audio engine reports it is actually running. Null if unreadable. */
 	dspEngine = $state<DspConfig | null>(null);
 	trayMiddleClickAction = $state<'none' | 'play_pause' | 'stop' | 'next_track' | 'next_track_with_fade'>('play_pause');
+	// Orden de prioridad para leer y escribir ratings. El primero manda; si no
+	// puede guardar (p. ej. un NSF no admite tags), cae al siguiente.
+	// Por defecto la BD, que siempre funciona.
+	ratingPriority = $state<RatingSource[]>(['db', 'file', 'folder']);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
 	private _mediaQuery: MediaQueryList | null = null;
@@ -170,6 +200,10 @@ class SettingsStore {
 		) {
 			this.trayMiddleClickAction = trayMid;
 		}
+
+		this.ratingPriority = parseRatingPriority(
+			this._settingsCache.get('rating_source_priority')
+		);
 
 		// Sync continue_from_queue to the backend queue
 		invoke('set_continue_from_queue', { enabled: this.continueFromQueue }).catch(() => {});
@@ -484,6 +518,36 @@ class SettingsStore {
 		} catch (e) {
 			console.error('Failed to save console group by folder setting:', e);
 		}
+	}
+
+	/** Guarda el orden de prioridad de ratings (lectura y escritura). */
+	async setRatingPriority(order: RatingSource[]) {
+		const normalized = parseRatingPriority(order.join(','));
+		this.ratingPriority = normalized;
+		try {
+			await invoke('set_setting', {
+				key: 'rating_source_priority',
+				value: normalized.join(',')
+			});
+		} catch (e) {
+			console.error('Failed to save rating priority:', e);
+		}
+	}
+
+	/** Sube un destino una posición en la prioridad. */
+	async moveRatingSourceUp(index: number) {
+		if (index <= 0) return;
+		const next = [...this.ratingPriority];
+		[next[index - 1], next[index]] = [next[index], next[index - 1]];
+		await this.setRatingPriority(next);
+	}
+
+	/** Baja un destino una posición en la prioridad. */
+	async moveRatingSourceDown(index: number) {
+		if (index >= this.ratingPriority.length - 1) return;
+		const next = [...this.ratingPriority];
+		[next[index], next[index + 1]] = [next[index + 1], next[index]];
+		await this.setRatingPriority(next);
 	}
 
 	async setFadeOnTrackChange(enabled: boolean) {

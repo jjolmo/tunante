@@ -57,19 +57,58 @@ pub fn is_audio_file(path: &std::path::Path) -> bool {
     false
 }
 
-/// Augment in-memory tracks with ratings read from folder-level `_ratings.m3u`
-/// files (for tracks whose DB rating is 0), and persist any new ratings back
-/// to the DB so subsequent reads — including filtered ones like
-/// `get_faved_tracks` — see them.
+/// Read the user's rating-source priority from settings.
+pub(crate) fn rating_order(state: &Arc<AppState>) -> Vec<metadata::rating_source::RatingSource> {
+    let raw = {
+        let db = state.db.lock();
+        db.get_setting(metadata::rating_source::SETTING_KEY)
+            .ok()
+            .flatten()
+    };
+    metadata::rating_source::parse_order(raw.as_deref())
+}
+
+/// Resolve each track's rating following the user's priority order, and persist
+/// whatever won back to the DB so later filtered reads (`get_faved_tracks`) agree.
+///
+/// When the order starts with `db` — the default — this is the cheap path: the
+/// DB value wins outright and no file is touched. Only an order that puts
+/// `file` or `folder` ahead of `db` makes this hit the disk.
 pub(crate) fn augment_ratings(state: &Arc<AppState>, tracks: &mut [Track]) {
-    let updates = metadata::ratings_sync::apply_file_ratings(tracks);
+    let order = rating_order(state);
+
+    // `db` first means the stored value always wins where it is set; the old
+    // `_ratings.m3u` sync still fills in tracks the DB has at 0, which is what
+    // keeps ratings synced from other machines showing up.
+    if order.first() == Some(&metadata::rating_source::RatingSource::Db) {
+        let updates = metadata::ratings_sync::apply_file_ratings(tracks);
+        if updates.is_empty() {
+            return;
+        }
+        let db = state.db.lock();
+        for (id, rating) in updates {
+            if let Err(e) = db.set_track_rating(&id, rating) {
+                log::warn!("Failed to persist file-derived rating for {}: {}", id, e);
+            }
+        }
+        return;
+    }
+
+    let mut updates: Vec<(String, i32)> = Vec::new();
+    for track in tracks.iter_mut() {
+        let resolved = metadata::rating_source::resolve_rating(&track.path, track.rating, &order);
+        if resolved != track.rating {
+            track.rating = resolved;
+            updates.push((track.id.clone(), resolved));
+        }
+    }
     if updates.is_empty() {
         return;
     }
     let db = state.db.lock();
     for (id, rating) in updates {
         if let Err(e) = db.set_track_rating(&id, rating) {
-            log::warn!("Failed to persist file-derived rating for {}: {}", id, e);
+            log::warn!("Failed to persist resolved rating for {}: {}", id, e);
         }
     }
 }
@@ -104,13 +143,40 @@ pub fn set_track_rating(
         path
     }; // DB lock released here
 
-    // Write rating to the file's metadata (best-effort, no lock held)
+    // Persist to disk following the user's priority order (no lock held).
+    //
+    // The DB was already updated above and always holds the value; this decides
+    // which on-disk destination is authoritative. If the chosen one can't take
+    // the rating — a NSF has no writable tag area — it falls through to the
+    // next in the order instead of silently dropping it.
     if write_to_file.unwrap_or(true) {
         if let Some(path) = track_path {
-            match metadata::write_rating_to_file(&path, rating) {
-                Ok(true) => log::info!("Rating {} written to file: {}", rating, path),
-                Ok(false) => log::debug!("File format doesn't support rating writing: {}", path),
-                Err(e) => log::warn!("Failed to write rating to file {}: {}", path, e),
+            let order = rating_order(&state);
+            let outcome = metadata::rating_source::write_rating(&path, rating, &order);
+            match outcome.stored_in {
+                Some(metadata::rating_source::RatingSource::Db) => {
+                    log::debug!("Rating {} guardado solo en la BD: {}", rating, path)
+                }
+                Some(src) => {
+                    if outcome.skipped.is_empty() {
+                        log::info!("Rating {} guardado en {}: {}", rating, src, path);
+                    } else {
+                        let skipped: Vec<&str> =
+                            outcome.skipped.iter().map(|s| s.as_key()).collect();
+                        log::info!(
+                            "Rating {} guardado en {} (fallback desde {}): {}",
+                            rating,
+                            src,
+                            skipped.join(", "),
+                            path
+                        );
+                    }
+                }
+                None => log::warn!(
+                    "No se pudo guardar el rating {} en ningún destino: {}",
+                    rating,
+                    path
+                ),
             }
         }
     }

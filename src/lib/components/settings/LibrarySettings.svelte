@@ -3,7 +3,7 @@
 	import { listen } from '@tauri-apps/api/event';
 	import { open } from '@tauri-apps/plugin-dialog';
 	import { onMount } from 'svelte';
-	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { settingsStore, RATING_SOURCE_LABELS } from '$lib/stores/settings.svelte';
 	import { libraryStore } from '$lib/stores/library.svelte';
 
 	let isResyncing = $state(false);
@@ -116,6 +116,41 @@
 			<span class="setting-desc">Skip silence detection for chiptune tracks without duration info. Faster scan but shows default 2:40 for SFX/jingles.</span>
 		</div>
 	</label>
+
+	<div class="rating-section">
+		<h3 class="section-title">Rating storage priority</h3>
+		<p class="section-desc">
+			Order used to <strong>read</strong> and <strong>save</strong> ratings. The first
+			destination wins; if it can't hold the rating (an NSF has no writable tag area, for
+			instance) the next one is used.
+		</p>
+		<ol class="rating-list">
+			{#each settingsStore.ratingPriority as source, i (source)}
+				<li class="rating-item">
+					<span class="rating-pos">{i + 1}</span>
+					<span class="rating-label">{RATING_SOURCE_LABELS[source]}</span>
+					<span class="rating-actions">
+						<button
+							class="move-btn"
+							title="Move up"
+							disabled={i === 0}
+							onclick={() => settingsStore.moveRatingSourceUp(i)}>▲</button
+						>
+						<button
+							class="move-btn"
+							title="Move down"
+							disabled={i === settingsStore.ratingPriority.length - 1}
+							onclick={() => settingsStore.moveRatingSourceDown(i)}>▼</button
+						>
+					</span>
+				</li>
+			{/each}
+		</ol>
+		<p class="section-desc rating-note">
+			Putting <em>the file itself</em> or <em>the folder file</em> first makes listing slower:
+			the app has to read from disk instead of the database.
+		</p>
+	</div>
 
 	<div class="resync-section">
 		<h3 class="section-title">Resync Library</h3>
@@ -328,6 +363,70 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+	}
+
+	.rating-section {
+		margin-top: 16px;
+	}
+
+	.rating-list {
+		list-style: none;
+		margin: 8px 0 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+
+	.rating-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 8px;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		background-color: var(--color-bg-secondary);
+	}
+
+	.rating-pos {
+		flex: 0 0 18px;
+		text-align: center;
+		font-weight: bold;
+		color: var(--color-accent);
+	}
+
+	.rating-label {
+		flex: 1;
+	}
+
+	.rating-actions {
+		display: flex;
+		gap: 2px;
+	}
+
+	.move-btn {
+		background: none;
+		border: 1px solid var(--color-border);
+		border-radius: 3px;
+		color: var(--color-text);
+		cursor: pointer;
+		width: 22px;
+		height: 22px;
+		line-height: 1;
+		font-size: 10px;
+	}
+
+	.move-btn:hover:not(:disabled) {
+		background-color: var(--color-bg-hover);
+	}
+
+	.move-btn:disabled {
+		opacity: 0.3;
+		cursor: default;
+	}
+
+	.rating-note {
+		margin-top: 6px;
 	}
 
 	.setting-label {
