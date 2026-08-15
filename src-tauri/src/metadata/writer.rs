@@ -15,18 +15,91 @@ use std::path::Path;
 /// Returns Ok(true) if the rating was written (to file tags or companion .m3u),
 /// Ok(false) if no action was taken (e.g., rating 0 with no existing M3U),
 /// or Err on I/O failure.
-pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String> {
-    // Handle virtual paths (e.g., "/path/to/file.nsf#3") — extract the real file path
-    let real_path_str = if let Some(hash_pos) = path_str.rfind('#') {
+/// Strip the `#N` subtrack suffix from a virtual path, returning the real file path.
+pub fn real_path_of(path_str: &str) -> &str {
+    if let Some(hash_pos) = path_str.rfind('#') {
         let after_hash = &path_str[hash_pos + 1..];
         if after_hash.chars().all(|c| c.is_ascii_digit()) {
-            &path_str[..hash_pos]
-        } else {
-            path_str
+            return &path_str[..hash_pos];
         }
-    } else {
-        path_str
-    };
+    }
+    path_str
+}
+
+/// Subtrack number to use in `_ratings.m3u`, 1-based.
+///
+/// GME virtual paths carry a 0-based index, vgmstream a 1-based one; files with
+/// no `#N` suffix are a single track and use 1.
+pub fn m3u_track_number(path_str: &str) -> i32 {
+    let path = Path::new(real_path_of(path_str));
+    match path_str.rfind('#') {
+        Some(hash_pos) => {
+            let after_hash = &path_str[hash_pos + 1..];
+            let parsed = after_hash.parse::<i32>();
+            match parsed {
+                Ok(n) if is_gme_file(path) => n + 1,
+                Ok(n) => n,
+                Err(_) => 1,
+            }
+        }
+        None => 1,
+    }
+}
+
+/// Whether this format can store a rating **inside the audio file itself**.
+///
+/// GME (NSF, SPC, GBS…) and vgmstream formats cannot: they have no writable tag
+/// area, which is why the folder-level `_ratings.m3u` exists. Callers use this
+/// to decide whether the "file metadata" destination is available before trying.
+pub fn supports_embedded_rating(path_str: &str) -> bool {
+    let path = Path::new(real_path_of(path_str));
+    if is_gsf_file(path) || is_psf_file(path) || is_twosf_file(path) || is_usf_file(path) {
+        return true;
+    }
+    if is_gme_file(path) {
+        return false;
+    }
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase())
+        .unwrap_or_default();
+    const STANDARD: [&str; 11] = [
+        "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",
+    ];
+    STANDARD.contains(&ext.as_str())
+}
+
+/// Write the rating **only** into the audio file's own tags.
+///
+/// Returns `Ok(false)` when the format has no writable tag area, so the caller
+/// can fall back to the next destination in the user's priority order. Unlike
+/// [`write_rating_to_file`], this never silently diverts to `_ratings.m3u`.
+pub fn write_embedded_rating(path_str: &str, rating: i32) -> Result<bool, String> {
+    let path = Path::new(real_path_of(path_str));
+    if is_gsf_file(path) || is_psf_file(path) || is_twosf_file(path) || is_usf_file(path) {
+        write_psf_tag_rating(path, rating)?;
+        return Ok(true);
+    }
+    if !supports_embedded_rating(path_str) {
+        return Ok(false);
+    }
+    write_lofty_rating(path, rating)?;
+    Ok(true)
+}
+
+/// Write the rating **only** into the folder-level `_ratings.m3u`.
+///
+/// Always available: any file lives in a folder, so this destination never
+/// fails for lack of format support.
+pub fn write_folder_rating(path_str: &str, rating: i32) -> Result<bool, String> {
+    let path = Path::new(real_path_of(path_str));
+    write_folder_m3u_rating(path, m3u_track_number(path_str), rating)
+}
+
+pub fn write_rating_to_file(path_str: &str, rating: i32) -> Result<bool, String> {
+    // Handle virtual paths (e.g., "/path/to/file.nsf#3") — extract the real file path
+    let real_path_str = real_path_of(path_str);
 
     let path = Path::new(real_path_str);
 

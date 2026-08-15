@@ -37,6 +37,11 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
             audio.stop();
             let _ = app.emit("playback-stopped", ());
         }
+        // Cambio de pista pedido por el usuario (tray, menú, atajo global), así
+        // que debe respetar `fade_on_track_change` igual que pulsar "siguiente"
+        // en la ventana. `force_fade: false` = usa la preferencia guardada.
+        // Antes esto llamaba a `audio.play_file` directamente y se saltaba el
+        // fade siempre, aunque el usuario lo tuviera activado.
         "next_track" => {
             let mut queue = state.queue.lock();
             let track = queue.next().or_else(|| queue.current().cloned());
@@ -44,10 +49,14 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
                 let path = track.path.clone();
                 let duration_hint = track.duration_ms;
                 drop(queue);
-                let mut audio = state.audio.lock();
-                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
-                    let _ = app.emit("track-changed", track);
-                }
+                crate::commands::player::play_with_fade_opts(
+                    state.clone(),
+                    app.clone(),
+                    path,
+                    duration_hint,
+                    Some(track),
+                    false,
+                );
             }
         }
         "next_track_with_fade" => {
@@ -67,6 +76,8 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
                 );
             }
         }
+        // Mismo caso que `next_track`: es una acción del usuario, así que honra
+        // la preferencia de fade en vez de ignorarla.
         "prev_track" => {
             let mut queue = state.queue.lock();
             let track = queue.prev().or_else(|| queue.current().cloned());
@@ -74,10 +85,14 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
                 let path = track.path.clone();
                 let duration_hint = track.duration_ms;
                 drop(queue);
-                let mut audio = state.audio.lock();
-                if let Ok(()) = audio.play_file(&std::path::PathBuf::from(&path), duration_hint) {
-                    let _ = app.emit("track-changed", track);
-                }
+                crate::commands::player::play_with_fade_opts(
+                    state.clone(),
+                    app.clone(),
+                    path,
+                    duration_hint,
+                    Some(track),
+                    false,
+                );
             }
         }
         "volume_up" => {

@@ -2,12 +2,13 @@ mod gme_reader;
 mod gsf_reader;
 mod psf_reader;
 mod psf2_reader;
+pub mod rating_source;
 pub mod ratings_sync;
 mod reader;
 mod twosf_reader;
 mod usf_reader;
 pub(crate) mod vgmstream_reader;
-mod writer;
+pub(crate) mod writer;
 
 pub use gme_reader::read_gme_metadata;
 pub use gsf_reader::read_gsf_metadata;
