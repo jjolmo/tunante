@@ -38,21 +38,21 @@ export function defaultDspConfig(): DspConfig {
 	};
 }
 
-/** Destinos donde puede vivir el rating de una canción. */
+/** Where a track's rating can live. */
 export type RatingSource = 'file' | 'folder' | 'db';
 
 export const RATING_SOURCES: RatingSource[] = ['db', 'file', 'folder'];
 
 export const RATING_SOURCE_LABELS: Record<RatingSource, string> = {
-	file: 'En el propio archivo (metadatos)',
-	folder: 'En un archivo por carpeta (_ratings.m3u)',
-	db: 'En la base de datos de Tunante'
+	file: 'In the song file itself (tags)',
+	folder: 'In one file per folder (_ratings.m3u)',
+	db: "In Tunante's database"
 };
 
 /**
- * Normaliza un orden guardado: descarta lo desconocido y lo repetido, y
- * completa los destinos que falten. Así una config corrupta degrada al valor
- * por defecto en vez de perder un destino.
+ * Normalise a stored order: drop anything unknown or repeated, then append the
+ * destinations it is missing. A corrupt setting degrades to the default instead
+ * of losing a destination.
  */
 export function parseRatingPriority(raw: string | undefined): RatingSource[] {
 	const out: RatingSource[] = [];
@@ -93,9 +93,9 @@ class SettingsStore {
 	/** What the audio engine reports it is actually running. Null if unreadable. */
 	dspEngine = $state<DspConfig | null>(null);
 	trayMiddleClickAction = $state<'none' | 'play_pause' | 'stop' | 'next_track' | 'next_track_with_fade'>('play_pause');
-	// Orden de prioridad para leer y escribir ratings. El primero manda; si no
-	// puede guardar (p. ej. un NSF no admite tags), cae al siguiente.
-	// Por defecto la BD, que siempre funciona.
+	// Priority order for reading and writing ratings. The first destination
+	// wins; if it can't store the rating (an NSF has no writable tag area) the
+	// next one is used. Defaults to the database, which always works.
 	ratingPriority = $state<RatingSource[]>(['db', 'file', 'folder']);
 
 	private _mediaQueryListener: ((e: MediaQueryListEvent) => void) | null = null;
@@ -520,7 +520,7 @@ class SettingsStore {
 		}
 	}
 
-	/** Guarda el orden de prioridad de ratings (lectura y escritura). */
+	/** Save the rating priority order (used for both reading and writing). */
 	async setRatingPriority(order: RatingSource[]) {
 		const normalized = parseRatingPriority(order.join(','));
 		this.ratingPriority = normalized;
@@ -534,7 +534,7 @@ class SettingsStore {
 		}
 	}
 
-	/** Sube un destino una posición en la prioridad. */
+	/** Move a destination one position up in the priority order. */
 	async moveRatingSourceUp(index: number) {
 		if (index <= 0) return;
 		const next = [...this.ratingPriority];
@@ -542,7 +542,7 @@ class SettingsStore {
 		await this.setRatingPriority(next);
 	}
 
-	/** Baja un destino una posición en la prioridad. */
+	/** Move a destination one position down in the priority order. */
 	async moveRatingSourceDown(index: number) {
 		if (index >= this.ratingPriority.length - 1) return;
 		const next = [...this.ratingPriority];

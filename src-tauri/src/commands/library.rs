@@ -155,16 +155,16 @@ pub fn set_track_rating(
             let outcome = metadata::rating_source::write_rating(&path, rating, &order);
             match outcome.stored_in {
                 Some(metadata::rating_source::RatingSource::Db) => {
-                    log::debug!("Rating {} guardado solo en la BD: {}", rating, path)
+                    log::debug!("Rating {} stored in the database only: {}", rating, path)
                 }
                 Some(src) => {
                     if outcome.skipped.is_empty() {
-                        log::info!("Rating {} guardado en {}: {}", rating, src, path);
+                        log::info!("Rating {} stored in {}: {}", rating, src, path);
                     } else {
                         let skipped: Vec<&str> =
                             outcome.skipped.iter().map(|s| s.as_key()).collect();
                         log::info!(
-                            "Rating {} guardado en {} (fallback desde {}): {}",
+                            "Rating {} stored in {} (fell back from {}): {}",
                             rating,
                             src,
                             skipped.join(", "),
@@ -173,7 +173,7 @@ pub fn set_track_rating(
                     }
                 }
                 None => log::warn!(
-                    "No se pudo guardar el rating {} en ningún destino: {}",
+                    "Could not store rating {} in any destination: {}",
                     rating,
                     path
                 ),

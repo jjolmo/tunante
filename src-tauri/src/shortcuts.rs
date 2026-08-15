@@ -37,11 +37,11 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
             audio.stop();
             let _ = app.emit("playback-stopped", ());
         }
-        // Cambio de pista pedido por el usuario (tray, menú, atajo global), así
-        // que debe respetar `fade_on_track_change` igual que pulsar "siguiente"
-        // en la ventana. `force_fade: false` = usa la preferencia guardada.
-        // Antes esto llamaba a `audio.play_file` directamente y se saltaba el
-        // fade siempre, aunque el usuario lo tuviera activado.
+        // A user-requested track change (tray, menu, global shortcut), so it
+        // must honour `fade_on_track_change` just like hitting "next" in the
+        // window does. `force_fade: false` = use the stored preference.
+        // This used to call `audio.play_file` directly and skipped the fade
+        // every time, even with the setting turned on.
         "next_track" => {
             let mut queue = state.queue.lock();
             let track = queue.next().or_else(|| queue.current().cloned());
@@ -76,8 +76,8 @@ pub fn handle_action(action_id: &str, app: &AppHandle, state: &Arc<AppState>) {
                 );
             }
         }
-        // Mismo caso que `next_track`: es una acción del usuario, así que honra
-        // la preferencia de fade en vez de ignorarla.
+        // Same as `next_track`: a user action, so it honours the fade
+        // preference instead of ignoring it.
         "prev_track" => {
             let mut queue = state.queue.lock();
             let track = queue.prev().or_else(|| queue.current().cloned());
