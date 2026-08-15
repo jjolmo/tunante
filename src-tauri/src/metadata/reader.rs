@@ -84,6 +84,9 @@ pub struct ScanOpts {
     pub loop_max_ms: i64,
     /// How many times a looping vgmstream stream repeats.
     pub vgm_loop_count: f64,
+    /// Apply `loop_max_ms` as a ceiling over every GME track, including those
+    /// with a length declared in the folder's `.m3u`.
+    pub loop_max_caps_all: bool,
 }
 
 impl Default for ScanOpts {
@@ -92,6 +95,7 @@ impl Default for ScanOpts {
             fast_scan: false,
             loop_max_ms: gme_reader::DEFAULT_DURATION_MS,
             vgm_loop_count: vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT,
+            loop_max_caps_all: false,
         }
     }
 }
@@ -106,7 +110,12 @@ fn read_metadata_all_inner_opts(
     opts: ScanOpts,
 ) -> Result<Vec<Track>, MetadataError> {
     if is_gme_file(path) {
-        return gme_reader::read_gme_metadata_with_opts(path, opts.fast_scan, opts.loop_max_ms)
+        return gme_reader::read_gme_metadata_with_opts(
+            path,
+            opts.fast_scan,
+            opts.loop_max_ms,
+            opts.loop_max_caps_all,
+        )
             .map_err(MetadataError::Gme);
     }
     if is_gsf_file(path) {

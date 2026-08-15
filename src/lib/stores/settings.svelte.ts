@@ -92,6 +92,9 @@ class SettingsStore {
 	// How many times a looping vgmstream stream repeats (BRSTM, ADX, HCA...).
 	// Chiptune is unaffected: those files rarely carry loop points at all.
 	vgmLoopCount = $state(2);
+	// When on, the time limit becomes a ceiling over every chiptune track,
+	// including those whose length is declared in the folder's .m3u.
+	loopMaxCapsAll = $state(false);
 	continueFromQueue = $state(true);
 	fadeOnTrackChange = $state(false);
 	fadeSeconds = $state(2);
@@ -189,6 +192,9 @@ class SettingsStore {
 			const parsed = parseInt(loopMax, 10);
 			if (!isNaN(parsed) && parsed > 0) this.loopMaxSeconds = Math.min(3600, parsed);
 		}
+
+		const capsAll = this._settingsCache.get('loop_max_caps_all');
+		if (capsAll !== undefined) this.loopMaxCapsAll = capsAll === 'true';
 
 		const vgmLoops = this._settingsCache.get('vgm_loop_count');
 		if (vgmLoops !== undefined) {
@@ -536,6 +542,16 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'console_group_by_folder', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save console group by folder setting:', e);
+		}
+	}
+
+	/** Save whether the time limit caps every track or only the endless ones. */
+	async setLoopMaxCapsAll(enabled: boolean) {
+		this.loopMaxCapsAll = enabled;
+		try {
+			await invoke('set_setting', { key: 'loop_max_caps_all', value: String(enabled) });
+		} catch (e) {
+			console.error('Failed to save loop max cap mode:', e);
 		}
 	}
 
