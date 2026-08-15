@@ -367,6 +367,12 @@ pub fn set_fade_on_track_change(
 }
 
 #[tauri::command]
+pub fn set_vgm_loop_count(count: f64, state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.audio.lock().set_vgm_loop_count(count);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_fade_seconds(seconds: f32, state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.audio.lock().set_fade_seconds(seconds);
     Ok(())

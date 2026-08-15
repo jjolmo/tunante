@@ -75,6 +75,36 @@ pub(crate) fn loop_max_ms(state: &Arc<AppState>) -> i64 {
         .unwrap_or(metadata::gme_reader_default_duration_ms())
 }
 
+/// How many times a looping vgmstream stream should repeat, from settings.
+pub(crate) fn vgm_loop_count(state: &Arc<AppState>) -> f64 {
+    let stored = {
+        let db = state.db.lock();
+        db.get_setting("vgm_loop_count").ok().flatten()
+    };
+    stored
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|n| *n >= 0.0 && *n <= 20.0)
+        .unwrap_or(vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT)
+}
+
+/// All scan knobs the user controls, read in one place so every path that
+/// reads metadata gets the same answer.
+pub(crate) fn scan_opts(state: &Arc<AppState>) -> metadata::ScanOpts {
+    let fast_scan = {
+        let db = state.db.lock();
+        db.get_setting("fast_scan")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false)
+    };
+    metadata::ScanOpts {
+        fast_scan,
+        loop_max_ms: loop_max_ms(state),
+        vgm_loop_count: vgm_loop_count(state),
+    }
+}
+
 /// Read the user's rating-source priority from settings.
 pub(crate) fn rating_order(state: &Arc<AppState>) -> Vec<metadata::rating_source::RatingSource> {
     let raw = {
@@ -240,7 +270,7 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
         log::info!("Fast scan enabled — skipping silence detection");
     }
 
-    let loop_max_ms = loop_max_ms(state);
+    let opts = scan_opts(state);
 
     let start_time = std::time::Instant::now();
 
@@ -276,7 +306,7 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
             },
         );
 
-        match metadata::read_metadata_all_with_opts(file_path, fast_scan, loop_max_ms) {
+        match metadata::read_metadata_all_with_opts(file_path, opts) {
             Ok(tracks) => {
                 let db = state.db.lock();
                 for track in tracks {
@@ -397,15 +427,15 @@ pub fn scan_folder(path: String, state: State<'_, Arc<AppState>>, app: tauri::Ap
 
 #[tauri::command]
 pub fn add_files(paths: Vec<String>, state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    // Read before locking: `loop_max_ms` takes the DB lock itself, and
+    // Read before locking: reading settings takes the DB lock itself, and
     // parking_lot mutexes are not reentrant.
-    let loop_max = loop_max_ms(&state);
+    let opts = scan_opts(&state);
     let db = state.db.lock();
 
     for path_str in paths {
         let path = PathBuf::from(&path_str);
         if is_audio_file(&path) {
-            match metadata::read_metadata_all_with_opts(&path, false, loop_max) {
+            match metadata::read_metadata_all_with_opts(&path, opts) {
                 Ok(tracks) => {
                     for track in tracks {
                         if let Err(e) = db.insert_track(&track) {

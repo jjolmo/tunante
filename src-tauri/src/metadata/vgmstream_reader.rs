@@ -12,12 +12,12 @@ use vgmstream_rs::Vgmstream;
 const VGMSTREAM_OPEN_TIMEOUT_SECS: u64 = 5;
 
 /// Open a vgmstream file with a timeout to prevent hanging on problematic files.
-fn open_with_timeout(path: &Path, subsong: i32) -> Result<Vgmstream, String> {
+fn open_with_timeout(path: &Path, subsong: i32, loop_count: f64) -> Result<Vgmstream, String> {
     let path_buf = path.to_path_buf();
     let path_display = path.display().to_string();
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let result = Vgmstream::open(&path_buf, subsong);
+        let result = Vgmstream::open_with_loops(&path_buf, subsong, loop_count);
         let _ = tx.send(result);
     });
     match rx.recv_timeout(Duration::from_secs(VGMSTREAM_OPEN_TIMEOUT_SECS)) {
@@ -82,9 +82,9 @@ fn parse_legacy_m3u_ratings(m3u_path: &Path) -> HashMap<i32, i32> {
 /// Read metadata from a vgmstream-supported file.
 /// Handles subsongs (multiple streams within a single file).
 /// Reads ratings from folder-level `_ratings.m3u`, with fallback to old per-file `.m3u`.
-pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
+pub fn read_vgmstream_metadata(path: &Path, loop_count: f64) -> Result<Vec<Track>, String> {
     // Open with subsong 0 (default) to get subsong count
-    let vgm = open_with_timeout(path, 0)?;
+    let vgm = open_with_timeout(path, 0, loop_count)?;
     let initial_info = vgm.info();
 
     let file_meta = std::fs::metadata(path).map_err(|e| format!("IO error: {}", e))?;
@@ -188,7 +188,7 @@ pub fn read_vgmstream_metadata(path: &Path) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::with_capacity(subsong_count as usize);
 
     for i in 1..=subsong_count {
-        let vgm = match open_with_timeout(path, i) {
+        let vgm = match open_with_timeout(path, i, loop_count) {
             Ok(v) => v,
             Err(e) => {
                 log::warn!(

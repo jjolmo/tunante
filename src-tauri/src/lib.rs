@@ -1328,6 +1328,7 @@ pub fn run() {
             commands::player::set_continue_from_queue,
             commands::player::set_fade_on_track_change,
             commands::player::set_fade_seconds,
+            commands::player::set_vgm_loop_count,
             commands::player::list_audio_outputs,
             commands::player::get_audio_output,
             commands::player::set_audio_output,

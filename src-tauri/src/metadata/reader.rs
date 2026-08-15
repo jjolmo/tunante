@@ -71,18 +71,42 @@ fn is_vgmstream_file(path: &Path) -> bool {
     vgmstream_rs::Vgmstream::is_valid(filename)
 }
 
+/// Knobs the scanner passes down to the format readers.
+///
+/// Grouped rather than passed positionally: `loop_max_ms` and `vgm_loop_count`
+/// are both numbers meaning different things, and swapping them at a call site
+/// would compile fine and quietly produce wrong durations.
+#[derive(Debug, Clone, Copy)]
+pub struct ScanOpts {
+    /// Skip silence detection for GME tracks with no known length.
+    pub fast_scan: bool,
+    /// Play time for tracks whose real length can't be determined (GME).
+    pub loop_max_ms: i64,
+    /// How many times a looping vgmstream stream repeats.
+    pub vgm_loop_count: f64,
+}
+
+impl Default for ScanOpts {
+    fn default() -> Self {
+        Self {
+            fast_scan: false,
+            loop_max_ms: gme_reader::DEFAULT_DURATION_MS,
+            vgm_loop_count: vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT,
+        }
+    }
+}
+
 /// Inner implementation without timeout.
 fn read_metadata_all_inner(path: &Path) -> Result<Vec<Track>, MetadataError> {
-    read_metadata_all_inner_opts(path, false, gme_reader::DEFAULT_DURATION_MS)
+    read_metadata_all_inner_opts(path, ScanOpts::default())
 }
 
 fn read_metadata_all_inner_opts(
     path: &Path,
-    fast_scan: bool,
-    loop_max_ms: i64,
+    opts: ScanOpts,
 ) -> Result<Vec<Track>, MetadataError> {
     if is_gme_file(path) {
-        return gme_reader::read_gme_metadata_with_opts(path, fast_scan, loop_max_ms)
+        return gme_reader::read_gme_metadata_with_opts(path, opts.fast_scan, opts.loop_max_ms)
             .map_err(MetadataError::Gme);
     }
     if is_gsf_file(path) {
@@ -101,7 +125,7 @@ fn read_metadata_all_inner_opts(
         return psf_reader::read_psf_metadata(path).map_err(MetadataError::Psf);
     }
     if is_vgmstream_file(path) {
-        return vgmstream_reader::read_vgmstream_metadata(path)
+        return vgmstream_reader::read_vgmstream_metadata(path, opts.vgm_loop_count)
             .map_err(MetadataError::Vgmstream);
     }
     // Standard format via lofty; if lofty fails, use a fallback based on filename/fs metadata.
@@ -114,22 +138,21 @@ fn read_metadata_all_inner_opts(
 /// Read metadata, returning potentially multiple tracks for multi-track VGM files.
 /// Wraps the inner reader with a global timeout to prevent hanging on problematic files.
 pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
-    read_metadata_all_with_opts(path, false, gme_reader::DEFAULT_DURATION_MS)
+    read_metadata_all_with_opts(path, ScanOpts::default())
 }
 
 /// Read metadata with configurable fast_scan mode.
 /// When fast_scan is true, skip silence detection for unknown-duration GME tracks.
 pub fn read_metadata_all_with_opts(
     path: &Path,
-    fast_scan: bool,
-    loop_max_ms: i64,
+    opts: ScanOpts,
 ) -> Result<Vec<Track>, MetadataError> {
     let path_buf = path.to_path_buf();
     // Silence detection can take a while per track, so give more time when not fast-scanning
-    let timeout = if fast_scan { METADATA_READ_TIMEOUT_SECS } else { METADATA_READ_TIMEOUT_SECS * 6 };
+    let timeout = if opts.fast_scan { METADATA_READ_TIMEOUT_SECS } else { METADATA_READ_TIMEOUT_SECS * 6 };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let result = read_metadata_all_inner_opts(&path_buf, fast_scan, loop_max_ms);
+        let result = read_metadata_all_inner_opts(&path_buf, opts);
         let _ = tx.send(result);
     });
     match rx.recv_timeout(Duration::from_secs(timeout)) {

@@ -129,7 +129,7 @@ pub fn create_playlist_from_folder(
         let total = audio_files.len();
 
         // 2. Scan each file: read metadata, insert into library
-        let loop_max = crate::commands::library::loop_max_ms(&state_inner);
+        let opts = crate::commands::library::scan_opts(&state_inner);
         let mut track_ids: Vec<String> = Vec::with_capacity(total);
         for (i, file_path) in audio_files.iter().enumerate() {
             let _ = app.emit("scan-progress", serde_json::json!({
@@ -138,7 +138,7 @@ pub fn create_playlist_from_folder(
                 "current_path": file_path.to_string_lossy(),
             }));
 
-            match metadata::read_metadata_all_with_opts(file_path, false, loop_max) {
+            match metadata::read_metadata_all_with_opts(file_path, opts) {
                 Ok(tracks) => {
                     let db = state_inner.db.lock();
                     for track in tracks {
