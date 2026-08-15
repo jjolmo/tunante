@@ -30,8 +30,21 @@ pub struct Vgmstream {
 unsafe impl Send for Vgmstream {}
 
 impl Vgmstream {
+    /// How many times a looping stream repeats when the caller doesn't say.
+    pub const DEFAULT_LOOP_COUNT: f64 = 2.0;
+
     /// Open a file with default config (loop 2x + 10s fade, PCM16 output)
     pub fn open(path: &Path, subsong: i32) -> Result<Self, String> {
+        Self::open_with_loops(path, subsong, Self::DEFAULT_LOOP_COUNT)
+    }
+
+    /// Open a file choosing how many times a looping stream repeats.
+    ///
+    /// The count feeds vgmstream's own config, so it lands in `play_samples`
+    /// and therefore in the reported duration — which is why both the scanner
+    /// and the player have to pass the same value, or the progress bar would
+    /// disagree with what you hear.
+    pub fn open_with_loops(path: &Path, subsong: i32, loop_count: f64) -> Result<Self, String> {
         let path_str = path
             .to_str()
             .ok_or_else(|| "Invalid path encoding".to_string())?;
@@ -48,7 +61,7 @@ impl Vgmstream {
 
             // Configure: 2 loops + 10s fade, force PCM16 output
             let mut cfg: ffi::libvgmstream_config_t = std::mem::zeroed();
-            cfg.loop_count = 2.0;
+            cfg.loop_count = loop_count.max(0.0);
             cfg.fade_time = 10.0;
             cfg.fade_delay = 0.0;
             cfg.force_sfmt = ffi::LIBVGMSTREAM_SFMT_PCM16;

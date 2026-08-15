@@ -23,8 +23,8 @@ impl VgmstreamSource {
     ///
     /// - `path`: Path to the audio file
     /// - `subsong`: Subsong index (0 = default/first, 1..N for specific subsong)
-    pub fn new(path: &Path, subsong: i32) -> Result<Self, String> {
-        let vgm = Vgmstream::open(path, subsong)?;
+    pub fn new(path: &Path, subsong: i32, loop_count: f64) -> Result<Self, String> {
+        let vgm = Vgmstream::open_with_loops(path, subsong, loop_count)?;
         let info = vgm.info();
 
         let channels = info.channels.max(1) as u16;

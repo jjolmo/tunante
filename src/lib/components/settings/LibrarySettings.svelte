@@ -146,6 +146,23 @@
 			Applied while scanning, so tracks already in the library keep their current length
 			until you resync below. A 10 s fade-out is added on top.
 		</p>
+
+		<label class="loop-row">
+			<input
+				type="number"
+				min="0"
+				max="20"
+				step="1"
+				value={settingsStore.vgmLoopCount}
+				onchange={(e) =>
+					settingsStore.setVgmLoopCount(Number((e.target as HTMLInputElement).value))}
+			/>
+			<span class="loop-unit">loops for streamed formats (BRSTM, ADX, HCA&hellip;)</span>
+		</label>
+		<p class="section-desc loop-note">
+			Only applies to formats that carry loop points. Chiptune (NSF, GBS, SPC&hellip;) almost
+			never does, so those use the time limit above instead.
+		</p>
 	</div>
 
 	<div class="rating-section">

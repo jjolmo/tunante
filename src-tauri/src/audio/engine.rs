@@ -193,6 +193,9 @@ pub struct AudioEngine {
     play_started_at: Instant,
     fade_on_track_change: bool,
     fade_seconds: f32,
+    /// How many times a looping vgmstream stream repeats. Must match what the
+    /// scanner used, or the progress bar disagrees with what is heard.
+    vgm_loop_count: f64,
     /// Bumped on each new fade run; in-progress fades check this and abort
     /// when superseded so rapid track changes don't overlap fades.
     fade_generation: u64,
@@ -241,6 +244,7 @@ impl AudioEngine {
             play_started_at: Instant::now(),
             fade_on_track_change: false,
             fade_seconds: 2.0,
+            vgm_loop_count: vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT,
             fade_generation: 0,
             desired_output: OutputSelection::System,
             active_device_name: Some(active_name),
@@ -362,7 +366,7 @@ impl AudioEngine {
         } else {
             // Try vgmstream for game audio formats (BCSTM, ADX, HCA, etc.)
             let subsong = sub_track.map(|s| s as i32).unwrap_or(0);
-            match VgmstreamSource::new(actual_path, subsong) {
+            match VgmstreamSource::new(actual_path, subsong, self.vgm_loop_count) {
                 Ok(source) => self.append_source(source),
                 Err(_) => {
                     // Last resort: try symphonia decoder for unknown formats
@@ -427,6 +431,10 @@ impl AudioEngine {
     /// stays at the user's setting while the actual output is ramped.
     pub fn set_player_volume_raw(&mut self, volume: f32) {
         self.player.set_volume(volume.clamp(0.0, 1.0));
+    }
+
+    pub fn set_vgm_loop_count(&mut self, count: f64) {
+        self.vgm_loop_count = count.clamp(0.0, 20.0);
     }
 
     pub fn fade_on_track_change(&self) -> bool {

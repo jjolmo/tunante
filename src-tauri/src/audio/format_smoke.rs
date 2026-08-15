@@ -150,7 +150,7 @@ fn all_supported_formats_decode() {
 
     // --- vgmstream backend (ADX/HCA/BCSTM/... hundreds of stream formats) --------
     {
-        let src = VgmstreamSource::new(&fx.join("sample.bcstm"), 0).expect("vgmstream: open/decode failed");
+        let src = VgmstreamSource::new(&fx.join("sample.bcstm"), 0, vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT).expect("vgmstream: open/decode failed");
         let (n, p) = drain(src);
         assert_ok("vgmstream", n, p);
     }
@@ -368,7 +368,7 @@ fn decode_one(path: &Path) -> Result<Decoded, String> {
         let src = rodio::Decoder::try_from(file).map_err(|e| e.to_string())?;
         Ok(take(src))
     } else {
-        Ok(take(VgmstreamSource::new(path, 0)?))
+        Ok(take(VgmstreamSource::new(path, 0, vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT)?))
     }
 }
 
@@ -597,7 +597,7 @@ fn dsp_chain_applies_to_real_decoder_output() {
         assert_ok("dsp/gme", n, p);
     }
     {
-        let src = VgmstreamSource::new(&fx.join("sample.bcstm"), 0).expect("vgmstream: open failed");
+        let src = VgmstreamSource::new(&fx.join("sample.bcstm"), 0, vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT).expect("vgmstream: open failed");
         let (n, p) = drain_mono(src);
         assert_ok("dsp/vgmstream", n, p);
     }

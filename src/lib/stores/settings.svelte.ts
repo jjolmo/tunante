@@ -89,6 +89,9 @@ class SettingsStore {
 	// Max play time for tracks whose real length can't be determined — the ones
 	// that loop forever. Tracks with a real length ignore this entirely.
 	loopMaxSeconds = $state(150);
+	// How many times a looping vgmstream stream repeats (BRSTM, ADX, HCA...).
+	// Chiptune is unaffected: those files rarely carry loop points at all.
+	vgmLoopCount = $state(2);
 	continueFromQueue = $state(true);
 	fadeOnTrackChange = $state(false);
 	fadeSeconds = $state(2);
@@ -187,6 +190,12 @@ class SettingsStore {
 			if (!isNaN(parsed) && parsed > 0) this.loopMaxSeconds = Math.min(3600, parsed);
 		}
 
+		const vgmLoops = this._settingsCache.get('vgm_loop_count');
+		if (vgmLoops !== undefined) {
+			const parsed = parseFloat(vgmLoops);
+			if (!isNaN(parsed) && parsed >= 0) this.vgmLoopCount = Math.min(20, parsed);
+		}
+
 		const continueFromQueue = this._settingsCache.get('continue_from_queue');
 		if (continueFromQueue !== undefined) this.continueFromQueue = continueFromQueue === 'true';
 
@@ -233,6 +242,7 @@ class SettingsStore {
 		// Sync fade settings to the backend audio engine
 		invoke('set_fade_on_track_change', { enabled: this.fadeOnTrackChange }).catch(() => {});
 		invoke('set_fade_seconds', { seconds: this.fadeSeconds }).catch(() => {});
+		invoke('set_vgm_loop_count', { count: this.vgmLoopCount }).catch(() => {});
 		invoke('set_dsp_config', { config: $state.snapshot(this.dsp) })
 			.then(() => this.refreshDspFromEngine())
 			.catch(() => {});
@@ -526,6 +536,23 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'console_group_by_folder', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save console group by folder setting:', e);
+		}
+	}
+
+	/**
+	 * Save how many times a looping vgmstream stream repeats.
+	 *
+	 * Pushed to the audio engine right away so playback matches, but the
+	 * durations shown in the list come from the scan and need a resync.
+	 */
+	async setVgmLoopCount(count: number) {
+		const clamped = Math.max(0, Math.min(20, count));
+		this.vgmLoopCount = clamped;
+		try {
+			await invoke('set_setting', { key: 'vgm_loop_count', value: String(clamped) });
+			await invoke('set_vgm_loop_count', { count: clamped });
+		} catch (e) {
+			console.error('Failed to save vgmstream loop count:', e);
 		}
 	}
 
