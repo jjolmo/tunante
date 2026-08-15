@@ -9,6 +9,12 @@
 	let isResyncing = $state(false);
 	let addError = $state<string | null>(null);
 
+	function formatMinutes(total: number): string {
+		const m = Math.floor(total / 60);
+		const s = total % 60;
+		return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
+	}
+
 	onMount(() => {
 		const unlisten = listen('scan-complete', () => {
 			isResyncing = false;
@@ -116,6 +122,31 @@
 			<span class="setting-desc">Skip silence detection for chiptune tracks without duration info. Faster scan but shows default 2:40 for SFX/jingles.</span>
 		</div>
 	</label>
+
+	<div class="loop-section">
+		<h3 class="section-title">Endless tracks</h3>
+		<p class="section-desc">
+			How long to play tracks that loop forever and never end on their own. Tracks with a
+			real length &mdash; from their own tags, or from a length in the folder&rsquo;s
+			<code>.m3u</code> &mdash; keep it and ignore this.
+		</p>
+		<label class="loop-row">
+			<input
+				type="number"
+				min="5"
+				max="3600"
+				step="5"
+				value={settingsStore.loopMaxSeconds}
+				onchange={(e) =>
+					settingsStore.setLoopMaxSeconds(Number((e.target as HTMLInputElement).value))}
+			/>
+			<span class="loop-unit">seconds ({formatMinutes(settingsStore.loopMaxSeconds)})</span>
+		</label>
+		<p class="section-desc loop-note">
+			Applied while scanning, so tracks already in the library keep their current length
+			until you resync below. A 10 s fade-out is added on top.
+		</p>
+	</div>
 
 	<div class="rating-section">
 		<h3 class="section-title">Rating storage priority</h3>
@@ -363,6 +394,35 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+	}
+
+	.loop-section {
+		margin-top: 16px;
+	}
+
+	.loop-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 8px;
+	}
+
+	.loop-row input {
+		width: 80px;
+		padding: 6px 8px;
+		background-color: var(--color-bg-secondary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		color: var(--color-text);
+	}
+
+	.loop-unit {
+		color: var(--color-text-secondary);
+		font-size: 12px;
+	}
+
+	.loop-note {
+		margin-top: 6px;
 	}
 
 	.rating-section {

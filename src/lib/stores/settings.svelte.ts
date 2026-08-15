@@ -86,6 +86,9 @@ class SettingsStore {
 	storeCoversInFolder = $state(false);
 	consoleGroupByFolder = $state(false);
 	fastScan = $state(false);
+	// Max play time for tracks whose real length can't be determined — the ones
+	// that loop forever. Tracks with a real length ignore this entirely.
+	loopMaxSeconds = $state(150);
 	continueFromQueue = $state(true);
 	fadeOnTrackChange = $state(false);
 	fadeSeconds = $state(2);
@@ -177,6 +180,12 @@ class SettingsStore {
 
 		const fastScan = this._settingsCache.get('fast_scan');
 		if (fastScan !== undefined) this.fastScan = fastScan === 'true';
+
+		const loopMax = this._settingsCache.get('loop_max_seconds');
+		if (loopMax !== undefined) {
+			const parsed = parseInt(loopMax, 10);
+			if (!isNaN(parsed) && parsed > 0) this.loopMaxSeconds = Math.min(3600, parsed);
+		}
 
 		const continueFromQueue = this._settingsCache.get('continue_from_queue');
 		if (continueFromQueue !== undefined) this.continueFromQueue = continueFromQueue === 'true';
@@ -517,6 +526,22 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'console_group_by_folder', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save console group by folder setting:', e);
+		}
+	}
+
+	/**
+	 * Save the max play time for endlessly looping tracks.
+	 *
+	 * Applied while scanning, so existing tracks keep the duration they were
+	 * scanned with until the library is resynced.
+	 */
+	async setLoopMaxSeconds(seconds: number) {
+		const clamped = Math.max(5, Math.min(3600, Math.round(seconds)));
+		this.loopMaxSeconds = clamped;
+		try {
+			await invoke('set_setting', { key: 'loop_max_seconds', value: String(clamped) });
+		} catch (e) {
+			console.error('Failed to save loop max seconds:', e);
 		}
 	}
 

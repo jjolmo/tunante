@@ -57,6 +57,24 @@ pub fn is_audio_file(path: &std::path::Path) -> bool {
     false
 }
 
+/// Max play time, in milliseconds, for tracks whose real length can't be
+/// determined — in practice the ones that loop forever.
+///
+/// Only reached at the end of the duration cascade: a track with a length in
+/// its `.m3u`, an internal `play_length`, or one that ends on its own keeps its
+/// real duration and ignores this entirely.
+pub(crate) fn loop_max_ms(state: &Arc<AppState>) -> i64 {
+    let stored = {
+        let db = state.db.lock();
+        db.get_setting("loop_max_seconds").ok().flatten()
+    };
+    stored
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|secs| *secs > 0)
+        .map(|secs| secs * 1000)
+        .unwrap_or(metadata::gme_reader_default_duration_ms())
+}
+
 /// Read the user's rating-source priority from settings.
 pub(crate) fn rating_order(state: &Arc<AppState>) -> Vec<metadata::rating_source::RatingSource> {
     let raw = {
@@ -222,6 +240,8 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
         log::info!("Fast scan enabled — skipping silence detection");
     }
 
+    let loop_max_ms = loop_max_ms(state);
+
     let start_time = std::time::Instant::now();
 
     let audio_files: Vec<PathBuf> = WalkDir::new(&scan_path)
@@ -256,7 +276,7 @@ pub fn scan_folder_sync(state: &Arc<AppState>, app: &tauri::AppHandle, path: &st
             },
         );
 
-        match metadata::read_metadata_all_with_opts(file_path, fast_scan) {
+        match metadata::read_metadata_all_with_opts(file_path, fast_scan, loop_max_ms) {
             Ok(tracks) => {
                 let db = state.db.lock();
                 for track in tracks {

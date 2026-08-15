@@ -73,12 +73,17 @@ fn is_vgmstream_file(path: &Path) -> bool {
 
 /// Inner implementation without timeout.
 fn read_metadata_all_inner(path: &Path) -> Result<Vec<Track>, MetadataError> {
-    read_metadata_all_inner_opts(path, false)
+    read_metadata_all_inner_opts(path, false, gme_reader::DEFAULT_DURATION_MS)
 }
 
-fn read_metadata_all_inner_opts(path: &Path, fast_scan: bool) -> Result<Vec<Track>, MetadataError> {
+fn read_metadata_all_inner_opts(
+    path: &Path,
+    fast_scan: bool,
+    loop_max_ms: i64,
+) -> Result<Vec<Track>, MetadataError> {
     if is_gme_file(path) {
-        return gme_reader::read_gme_metadata_with_opts(path, fast_scan).map_err(MetadataError::Gme);
+        return gme_reader::read_gme_metadata_with_opts(path, fast_scan, loop_max_ms)
+            .map_err(MetadataError::Gme);
     }
     if is_gsf_file(path) {
         return gsf_reader::read_gsf_metadata(path).map_err(MetadataError::Gsf);
@@ -109,18 +114,22 @@ fn read_metadata_all_inner_opts(path: &Path, fast_scan: bool) -> Result<Vec<Trac
 /// Read metadata, returning potentially multiple tracks for multi-track VGM files.
 /// Wraps the inner reader with a global timeout to prevent hanging on problematic files.
 pub fn read_metadata_all(path: &Path) -> Result<Vec<Track>, MetadataError> {
-    read_metadata_all_with_opts(path, false)
+    read_metadata_all_with_opts(path, false, gme_reader::DEFAULT_DURATION_MS)
 }
 
 /// Read metadata with configurable fast_scan mode.
 /// When fast_scan is true, skip silence detection for unknown-duration GME tracks.
-pub fn read_metadata_all_with_opts(path: &Path, fast_scan: bool) -> Result<Vec<Track>, MetadataError> {
+pub fn read_metadata_all_with_opts(
+    path: &Path,
+    fast_scan: bool,
+    loop_max_ms: i64,
+) -> Result<Vec<Track>, MetadataError> {
     let path_buf = path.to_path_buf();
     // Silence detection can take a while per track, so give more time when not fast-scanning
     let timeout = if fast_scan { METADATA_READ_TIMEOUT_SECS } else { METADATA_READ_TIMEOUT_SECS * 6 };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let result = read_metadata_all_inner_opts(&path_buf, fast_scan);
+        let result = read_metadata_all_inner_opts(&path_buf, fast_scan, loop_max_ms);
         let _ = tx.send(result);
     });
     match rx.recv_timeout(Duration::from_secs(timeout)) {
