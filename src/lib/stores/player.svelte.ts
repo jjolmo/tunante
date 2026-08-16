@@ -191,6 +191,21 @@ class PlayerStore {
 		return idx === -1 ? 0 : idx + 1;
 	}
 
+	/**
+	 * Update a queued track's rating locally (already saved to DB by the caller).
+	 *
+	 * The queue keeps its own copies of the tracks, so without this the star
+	 * column in the Queued view keeps showing whatever the rating was when the
+	 * track was enqueued.
+	 */
+	updateTrackRating(trackId: string, rating: number) {
+		const track = this.userQueue.find((t) => t.id === trackId);
+		if (track) {
+			track.rating = rating;
+			this.userQueue = [...this.userQueue];
+		}
+	}
+
 	async enqueueTracks(trackIds: string[]) {
 		try {
 			await invoke('enqueue_tracks', { trackIds });
