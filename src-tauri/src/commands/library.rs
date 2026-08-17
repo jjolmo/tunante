@@ -4,6 +4,7 @@ use crate::metadata;
 use crate::AppState;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, State};
 use walkdir::WalkDir;
@@ -136,7 +137,8 @@ pub(crate) fn augment_ratings(state: &Arc<AppState>, tracks: &mut [Track]) {
 
     // `db` first means the stored value always wins where it is set; the old
     // `_ratings.m3u` sync still fills in tracks the DB has at 0, which is what
-    // keeps ratings synced from other machines showing up.
+    // keeps ratings synced from other machines showing up. This path is cheap:
+    // one `.m3u` read per folder, cached.
     if order.first() == Some(&metadata::rating_source::RatingSource::Db) {
         let updates = metadata::ratings_sync::apply_file_ratings(tracks);
         if updates.is_empty() {
@@ -148,36 +150,104 @@ pub(crate) fn augment_ratings(state: &Arc<AppState>, tracks: &mut [Track]) {
                 log::warn!("Failed to persist file-derived rating for {}: {}", id, e);
             }
         }
+    }
+    // Any other order needs to read from disk per track. That is NOT done here:
+    // see `spawn_rating_resolution`. Doing it inline blocked the window on
+    // startup for seconds on a large library.
+}
+
+/// Whether the disk-backed rating resolution has already run this session.
+static RATINGS_RESOLVED: AtomicBool = AtomicBool::new(false);
+
+/// Allow the resolution to run again, e.g. after the user reorders the sources.
+/// Without this, changing the priority would do nothing until the next start.
+pub(crate) fn reset_rating_resolution() {
+    RATINGS_RESOLVED.store(false, Ordering::SeqCst);
+}
+
+/// Resolve ratings from disk in the background, once per run.
+///
+/// ⚠️ This must never block a command. With `file` or `folder` ahead of `db`,
+/// resolving means opening a file (or its folder's `_ratings.m3u`) for every
+/// track: on a 30k-track library sitting on a synced folder that is seconds of
+/// I/O. It used to run inline inside `get_all_tracks`, which is the first thing
+/// the window waits for, so the app came up black until it finished.
+///
+/// The DB already holds usable ratings, so the list paints immediately and this
+/// only refines it, emitting `library-updated` if anything actually changed.
+fn spawn_rating_resolution(state: &Arc<AppState>, app: &tauri::AppHandle) {
+    let order = rating_order(state);
+    if order.first() == Some(&metadata::rating_source::RatingSource::Db) {
+        return;
+    }
+    if RATINGS_RESOLVED.swap(true, Ordering::SeqCst) {
         return;
     }
 
-    let mut updates: Vec<(String, i32)> = Vec::new();
-    for track in tracks.iter_mut() {
-        let resolved = metadata::rating_source::resolve_rating(&track.path, track.rating, &order);
-        if resolved != track.rating {
-            track.rating = resolved;
-            updates.push((track.id.clone(), resolved));
+    let state = state.clone();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let tracks = {
+            let db = state.db.lock();
+            match db.get_all_tracks() {
+                Ok(t) => t,
+                Err(e) => {
+                    log::warn!("Rating resolution: could not read tracks: {}", e);
+                    return;
+                }
+            }
+        };
+
+        let started = std::time::Instant::now();
+        let mut updates: Vec<(String, i32)> = Vec::new();
+        for track in &tracks {
+            let resolved =
+                metadata::rating_source::resolve_rating(&track.path, track.rating, &order);
+            if resolved != track.rating {
+                updates.push((track.id.clone(), resolved));
+            }
         }
-    }
-    if updates.is_empty() {
-        return;
-    }
-    let db = state.db.lock();
-    for (id, rating) in updates {
-        if let Err(e) = db.set_track_rating(&id, rating) {
-            log::warn!("Failed to persist resolved rating for {}: {}", id, e);
+
+        if updates.is_empty() {
+            log::info!(
+                "Rating resolution: {} tracks checked in {:?}, nothing to change",
+                tracks.len(),
+                started.elapsed()
+            );
+            return;
         }
-    }
+
+        let changed = updates.len();
+        {
+            let db = state.db.lock();
+            for (id, rating) in updates {
+                if let Err(e) = db.set_track_rating(&id, rating) {
+                    log::warn!("Failed to persist resolved rating for {}: {}", id, e);
+                }
+            }
+        }
+        log::info!(
+            "Rating resolution: {} of {} tracks updated in {:?}",
+            changed,
+            tracks.len(),
+            started.elapsed()
+        );
+        let _ = app.emit("library-updated", ());
+    });
 }
 
 #[tauri::command]
-pub fn get_all_tracks(state: State<'_, Arc<AppState>>) -> Result<Vec<Track>, String> {
+pub fn get_all_tracks(
+    state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
+) -> Result<Vec<Track>, String> {
     let mut tracks = state
         .db
         .lock()
         .get_all_tracks()
         .map_err(|e| e.to_string())?;
     augment_ratings(&state, &mut tracks);
+    spawn_rating_resolution(state.inner(), &app);
     Ok(tracks)
 }
 
