@@ -31,11 +31,19 @@ pub fn set_setting(
     value: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    state
+    let result = state
         .db
         .lock()
         .set_setting(&key, &value)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string());
+
+    // Reordering the rating sources changes what a resolution would find, so
+    // let it run again instead of waiting for the next app start.
+    if key == crate::metadata::rating_source::SETTING_KEY {
+        crate::commands::library::reset_rating_resolution();
+    }
+
+    result
 }
 
 #[tauri::command]
