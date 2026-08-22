@@ -170,8 +170,24 @@ fn open_device_sink(
     let sink = DeviceSinkBuilder::from_device(device)
         .map_err(|e| AudioError::OutputError(e.to_string()))?
         .with_error_callback(move |err: rodio::cpal::StreamError| {
-            log::warn!("[audio] output stream error ({err}); scheduling rebuild");
-            rebuild_flag.store(true, Ordering::SeqCst);
+            use rodio::cpal::StreamError as StreamErr;
+            match err {
+                // A transient glitch, NOT a device problem, so it must not
+                // trigger a rebuild. `rebuild_output` re-opens the file and
+                // seeks back, and on emulated formats (2SF, PSF, USF...) that
+                // seek re-runs the emulator from the start -- expensive enough
+                // to cause the next underrun, which rebuilds again. That
+                // feedback loop made NDS tracks restart every few seconds.
+                StreamErr::BufferUnderrun => {
+                    log::warn!("[audio] buffer underrun (audio glitch, no rebuild)");
+                }
+                // The device is really gone or the stream is dead: only these
+                // are worth the cost of rebuilding.
+                other => {
+                    log::warn!("[audio] output stream error ({other}); scheduling rebuild");
+                    rebuild_flag.store(true, Ordering::SeqCst);
+                }
+            }
         })
         .open_stream()
         .map_err(|e| AudioError::OutputError(e.to_string()))?;
@@ -196,6 +212,10 @@ pub struct AudioEngine {
     /// How many times a looping vgmstream stream repeats. Must match what the
     /// scanner used, or the progress bar disagrees with what is heard.
     vgm_loop_count: f64,
+    /// When the last stream rebuild happened. Rebuilding restarts and re-seeks
+    /// the current track, so a burst of errors must not be able to do it over
+    /// and over -- that turns a glitch into a loop of restarts.
+    last_rebuild: Instant,
     /// Bumped on each new fade run; in-progress fades check this and abort
     /// when superseded so rapid track changes don't overlap fades.
     fade_generation: u64,
@@ -245,6 +265,7 @@ impl AudioEngine {
             fade_on_track_change: false,
             fade_seconds: 2.0,
             vgm_loop_count: vgmstream_rs::Vgmstream::DEFAULT_LOOP_COUNT,
+            last_rebuild: Instant::now() - Duration::from_secs(60),
             fade_generation: 0,
             desired_output: OutputSelection::System,
             active_device_name: Some(active_name),
@@ -556,6 +577,15 @@ impl AudioEngine {
             _ => false,
         };
         if flagged || changed {
+            // A device change is a deliberate, one-off event and always wins.
+            // An error flag is rate-limited: rebuilding costs a restart+seek,
+            // so repeating it on every tick would be worse than the glitch.
+            const MIN_GAP: Duration = Duration::from_secs(5);
+            if !changed && self.last_rebuild.elapsed() < MIN_GAP {
+                log::debug!("[audio] rebuild requested again too soon; ignoring");
+                return None;
+            }
+            self.last_rebuild = Instant::now();
             match self.rebuild_output() {
                 Ok(()) => return self.active_device_name.clone(),
                 Err(e) => log::error!("[audio] output rebuild failed: {e}"),
