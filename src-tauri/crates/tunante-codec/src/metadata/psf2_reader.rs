@@ -1,4 +1,4 @@
-use crate::db::models::Track;
+use tunante_core::db::models::Track;
 use hepsf_rs::read_psf2_tags;
 use std::path::Path;
 use uuid::Uuid;

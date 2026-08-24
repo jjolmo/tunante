@@ -1,5 +1,5 @@
-use crate::audio::vgm_path::build_vgm_path;
-use crate::db::models::Track;
+use tunante_core::vgm_path::build_vgm_path;
+use tunante_core::db::models::Track;
 use crate::metadata::vgmstream_reader::parse_folder_m3u_ratings;
 use game_music_emu::GameMusicEmu;
 use std::collections::HashMap;

@@ -8,8 +8,8 @@
 //! the file value. The DB always wins when non-zero, so user changes are
 //! preserved.
 
-use crate::audio::vgm_path::{is_gme_file, parse_vgm_path};
-use crate::db::models::Track;
+use tunante_core::vgm_path::{is_gme_file, parse_vgm_path};
+use tunante_core::db::models::Track;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

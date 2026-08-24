@@ -51,7 +51,7 @@ pub fn is_audio_file(path: &std::path::Path) -> bool {
 
     // Also check vgmstream's dynamic extension list for formats not in our static list
     if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-        return vgmstream_rs::Vgmstream::is_valid(filename);
+        return tunante_codec::vgmstream_accepts(filename);
     }
 
     false

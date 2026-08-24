@@ -1,5 +1,5 @@
-use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_psf2_file, is_twosf_file, is_usf_file};
-use crate::db::models::Track;
+use tunante_core::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_psf2_file, is_twosf_file, is_usf_file};
+use tunante_core::db::models::Track;
 use crate::metadata::gme_reader;
 use crate::metadata::gsf_reader;
 use crate::metadata::psf_reader;

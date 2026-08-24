@@ -1,18 +1,18 @@
-use crate::db::models::Track;
-use hepsf_rs::read_psf_tags;
+use tunante_core::db::models::Track;
 use std::path::Path;
 use uuid::Uuid;
+use vio2sf_rs::read_twosf_tags;
 
 /// Default fade duration appended to play length
 const DEFAULT_FADE_MS: u64 = 10_000;
 
-/// Read metadata from a PSF/minipsf file using psflib PSF tag extraction.
+/// Read metadata from a 2SF/mini2sf file using psflib PSF tag extraction.
 ///
-/// Returns a single-element Vec<Track> (PSF files are always single-track).
+/// Returns a single-element Vec<Track> (2SF files are always single-track).
 /// Extracts title, artist, game (→ album), length, and fade from PSF tags.
 /// Falls back to filename-based metadata if tags are missing.
-pub fn read_psf_metadata(path: &Path) -> Result<Vec<Track>, String> {
-    let tags = read_psf_tags(path)?;
+pub fn read_twosf_metadata(path: &Path) -> Result<Vec<Track>, String> {
+    let tags = read_twosf_tags(path)?;
 
     let file_name = path
         .file_stem()

@@ -14,12 +14,22 @@ src/                    # Frontend (SvelteKit)
   lib/stores/           # Shared state (.svelte.ts with runes)
   lib/types/            # TypeScript types
   routes/               # SvelteKit pages
-src-tauri/src/          # Backend (Rust)
-  audio/                # Audio engine (rodio), play queue
-  commands/             # Tauri IPC commands (player, library, playlists)
-  db/                   # SQLite database layer
-  metadata/             # Audio file metadata reader (lofty)
+src-tauri/              # Cargo workspace root (and the desktop app package)
+  src/
+    audio/              # Playback engine (rodio) + output device selection
+    commands/           # Tauri IPC commands (player, library, playlists)
+    watcher/            # Folder watching (notify)
+  crates/
+    tunante-core/       # UI-agnostic: db/ (SQLite), queue, vgm_path, dsp/
+    tunante-codec/      # Every decoder + metadata reader, and all the vendored C
+  <vendored FFI crates> # lazygsf-rs, viogsf-rs, vio2sf-rs, hepsf-rs, lazyusf2-rs,
+                        # vgmstream-rs, game-music-emu-patch, opus-decoder-patch
 ```
+
+`tunante-core` and `tunante-codec` are shared with `tunante-mini`, the mobile
+build. **Neither may depend on Tauri or on any GUI toolkit.** `src-tauri/src/lib.rs`
+re-exports them (`pub use tunante_core::db;`, `pub use tunante_codec::metadata;`)
+so `crate::db::…` and `crate::metadata::…` keep resolving inside the desktop app.
 
 ## Frontend Conventions
 - Svelte 5 runes: `$state`, `$derived`, `$effect`, `$props`
@@ -38,4 +48,10 @@ src-tauri/src/          # Backend (Rust)
 - `npm run tauri dev` - Start full Tauri dev mode
 - `npm run build` - Build frontend
 - `npm run tauri build` - Build production app
-- `cargo check --manifest-path src-tauri/Cargo.toml` - Check Rust code
+- `cargo check --manifest-path src-tauri/Cargo.toml --workspace --all-targets` - Check Rust code.
+  Use `--workspace --all-targets`: without them the test and example targets of
+  `tunante-core`/`tunante-codec` are never compiled, and breakage there goes unseen.
+- `cargo test --manifest-path src-tauri/Cargo.toml -p tunante-codec --release` -
+  Format smoke test. Decodes a real fixture through every emulator backend and
+  asserts the PCM is not silence. This is the bar for "no regression" — CI runs it
+  before every build. Release mode is required; the cores are far too slow in debug.

@@ -6,7 +6,7 @@
 //! - GME chiptune files (NSF, SPC, GBS, etc.): Write #RATING to folder-level `_ratings.m3u`
 //! - vgmstream/unknown formats: Write #RATING to folder-level `_ratings.m3u`
 
-use crate::audio::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file, is_usf_file};
+use tunante_core::vgm_path::{is_gme_file, is_gsf_file, is_psf_file, is_twosf_file, is_usf_file};
 use std::io::Write;
 use std::path::Path;
 
