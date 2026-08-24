@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/tunante-core", "crates/tunante-codec", "crates/tunante-decoder"]
+members = ["crates/tunante-core", "crates/tunante-codec", "crates/tunante-decoder", "crates/tunante-mini"]
 
 [package]
 name = "tunante"

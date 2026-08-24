@@ -1,0 +1,493 @@
+// The tunante-mini shell: three tabs, a mini-player, and a switcher that moves
+// to a side rail when the phone is turned.
+//
+// Deliberately built out of primitives (Rectangle, Text, TextInput, TouchArea)
+// rather than std-widgets, so the look is Tunante's own and not whichever style
+// Slint picks up from the host. The one exception is ListView, which is imported
+// for its virtualization — it only instantiates the rows that are visible, which
+// is what lets the library tab hold a hundred thousand entries without the
+// memory blowing up.
+
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+
+export struct LibraryRow {
+    title: string,
+    subtitle: string,
+    depth: int,
+    is-folder: bool,
+    expanded: bool,
+}
+
+export struct QueueRow {
+    title: string,
+    subtitle: string,
+    playing: bool,
+}
+
+// One tab of the bottom bar / side rail.
+component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <string> glyph;
+    in property <bool> selected;
+    callback clicked();
+
+    background: root.selected ? Theme.bg-selected : transparent;
+    border-radius: Theme.radius;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+
+        Text {
+            text: root.glyph;
+            font-size: 18px;
+            horizontal-alignment: center;
+            color: root.selected ? Theme.text-primary : Theme.text-secondary;
+        }
+
+        Text {
+            text: root.label;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            color: root.selected ? Theme.text-primary : Theme.text-secondary;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+component TabSwitcher {
+    in property <bool> vertical;
+    in-out property <int> tab;
+
+    if root.vertical: VerticalLayout {
+        padding: 6px;
+        spacing: 6px;
+        alignment: start;
+
+        TabButton {
+            height: 60px;
+            glyph: "▶";
+            label: "Playing";
+            selected: root.tab == 0;
+            clicked => { root.tab = 0; }
+        }
+        TabButton {
+            height: 60px;
+            glyph: "≡";
+            label: "Queue";
+            selected: root.tab == 1;
+            clicked => { root.tab = 1; }
+        }
+        TabButton {
+            height: 60px;
+            glyph: "🗀";
+            label: "Library";
+            selected: root.tab == 2;
+            clicked => { root.tab = 2; }
+        }
+    }
+
+    if !root.vertical: HorizontalLayout {
+        padding: 4px;
+        spacing: 4px;
+
+        TabButton {
+            glyph: "▶";
+            label: "Playing";
+            selected: root.tab == 0;
+            clicked => { root.tab = 0; }
+        }
+        TabButton {
+            glyph: "≡";
+            label: "Queue";
+            selected: root.tab == 1;
+            clicked => { root.tab = 1; }
+        }
+        TabButton {
+            glyph: "🗀";
+            label: "Library";
+            selected: root.tab == 2;
+            clicked => { root.tab = 2; }
+        }
+    }
+}
+
+// The strip above the tab bar: what is playing, and the transport.
+component MiniPlayer inherits Rectangle {
+    in property <string> title;
+    in property <string> artist;
+    in property <bool> playing;
+    callback toggle-play();
+
+    height: 64px;
+    background: Theme.bg-secondary;
+
+    Rectangle {
+        height: 1px;
+        y: 0;
+        background: Theme.border;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        spacing: Theme.gap;
+
+        // Artwork placeholder — a real cover goes here, decoded once at display
+        // size and held in a small LRU cache.
+        Rectangle {
+            width: 44px;
+            background: Theme.bg-tertiary;
+            border-radius: 4px;
+
+            Text {
+                text: "♪";
+                color: Theme.text-muted;
+                font-size: 20px;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+
+            Text {
+                text: root.title;
+                color: Theme.text-primary;
+                font-size: Theme.font-body;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.artist;
+                color: Theme.text-secondary;
+                font-size: Theme.font-small;
+                overflow: elide;
+            }
+        }
+
+        Rectangle {
+            width: Theme.touch-target;
+
+            Text {
+                text: root.playing ? "⏸" : "▶";
+                color: Theme.text-primary;
+                font-size: 22px;
+            }
+
+            TouchArea {
+                clicked => { root.toggle-play(); }
+            }
+        }
+    }
+}
+
+component NowPlayingTab inherits Rectangle {
+    in property <string> title;
+    in property <string> artist;
+    in property <string> album;
+    in property <length> art-side;
+
+    VerticalLayout {
+        padding: Theme.gap * 2;
+        spacing: Theme.gap * 2;
+        alignment: center;
+
+        Rectangle {
+            height: root.art-side;
+            width: root.art-side;
+            background: Theme.bg-tertiary;
+            border-radius: Theme.radius;
+
+            Text {
+                text: "♪";
+                color: Theme.text-muted;
+                font-size: 64px;
+            }
+        }
+
+        VerticalLayout {
+            spacing: 4px;
+
+            Text {
+                text: root.title;
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: root.artist;
+                color: Theme.text-secondary;
+                font-size: Theme.font-body;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+            Text {
+                text: root.album;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component QueueTab inherits Rectangle {
+    in property <[QueueRow]> rows;
+    callback activated(int);
+
+    ListView {
+        for row[i] in root.rows: Rectangle {
+            height: Theme.touch-target + 8px;
+            background: touch.has-hover ? Theme.bg-hover : transparent;
+
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: Theme.gap;
+
+                Text {
+                    text: row.playing ? "▶" : "";
+                    color: Theme.accent;
+                    width: 16px;
+                    vertical-alignment: center;
+                }
+
+                VerticalLayout {
+                    alignment: center;
+                    spacing: 2px;
+
+                    Text {
+                        text: row.title;
+                        color: row.playing ? Theme.accent : Theme.text-primary;
+                        font-size: Theme.font-body;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: row.subtitle;
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-small;
+                        overflow: elide;
+                    }
+                }
+            }
+
+            touch := TouchArea {
+                clicked => { root.activated(i); }
+            }
+        }
+    }
+}
+
+component LibraryTab inherits Rectangle {
+    in property <[LibraryRow]> rows;
+    in property <int> total;
+    in-out property <string> search;
+    callback activated(int);
+    callback search-changed(string);
+
+    VerticalLayout {
+        // The search field, and the reason this tab is the one that decides the
+        // toolkit: tapping it has to raise the on-screen keyboard. TextInput is
+        // the primitive Slint fires InputMethodRequest::Enable from, so this is
+        // the real test and not an approximation of it.
+        Rectangle {
+            height: Theme.touch-target + Theme.gap;
+            background: Theme.bg-primary;
+
+            Rectangle {
+                height: Theme.touch-target;
+                x: Theme.gap;
+                width: parent.width - Theme.gap * 2;
+                background: Theme.bg-tertiary;
+                border-radius: Theme.radius;
+                border-width: input.has-focus ? 1px : 0px;
+                border-color: Theme.accent;
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+                    spacing: 8px;
+
+                    Text {
+                        text: "⌕";
+                        color: Theme.text-muted;
+                        font-size: 18px;
+                        vertical-alignment: center;
+                    }
+
+                    input := TextInput {
+                        text <=> root.search;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        single-line: true;
+                        edited => { root.search-changed(self.text); }
+                    }
+                }
+            }
+        }
+
+        // The tree, flattened: each row carries its own depth, and children are
+        // fetched from SQLite when a folder is opened. Nothing builds the whole
+        // structure in memory — that is what caused an OOM at 16k tracks in the
+        // desktop app.
+        ListView {
+            vertical-stretch: 1;
+
+            for row[i] in root.rows: Rectangle {
+                height: Theme.touch-target;
+                background: rowtouch.has-hover ? Theme.bg-hover : transparent;
+
+                HorizontalLayout {
+                    padding-left: Theme.gap + row.depth * 16px;
+                    padding-right: Theme.gap;
+                    spacing: 8px;
+
+                    Text {
+                        text: row.is-folder ? (row.expanded ? "▾" : "▸") : "";
+                        color: Theme.text-secondary;
+                        width: 14px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.is-folder ? "🗀" : "♪";
+                        color: Theme.text-muted;
+                        width: 18px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.title;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        text: row.subtitle;
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                }
+
+                rowtouch := TouchArea {
+                    clicked => { root.activated(i); }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 22px;
+            background: Theme.bg-secondary;
+
+            Text {
+                text: root.total + " entries";
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+            }
+        }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Tunante";
+    background: Theme.bg-primary;
+    // A sensible desktop size for development. On the phone the compositor makes
+    // it fullscreen and this is ignored.
+    preferred-width: 400px;
+    preferred-height: 800px;
+
+    in property <[LibraryRow]> library-rows;
+    in property <[QueueRow]> queue-rows;
+    in property <string> now-title: "Nothing playing";
+    in property <string> now-artist;
+    in property <string> now-album;
+    in property <int> library-total;
+    in-out property <int> tab: 0;
+    in-out property <bool> playing: false;
+    in-out property <string> search;
+
+    callback library-activated(int);
+    callback queue-activated(int);
+    callback search-changed(string);
+
+    // Turning the phone is the only layout breakpoint that matters: portrait puts
+    // the switcher along the bottom edge, within reach of a thumb; landscape moves
+    // it to a rail so the artwork gets the width it just gained.
+    //
+    // Snapshotted on resize rather than written as `root.height >= root.width`.
+    // As a derived binding it joins the layout's own size calculation — the tab
+    // bar exists only in portrait, so the layout's height depends on it, and the
+    // window's height depends on the layout — and Slint rejects that cycle as a
+    // runtime panic risk. Assigning from a `changed` handler is a side effect,
+    // not a binding, so no edge is added to the dependency graph.
+    property <bool> portrait: true;
+
+    changed width => { root.portrait = root.height >= root.width; }
+    changed height => { root.portrait = root.height >= root.width; }
+
+    VerticalLayout {
+        HorizontalLayout {
+            vertical-stretch: 1;
+
+            if !root.portrait: Rectangle {
+                width: 72px;
+                background: Theme.bg-secondary;
+
+                TabSwitcher {
+                    vertical: true;
+                    tab <=> root.tab;
+                }
+            }
+
+            Rectangle {
+                horizontal-stretch: 1;
+
+                if root.tab == 0: NowPlayingTab {
+                    title: root.now-title;
+                    artist: root.now-artist;
+                    album: root.now-album;
+                    // Square, and never wider than the space available.
+                    art-side: min(parent.width, parent.height) - Theme.gap * 8;
+                }
+
+                if root.tab == 1: QueueTab {
+                    rows: root.queue-rows;
+                    activated(i) => { root.queue-activated(i); }
+                }
+
+                if root.tab == 2: LibraryTab {
+                    rows: root.library-rows;
+                    total: root.library-total;
+                    search <=> root.search;
+                    activated(i) => { root.library-activated(i); }
+                    search-changed(s) => { root.search-changed(s); }
+                }
+            }
+        }
+
+        MiniPlayer {
+            title: root.now-title;
+            artist: root.now-artist;
+            playing: root.playing;
+            toggle-play => { root.playing = !root.playing; }
+        }
+
+        if root.portrait: Rectangle {
+            height: 60px;
+            background: Theme.bg-secondary;
+
+            TabSwitcher {
+                vertical: false;
+                tab <=> root.tab;
+            }
+        }
+    }
+}
