@@ -1,0 +1,30 @@
+// Tunante's palette, carried over from the desktop app's src/app.css so the two
+// look like the same program. Thirteen tokens, dark and light.
+//
+// Keep this the single source of colour: no literal `#rrggbb` anywhere else in
+// the UI. Re-theming then means editing one file.
+
+export global Theme {
+    in-out property <bool> dark: true;
+
+    out property <color> bg-primary:     self.dark ? #1e1e1e : #ffffff;
+    out property <color> bg-secondary:   self.dark ? #252526 : #f3f3f3;
+    out property <color> bg-tertiary:    self.dark ? #2d2d30 : #e8e8e8;
+    out property <color> bg-hover:       self.dark ? #3e3e42 : #d4d4d4;
+    out property <color> bg-selected:    self.dark ? #094771 : #cce5ff;
+    out property <color> text-primary:   self.dark ? #cccccc : #1e1e1e;
+    out property <color> text-secondary: self.dark ? #969696 : #616161;
+    out property <color> text-muted:     self.dark ? #5a5a5a : #a0a0a0;
+    out property <color> accent:         #007acc;
+    out property <color> accent-hover:   self.dark ? #1c97ea : #005999;
+    out property <color> border:         self.dark ? #3e3e42 : #d4d4d4;
+
+    // A finger is not a mouse pointer. Nothing interactive goes below this.
+    out property <length> touch-target: 48px;
+    out property <length> gap: 12px;
+    out property <length> radius: 8px;
+
+    out property <length> font-title: 17px;
+    out property <length> font-body: 15px;
+    out property <length> font-small: 13px;
+}

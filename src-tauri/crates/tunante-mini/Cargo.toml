@@ -1,0 +1,30 @@
+[package]
+name = "tunante-mini"
+version = "0.1.0"
+edition = "2021"
+description = "Tunante for the phone: native Slint UI, no webview"
+license = "GPL-2.0-or-later"
+
+[[bin]]
+name = "tunante-mini"
+path = "src/main.rs"
+
+[dependencies]
+# No `dsp` feature: mini has no DSP, and leaving it off keeps rodio and cpal out
+# of this dependency (the audio output is opened directly, not through the core).
+tunante-core = { path = "../tunante-core", default-features = false }
+
+# renderer-software: no GPU API required, so the app still runs if freedreno or
+# Turnip misbehave on the device. backend-winit covers both Wayland and X11 so
+# the same source runs on a desktop during development; the Alpine build should
+# narrow it to `backend-winit-wayland`, which is smaller and forces the Wayland
+# path.
+slint = { version = "1.17", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-software",
+] }
+
+[build-dependencies]
+slint-build = "1.17"
