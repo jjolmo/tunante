@@ -11,9 +11,14 @@ static VOLUME_TOOLTIP_UNTIL: AtomicU64 = AtomicU64::new(0);
 
 pub mod audio;
 pub mod commands;
-pub mod db;
+/// The library database moved to `tunante-core`, shared with tunante-mini.
+/// Re-exported so `crate::db::…` keeps resolving throughout this crate.
+pub use tunante_core::db;
 pub mod debug_log;
-pub mod metadata;
+/// The decoders and metadata readers moved to `tunante-codec`, which is what
+/// tunante-mini will run out-of-process. Re-exported so `crate::metadata::…`
+/// keeps resolving throughout this crate.
+pub use tunante_codec::metadata;
 pub mod shortcuts;
 pub mod updater;
 pub mod watcher;

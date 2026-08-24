@@ -21,14 +21,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use super::gme::GmeSource;
-use super::gsf::GsfSource;
-use super::opus::OggOpusSource;
-use super::psf::PsfSource;
-use super::psf2::Psf2Source;
-use super::twosf::TwoSfSource;
-use super::usf::UsfSource;
-use super::vgmstream::VgmstreamSource;
+use crate::gme::GmeSource;
+use crate::gsf::GsfSource;
+use crate::opus::OggOpusSource;
+use crate::psf::PsfSource;
+use crate::psf2::Psf2Source;
+use crate::twosf::TwoSfSource;
+use crate::usf::UsfSource;
+use crate::vgmstream::VgmstreamSource;
 
 fn fixtures_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -340,7 +340,7 @@ fn take(src: impl rodio::Source<Item = f32>) -> Decoded {
 /// Open a real library file through the same decoder `engine.rs::play_file_at_volume`
 /// would pick for it.
 fn decode_one(path: &Path) -> Result<Decoded, String> {
-    use super::vgm_path::{is_gme_format, is_gsf_format, is_twosf_format, is_usf_format};
+    use crate::vgm_path::{is_gme_format, is_gsf_format, is_twosf_format, is_usf_format};
 
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
     let lower = ext.to_ascii_lowercase();
@@ -381,7 +381,7 @@ fn decode_one(path: &Path) -> Result<Decoded, String> {
 const EMULATED_MAX_SANE: Duration = Duration::from_secs(30 * 60);
 
 fn is_emulated_format(ext: &str) -> bool {
-    use super::vgm_path::{is_gme_format, is_gsf_format, is_twosf_format, is_usf_format};
+    use crate::vgm_path::{is_gme_format, is_gsf_format, is_twosf_format, is_usf_format};
     is_gme_format(ext)
         || is_gsf_format(ext)
         || is_usf_format(ext)
@@ -530,7 +530,7 @@ fn real_library_sweep() {
 ///
 /// Returns (sample_count, peak_amplitude).
 fn drain_mono<S: rodio::Source>(source: S) -> (usize, f32) {
-    use super::dsp::{DspSettings, DspSource};
+    use crate::dsp::{DspSettings, DspSource};
 
     let settings = DspSettings::default();
     settings.mono.set(true);
@@ -620,7 +620,7 @@ fn dsp_chain_applies_to_real_decoder_output() {
 /// keeps duration, seek position and rodio's resampler correct.
 #[test]
 fn dsp_chain_preserves_sample_count_on_a_real_file() {
-    use super::dsp::{DspSettings, DspSource};
+    use crate::dsp::{DspSettings, DspSource};
 
     let fx = fixtures_dir();
     let open = || {

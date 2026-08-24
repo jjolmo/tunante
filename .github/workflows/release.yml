@@ -90,7 +90,7 @@ jobs:
       - run: npm ci
       - run: npm install -g @tauri-apps/cli
       - name: Music format smoke test
-        run: cargo test --manifest-path src-tauri/Cargo.toml --release --lib audio::format_smoke -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p tunante-codec --release -- --nocapture
       - name: Build
         run: npm run tauri build
         env:
@@ -136,7 +136,7 @@ jobs:
       - run: npm ci
       - run: npm install -g @tauri-apps/cli
       - name: Music format smoke test
-        run: cargo test --manifest-path src-tauri/Cargo.toml --release --lib audio::format_smoke -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p tunante-codec --release -- --nocapture
       - name: Build
         run: npm run tauri build
         env:
@@ -181,7 +181,7 @@ jobs:
       - run: npm ci
       - run: npm install -g @tauri-apps/cli
       - name: Music format smoke test
-        run: cargo test --manifest-path src-tauri/Cargo.toml --release --lib audio::format_smoke -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p tunante-codec --release -- --nocapture
       - name: Build
         run: npm run tauri build
         env:

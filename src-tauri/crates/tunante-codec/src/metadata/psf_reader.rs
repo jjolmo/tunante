@@ -1,18 +1,18 @@
-use crate::db::models::Track;
-use lazygsf_rs::read_gsf_tags;
+use tunante_core::db::models::Track;
+use hepsf_rs::read_psf_tags;
 use std::path::Path;
 use uuid::Uuid;
 
 /// Default fade duration appended to play length
 const DEFAULT_FADE_MS: u64 = 10_000;
 
-/// Read metadata from a GSF/minigsf file using psflib PSF tag extraction.
+/// Read metadata from a PSF/minipsf file using psflib PSF tag extraction.
 ///
-/// Returns a single-element Vec<Track> (GSF files are always single-track).
+/// Returns a single-element Vec<Track> (PSF files are always single-track).
 /// Extracts title, artist, game (→ album), length, and fade from PSF tags.
 /// Falls back to filename-based metadata if tags are missing.
-pub fn read_gsf_metadata(path: &Path) -> Result<Vec<Track>, String> {
-    let tags = read_gsf_tags(path)?;
+pub fn read_psf_metadata(path: &Path) -> Result<Vec<Track>, String> {
+    let tags = read_psf_tags(path)?;
 
     let file_name = path
         .file_stem()
@@ -23,8 +23,6 @@ pub fn read_gsf_metadata(path: &Path) -> Result<Vec<Track>, String> {
 
     // Title: use PSF tag, or fall back to filename
     let (title, track_number) = if !tags.title.is_empty() {
-        // Try to extract track number from title like "33 Enemy Deleted"
-        // but prefer the PSF title as-is
         (tags.title.clone(), extract_track_number(&file_name))
     } else {
         parse_title_and_track_number(&file_name)

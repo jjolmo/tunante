@@ -1,5 +1,5 @@
-use crate::audio::vgm_path::build_vgm_path;
-use crate::db::models::Track;
+use tunante_core::vgm_path::build_vgm_path;
+use tunante_core::db::models::Track;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::mpsc;

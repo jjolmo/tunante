@@ -1,13 +1,9 @@
 use super::dsp::{DspSettings, DspSource};
-use super::gme::GmeSource;
-use super::gsf::GsfSource;
-use super::opus::OggOpusSource;
-use super::psf::PsfSource;
-use super::psf2::Psf2Source;
-use super::twosf::TwoSfSource;
-use super::usf::UsfSource;
 use super::vgm_path::{is_gme_format, is_gsf_format, is_psf_format, is_psf2_format, is_twosf_format, is_usf_format, parse_vgm_path};
-use super::vgmstream::VgmstreamSource;
+use super::{
+    GmeSource, GsfSource, OggOpusSource, Psf2Source, PsfSource, TwoSfSource, UsfSource,
+    VgmstreamSource,
+};
 use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::fs::File;
