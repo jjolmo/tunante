@@ -21,6 +21,9 @@ mod usf;
 mod vgmstream;
 
 pub mod metadata;
+mod open;
+
+pub use open::{open_source, BoxedSource, OpenError};
 
 // Re-exported from the core so the decoders and the smoke test keep referring to
 // them as `crate::vgm_path` / `crate::dsp`.
