@@ -1,13 +1,6 @@
 use super::dsp::{DspSettings, DspSource};
-use super::vgm_path::{is_gme_format, is_gsf_format, is_psf_format, is_psf2_format, is_twosf_format, is_usf_format, parse_vgm_path};
-use super::{
-    GmeSource, GsfSource, OggOpusSource, Psf2Source, PsfSource, TwoSfSource, UsfSource,
-    VgmstreamSource,
-};
 use rodio::cpal::traits::{DeviceTrait, HostTrait};
-use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player, Source};
-use std::fs::File;
-use std::io::BufReader;
+use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -22,6 +15,15 @@ pub enum AudioError {
     DecoderError(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+}
+
+impl From<tunante_codec::OpenError> for AudioError {
+    fn from(e: tunante_codec::OpenError) -> Self {
+        match e {
+            tunante_codec::OpenError::Io(e) => AudioError::IoError(e),
+            tunante_codec::OpenError::Decoder(msg) => AudioError::DecoderError(msg),
+        }
+    }
 }
 
 struct PlaybackTimer {
@@ -77,15 +79,6 @@ impl PlaybackTimer {
     fn position_ms(&self) -> u64 {
         self.position().as_millis() as u64
     }
-}
-
-/// Standard audio formats that symphonia handles well — route these directly,
-/// never through vgmstream (which may mishandle them).
-fn is_standard_format(ext: &str) -> bool {
-    matches!(
-        ext.to_ascii_lowercase().as_str(),
-        "mp3" | "flac" | "ogg" | "wav" | "aac" | "aiff" | "wma" | "m4a" | "ape" | "wv"
-    )
 }
 
 /// User's chosen audio output: follow the OS default, or a specific device by name.
@@ -302,74 +295,11 @@ impl AudioEngine {
         self.player = Player::connect_new(&self._device.mixer());
         self.player.set_volume(initial_volume.clamp(0.0, 1.0));
 
-        let path_str = path.to_string_lossy();
-        let (actual_path_str, sub_track) = parse_vgm_path(&path_str);
-        let actual_path = Path::new(actual_path_str);
+        log::info!("[play_file] path={}", path.display());
 
-        let ext = actual_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-
-        log::info!("[play_file] ext='{}', path={}", ext, actual_path.display());
-
-        if is_gme_format(ext) {
-            // GME chiptune format (NSF, SPC, GBS, VGM, etc.)
-            let track_index = sub_track.unwrap_or(0);
-            self.append_source(
-                GmeSource::new(actual_path, track_index, duration_hint_ms)
-                    .map_err(|e| AudioError::DecoderError(e))?,
-            );
-        } else if is_gsf_format(ext) {
-            // GSF/minigsf format (GBA Sound Format via mGBA)
-            self.append_source(
-                GsfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
-            );
-        } else if is_usf_format(ext) {
-            // USF/miniusf format (N64 Sound Format via lazyusf2/Mupen64Plus)
-            self.append_source(
-                UsfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
-            );
-        } else if is_twosf_format(ext) {
-            // 2SF/mini2sf format (NDS Sound Format via DeSmuME)
-            self.append_source(
-                TwoSfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
-            );
-        } else if is_psf2_format(ext) {
-            // PSF2/minipsf2 format (PlayStation 2 Sound Format via Highly Experimental)
-            self.append_source(
-                Psf2Source::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
-            );
-        } else if is_psf_format(ext) {
-            // PSF/minipsf format (PlayStation 1 Sound Format via sexypsf)
-            self.append_source(
-                PsfSource::new(actual_path).map_err(|e| AudioError::DecoderError(e))?,
-            );
-        } else if ext.eq_ignore_ascii_case("opus") {
-            // Use our custom Opus decoder (symphonia doesn't support Opus)
-            let file = BufReader::new(File::open(actual_path)?);
-            self.append_source(OggOpusSource::new(file).map_err(|e| AudioError::DecoderError(e))?);
-        } else if is_standard_format(ext) {
-            // Standard symphonia decoder (MP3, FLAC, AAC, WAV, OGG, etc.)
-            let file = File::open(actual_path)?;
-            self.append_source(
-                Decoder::try_from(file).map_err(|e| AudioError::DecoderError(e.to_string()))?,
-            );
-        } else {
-            // Try vgmstream for game audio formats (BCSTM, ADX, HCA, etc.)
-            let subsong = sub_track.map(|s| s as i32).unwrap_or(0);
-            match VgmstreamSource::new(actual_path, subsong) {
-                Ok(source) => self.append_source(source),
-                Err(_) => {
-                    // Last resort: try symphonia decoder for unknown formats
-                    let file = File::open(actual_path)?;
-                    self.append_source(
-                        Decoder::try_from(file)
-                            .map_err(|e| AudioError::DecoderError(e.to_string()))?,
-                    );
-                }
-            }
-        }
+        // Format dispatch lives in tunante-codec, shared with the tunante-decoder
+        // helper process so a format is only ever wired up once.
+        self.append_source(tunante_codec::open_source(path, duration_hint_ms)?);
 
         self.timer.start();
         self.was_playing = true;

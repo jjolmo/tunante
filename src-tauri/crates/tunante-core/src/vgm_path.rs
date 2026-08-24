@@ -20,6 +20,14 @@ const PSF2_EXTENSIONS: &[&str] = &["psf2", "minipsf2"];
 /// USF (N64 Sound Format) extensions
 const USF_EXTENSIONS: &[&str] = &["usf", "miniusf"];
 
+/// Standard audio formats symphonia handles well.
+///
+/// These are routed straight to symphonia and never through vgmstream, which may
+/// mishandle them.
+const STANDARD_EXTENSIONS: &[&str] = &[
+    "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "ape", "wv",
+];
+
 /// Parse a potentially multi-track path into (file_path, sub_track_index).
 /// Format: "/path/to/file.nsf#3" → ("/path/to/file.nsf", Some(3))
 /// Regular paths return None for the index.
@@ -35,6 +43,11 @@ pub fn parse_vgm_path(path: &str) -> (&str, Option<usize>) {
 /// Build a multi-track virtual path
 pub fn build_vgm_path(file_path: &str, track_index: usize) -> String {
     format!("{}#{}", file_path, track_index)
+}
+
+/// Check if an extension is one symphonia handles well
+pub fn is_standard_format(ext: &str) -> bool {
+    STANDARD_EXTENSIONS.contains(&ext.to_lowercase().as_str())
 }
 
 /// Check if an extension is a GME-supported format
