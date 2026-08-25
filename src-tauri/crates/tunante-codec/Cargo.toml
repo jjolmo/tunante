@@ -30,3 +30,4 @@ lazyusf2-rs = { path = "../../lazyusf2-rs" }
 [dev-dependencies]
 # Only the `real_library_sweep` smoke test needs it, to walk TUNANTE_MUSIC_DIR.
 walkdir = "2"
+game-music-emu = { path = "../../game-music-emu-patch", default-features = false, features = ["vgm", "spc", "nsf"] }
