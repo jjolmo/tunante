@@ -210,6 +210,14 @@ pub(crate) fn set_tempo(handle: &EmuHandle, tempo: f64) {
     unsafe { gme_set_tempo(handle.to_raw(), tempo) }
 }
 
+pub(crate) fn voice_count(handle: &EmuHandle) -> i32 {
+    unsafe { gme_voice_count(handle.to_raw()) }
+}
+
+pub(crate) fn mute_voices(handle: &EmuHandle, muting_mask: i32) {
+    unsafe { gme_mute_voices(handle.to_raw(), muting_mask) }
+}
+
 pub(crate) fn ignore_silence(handle: &EmuHandle, ignore: bool) {
     unsafe { gme_ignore_silence(handle.to_raw(), if ignore { 1 } else { 0 }) }
 }
@@ -350,6 +358,16 @@ unsafe extern "C" {
 
     /// Adjust song tempo (1.0 = normal, 0.5 = half, 2.0 = double)
     fn gme_set_tempo(emu: *const MusicEmu, tempo: f64);
+
+    /// How many independent voices (channels) this emulator exposes.
+    fn gme_voice_count(emu: *const MusicEmu) -> i32;
+
+    /// Silence voices by bitmask: bit i set mutes voice i.
+    ///
+    /// The point of exposing this is diagnosis. A Mega Drive track is FM voices
+    /// and a DAC drum channel playing at once, and no amount of spectrum
+    /// analysis separates them — muting everything but one voice does.
+    fn gme_mute_voices(emu: *const MusicEmu, muting_mask: i32);
 
     /// Disable automatic end-of-track detection and skipping of silence
     fn gme_ignore_silence(emu: *const MusicEmu, ignore: i32);
