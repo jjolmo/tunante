@@ -8720,9 +8720,12 @@ dependencies = [
 name = "tunante-mini"
 version = "0.1.0"
 dependencies = [
+ "rodio",
+ "serde_json",
  "slint",
  "slint-build",
  "tunante-core",
+ "walkdir",
 ]
 
 [[package]]

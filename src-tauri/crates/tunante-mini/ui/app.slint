@@ -17,6 +17,9 @@ export struct LibraryRow {
     depth: int,
     is-folder: bool,
     expanded: bool,
+    // The file or folder this row stands for, so Rust can act on a tap without
+    // the UI having to keep a parallel index.
+    path: string,
 }
 
 export struct QueueRow {
@@ -59,9 +62,16 @@ component TabButton inherits Rectangle {
     }
 }
 
-component TabSwitcher {
+// Inherits Rectangle on purpose. A bare `component Foo { }` has no geometry of
+// its own in Slint, so it collapses to zero size and every button inside it
+// becomes invisible — which is exactly what happened on the phone: the bar was
+// there, painted, and empty. Inheriting Rectangle also means the conditional
+// layouts below are direct children of a Rectangle, so they fill it.
+component TabSwitcher inherits Rectangle {
     in property <bool> vertical;
     in-out property <int> tab;
+
+    background: Theme.bg-secondary;
 
     if root.vertical: VerticalLayout {
         padding: 6px;
@@ -121,15 +131,32 @@ component MiniPlayer inherits Rectangle {
     in property <string> title;
     in property <string> artist;
     in property <bool> playing;
+    in property <int> position-ms;
+    in property <int> duration-ms;
     callback toggle-play();
+    callback next-track();
+    callback prev-track();
 
-    height: 64px;
+    height: 68px;
     background: Theme.bg-secondary;
 
     Rectangle {
         height: 1px;
         y: 0;
         background: Theme.border;
+    }
+
+    // Progress along the top edge. A hairline rather than a slider: the mini
+    // player is a status strip, and seeking belongs on the Playing tab where
+    // there is room for a target a finger can hit.
+    Rectangle {
+        y: 1px;
+        x: 0;
+        height: 2px;
+        width: root.duration-ms > 0
+            ? parent.width * min(1.0, root.position-ms / root.duration-ms)
+            : 0px;
+        background: Theme.accent;
     }
 
     HorizontalLayout {
@@ -172,16 +199,92 @@ component MiniPlayer inherits Rectangle {
 
         Rectangle {
             width: Theme.touch-target;
+            Text { text: "◀◀"; color: Theme.text-secondary; font-size: 14px; }
+            TouchArea { clicked => { root.prev-track(); } }
+        }
 
+        Rectangle {
+            width: Theme.touch-target;
+
+            // Play is a glyph the phone's fonts do have; pause (U+23F8) is not,
+            // so it is drawn. Two rectangles cannot go missing.
             Text {
-                text: root.playing ? "⏸" : "▶";
+                text: "▶";
                 color: Theme.text-primary;
                 font-size: 22px;
+                visible: !root.playing;
+            }
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: 5px;
+                visible: root.playing;
+
+                Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
+                Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
             }
 
             TouchArea {
                 clicked => { root.toggle-play(); }
             }
+        }
+
+        Rectangle {
+            width: Theme.touch-target;
+            Text { text: "▶▶"; color: Theme.text-secondary; font-size: 14px; }
+            TouchArea { clicked => { root.next-track(); } }
+        }
+    }
+}
+
+// The cover art. Square, and told how big to be by whoever places it — working
+// its own size out from the parent would drag it into the layout's size
+// calculation, which is the binding loop this file already had once.
+component Artwork inherits Rectangle {
+    in property <length> side;
+
+    height: root.side;
+    width: root.side;
+    background: Theme.bg-tertiary;
+    border-radius: Theme.radius;
+
+    Text {
+        text: "♪";
+        color: Theme.text-muted;
+        font-size: 64px;
+    }
+}
+
+component TrackInfo {
+    in property <string> title;
+    in property <string> artist;
+    in property <string> album;
+    in property <bool> centered;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+
+        Text {
+            text: root.title;
+            color: Theme.text-primary;
+            font-size: Theme.font-title;
+            horizontal-alignment: root.centered ? center : left;
+            overflow: elide;
+        }
+        Text {
+            text: root.artist;
+            color: Theme.text-secondary;
+            font-size: Theme.font-body;
+            horizontal-alignment: root.centered ? center : left;
+            overflow: elide;
+        }
+        Text {
+            text: root.album;
+            color: Theme.text-muted;
+            font-size: Theme.font-small;
+            horizontal-alignment: root.centered ? center : left;
+            overflow: elide;
         }
     }
 }
@@ -190,50 +293,42 @@ component NowPlayingTab inherits Rectangle {
     in property <string> title;
     in property <string> artist;
     in property <string> album;
-    in property <length> art-side;
+    in property <bool> portrait;
+    // Both sizes come from the window, not from this component, so nothing here
+    // feeds back into the layout that sizes it.
+    in property <length> art-portrait;
+    in property <length> art-landscape;
 
-    VerticalLayout {
+    // Portrait: cover on top, text under it, both centred.
+    if root.portrait: VerticalLayout {
         padding: Theme.gap * 2;
         spacing: Theme.gap * 2;
         alignment: center;
 
-        Rectangle {
-            height: root.art-side;
-            width: root.art-side;
-            background: Theme.bg-tertiary;
-            border-radius: Theme.radius;
+        Artwork { side: root.art-portrait; }
 
-            Text {
-                text: "♪";
-                color: Theme.text-muted;
-                font-size: 64px;
-            }
+        TrackInfo {
+            title: root.title;
+            artist: root.artist;
+            album: root.album;
+            centered: true;
         }
+    }
 
-        VerticalLayout {
-            spacing: 4px;
+    // Landscape: cover on the leading edge, text beside it. Turning the phone
+    // buys width, not height, so stacking would only shrink the cover.
+    if !root.portrait: HorizontalLayout {
+        padding: Theme.gap * 2;
+        spacing: Theme.gap * 2;
+        alignment: start;
 
-            Text {
-                text: root.title;
-                color: Theme.text-primary;
-                font-size: Theme.font-title;
-                horizontal-alignment: center;
-                overflow: elide;
-            }
-            Text {
-                text: root.artist;
-                color: Theme.text-secondary;
-                font-size: Theme.font-body;
-                horizontal-alignment: center;
-                overflow: elide;
-            }
-            Text {
-                text: root.album;
-                color: Theme.text-muted;
-                font-size: Theme.font-small;
-                horizontal-alignment: center;
-                overflow: elide;
-            }
+        Artwork { side: root.art-landscape; }
+
+        TrackInfo {
+            title: root.title;
+            artist: root.artist;
+            album: root.album;
+            centered: false;
         }
     }
 }
@@ -289,8 +384,18 @@ component LibraryTab inherits Rectangle {
     in property <[LibraryRow]> rows;
     in property <int> total;
     in-out property <string> search;
+    // Focus the search field as soon as this tab is built. Only used by the
+    // spike: it makes "does the on-screen keyboard come up?" answerable over
+    // ssh, without needing someone to put a finger on the glass.
+    in property <bool> autofocus-search;
     callback activated(int);
     callback search-changed(string);
+
+    init => {
+        if (root.autofocus-search) {
+            input.focus();
+        }
+    }
 
     VerticalLayout {
         // The search field, and the reason this tab is the one that decides the
@@ -313,22 +418,30 @@ component LibraryTab inherits Rectangle {
                 HorizontalLayout {
                     padding-left: Theme.gap;
                     padding-right: Theme.gap;
-                    spacing: 8px;
 
-                    Text {
-                        text: "⌕";
-                        color: Theme.text-muted;
-                        font-size: 18px;
-                        vertical-alignment: center;
-                    }
+                    Rectangle {
+                        // Placeholder rather than a magnifier glyph: U+2315 is
+                        // missing from the phone's fonts and rendered as a
+                        // squiggle. Text we control always draws.
+                        Text {
+                            x: 0;
+                            text: "Buscar…";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            visible: root.search == "";
+                        }
 
-                    input := TextInput {
-                        text <=> root.search;
-                        color: Theme.text-primary;
-                        font-size: Theme.font-body;
-                        vertical-alignment: center;
-                        single-line: true;
-                        edited => { root.search-changed(self.text); }
+                        input := TextInput {
+                            x: 0;
+                            width: parent.width;
+                            text <=> root.search;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            single-line: true;
+                            edited => { root.search-changed(self.text); }
+                        }
                     }
                 }
             }
@@ -413,10 +526,16 @@ export component AppWindow inherits Window {
     in-out property <int> tab: 0;
     in-out property <bool> playing: false;
     in-out property <string> search;
+    in property <bool> autofocus-search;
+    in property <int> position-ms;
+    in property <int> duration-ms;
 
     callback library-activated(int);
     callback queue-activated(int);
     callback search-changed(string);
+    callback toggle-play();
+    callback next-track();
+    callback prev-track();
 
     // Turning the phone is the only layout breakpoint that matters: portrait puts
     // the switcher along the bottom edge, within reach of a thumb; landscape moves
@@ -437,14 +556,12 @@ export component AppWindow inherits Window {
         HorizontalLayout {
             vertical-stretch: 1;
 
-            if !root.portrait: Rectangle {
-                width: 72px;
-                background: Theme.bg-secondary;
-
-                TabSwitcher {
-                    vertical: true;
-                    tab <=> root.tab;
-                }
+            // Sized by the enclosing layout: the HorizontalLayout gives it the
+            // full height, we only pick the width.
+            if !root.portrait: TabSwitcher {
+                width: 76px;
+                vertical: true;
+                tab <=> root.tab;
             }
 
             Rectangle {
@@ -454,8 +571,13 @@ export component AppWindow inherits Window {
                     title: root.now-title;
                     artist: root.now-artist;
                     album: root.now-album;
-                    // Square, and never wider than the space available.
-                    art-side: min(parent.width, parent.height) - Theme.gap * 8;
+                    portrait: root.portrait;
+                    // Derived from the window, which the compositor imposes, so
+                    // these never feed back into the layout that sizes the tab.
+                    // Portrait leaves room under the cover for three lines of
+                    // text and the two bars; landscape is simply height-bound.
+                    art-portrait: min(root.width - Theme.gap * 4, root.height - 300px);
+                    art-landscape: root.height - 190px;
                 }
 
                 if root.tab == 1: QueueTab {
@@ -466,6 +588,7 @@ export component AppWindow inherits Window {
                 if root.tab == 2: LibraryTab {
                     rows: root.library-rows;
                     total: root.library-total;
+                    autofocus-search: root.autofocus-search;
                     search <=> root.search;
                     activated(i) => { root.library-activated(i); }
                     search-changed(s) => { root.search-changed(s); }
@@ -477,17 +600,17 @@ export component AppWindow inherits Window {
             title: root.now-title;
             artist: root.now-artist;
             playing: root.playing;
-            toggle-play => { root.playing = !root.playing; }
+            position-ms: root.position-ms;
+            duration-ms: root.duration-ms;
+            toggle-play => { root.toggle-play(); }
+            next-track => { root.next-track(); }
+            prev-track => { root.prev-track(); }
         }
 
-        if root.portrait: Rectangle {
-            height: 60px;
-            background: Theme.bg-secondary;
-
-            TabSwitcher {
-                vertical: false;
-                tab <=> root.tab;
-            }
+        if root.portrait: TabSwitcher {
+            height: 64px;
+            vertical: false;
+            tab <=> root.tab;
         }
     }
 }

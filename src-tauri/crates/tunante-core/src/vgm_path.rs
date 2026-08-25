@@ -28,6 +28,55 @@ const STANDARD_EXTENSIONS: &[&str] = &[
     "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "ape", "wv",
 ];
 
+/// Every extension the library scanner will pick up.
+///
+/// This is the static list. It is not the whole truth: vgmstream carries its own,
+/// much broader list built into the library, and a scanner should consult that
+/// too for anything this misses — see `tunante_codec::vgmstream_accepts`. Kept
+/// here, in the core, because both the desktop app and tunante-mini scan folders.
+pub const AUDIO_EXTENSIONS: &[&str] = &[
+    // Standard audio
+    "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",
+    // GME chiptune
+    "nsf", "nsfe", "spc", "gbs", "vgm", "vgz", "hes", "kss", "ay", "sap", "gym",
+    // vgmstream (Nintendo, common game audio)
+    "bcstm", "bfstm", "brstm", "bcwav", "bfwav", "brwav",
+    "adx", "hca", "aax", "scd", "at3", "at9",
+    "dsp", "idsp", "bfsar", "bars", "strm", "csmp", "cstm",
+    "fsb", "bnk", "wem", "mus",
+    "xma", "xma2", "xwb",
+    "genh", "txth", "txtp",
+    "nub", "nus3bank", "lopus",
+    "rwsd", "rwar", "rwav",
+    "sad", "sgd", "sab",
+    "acb", "awb",
+    "ktss", "kvs",
+    "ast", "xa", "svag", "ras", "sts",
+    // PSF family (GBA, NDS, PS1, PS2, N64, Saturn, Dreamcast)
+    "gsf", "minigsf",
+    "2sf", "mini2sf",
+    "psf", "minipsf",
+    "psf2", "minipsf2",
+    "usf", "miniusf",
+    "ssf", "minissf",
+    "dsf", "minidsf",
+    "qsf", "miniqsf",
+    "ncsf", "minincsf",
+];
+
+/// Whether this extension is in the static scanner list.
+pub fn is_scannable_extension(ext: &str) -> bool {
+    AUDIO_EXTENSIONS.contains(&ext.to_lowercase().as_str())
+}
+
+/// Whether the scanner should pick this file up, by extension alone.
+pub fn is_audio_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(is_scannable_extension)
+        .unwrap_or(false)
+}
+
 /// Parse a potentially multi-track path into (file_path, sub_track_index).
 /// Format: "/path/to/file.nsf#3" → ("/path/to/file.nsf", Some(3))
 /// Regular paths return None for the index.

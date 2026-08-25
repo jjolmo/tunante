@@ -8,44 +8,12 @@ use std::sync::Arc;
 use tauri::{Emitter, State};
 use walkdir::WalkDir;
 
-pub const AUDIO_EXTENSIONS: &[&str] = &[
-    // Standard audio
-    "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",
-    // GME chiptune
-    "nsf", "nsfe", "spc", "gbs", "vgm", "vgz", "hes", "kss", "ay", "sap", "gym",
-    // vgmstream (Nintendo, common game audio)
-    "bcstm", "bfstm", "brstm", "bcwav", "bfwav", "brwav",
-    "adx", "hca", "aax", "scd", "at3", "at9",
-    "dsp", "idsp", "bfsar", "bars", "strm", "csmp", "cstm",
-    "fsb", "bnk", "wem", "mus",
-    "xma", "xma2", "xwb",
-    "genh", "txth", "txtp",
-    "nub", "nus3bank", "lopus",
-    "rwsd", "rwar", "rwav",
-    "sad", "sgd", "sab",
-    "acb", "awb",
-    "ktss", "kvs",
-    "csmp", "cstm",
-    // PSF family (GBA, NDS, PS1, PS2, N64, Saturn, Dreamcast)
-    "gsf", "minigsf",
-    "2sf", "mini2sf",
-    "psf", "minipsf",
-    "psf2", "minipsf2",
-    "usf", "miniusf",
-    "ssf", "minissf",
-    "dsf", "minidsf",
-    "qsf", "miniqsf",
-    "ncsf", "minincsf",
-];
+// The static extension list lives in tunante-core, shared with tunante-mini so
+// the two scanners cannot drift apart.
+pub use tunante_core::vgm_path::AUDIO_EXTENSIONS;
 
 pub fn is_audio_file(path: &std::path::Path) -> bool {
-    let ext_match = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|e| AUDIO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-        .unwrap_or(false);
-
-    if ext_match {
+    if tunante_core::vgm_path::is_audio_file(path) {
         return true;
     }
 

@@ -10,9 +10,16 @@ name = "tunante-mini"
 path = "src/main.rs"
 
 [dependencies]
-# No `dsp` feature: mini has no DSP, and leaving it off keeps rodio and cpal out
-# of this dependency (the audio output is opened directly, not through the core).
+# No `dsp` feature: mini has no DSP chain. It still needs rodio itself, to own
+# the audio output and play what the decoder helper pipes back.
 tunante-core = { path = "../tunante-core", default-features = false }
+
+# No symphonia features: this process decodes nothing. Every format, standard
+# ones included, arrives as raw PCM from tunante-decoder, so all rodio does here
+# is mix and talk to ALSA.
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+serde_json = "1"
+walkdir = "2"
 
 # renderer-software: no GPU API required, so the app still runs if freedreno or
 # Turnip misbehave on the device. backend-winit covers both Wayland and X11 so
