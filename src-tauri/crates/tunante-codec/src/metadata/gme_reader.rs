@@ -305,20 +305,31 @@ fn read_gme_metadata_inner(path: &Path, fast_scan: bool) -> Result<Vec<Track>, S
             format!("{} - Track {}", file_name, i + 1)
         };
 
+        // A track that does not loop ends when its data does, and GME stops
+        // there — so a fade tacked on to the reported length is time the file
+        // never plays. That is how a 17.8 s VGM came to claim 27.8 s.
+        //
+        // Only an explicit 0 counts. GME returns -1 for "I do not know", which
+        // is what an SPC reports while looping forever, and treating that as
+        // "no loop" would strip the fade from most of the SNES library.
+        let fade_for_this = if info.loop_length != 0 { FADE_MS } else { 0 };
+
         // Duration: prefer m3u length, then GME play_length, then silence detection, then default
         let duration_ms = if let Some(entry) = m3u_entry {
             if entry.length_ms > 0 {
-                let fade = if entry.fade_ms > 0 { entry.fade_ms } else { FADE_MS };
+                // An .m3u fade is an explicit instruction from whoever made the
+                // rip, so it counts even when GME sees no loop.
+                let fade = if entry.fade_ms > 0 { entry.fade_ms } else { fade_for_this };
                 entry.length_ms + fade
             } else if info.play_length > 0 {
-                info.play_length as i64 + FADE_MS
+                info.play_length as i64 + fade_for_this
             } else if !fast_scan {
                 detect_duration_by_silence(path, i).unwrap_or(DEFAULT_DURATION_MS + FADE_MS)
             } else {
                 DEFAULT_DURATION_MS + FADE_MS
             }
         } else if info.play_length > 0 {
-            info.play_length as i64 + FADE_MS
+            info.play_length as i64 + fade_for_this
         } else if !fast_scan {
             detect_duration_by_silence(path, i).unwrap_or(DEFAULT_DURATION_MS + FADE_MS)
         } else {
