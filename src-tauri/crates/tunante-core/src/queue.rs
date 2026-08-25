@@ -62,6 +62,30 @@ impl PlayQueue {
         }
     }
 
+    /// The context list, in queue order.
+    pub fn tracks(&self) -> &[Track] {
+        &self.tracks
+    }
+
+    /// Where the current track sits in that list.
+    ///
+    /// Note this is the position in the *context*, not in shuffle order: it is
+    /// what a UI needs to mark the playing row, which the user sees in list
+    /// order regardless of how the next track gets chosen.
+    pub fn current_index(&self) -> Option<usize> {
+        self.current_index
+    }
+
+    /// Whether shuffle is on.
+    pub fn shuffle(&self) -> bool {
+        self.shuffle
+    }
+
+    /// The repeat mode in effect.
+    pub fn repeat(&self) -> RepeatMode {
+        self.repeat
+    }
+
     pub fn current(&self) -> Option<&Track> {
         self.current_index.and_then(|i| self.tracks.get(i))
     }

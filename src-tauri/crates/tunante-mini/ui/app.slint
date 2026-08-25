@@ -9,7 +9,7 @@
 // memory blowing up.
 
 import { ListView } from "std-widgets.slint";
-import { Theme } from "theme.slint";
+import { Theme, Fmt } from "theme.slint";
 
 export struct LibraryRow {
     title: string,
@@ -246,23 +246,30 @@ component TabSwitcher inherits Rectangle {
         TabButton {
             height: 60px;
             glyph: "▶";
-            label: "Playing";
+            label: "Sonando";
             selected: root.tab == 0;
             clicked => { root.tab = 0; }
         }
         TabButton {
             height: 60px;
             glyph: "≡";
-            label: "Queue";
+            label: "Cola";
             selected: root.tab == 1;
             clicked => { root.tab = 1; }
         }
         TabButton {
             height: 60px;
             glyph: "🗀";
-            label: "Library";
+            label: "Biblioteca";
             selected: root.tab == 2;
             clicked => { root.tab = 2; }
+        }
+        TabButton {
+            height: 60px;
+            glyph: "⚙";
+            label: "Ajustes";
+            selected: root.tab == 3;
+            clicked => { root.tab = 3; }
         }
     }
 
@@ -272,21 +279,27 @@ component TabSwitcher inherits Rectangle {
 
         TabButton {
             glyph: "▶";
-            label: "Playing";
+            label: "Sonando";
             selected: root.tab == 0;
             clicked => { root.tab = 0; }
         }
         TabButton {
             glyph: "≡";
-            label: "Queue";
+            label: "Cola";
             selected: root.tab == 1;
             clicked => { root.tab = 1; }
         }
         TabButton {
             glyph: "🗀";
-            label: "Library";
+            label: "Biblioteca";
             selected: root.tab == 2;
             clicked => { root.tab = 2; }
+        }
+        TabButton {
+            glyph: "⚙";
+            label: "Ajustes";
+            selected: root.tab == 3;
+            clicked => { root.tab = 3; }
         }
     }
 }
@@ -414,17 +427,135 @@ component MiniPlayer inherits Rectangle {
 // calculation, which is the binding loop this file already had once.
 component Artwork inherits Rectangle {
     in property <length> side;
+    in property <image> art;
 
     height: root.side;
     width: root.side;
     background: Theme.bg-tertiary;
     border-radius: Theme.radius;
+    clip: true;
+
+    Image {
+        source: root.art;
+        width: 100%;
+        height: 100%;
+        // Fill the square and crop, rather than letterboxing a non-square cover
+        // into a grey frame.
+        image-fit: cover;
+        visible: root.art.width > 0;
+    }
 
     Text {
         text: "♪";
         color: Theme.text-muted;
         font-size: 64px;
+        visible: root.art.width == 0;
     }
+}
+
+// Draggable position bar.
+//
+// The whole strip is the target, not the little knob: a 6px handle is a mouse
+// affordance, and on glass it is unhittable. Height is a finger's worth even
+// though the bar itself is thin.
+component SeekBar inherits Rectangle {
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    callback seek(int);
+
+    height: Theme.touch-target;
+
+    property <float> fraction: root.duration-ms > 0
+        ? clamp(root.position-ms / root.duration-ms, 0.0, 1.0)
+        : 0.0;
+
+    HorizontalLayout {
+        padding-left: Theme.gap * 1.5;
+        padding-right: Theme.gap * 1.5;
+
+        Rectangle {
+            track := Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.bg-tertiary;
+
+                Rectangle {
+                    x: 0;
+                    width: parent.width * root.fraction;
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                }
+            }
+
+            Rectangle {
+                x: track.width * root.fraction - self.width / 2;
+                width: touch.pressed ? 18px : 13px;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: Theme.accent;
+                animate width { duration: 90ms; }
+            }
+
+            touch := TouchArea {
+                // Both a tap anywhere on the bar and a drag along it land the
+                // same way: wherever the finger is.
+                moved => {
+                    if (root.duration-ms > 0) {
+                        root.seek((clamp(self.mouse-x / track.width, 0.0, 1.0)
+                            * root.duration-ms));
+                    }
+                }
+                clicked => {
+                    if (root.duration-ms > 0) {
+                        root.seek((clamp(self.mouse-x / track.width, 0.0, 1.0)
+                            * root.duration-ms));
+                    }
+                }
+            }
+        }
+    }
+}
+
+component TimeRow inherits HorizontalLayout {
+    in property <int> position-ms;
+    in property <int> duration-ms;
+
+    padding-left: Theme.gap * 1.5;
+    padding-right: Theme.gap * 1.5;
+
+    Text {
+        text: Fmt.mmss(root.position-ms);
+        color: Theme.text-muted;
+        font-size: Theme.font-small;
+    }
+    Rectangle { horizontal-stretch: 1; }
+    Text {
+        text: root.duration-ms > 0 ? Fmt.mmss(root.duration-ms) : "--:--";
+        color: Theme.text-muted;
+        font-size: Theme.font-small;
+    }
+}
+
+// One round transport button.
+component RoundButton inherits Rectangle {
+    in property <string> glyph;
+    in property <bool> active;
+    in property <length> size: 52px;
+    callback clicked();
+
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: root.active ? Theme.bg-selected : (t.has-hover ? Theme.bg-hover : transparent);
+
+    Text {
+        text: root.glyph;
+        color: root.active ? Theme.accent : Theme.text-primary;
+        font-size: root.size * 0.38;
+    }
+
+    t := TouchArea { clicked => { root.clicked(); } }
 }
 
 component TrackInfo {
@@ -461,23 +592,297 @@ component TrackInfo {
     }
 }
 
+component Transport inherits VerticalLayout {
+    in property <bool> playing;
+    in property <bool> shuffle;
+    in property <int> repeat;          // 0 off · 1 all · 2 one
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    callback toggle-play();
+    callback next-track();
+    callback prev-track();
+    callback cycle-repeat();
+    callback toggle-shuffle();
+    callback seek(int);
+
+    spacing: 4px;
+
+    SeekBar {
+        position-ms: root.position-ms;
+        duration-ms: root.duration-ms;
+        seek(ms) => { root.seek(ms); }
+    }
+
+    TimeRow {
+        position-ms: root.position-ms;
+        duration-ms: root.duration-ms;
+    }
+
+    HorizontalLayout {
+        padding: Theme.gap;
+        alignment: space-around;
+
+        RoundButton {
+            glyph: "⤨";
+            active: root.shuffle;
+            size: 46px;
+            clicked => { root.toggle-shuffle(); }
+        }
+
+        RoundButton {
+            glyph: "◀◀";
+            size: 52px;
+            clicked => { root.prev-track(); }
+        }
+
+        // The big one, dead centre, where a thumb lands.
+        Rectangle {
+            width: 68px;
+            height: 68px;
+            border-radius: 34px;
+            background: Theme.accent;
+
+            Text {
+                text: "▶";
+                color: #ffffff;
+                font-size: 26px;
+                visible: !root.playing;
+            }
+            VerticalLayout {
+                alignment: center;
+                visible: root.playing;
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    Rectangle { width: 6px; height: 24px; background: #ffffff; }
+                    Rectangle { width: 6px; height: 24px; background: #ffffff; }
+                }
+            }
+            TouchArea { clicked => { root.toggle-play(); } }
+        }
+
+        RoundButton {
+            glyph: "▶▶";
+            size: 52px;
+            clicked => { root.next-track(); }
+        }
+
+        // One glyph per mode, rather than a badge on a shared icon: at this size
+        // a "1" pinned to a corner is unreadable.
+        RoundButton {
+            glyph: root.repeat == 2 ? "↻¹" : "↻";
+            active: root.repeat != 0;
+            size: 46px;
+            clicked => { root.cycle-repeat(); }
+        }
+    }
+}
+
+// A labelled row that does one thing when tapped.
+component SettingRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> highlighted;
+    callback clicked();
+
+    height: Theme.touch-target + 12px;
+    background: t.has-hover ? Theme.bg-hover : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        spacing: Theme.gap;
+
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Text {
+            text: root.value;
+            color: root.highlighted ? Theme.accent : Theme.text-muted;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+        }
+    }
+
+    t := TouchArea { clicked => { root.clicked(); } }
+}
+
+component SettingsTab inherits Rectangle {
+    in property <float> volume;
+    in property <bool> sleep-running;
+    in property <int> sleep-minutes;
+    in property <string> library-summary;
+    in property <int> loop-count;
+    in property <int> fade-seconds;
+    callback set-volume(float);
+    callback cycle-sleep();
+    callback rescan();
+    callback add-folder();
+    callback cycle-loops();
+    callback cycle-fade();
+
+    VerticalLayout {
+        padding-top: Theme.gap;
+
+        Text {
+            text: "Sonido";
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            horizontal-alignment: left;
+            x: Theme.gap;
+        }
+
+        // Volume, as a bar you drag. Same reasoning as the seek bar: the whole
+        // strip is the target.
+        Rectangle {
+            height: Theme.touch-target;
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: Theme.gap;
+
+                Text {
+                    text: "🕪";
+                    color: Theme.text-muted;
+                    font-size: 16px;
+                    vertical-alignment: center;
+                    width: 22px;
+                }
+
+                Rectangle {
+                    vol := Rectangle {
+                        height: 4px;
+                        border-radius: 2px;
+                        background: Theme.bg-tertiary;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * root.volume;
+                            height: parent.height;
+                            border-radius: parent.border-radius;
+                            background: Theme.accent;
+                        }
+                    }
+                    Rectangle {
+                        x: vol.width * root.volume - self.width / 2;
+                        width: 14px;
+                        height: 14px;
+                        border-radius: 7px;
+                        background: Theme.accent;
+                    }
+                    voltouch := TouchArea {
+                        moved => { root.set-volume(clamp(self.mouse-x / vol.width, 0.0, 1.0)); }
+                        clicked => { root.set-volume(clamp(self.mouse-x / vol.width, 0.0, 1.0)); }
+                    }
+                }
+
+                Text {
+                    text: round(root.volume * 100) + "%";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                    width: 44px;
+                    horizontal-alignment: right;
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        Text {
+            text: "Música de consola";
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            x: Theme.gap;
+        }
+
+        // What decides how long a track that never ends actually lasts.
+        SettingRow {
+            label: "Repeticiones del bucle";
+            value: root.loop-count + "×";
+            clicked => { root.cycle-loops(); }
+        }
+        SettingRow {
+            label: "Fundido final";
+            value: root.fade-seconds == 0 ? "sin fundido" : root.fade-seconds + " s";
+            clicked => { root.cycle-fade(); }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        Text {
+            text: "Biblioteca";
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            x: Theme.gap;
+        }
+
+        SettingRow {
+            label: "Carpetas analizadas";
+            value: root.library-summary;
+        }
+        SettingRow {
+            label: "Añadir una carpeta";
+            value: "＋";
+            clicked => { root.add-folder(); }
+        }
+        SettingRow {
+            label: "Volver a analizar";
+            value: "↻";
+            clicked => { root.rescan(); }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        SettingRow {
+            label: "Apagar la música en";
+            value: root.sleep-running ? root.sleep-minutes + " min" : "desactivado";
+            highlighted: root.sleep-running;
+            clicked => { root.cycle-sleep(); }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+    }
+}
+
 component NowPlayingTab inherits Rectangle {
     in property <string> title;
     in property <string> artist;
     in property <string> album;
     in property <bool> portrait;
+    in property <image> art;
+    in property <bool> playing;
+    in property <bool> shuffle;
+    in property <int> repeat;
+    in property <int> position-ms;
+    in property <int> duration-ms;
     // Both sizes come from the window, not from this component, so nothing here
     // feeds back into the layout that sizes it.
     in property <length> art-portrait;
     in property <length> art-landscape;
 
-    // Portrait: cover on top, text under it, both centred.
-    if root.portrait: VerticalLayout {
-        padding: Theme.gap * 2;
-        spacing: Theme.gap * 2;
-        alignment: center;
+    callback toggle-play();
+    callback next-track();
+    callback prev-track();
+    callback cycle-repeat();
+    callback toggle-shuffle();
+    callback seek(int);
 
-        Artwork { side: root.art-portrait; }
+    // Portrait: cover on top, text under it, transport at the bottom.
+    if root.portrait: VerticalLayout {
+        padding: Theme.gap;
+        spacing: Theme.gap;
+
+        Rectangle { vertical-stretch: 1; }
+
+        HorizontalLayout {
+            alignment: center;
+            Artwork { side: root.art-portrait; art: root.art; }
+        }
 
         TrackInfo {
             title: root.title;
@@ -485,22 +890,61 @@ component NowPlayingTab inherits Rectangle {
             album: root.album;
             centered: true;
         }
+
+        Rectangle { vertical-stretch: 1; }
+
+        Transport {
+            playing: root.playing;
+            shuffle: root.shuffle;
+            repeat: root.repeat;
+            position-ms: root.position-ms;
+            duration-ms: root.duration-ms;
+            toggle-play => { root.toggle-play(); }
+            next-track => { root.next-track(); }
+            prev-track => { root.prev-track(); }
+            cycle-repeat => { root.cycle-repeat(); }
+            toggle-shuffle => { root.toggle-shuffle(); }
+            seek(ms) => { root.seek(ms); }
+        }
     }
 
-    // Landscape: cover on the leading edge, text beside it. Turning the phone
-    // buys width, not height, so stacking would only shrink the cover.
+    // Landscape: cover on the leading edge, everything else beside it. Turning
+    // the phone buys width, not height, so stacking would only shrink the cover.
     if !root.portrait: HorizontalLayout {
-        padding: Theme.gap * 2;
-        spacing: Theme.gap * 2;
+        padding: Theme.gap;
+        spacing: Theme.gap;
         alignment: start;
 
-        Artwork { side: root.art-landscape; }
+        Artwork { side: root.art-landscape; art: root.art; }
 
-        TrackInfo {
-            title: root.title;
-            artist: root.artist;
-            album: root.album;
-            centered: false;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: Theme.gap;
+
+            Rectangle { vertical-stretch: 1; }
+
+            TrackInfo {
+                title: root.title;
+                artist: root.artist;
+                album: root.album;
+                centered: false;
+            }
+
+            Rectangle { vertical-stretch: 1; }
+
+            Transport {
+                playing: root.playing;
+                shuffle: root.shuffle;
+                repeat: root.repeat;
+                position-ms: root.position-ms;
+                duration-ms: root.duration-ms;
+                toggle-play => { root.toggle-play(); }
+                next-track => { root.next-track(); }
+                prev-track => { root.prev-track(); }
+                cycle-repeat => { root.cycle-repeat(); }
+                toggle-shuffle => { root.toggle-shuffle(); }
+                seek(ms) => { root.seek(ms); }
+            }
         }
     }
 }
@@ -709,6 +1153,17 @@ export component AppWindow inherits Window {
     in property <bool> autofocus-search;
     in property <int> position-ms;
     in property <int> duration-ms;
+    in property <image> now-art;
+    in-out property <bool> shuffle;
+    // 0 off · 1 all · 2 one
+    in-out property <int> repeat;
+
+    in-out property <float> volume: 1.0;
+    in property <bool> sleep-running;
+    in property <int> sleep-minutes;
+    in property <string> library-summary;
+    in property <int> loop-count: 2;
+    in property <int> fade-seconds: 8;
 
     // First run: no folders chosen yet, so the picker replaces the whole shell.
     in-out property <bool> setup-mode;
@@ -728,6 +1183,15 @@ export component AppWindow inherits Window {
     callback toggle-play();
     callback next-track();
     callback prev-track();
+    callback cycle-repeat();
+    callback toggle-shuffle();
+    callback seek-to(int);
+    callback set-volume(float);
+    callback cycle-sleep();
+    callback rescan();
+    callback add-folder();
+    callback cycle-loops();
+    callback cycle-fade();
 
     // Turning the phone is the only layout breakpoint that matters: portrait puts
     // the switcher along the bottom edge, within reach of a thumb; landscape moves
@@ -785,7 +1249,19 @@ export component AppWindow inherits Window {
                     title: root.now-title;
                     artist: root.now-artist;
                     album: root.now-album;
+                    art: root.now-art;
+                    playing: root.playing;
+                    shuffle: root.shuffle;
+                    repeat: root.repeat;
+                    position-ms: root.position-ms;
+                    duration-ms: root.duration-ms;
                     portrait: root.portrait;
+                    toggle-play => { root.toggle-play(); }
+                    next-track => { root.next-track(); }
+                    prev-track => { root.prev-track(); }
+                    cycle-repeat => { root.cycle-repeat(); }
+                    toggle-shuffle => { root.toggle-shuffle(); }
+                    seek(ms) => { root.seek-to(ms); }
                     // Derived from the window, which the compositor imposes, so
                     // these never feed back into the layout that sizes the tab.
                     // Portrait leaves room under the cover for three lines of
@@ -797,6 +1273,21 @@ export component AppWindow inherits Window {
                 if root.tab == 1: QueueTab {
                     rows: root.queue-rows;
                     activated(i) => { root.queue-activated(i); }
+                }
+
+                if root.tab == 3: SettingsTab {
+                    volume: root.volume;
+                    sleep-running: root.sleep-running;
+                    sleep-minutes: root.sleep-minutes;
+                    library-summary: root.library-summary;
+                    loop-count: root.loop-count;
+                    fade-seconds: root.fade-seconds;
+                    set-volume(v) => { root.set-volume(v); }
+                    cycle-sleep => { root.cycle-sleep(); }
+                    rescan => { root.rescan(); }
+                    add-folder => { root.add-folder(); }
+                    cycle-loops => { root.cycle-loops(); }
+                    cycle-fade => { root.cycle-fade(); }
                 }
 
                 if root.tab == 2: LibraryTab {
