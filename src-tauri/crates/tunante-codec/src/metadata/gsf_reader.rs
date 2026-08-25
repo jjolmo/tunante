@@ -1,5 +1,5 @@
 use tunante_core::db::models::Track;
-use lazygsf_rs::read_gsf_tags;
+use viogsf_rs::read_gsf_tags;
 use std::path::Path;
 use uuid::Uuid;
 
