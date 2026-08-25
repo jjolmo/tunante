@@ -376,13 +376,20 @@ component MiniPlayer inherits Rectangle {
                 visible: !root.playing;
             }
 
-            HorizontalLayout {
+            // Centred in both directions. A HorizontalLayout on its own only
+            // centres across; the bars would sit at the top of the strip, which
+            // is exactly how this looked on the phone the first time.
+            VerticalLayout {
                 alignment: center;
-                spacing: 5px;
                 visible: root.playing;
 
-                Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
-                Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 5px;
+
+                    Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
+                    Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
+                }
             }
 
             TouchArea {

@@ -49,6 +49,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scan_target = arg_value("--scan").map(PathBuf::from);
     let focus_search = args.iter().any(|a| a == "--focus-search");
 
+    // A bare path means "play this". The .desktop file declares MIME types, so
+    // a file manager or another app can hand us a track directly, and that has
+    // to do the obvious thing.
+    let open_target = args
+        .iter()
+        .skip(1)
+        .find(|a| !a.starts_with('-'))
+        .map(PathBuf::from)
+        .filter(|p| p.is_file());
+
     let dbfile = db_path()?;
     let db = Database::new(&dbfile)?;
 
@@ -224,6 +234,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let queue_model = Rc::new(VecModel::from(Vec::<QueueRow>::new()));
     ui.set_queue_rows(ModelRc::from(queue_model.clone()));
+
+    // Handed a file on the command line: play it, and queue its folder around
+    // it, which is what anyone opening one track of an album expects.
+    if let Some(path) = &open_target {
+        let path = path.to_string_lossy().to_string();
+        let folder = std::path::Path::new(&path)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+
+        let mut tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
+        // Not in the library yet — ask the decoder about it directly, so the
+        // app can play a file it has never scanned.
+        if tracks.is_empty() {
+            if let Ok(values) = decoder::probe(
+                std::path::Path::new(&path),
+                std::time::Duration::from_secs(20),
+                false,
+            ) {
+                tracks = values
+                    .into_iter()
+                    .filter_map(|v| serde_json::from_value(v).ok())
+                    .collect();
+            }
+        }
+
+        let start = tracks.iter().position(|t| t.path == path).unwrap_or(0);
+        if let Some(p) = player.borrow_mut().as_mut() {
+            p.set_tracks(tracks.clone());
+            match p.play_index(start) {
+                Ok(()) => push_now_playing(&ui, p),
+                Err(e) => eprintln!("no se pudo reproducir: {e}"),
+            }
+        }
+        queue_model.set_vec(to_queue_rows(&tracks, start));
+        ui.set_setup_mode(false);
+    }
 
     // --- Library: open a folder, or play a track -----------------------------
     {
