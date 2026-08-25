@@ -141,11 +141,24 @@ impl PipeSource {
     ///
     /// `duration_hint_ms` is only consulted by GME, whose files often carry no
     /// length of their own; pass what the library database knows, or 0.
-    pub fn open(path: &Path, duration_hint_ms: i64) -> Result<Self, String> {
+    ///
+    /// `loops` and `fade_ms` decide how long a track that never ends lasts —
+    /// console music mostly loops by design, so somebody has to choose. Only the
+    /// backends with a notion of length honour them.
+    pub fn open(
+        path: &Path,
+        duration_hint_ms: i64,
+        loops: u32,
+        fade_ms: u64,
+    ) -> Result<Self, String> {
         let mut child = Command::new(decoder_path())
             .arg("play")
             .arg(path)
             .arg(duration_hint_ms.to_string())
+            .arg("--loops")
+            .arg(loops.max(1).to_string())
+            .arg("--fade")
+            .arg(fade_ms.to_string())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

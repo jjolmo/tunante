@@ -32,6 +32,10 @@ pub struct Player {
     /// end-of-track check fires immediately and the queue runs away.
     appended_at: Instant,
     has_source: bool,
+    /// How long a looping track should last. Console music mostly loops by
+    /// design, so the player has to decide when to stop.
+    loops: u32,
+    fade_ms: u64,
 }
 
 impl Player {
@@ -50,6 +54,8 @@ impl Player {
             duration_ms: 0,
             appended_at: Instant::now(),
             has_source: false,
+            loops: 2,
+            fade_ms: 8_000,
         })
     }
 
@@ -82,7 +88,7 @@ impl Player {
         // desktop engine, there are no C globals to tear down first.
         self.player.stop();
 
-        let source = PipeSource::open(Path::new(&path), hint)?;
+        let source = PipeSource::open(Path::new(&path), hint, self.loops, self.fade_ms)?;
         self.duration_ms = source
             .total_duration()
             .map(|d| d.as_millis() as u64)
@@ -149,6 +155,14 @@ impl Player {
 
     pub fn volume(&self) -> f32 {
         self.volume
+    }
+
+    /// Applies from the next track on: changing it mid-track would mean
+    /// restarting the decoder, and losing your place to change a setting is a
+    /// worse trade than waiting for the next song.
+    pub fn set_loop_settings(&mut self, loops: u32, fade_ms: u64) {
+        self.loops = loops;
+        self.fade_ms = fade_ms;
     }
 
     pub fn set_repeat(&mut self, mode: RepeatMode) {
