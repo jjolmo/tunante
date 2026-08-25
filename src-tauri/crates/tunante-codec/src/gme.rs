@@ -36,19 +36,33 @@ impl GmeSource {
         let emu = GameMusicEmu::from_file(path, 44100)
             .map_err(|e| format!("GME load error: {}", e))?;
 
+        let info = emu
+            .track_info(track_index)
+            .map_err(|e| format!("GME track info error: {}", e))?;
+
+        // Does this track actually go round?
+        //
+        // GME reports three things here, and the difference matters: a positive
+        // loop length means it loops, 0 means it explicitly does not, and -1
+        // means it does not know. Only the explicit 0 justifies dropping the
+        // fade — an SPC is a snapshot of a running sound chip and reports -1
+        // while looping forever.
+        //
+        // A rip with no loop point ends when its data does and GME stops there,
+        // so a fade set beyond that never happens. Claiming it anyway is how a
+        // 17.8 s VGM came to report 27.8 s, leaving the progress bar ten
+        // seconds short of the end.
+        let loops = info.loop_length != 0;
+        let fade_ms = if loops { FADE_MS } else { 0 };
+
         // Use DB duration hint if available, otherwise fall back to GME's play_length
-        let play_duration_ms = if duration_hint_ms > FADE_MS as i64 {
-            // DB duration already includes fade — subtract it for the play portion
-            (duration_hint_ms - FADE_MS as i64) as i32
+        let play_duration_ms = if duration_hint_ms > fade_ms as i64 {
+            // DB duration already includes the fade — subtract it for the play portion
+            (duration_hint_ms - fade_ms as i64) as i32
+        } else if info.play_length > 0 {
+            info.play_length
         } else {
-            let info = emu
-                .track_info(track_index)
-                .map_err(|e| format!("GME track info error: {}", e))?;
-            if info.play_length > 0 {
-                info.play_length
-            } else {
-                DEFAULT_DURATION_MS
-            }
+            DEFAULT_DURATION_MS
         };
 
         // Start the track first, then set fade — start_track resets
@@ -56,9 +70,11 @@ impl GmeSource {
         emu.start_track(track_index)
             .map_err(|e| format!("GME start track error: {}", e))?;
 
-        emu.set_fade(play_duration_ms);
+        if loops {
+            emu.set_fade(play_duration_ms);
+        }
 
-        let total_ms = play_duration_ms + FADE_MS;
+        let total_ms = play_duration_ms + fade_ms;
 
         Ok(Self {
             emu,
