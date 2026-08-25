@@ -25,6 +25,7 @@
 
 mod decoder;
 mod library;
+mod mpris;
 mod player;
 
 use std::cell::RefCell;
@@ -241,6 +242,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- Lock screen and headset buttons -------------------------------------
+    //
+    // The D-Bus server runs on its own thread; commands come back over a
+    // channel that the progress timer below drains. Going through a channel
+    // rather than `invoke_from_event_loop` keeps the player's `Rc` on one
+    // thread, where it belongs, instead of forcing the whole graph to be `Send`.
+    let (mpris_tx, mpris_rx) = mpris::spawn();
+
     // --- Progress, and moving to the next track when one ends ---------------
     let timer = slint::Timer::default();
     {
@@ -255,6 +264,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut guard = player.borrow_mut();
                 let Some(p) = guard.as_mut() else { return };
 
+                // Anything the lock screen or a headset button asked for.
+                while let Ok(cmd) = mpris_rx.try_recv() {
+                    match cmd {
+                        mpris::Command::PlayPause => p.toggle_play(),
+                        mpris::Command::Play => {
+                            if !p.is_playing() {
+                                p.toggle_play()
+                            }
+                        }
+                        mpris::Command::Pause => {
+                            if p.is_playing() {
+                                p.toggle_play()
+                            }
+                        }
+                        mpris::Command::Stop => p.stop(),
+                        mpris::Command::Next => {
+                            let _ = p.next();
+                        }
+                        mpris::Command::Previous => {
+                            let _ = p.prev();
+                        }
+                        mpris::Command::SetVolume(v) => p.set_volume(v as f32),
+                        // Seeking needs the decoder protocol to grow a seek
+                        // command first. Advertised as unsupported, so nothing
+                        // well-behaved should be asking.
+                        mpris::Command::Seek(_) => {}
+                    }
+                    push_now_playing(&ui, p);
+                    sync_queue_marker(p, &queue_model);
+                }
+
                 if p.poll_track_end() {
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
@@ -262,6 +302,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_position_ms(p.position_ms() as i32);
                 ui.set_duration_ms(p.duration_ms() as i32);
                 ui.set_playing(p.is_playing());
+
+                // The MPRIS side works out what actually changed; sending on
+                // every tick would otherwise wake every listener on the bus
+                // twice a second, which on a phone is battery.
+                let (title, artist, album) = match p.current() {
+                    Some(t) => (t.title.clone(), t.artist.clone(), t.album.clone()),
+                    None => (String::new(), String::new(), String::new()),
+                };
+                let _ = mpris_tx.send(mpris::Update {
+                    title,
+                    artist,
+                    album,
+                    duration_ms: p.duration_ms(),
+                    position_ms: p.position_ms(),
+                    playing: p.is_playing(),
+                    has_track: p.current().is_some(),
+                });
             },
         );
     }
