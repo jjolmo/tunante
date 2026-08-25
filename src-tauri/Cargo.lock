@@ -3909,14 +3909,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
-name = "lazygsf-rs"
-version = "0.1.0"
-dependencies = [
- "cc",
- "libc",
-]
-
-[[package]]
 name = "lazyusf2-rs"
 version = "0.1.0"
 dependencies = [
@@ -8703,7 +8695,6 @@ dependencies = [
  "base64 0.22.1",
  "game-music-emu",
  "hepsf-rs",
- "lazygsf-rs",
  "lazyusf2-rs",
  "lofty",
  "log",
