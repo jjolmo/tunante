@@ -8745,7 +8745,9 @@ name = "tunante-mini"
 version = "0.1.0"
 dependencies = [
  "async-io",
+ "base64 0.22.1",
  "futures-lite",
+ "image",
  "mpris-server",
  "rodio",
  "serde_json",

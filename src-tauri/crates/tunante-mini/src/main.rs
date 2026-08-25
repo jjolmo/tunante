@@ -28,6 +28,7 @@ mod library;
 mod mpris;
 mod picker;
 mod player;
+mod session;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -235,6 +236,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let queue_model = Rc::new(VecModel::from(Vec::<QueueRow>::new()));
     ui.set_queue_rows(ModelRc::from(queue_model.clone()));
 
+    // --- Restore the last session -------------------------------------------
+    let saved = session::Session::load(&db);
+    ui.set_volume(saved.volume);
+    ui.set_shuffle(saved.shuffle);
+    ui.set_repeat(saved.repeat as i32);
+    ui.set_loop_count(
+        db.get_setting("mini.loop_count")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2),
+    );
+    ui.set_fade_seconds(
+        db.get_setting("mini.fade_seconds")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(8),
+    );
+    ui.set_library_summary(SharedString::from(format!(
+        "{}",
+        db.get_monitored_folders().map(|f| f.len()).unwrap_or(0)
+    )));
+
+    if let Some(p) = player.borrow_mut().as_mut() {
+        p.set_volume(saved.volume);
+        p.set_shuffle(saved.shuffle);
+        p.set_repeat(match saved.repeat {
+            1 => tunante_core::RepeatMode::All,
+            2 => tunante_core::RepeatMode::One,
+            _ => tunante_core::RepeatMode::Off,
+        });
+    }
+
+    // Restore where you were, paused. Resuming *playing* on launch would be a
+    // phone suddenly making noise in a pocket, which is never what was meant.
+    if open_target.is_none() {
+        if let Some(path) = saved.track_path.clone() {
+            let folder = std::path::Path::new(&path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
+            if let Some(start) = tracks.iter().position(|t| t.path == path) {
+                if let Some(p) = player.borrow_mut().as_mut() {
+                    p.set_tracks(tracks.clone());
+                    if p.play_index(start).is_ok() {
+                        p.toggle_play();               // straight to paused
+                        p.seek(saved.position_ms);
+                        push_now_playing(&ui, p);
+                    }
+                }
+                queue_model.set_vec(to_queue_rows(&tracks, start));
+            }
+        }
+    }
+
     // Handed a file on the command line: play it, and queue its folder around
     // it, which is what anyone opening one track of an album expects.
     if let Some(path) = &open_target {
@@ -367,6 +425,168 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    {
+        let player = player.clone();
+        let weak = ui.as_weak();
+        ui.on_cycle_repeat(move || {
+            use tunante_core::RepeatMode::*;
+            if let Some(p) = player.borrow_mut().as_mut() {
+                // Off → All → One → Off. The order most players use, and the one
+                // where the destructive-looking mode is hardest to reach by
+                // accident.
+                p.set_repeat(match p.repeat() {
+                    Off => All,
+                    All => One,
+                    One => Off,
+                });
+                if let Some(ui) = weak.upgrade() {
+                    push_now_playing(&ui, p);
+                }
+            }
+        });
+    }
+    {
+        let player = player.clone();
+        let weak = ui.as_weak();
+        ui.on_toggle_shuffle(move || {
+            if let Some(p) = player.borrow_mut().as_mut() {
+                let on = !p.shuffle();
+                p.set_shuffle(on);
+                if let Some(ui) = weak.upgrade() {
+                    push_now_playing(&ui, p);
+                }
+            }
+        });
+    }
+    {
+        let player = player.clone();
+        let weak = ui.as_weak();
+        ui.on_seek_to(move |ms| {
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.seek(ms.max(0) as u64);
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_position_ms(p.position_ms() as i32);
+                }
+            }
+        });
+    }
+
+    // --- Settings -------------------------------------------------------------
+    let sleep = Rc::new(RefCell::new(session::SleepTimer::new()));
+
+    {
+        let player = player.clone();
+        let weak = ui.as_weak();
+        ui.on_set_volume(move |v| {
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.set_volume(v);
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_volume(p.volume());
+                }
+            }
+        });
+    }
+    {
+        let sleep = sleep.clone();
+        let weak = ui.as_weak();
+        ui.on_cycle_sleep(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut t = sleep.borrow_mut();
+            // off → 15 → 30 → 60 → off. Enough choices to be useful, few
+            // enough to reach by tapping rather than by picking from a list.
+            let next = if !t.is_running() {
+                15
+            } else {
+                match t.remaining_minutes() {
+                    0..=15 => 30,
+                    16..=30 => 60,
+                    _ => 0,
+                }
+            };
+            if next == 0 {
+                t.cancel();
+            } else {
+                t.start(next);
+            }
+            ui.set_sleep_running(t.is_running());
+            ui.set_sleep_minutes(t.remaining_minutes() as i32);
+        });
+    }
+    {
+        let (db, dbfile, scan_tx) = (db.clone(), dbfile.clone(), scan_tx.clone());
+        let weak = ui.as_weak();
+        ui.on_rescan(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let folders: Vec<PathBuf> = db
+                .get_monitored_folders()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|f| PathBuf::from(f.path))
+                .collect();
+            if folders.is_empty() {
+                return;
+            }
+            ui.set_scan_status("Analizando…".into());
+            let (tx, dbfile) = (scan_tx.clone(), dbfile.clone());
+            std::thread::spawn(move || {
+                let Ok(db) = Database::new(&dbfile) else {
+                    let _ = tx.send(None);
+                    return;
+                };
+                for folder in folders {
+                    let _ = library::scan_folder(&db, &folder, |p| {
+                        let _ = tx.send(Some(format!(
+                            "Analizando {}/{}\n{} pistas encontradas",
+                            p.scanned, p.total, p.added
+                        )));
+                    });
+                }
+                let _ = tx.send(None);
+            });
+        });
+    }
+    {
+        // Adding a folder later reuses the first-run picker rather than being a
+        // second, subtly different browser.
+        let (picker, refresh) = (picker.clone(), refresh_picker.clone());
+        let weak = ui.as_weak();
+        ui.on_add_folder(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            picker.borrow_mut().chosen.clear();
+            refresh();
+            ui.set_setup_mode(true);
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_loops(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // 1 → 2 → 3 → ∞(0) → 1. Two is the usual choice for a chiptune rip.
+            let next = match ui.get_loop_count() {
+                1 => 2,
+                2 => 3,
+                3 => 0,
+                _ => 1,
+            };
+            ui.set_loop_count(next);
+            let _ = db.set_setting("mini.loop_count", &next.to_string());
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_fade(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = match ui.get_fade_seconds() {
+                0 => 4,
+                4 => 8,
+                8 => 15,
+                _ => 0,
+            };
+            ui.set_fade_seconds(next);
+            let _ = db.set_setting("mini.fade_seconds", &next.to_string());
+        });
+    }
+
     // --- Search --------------------------------------------------------------
     {
         let (db, rows_model, tree) = (db.clone(), rows_model.clone(), tree.clone());
@@ -419,6 +639,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let player = player.clone();
         let queue_model = queue_model.clone();
         let (db, tree, rows_model) = (db.clone(), tree.clone(), rows_model.clone());
+        let sleep = sleep.clone();
+        let mut ticks: u64 = 0;
         let weak = ui.as_weak();
         timer.start(
             slint::TimerMode::Repeated,
@@ -493,6 +715,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_duration_ms(p.duration_ms() as i32);
                 ui.set_playing(p.is_playing());
 
+                // Sleep timer. Only counts down while sound is actually coming
+                // out: a timer that expires during a pause would be a promise
+                // broken in the wrong direction.
+                if p.is_playing() {
+                    let mut t = sleep.borrow_mut();
+                    if t.tick(500) {
+                        p.stop();
+                    }
+                    ui.set_sleep_running(t.is_running());
+                    ui.set_sleep_minutes(t.remaining_minutes() as i32);
+                }
+
+                // Save the session as we go, not only on exit: a phone app is
+                // killed by the system far more often than it is closed, and a
+                // resume that only survives a clean exit rarely fires.
+                ticks += 1;
+                if ticks % 10 == 0 {
+                    session::Session::save(
+                        &db,
+                        p.current().map(|t| t.path.as_str()),
+                        p.position_ms(),
+                        p.volume(),
+                        p.shuffle(),
+                        match p.repeat() {
+                            tunante_core::RepeatMode::All => 1,
+                            tunante_core::RepeatMode::One => 2,
+                            tunante_core::RepeatMode::Off => 0,
+                        },
+                    );
+                }
+
                 // The MPRIS side works out what actually changed; sending on
                 // every tick would otherwise wake every listener on the bus
                 // twice a second, which on a phone is battery.
@@ -532,6 +785,44 @@ fn db_path() -> Result<PathBuf, std::io::Error> {
     let dir = base.join("tunante-mini");
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join("tunante-mini.db"))
+}
+
+/// Turn a `data:image/…;base64,…` URI into something Slint can draw.
+///
+/// Scaled down on the way in. A cover is often 1000² or larger, which is
+/// 4 MB of RGBA for a square that is never shown bigger than the screen's
+/// width — and holding the full-size decode is exactly the mistake that has
+/// Amberol sitting at 3 GB with a thousand songs.
+fn decode_artwork(data_uri: &str, max_side: u32) -> Option<slint::Image> {
+    use base64::Engine;
+
+    let b64 = data_uri.split(",").nth(1)?;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
+
+    let decoded = image::load_from_memory(&bytes).ok()?;
+    let decoded = if decoded.width().max(decoded.height()) > max_side {
+        decoded.thumbnail(max_side, max_side)
+    } else {
+        decoded
+    };
+    let rgba = decoded.to_rgba8();
+
+    let mut buffer =
+        slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(rgba.width(), rgba.height());
+    buffer.make_mut_bytes().copy_from_slice(rgba.as_raw());
+    Some(slint::Image::from_rgba8(buffer))
+}
+
+/// Fetch and show the cover of whatever is playing, or clear it.
+fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
+    let art = path
+        .and_then(|p| {
+            let real = tunante_core::vgm_path::parse_vgm_path(p).0.to_string();
+            decoder::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
+        })
+        .and_then(|uri| decode_artwork(&uri, max_side));
+
+    ui.set_now_art(art.unwrap_or_default());
 }
 
 fn to_ui_rows(rows: &[library::Row]) -> Vec<LibraryRow> {
@@ -582,20 +873,31 @@ fn mark_playing(model: &Rc<VecModel<QueueRow>>, index: usize) {
     }
 }
 
+/// Move the "now playing" marker to wherever the queue says we are.
+///
+/// Asks the queue for the index rather than hunting for a matching title: two
+/// tracks in an album can share a title, and a set of subsongs from one file
+/// routinely do.
 fn sync_queue_marker(p: &player::Player, model: &Rc<VecModel<QueueRow>>) {
-    if let Some(current) = p.current() {
-        for i in 0..model.row_count() {
-            if let Some(row) = model.row_data(i) {
-                if row.title == current.title.as_str() {
-                    mark_playing(model, i);
-                    return;
-                }
-            }
-        }
+    if let Some(i) = p.current_index() {
+        mark_playing(model, i);
     }
 }
 
+/// How big a cover is ever drawn. Anything larger is memory nobody sees.
+const MAX_ART_SIDE: u32 = 720;
+
 fn push_now_playing(ui: &AppWindow, p: &player::Player) {
+    let art_path = p.current().map(|t| t.path.clone());
+    refresh_artwork(ui, art_path.as_deref(), MAX_ART_SIDE);
+
+    ui.set_shuffle(p.shuffle());
+    ui.set_repeat(match p.repeat() {
+        tunante_core::RepeatMode::Off => 0,
+        tunante_core::RepeatMode::All => 1,
+        tunante_core::RepeatMode::One => 2,
+    });
+
     match p.current() {
         Some(t) => {
             ui.set_now_title(SharedString::from(if t.title.is_empty() {

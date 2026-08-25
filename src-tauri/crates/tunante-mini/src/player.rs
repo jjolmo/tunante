@@ -147,8 +147,44 @@ impl Player {
         self.player.set_volume(self.volume);
     }
 
+    pub fn volume(&self) -> f32 {
+        self.volume
+    }
+
     pub fn set_repeat(&mut self, mode: RepeatMode) {
         self.queue.set_repeat(mode);
+    }
+
+    pub fn repeat(&self) -> RepeatMode {
+        self.queue.repeat()
+    }
+
+    pub fn set_shuffle(&mut self, on: bool) {
+        self.queue.set_shuffle(on);
+    }
+
+    pub fn shuffle(&self) -> bool {
+        self.queue.shuffle()
+    }
+
+    /// Jump within the current track.
+    ///
+    /// The wall-clock position is moved to match immediately, so the progress
+    /// bar lands where the finger left it rather than snapping back while the
+    /// helper catches up.
+    pub fn seek(&mut self, ms: u64) {
+        let pos = Duration::from_millis(ms.min(self.duration_ms));
+        if self.player.try_seek(pos).is_ok() {
+            self.accumulated = pos;
+            if self.started_at.is_some() {
+                self.started_at = Some(Instant::now());
+            }
+        }
+    }
+
+    /// Index of the current track in the queue, for marking it in the UI.
+    pub fn current_index(&self) -> Option<usize> {
+        self.queue.current_index()
     }
 
     pub fn position_ms(&self) -> u64 {

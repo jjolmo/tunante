@@ -91,6 +91,40 @@ pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_jso
     Ok(parsed["tracks"].as_array().cloned().unwrap_or_default())
 }
 
+/// The cover art a file carries, as a `data:` URI, by asking the helper.
+///
+/// Asked for once per playing track rather than folded into `probe`, which runs
+/// on every file of a library scan: carrying the artwork of thousands of tracks
+/// through a pipe would slow the scan down for nobody's benefit.
+pub fn artwork(path: &Path, timeout: Duration) -> Option<String> {
+    let mut child = Command::new(decoder_path())
+        .arg("art")
+        .arg(path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() > deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(15)),
+            Err(_) => return None,
+        }
+    }
+
+    let mut out = String::new();
+    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(out.trim()).ok()?;
+    parsed["art"].as_str().map(|s| s.to_string())
+}
+
 /// A decoder running in another process, seen as an audio source.
 pub struct PipeSource {
     child: Child,
@@ -98,6 +132,8 @@ pub struct PipeSource {
     sample_rate: NonZeroU32,
     channels: NonZeroU16,
     total: Option<Duration>,
+    /// Commands go back up the pipe: `seek <ms>`, `stop`.
+    control: Option<std::process::ChildStdin>,
 }
 
 impl PipeSource {
@@ -110,11 +146,13 @@ impl PipeSource {
             .arg("play")
             .arg(path)
             .arg(duration_hint_ms.to_string())
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("spawning the decoder: {e}"))?;
 
+        let control = child.stdin.take();
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let mut reader = BufReader::with_capacity(64 * 1024, stdout);
 
@@ -142,7 +180,21 @@ impl PipeSource {
             .ok_or("the header carried no usable channel count")?;
         let total = h["duration_ms"].as_u64().map(Duration::from_millis);
 
-        Ok(Self { child, reader, sample_rate, channels, total })
+        Ok(Self { child, reader, sample_rate, channels, total, control })
+    }
+
+    /// Ask the decoder to jump.
+    ///
+    /// Fire and forget: the helper keeps only the newest request, so dragging a
+    /// progress bar does not queue up every position the finger passed over.
+    /// Samples already in the pipe still arrive, which is a few tens of
+    /// milliseconds of the old position — not worth draining.
+    pub fn seek(&mut self, ms: u64) {
+        if let Some(stdin) = self.control.as_mut() {
+            use std::io::Write;
+            let _ = writeln!(stdin, "seek {ms}");
+            let _ = stdin.flush();
+        }
     }
 }
 
@@ -175,6 +227,21 @@ impl Source for PipeSource {
 
     fn total_duration(&self) -> Option<Duration> {
         self.total
+    }
+
+    /// Seeking is a message down the pipe; the helper does the work.
+    ///
+    /// Every backend implements `try_seek`, so this is supported for every
+    /// format — but note what "supported" means for an emulated one: the core
+    /// is run forward from the start at full speed, so a jump deep into a long
+    /// PSF2 is not instant. That happens in the helper, off this thread.
+    ///
+    /// Samples already in the pipe are not drained. A few tens of milliseconds
+    /// of the old position still play, which is cheaper and less glitchy than
+    /// tearing down the stream.
+    fn try_seek(&mut self, pos: Duration) -> Result<(), rodio::source::SeekError> {
+        self.seek(pos.as_millis() as u64);
+        Ok(())
     }
 }
 

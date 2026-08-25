@@ -28,3 +28,17 @@ export global Theme {
     out property <length> font-body: 15px;
     out property <length> font-small: 13px;
 }
+
+// Small formatting helpers, so the same clock is written the same way wherever
+// it appears.
+export global Fmt {
+    // m:ss, from milliseconds. Hours are folded into the minutes rather than
+    // shown separately: an hour-long track is a rarity here, and a "1:02:03"
+    // that only sometimes appears makes the row jump width as tracks change.
+    pure public function mmss(ms: int) -> string {
+        ms <= 0
+            ? "0:00"
+            : floor(ms / 60000) + ":" + (mod(floor(ms / 1000), 60) < 10 ? "0" : "")
+              + mod(floor(ms / 1000), 60);
+    }
+}

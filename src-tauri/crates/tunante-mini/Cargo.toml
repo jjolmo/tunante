@@ -28,6 +28,13 @@ mpris-server = "0.10"
 async-io = "2"
 futures-lite = "2"
 
+# Cover art arrives as a base64 data URI and Slint only takes a file path or
+# decoded pixels, so it is decoded here. Two formats: everything embedded in an
+# audio tag is JPEG or PNG, and pulling in AVIF or WebP decoders for cover art
+# would cost more than the feature.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+base64 = "0.22"
+
 # renderer-software: no GPU API required, so the app still runs if freedreno or
 # Turnip misbehave on the device. backend-winit covers both Wayland and X11 so
 # the same source runs on a desktop during development; the Alpine build should
