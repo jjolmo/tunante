@@ -151,6 +151,19 @@ pub struct Row {
 pub struct Tree {
     roots: Vec<PathBuf>,
     expanded: std::collections::HashSet<String>,
+    /// What each open folder holds, remembered between rebuilds.
+    ///
+    /// Every tap rebuilds the whole visible list, and without this each rebuild
+    /// re-queried SQLite and re-read the directory for every folder already
+    /// open — so opening the tenth folder cost ten queries, not one. The cache
+    /// is only ever as large as what the user has actually opened.
+    cache: std::cell::RefCell<std::collections::HashMap<String, FolderContents>>,
+}
+
+#[derive(Clone)]
+struct FolderContents {
+    tracks: Vec<Track>,
+    subdirs: Vec<PathBuf>,
 }
 
 impl Tree {
@@ -165,13 +178,26 @@ impl Tree {
             .iter()
             .map(|r| r.to_string_lossy().to_string())
             .collect();
-        Self { roots, expanded }
+        Self { roots, expanded, cache: Default::default() }
     }
 
     pub fn toggle(&mut self, path: &str) {
         if !self.expanded.remove(path) {
             self.expanded.insert(path.to_string());
         }
+    }
+
+    /// What a folder holds, from the cache when we have already looked.
+    fn contents(&self, db: &Database, key: &str, dir: &Path) -> FolderContents {
+        if let Some(hit) = self.cache.borrow().get(key) {
+            return hit.clone();
+        }
+        let value = FolderContents {
+            tracks: db.get_tracks_by_folder(key).unwrap_or_default(),
+            subdirs: child_dirs(dir),
+        };
+        self.cache.borrow_mut().insert(key.to_string(), value.clone());
+        value
     }
 
     pub fn is_expanded(&self, path: &str) -> bool {
@@ -196,8 +222,7 @@ impl Tree {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| key.clone());
 
-        let tracks = db.get_tracks_by_folder(&key).unwrap_or_default();
-        let subdirs = child_dirs(dir);
+        let FolderContents { tracks, subdirs } = self.contents(db, &key, dir);
 
         out.push(Row {
             label,
@@ -220,15 +245,63 @@ impl Tree {
             self.push_folder(db, &sub, depth + 1, out);
         }
 
+        // Agrupar por fichero real. Un .nsf o un .gsflib traen decenas de temas
+        // dentro, todos con la misma ruta y distinto `#n`: listarlos sueltos
+        // inunda la carpeta y esconde lo demás que hay en ella.
+        let mut por_fichero: BTreeMap<String, Vec<Track>> = BTreeMap::new();
         for t in tracks {
+            let real = vgm_path::parse_vgm_path(&t.path).0.to_string();
+            por_fichero.entry(real).or_default().push(t);
+        }
+
+        for (fichero, mut subs) in por_fichero {
+            if subs.len() == 1 {
+                let t = subs.remove(0);
+                out.push(Row {
+                    label: if t.title.is_empty() { file_label(&t.path) } else { t.title.clone() },
+                    detail: format_duration(t.duration_ms),
+                    depth: depth + 1,
+                    is_folder: false,
+                    expanded: false,
+                    path: t.path,
+                });
+                continue;
+            }
+
+            // Cabecera del conjunto: se despliega como una carpeta, aunque sea
+            // un fichero. Para quien escucha, un .nsf *es* un disco.
+            let abierto = self.is_expanded(&fichero);
+            let nombre = Path::new(&fichero)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| fichero.clone());
+
             out.push(Row {
-                label: if t.title.is_empty() { file_label(&t.path) } else { t.title.clone() },
-                detail: format_duration(t.duration_ms),
+                label: nombre,
+                detail: format!("{} temas", subs.len()),
                 depth: depth + 1,
-                is_folder: false,
-                expanded: false,
-                path: t.path,
+                is_folder: true,
+                expanded: abierto,
+                path: fichero.clone(),
             });
+
+            if abierto {
+                subs.sort_by_key(|t| vgm_path::parse_vgm_path(&t.path).1.unwrap_or(0));
+                for t in subs {
+                    out.push(Row {
+                        label: if t.title.is_empty() {
+                            file_label(&t.path)
+                        } else {
+                            t.title.clone()
+                        },
+                        detail: format_duration(t.duration_ms),
+                        depth: depth + 2,
+                        is_folder: false,
+                        expanded: false,
+                        path: t.path,
+                    });
+                }
+            }
         }
     }
 }
