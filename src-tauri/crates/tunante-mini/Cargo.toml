@@ -21,6 +21,13 @@ rodio = { version = "0.22", default-features = false, features = ["playback"] }
 serde_json = "1"
 walkdir = "2"
 
+# Lock-screen controls and headset buttons. Not a luxury on this phone: the
+# 3.5 mm jack has no driver, so headphones mean Bluetooth, and the only controls
+# in reach are the ones on the headset. zbus is already in the tree via Slint.
+mpris-server = "0.10"
+async-io = "2"
+futures-lite = "2"
+
 # renderer-software: no GPU API required, so the app still runs if freedreno or
 # Turnip misbehave on the device. backend-winit covers both Wayland and X11 so
 # the same source runs on a desktop during development; the Alpine build should

@@ -37,6 +37,17 @@ pub struct ScanProgress {
 ///
 /// `on_progress` is called as files are processed, so a UI can show movement on
 /// what is, for a real collection, a minutes-long job.
+///
+/// # Why this is parallel
+///
+/// Each file costs a process spawn plus however long its format takes to open —
+/// which for the emulator formats is the dominant term, and it is spent waiting
+/// on one core. Running several at once is the natural shape for a design that
+/// already puts every decode in its own process, and on this phone's eight cores
+/// it is the difference between a scan of minutes and one of half an hour.
+///
+/// SQLite is left on this thread: the writes are trivial next to the probes, and
+/// keeping one writer avoids `SQLITE_BUSY` entirely.
 pub fn scan_folder(
     db: &Database,
     root: &Path,
@@ -59,14 +70,40 @@ pub fn scan_folder(
         current: String::new(),
     };
 
-    for path in files {
-        progress.scanned += 1;
-        progress.current = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
+    // Leave a core or two for the session — this runs on a phone the user is
+    // holding, and a scan that makes the interface stutter is worse than a slow
+    // one.
+    let workers = std::thread::available_parallelism()
+        .map(|n| (n.get().saturating_sub(2)).max(2))
+        .unwrap_or(2);
 
-        match decoder::probe(&path, PROBE_TIMEOUT) {
+    let queue = std::sync::Arc::new(std::sync::Mutex::new(files.into_iter()));
+    let (tx, rx) = std::sync::mpsc::channel::<(String, Result<Vec<serde_json::Value>, String>)>();
+
+    let mut handles = Vec::new();
+    for _ in 0..workers {
+        let queue = queue.clone();
+        let tx = tx.clone();
+        handles.push(std::thread::spawn(move || loop {
+            let next = { queue.lock().ok().and_then(|mut q| q.next()) };
+            let Some(path) = next else { return };
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let result = decoder::probe(&path, PROBE_TIMEOUT, true);
+            if tx.send((name, result)).is_err() {
+                return;
+            }
+        }));
+    }
+    drop(tx);
+
+    for (name, result) in rx {
+        progress.scanned += 1;
+        progress.current = name;
+
+        match result {
             Ok(tracks) => {
                 // One file can hold many tracks: a GME set or a vgmstream
                 // container has one per subsong, each addressed as `path#n`.
@@ -85,6 +122,10 @@ pub fn scan_folder(
         }
 
         on_progress(&progress);
+    }
+
+    for h in handles {
+        let _ = h.join();
     }
 
     Ok(progress.added)

@@ -21,8 +21,12 @@
 //! # Protocol
 //!
 //! ```text
-//! tunante-decoder probe <path>
+//! tunante-decoder probe <path> [--fast]
 //!     stdout: one line of JSON — {"ok":true,"tracks":[…]} or {"ok":false,"error":"…"}
+//!     --fast skips silence detection for GME tracks with no declared length.
+//!            Those are decoded in full to find where they stop, which costs
+//!            seconds per file — the difference between a scan of minutes and
+//!            one of half an hour.
 //!
 //! tunante-decoder play <path> [duration_hint_ms]
 //!     stdout: one line of JSON header, then raw PCM until EOF
@@ -46,7 +50,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
 
     let usage = || {
-        eprintln!("usage: tunante-decoder probe <path>");
+        eprintln!("usage: tunante-decoder probe <path> [--fast]");
         eprintln!("       tunante-decoder play <path> [duration_hint_ms]");
     };
 
@@ -61,7 +65,7 @@ fn main() -> ExitCode {
     };
 
     let result = match mode.as_str() {
-        "probe" => probe(path),
+        "probe" => probe(path, args.iter().any(|a| a == "--fast")),
         "play" => {
             let hint = args.get(3).and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
             play(path, hint)
@@ -82,11 +86,16 @@ fn main() -> ExitCode {
 ///
 /// A single path can yield many tracks: a GME set or a vgmstream container holds
 /// one per subsong, each addressed by the `path#n` scheme.
-fn probe(path: &str) -> Result<(), String> {
+///
+/// `fast` skips silence detection for GME tracks that declare no length. That
+/// detection decodes the track in full to find where it goes quiet, which is
+/// accurate and costs over a second per file — fine when a user asks about one
+/// track, ruinous across a whole library.
+fn probe(path: &str, fast: bool) -> Result<(), String> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
 
-    match tunante_codec::metadata::read_metadata_all(Path::new(path)) {
+    match tunante_codec::metadata::read_metadata_all_with_opts(Path::new(path), fast) {
         Ok(tracks) => {
             let payload = serde_json::json!({ "ok": true, "tracks": tracks });
             writeln!(out, "{payload}").map_err(|e| e.to_string())

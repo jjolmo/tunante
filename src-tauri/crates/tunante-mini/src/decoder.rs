@@ -40,10 +40,18 @@ pub fn decoder_path() -> PathBuf {
 /// Out of process on purpose: the emulator-backed readers can hang, and a
 /// timeout cannot interrupt a loop running in C — it can only abandon the
 /// thread. Here the scanner can kill the child and move on.
-pub fn probe(path: &Path, timeout: Duration) -> Result<Vec<serde_json::Value>, String> {
-    let mut child = Command::new(decoder_path())
-        .arg("probe")
-        .arg(path)
+///
+/// `fast` skips the silence detection GME uses to infer a length for tracks that
+/// declare none. It decodes the track in full, so it costs over a second a file;
+/// a library scan cannot afford that and does not need it.
+pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_json::Value>, String> {
+    let mut cmd = Command::new(decoder_path());
+    cmd.arg("probe").arg(path);
+    if fast {
+        cmd.arg("--fast");
+    }
+
+    let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
