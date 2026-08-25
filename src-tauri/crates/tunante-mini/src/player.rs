@@ -196,6 +196,42 @@ impl Player {
         }
     }
 
+    /// Put a track at the end of the queue.
+    ///
+    /// Appends to the context rather than to the priority queue: swiping a track
+    /// in the library means "and then this one", which is a different intent
+    /// from the desktop's play-next queue.
+    pub fn enqueue(&mut self, track: Track) {
+        let mut tracks = self.queue.tracks().to_vec();
+        let current = self.queue.current().map(|t| t.id.clone());
+        tracks.push(track);
+        match current {
+            Some(id) => self.queue.update_context(tracks, &id),
+            None => self.queue.set_tracks(tracks),
+        }
+    }
+
+    /// Take a track out of the queue.
+    ///
+    /// Removing the one that is playing leaves it playing: stopping the music
+    /// because a row was swiped would be a surprise, and the track is gone from
+    /// the list either way.
+    pub fn remove_from_queue(&mut self, index: usize) {
+        let mut tracks = self.queue.tracks().to_vec();
+        if index >= tracks.len() {
+            return;
+        }
+        let current = self.queue.current().map(|t| t.id.clone());
+        tracks.remove(index);
+
+        match current {
+            Some(id) if tracks.iter().any(|t| t.id == id) => {
+                self.queue.update_context(tracks, &id)
+            }
+            _ => self.queue.set_tracks(tracks),
+        }
+    }
+
     /// Index of the current track in the queue, for marking it in the UI.
     pub fn current_index(&self) -> Option<usize> {
         self.queue.current_index()
