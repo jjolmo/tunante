@@ -80,6 +80,20 @@ impl GameMusicEmu {
     }
 
     /// Set time to start fading track out (milliseconds)
+    /// How many voices this emulator exposes.
+    pub fn voice_count(&self) -> i32 {
+        native::voice_count(&self.handle)
+    }
+
+    /// Silence voices by bitmask: bit `i` set mutes voice `i`.
+    ///
+    /// Useful for diagnosis more than for playback: a Mega Drive track mixes FM
+    /// voices and a DAC drum channel, and telling one from the other in a
+    /// spectrum is hopeless — muting the rest is not.
+    pub fn mute_voices(&self, muting_mask: i32) {
+        native::mute_voices(&self.handle, muting_mask)
+    }
+
     pub fn set_fade(&self, start_msec: i32) {
         native::set_fade(&self.handle, start_msec)
     }
