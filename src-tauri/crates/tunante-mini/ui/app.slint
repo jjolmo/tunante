@@ -193,6 +193,80 @@ component FolderPicker inherits Rectangle {
     }
 }
 
+// A row you can shove sideways to act on it.
+//
+// Wraps its content and reports the gesture; the content itself is passed in as
+// children, so the same behaviour serves the library and the queue without
+// either of them knowing about swiping.
+//
+// Deliberately built on SwipeGestureHandler rather than a bare TouchArea: the
+// handler is what tells a sideways drag apart from the vertical flick that
+// scrolls the list, and getting that wrong makes the list impossible to scroll.
+component SwipeRow inherits Rectangle {
+    in property <string> action-label;
+    in property <color> action-color: Theme.accent;
+    in property <bool> enabled: true;
+    callback swiped();
+    callback tapped();
+
+    // How far it has to travel to count. Short enough to feel light, long
+    // enough that brushing the glass while scrolling does not fire it.
+    property <length> threshold: 90px;
+    property <length> offset: 0px;
+
+    clip: true;
+
+    // What shows through from underneath as the row slides away.
+    Rectangle {
+        background: root.action-color;
+        opacity: min(1.0, abs(root.offset) / root.threshold);
+
+        HorizontalLayout {
+            padding-left: Theme.gap * 2;
+            padding-right: Theme.gap * 2;
+            alignment: root.offset > 0px ? start : end;
+
+            Text {
+                text: root.action-label;
+                color: #ffffff;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    surface := Rectangle {
+        x: root.offset;
+        background: Theme.bg-primary;
+        @children
+    }
+
+    swipe := SwipeGestureHandler {
+        enabled: root.enabled;
+        handle-swipe-left: true;
+        handle-swipe-right: true;
+
+        moved => {
+            root.offset = self.current-position.x - self.pressed-position.x;
+        }
+        swiped => {
+            if (abs(root.offset) >= root.threshold) {
+                root.swiped();
+            }
+            root.offset = 0px;
+        }
+        cancelled => {
+            root.offset = 0px;
+        }
+
+        TouchArea {
+            clicked => { root.tapped(); }
+        }
+    }
+
+    animate offset { duration: 120ms; easing: ease-out; }
+}
+
 // One tab of the bottom bar / side rail.
 component TabButton inherits Rectangle {
     in property <string> label;
@@ -952,15 +1026,19 @@ component NowPlayingTab inherits Rectangle {
 component QueueTab inherits Rectangle {
     in property <[QueueRow]> rows;
     callback activated(int);
+    callback removed(int);
 
     ListView {
         // Slint's default style builds its Flickable with `interactive: false`,
         // so the list only scrolls by its scrollbar and the finger does nothing.
         // Fine for a desktop with a wheel; wrong for anything held in a hand.
         mouse-drag-pan-enabled: true;
-        for row[i] in root.rows: Rectangle {
+        for row[i] in root.rows: SwipeRow {
             height: Theme.touch-target + 8px;
-            background: touch.has-hover ? Theme.bg-hover : transparent;
+            action-label: "Quitar";
+            action-color: #a33333;
+            swiped => { root.removed(i); }
+            tapped => { root.activated(i); }
 
             HorizontalLayout {
                 padding-left: Theme.gap;
@@ -992,10 +1070,6 @@ component QueueTab inherits Rectangle {
                     }
                 }
             }
-
-            touch := TouchArea {
-                clicked => { root.activated(i); }
-            }
         }
     }
 }
@@ -1004,6 +1078,7 @@ component LibraryTab inherits Rectangle {
     in property <[LibraryRow]> rows;
     in property <int> total;
     in-out property <string> search;
+    callback enqueued(int);
     // Focus the search field as soon as this tab is built. Only used by the
     // spike: it makes "does the on-screen keyboard come up?" answerable over
     // ssh, without needing someone to put a finger on the glass.
@@ -1078,9 +1153,13 @@ component LibraryTab inherits Rectangle {
             mouse-drag-pan-enabled: true;
             vertical-stretch: 1;
 
-            for row[i] in root.rows: Rectangle {
+            for row[i] in root.rows: SwipeRow {
                 height: Theme.touch-target;
-                background: rowtouch.has-hover ? Theme.bg-hover : transparent;
+                // Sólo las pistas se encolan; una carpeta se despliega.
+                enabled: !row.is-folder;
+                action-label: "A la cola";
+                swiped => { root.enqueued(i); }
+                tapped => { root.activated(i); }
 
                 HorizontalLayout {
                     padding-left: Theme.gap + row.depth * 16px;
@@ -1114,9 +1193,6 @@ component LibraryTab inherits Rectangle {
                     }
                 }
 
-                rowtouch := TouchArea {
-                    clicked => { root.activated(i); }
-                }
             }
         }
 
@@ -1178,7 +1254,9 @@ export component AppWindow inherits Window {
     callback picker-done();
 
     callback library-activated(int);
+    callback library-enqueued(int);
     callback queue-activated(int);
+    callback queue-removed(int);
     callback search-changed(string);
     callback toggle-play();
     callback next-track();
@@ -1245,6 +1323,21 @@ export component AppWindow inherits Window {
             Rectangle {
                 horizontal-stretch: 1;
 
+                // Deslizar de lado cambia de solapa. Sólo horizontal a
+                // propósito: si capturase también el vertical se comería el
+                // desplazamiento de las listas, que es el gesto más usado.
+                SwipeGestureHandler {
+                    handle-swipe-left: root.tab < 3;
+                    handle-swipe-right: root.tab > 0;
+                    swiped => {
+                        if (self.current-position.x < self.pressed-position.x - 60px) {
+                            root.tab = min(3, root.tab + 1);
+                        } else if (self.current-position.x > self.pressed-position.x + 60px) {
+                            root.tab = max(0, root.tab - 1);
+                        }
+                    }
+                }
+
                 if root.tab == 0: NowPlayingTab {
                     title: root.now-title;
                     artist: root.now-artist;
@@ -1273,6 +1366,7 @@ export component AppWindow inherits Window {
                 if root.tab == 1: QueueTab {
                     rows: root.queue-rows;
                     activated(i) => { root.queue-activated(i); }
+                    removed(i) => { root.queue-removed(i); }
                 }
 
                 if root.tab == 3: SettingsTab {
@@ -1296,6 +1390,7 @@ export component AppWindow inherits Window {
                     autofocus-search: root.autofocus-search;
                     search <=> root.search;
                     activated(i) => { root.library-activated(i); }
+                    enqueued(i) => { root.library-enqueued(i); }
                     search-changed(s) => { root.search-changed(s); }
                 }
             }

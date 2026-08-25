@@ -292,7 +292,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         push_now_playing(&ui, p);
                     }
                 }
-                queue_model.set_vec(to_queue_rows(&tracks, start));
+                queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
             }
         }
     }
@@ -330,7 +330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => eprintln!("no se pudo reproducir: {e}"),
             }
         }
-        queue_model.set_vec(to_queue_rows(&tracks, start));
+        queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
         ui.set_setup_mode(false);
     }
 
@@ -370,7 +370,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 push_now_playing(&ui, p);
             }
-            queue_model.set_vec(to_queue_rows(&tracks, start));
+            queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
+        });
+    }
+
+    // --- Swipes: add to the queue, take out of it ---------------------------
+    {
+        let (db, rows_model, player, queue_model) =
+            (db.clone(), rows_model.clone(), player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_library_enqueued(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(row) = rows_model.row_data(index as usize) else { return };
+            if row.is_folder {
+                return;
+            }
+            let path = row.path.to_string();
+            let Ok(Some(track)) = db.get_track_by_path(&path) else { return };
+
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.enqueue(track);
+                // Nothing was playing, so the queued track becomes the track.
+                if p.current().is_none() {
+                    let _ = p.next();
+                    push_now_playing(&ui, p);
+                }
+                queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+            }
+        });
+    }
+    {
+        let (player, queue_model) = (player.clone(), queue_model.clone());
+        ui.on_queue_removed(move |index| {
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.remove_from_queue(index as usize);
+                queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+            }
         });
     }
 
@@ -848,7 +883,10 @@ fn to_ui_rows(rows: &[library::Row]) -> Vec<LibraryRow> {
         .collect()
 }
 
-fn to_queue_rows(tracks: &[tunante_core::db::models::Track], playing: usize) -> Vec<QueueRow> {
+fn to_queue_rows(
+    tracks: &[tunante_core::db::models::Track],
+    playing: Option<usize>,
+) -> Vec<QueueRow> {
     tracks
         .iter()
         .enumerate()
@@ -866,7 +904,7 @@ fn to_queue_rows(tracks: &[tunante_core::db::models::Track], playing: usize) -> 
                     .collect::<Vec<_>>()
                     .join(" — "),
             ),
-            playing: i == playing,
+            playing: Some(i) == playing,
         })
         .collect()
 }
