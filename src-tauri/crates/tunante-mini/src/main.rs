@@ -26,6 +26,7 @@
 mod decoder;
 mod library;
 mod mpris;
+mod picker;
 mod player;
 
 use std::cell::RefCell;
@@ -48,7 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scan_target = arg_value("--scan").map(PathBuf::from);
     let focus_search = args.iter().any(|a| a == "--focus-search");
 
-    let db = Database::new(&db_path()?)?;
+    let dbfile = db_path()?;
+    let db = Database::new(&dbfile)?;
 
     if let Some(folder) = &scan_target {
         eprintln!("escaneando {}…", folder.display());
@@ -77,6 +79,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_tab(2);
     }
 
+    // --- First run: choose the folders --------------------------------------
+    //
+    // With nothing monitored there is no library to show, so the picker replaces
+    // the whole shell rather than sitting behind three empty tabs.
+    let picker = Rc::new(RefCell::new(picker::Picker::new()));
+    let picker_model = Rc::new(VecModel::from(Vec::<FolderEntry>::new()));
+    ui.set_picker_entries(ModelRc::from(picker_model.clone()));
+
+    let refresh_picker = {
+        let (picker, picker_model) = (picker.clone(), picker_model.clone());
+        let weak = ui.as_weak();
+        move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let p = picker.borrow();
+            picker_model.set_vec(
+                p.entries()
+                    .into_iter()
+                    .map(|e| FolderEntry {
+                        name: SharedString::from(e.name),
+                        path: SharedString::from(e.path.to_string_lossy().to_string()),
+                        chosen: e.chosen,
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            ui.set_picker_path(SharedString::from(p.cwd.to_string_lossy().to_string()));
+            ui.set_picker_chosen(p.chosen.len() as i32);
+        }
+    };
+    let refresh_picker = Rc::new(refresh_picker);
+
     // The library tab, either from the real database or from generated rows.
     let roots: Vec<PathBuf> = db
         .get_monitored_folders()?
@@ -84,6 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|f| PathBuf::from(f.path))
         .collect();
 
+    let first_run = roots.is_empty();
     let tree = Rc::new(RefCell::new(library::Tree::new(roots)));
     let rows_model = Rc::new(VecModel::from(Vec::<LibraryRow>::new()));
 
@@ -97,6 +130,89 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     ui.set_library_total(rows_model.row_count() as i32);
     ui.set_library_rows(ModelRc::from(rows_model.clone()));
+
+    // Nothing monitored and nothing generated means a first run.
+    if first_run && fake_rows.is_none() {
+        ui.set_setup_mode(true);
+        refresh_picker();
+    }
+
+    {
+        let (picker, refresh) = (picker.clone(), refresh_picker.clone());
+        let model = picker_model.clone();
+        ui.on_picker_enter(move |i| {
+            if let Some(e) = model.row_data(i as usize) {
+                picker.borrow_mut().enter(std::path::Path::new(&e.path.to_string()));
+                refresh();
+            }
+        });
+    }
+    {
+        let (picker, refresh) = (picker.clone(), refresh_picker.clone());
+        let model = picker_model.clone();
+        ui.on_picker_toggle(move |i| {
+            if let Some(e) = model.row_data(i as usize) {
+                picker.borrow_mut().toggle(std::path::Path::new(&e.path.to_string()));
+                refresh();
+            }
+        });
+    }
+    {
+        let (picker, refresh) = (picker.clone(), refresh_picker.clone());
+        ui.on_picker_up(move || {
+            picker.borrow_mut().up();
+            refresh();
+        });
+    }
+
+    // Progress from the scanning thread. `None` means it finished.
+    let (scan_tx, scan_rx) = std::sync::mpsc::channel::<Option<String>>();
+
+    {
+        let picker = picker.clone();
+        let db = db.clone();
+        let scan_tx = scan_tx.clone();
+        let dbfile = dbfile.clone();
+        let weak = ui.as_weak();
+
+        ui.on_picker_done(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let chosen: Vec<PathBuf> = picker.borrow().chosen.iter().cloned().collect();
+            if chosen.is_empty() {
+                return;
+            }
+
+            for (i, folder) in chosen.iter().enumerate() {
+                let _ = db.add_monitored_folder(
+                    &format!("root-{i}"),
+                    &folder.to_string_lossy(),
+                );
+            }
+
+            ui.set_setup_mode(false);
+            ui.set_scan_status("Analizando…".into());
+
+            // Its own connection on its own thread. SQLite is in WAL mode, so a
+            // second writer is fine, and the alternative — scanning on the UI
+            // thread — freezes the app for the length of a real collection.
+            let (tx, dbfile) = (scan_tx.clone(), dbfile.clone());
+            std::thread::spawn(move || {
+                let Ok(db) = Database::new(&dbfile) else {
+                    let _ = tx.send(None);
+                    return;
+                };
+                for folder in chosen {
+                    let _ = library::scan_folder(&db, &folder, |p| {
+                        let _ = tx.send(Some(format!(
+                            "Analizando {}/{}\n{} pistas encontradas",
+                            p.scanned, p.total, p.added
+                        )));
+                    });
+                }
+                let _ = tx.send(None);
+            });
+        });
+    }
 
     // The player owns the audio output for the whole session: one ALSA client,
     // never handed back, because re-taking the device on a track change is what
@@ -255,12 +371,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let player = player.clone();
         let queue_model = queue_model.clone();
+        let (db, tree, rows_model) = (db.clone(), tree.clone(), rows_model.clone());
         let weak = ui.as_weak();
         timer.start(
             slint::TimerMode::Repeated,
             std::time::Duration::from_millis(500),
             move || {
                 let Some(ui) = weak.upgrade() else { return };
+
+                // Scan progress, and the handover when it finishes.
+                let mut scan_done = false;
+                while let Ok(msg) = scan_rx.try_recv() {
+                    match msg {
+                        Some(text) => ui.set_scan_status(SharedString::from(text)),
+                        None => scan_done = true,
+                    }
+                }
+                if scan_done {
+                    ui.set_scan_status(SharedString::new());
+                    // The roots only exist once the scan has been asked for, so
+                    // the tree is rebuilt here rather than at startup.
+                    let roots: Vec<PathBuf> = db
+                        .get_monitored_folders()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|f| PathBuf::from(f.path))
+                        .collect();
+                    *tree.borrow_mut() = library::Tree::new(roots);
+                    let rows = tree.borrow().rows(&db);
+                    ui.set_library_total(rows.len() as i32);
+                    rows_model.set_vec(to_ui_rows(&rows));
+                    ui.set_tab(2);
+                }
+
                 let mut guard = player.borrow_mut();
                 let Some(p) = guard.as_mut() else { return };
 
