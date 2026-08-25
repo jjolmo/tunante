@@ -99,6 +99,10 @@ component FolderPicker inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
 
         ListView {
+            // Slint's default style builds its Flickable with `interactive: false`,
+            // so the list only scrolls by its scrollbar and the finger does nothing.
+            // Fine for a desktop with a wheel; wrong for anything held in a hand.
+            mouse-drag-pan-enabled: true;
             vertical-stretch: 1;
             for e[i] in root.entries: Rectangle {
                 height: Theme.touch-target + 4px;
@@ -506,6 +510,10 @@ component QueueTab inherits Rectangle {
     callback activated(int);
 
     ListView {
+        // Slint's default style builds its Flickable with `interactive: false`,
+        // so the list only scrolls by its scrollbar and the finger does nothing.
+        // Fine for a desktop with a wheel; wrong for anything held in a hand.
+        mouse-drag-pan-enabled: true;
         for row[i] in root.rows: Rectangle {
             height: Theme.touch-target + 8px;
             background: touch.has-hover ? Theme.bg-hover : transparent;
@@ -620,6 +628,10 @@ component LibraryTab inherits Rectangle {
         // structure in memory — that is what caused an OOM at 16k tracks in the
         // desktop app.
         ListView {
+            // Slint's default style builds its Flickable with `interactive: false`,
+            // so the list only scrolls by its scrollbar and the finger does nothing.
+            // Fine for a desktop with a wheel; wrong for anything held in a hand.
+            mouse-drag-pan-enabled: true;
             vertical-stretch: 1;
 
             for row[i] in root.rows: Rectangle {
@@ -669,7 +681,7 @@ component LibraryTab inherits Rectangle {
             background: Theme.bg-secondary;
 
             Text {
-                text: root.total + " entries";
+                text: root.total == 1 ? "1 elemento" : root.total + " elementos";
                 color: Theme.text-muted;
                 font-size: Theme.font-small;
             }

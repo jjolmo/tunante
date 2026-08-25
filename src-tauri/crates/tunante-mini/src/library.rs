@@ -154,8 +154,18 @@ pub struct Tree {
 }
 
 impl Tree {
+    /// The roots start open.
+    ///
+    /// Collapsed, a freshly scanned library is a single row reading
+    /// "Musica — 1384 pistas" in an otherwise empty screen, which reads as
+    /// broken: there is nothing to scroll and no hint that tapping does
+    /// anything. Opening the roots costs one query and shows the collection.
     pub fn new(roots: Vec<PathBuf>) -> Self {
-        Self { roots, expanded: Default::default() }
+        let expanded = roots
+            .iter()
+            .map(|r| r.to_string_lossy().to_string())
+            .collect();
+        Self { roots, expanded }
     }
 
     pub fn toggle(&mut self, path: &str) {
