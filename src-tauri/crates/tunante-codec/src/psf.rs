@@ -43,6 +43,16 @@ impl PsfSource {
     /// Uses catch_unwind to prevent panics in the C FFI layer from crashing
     /// the entire application.
     pub fn new(path: &Path) -> Result<Self, String> {
+        Self::with_options(path, crate::PlaybackOptions::default())
+    }
+
+    /// As [`Self::new`], deciding how long a looping track lasts.
+    ///
+    /// A PSF rip tags the length of one pass through the music. Playing it
+    /// `loop_count` times and fading out is the convention every player of this
+    /// format follows; the tagged fade, when there is one, still wins, because
+    /// whoever made the rip knew where the music ends.
+    pub fn with_options(path: &Path, opts: crate::PlaybackOptions) -> Result<Self, String> {
         log::info!("[PSF] Opening: {}", path.display());
         let path_owned = path.to_path_buf();
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -73,16 +83,21 @@ impl PsfSource {
         } else {
             DEFAULT_DURATION_MS
         };
+        // The rip's own fade wins: whoever made it knew where the music ends.
+        // Otherwise the user's setting, and only then the built-in default.
         let fade_ms = if tags.fade_ms > 0 {
             tags.fade_ms
+        } else if opts.fade_ms > 0 {
+            opts.fade_ms
         } else {
             DEFAULT_FADE_MS
         };
 
-        let total_ms = length_ms + fade_ms;
+        let body_ms = length_ms * opts.loop_count.max(1) as u64;
+        let total_ms = body_ms + fade_ms;
 
         // Convert to frames
-        let frame_fade = length_ms * SAMPLE_RATE as u64 / 1000;
+        let frame_fade = body_ms * SAMPLE_RATE as u64 / 1000;
         let frame_total = total_ms * SAMPLE_RATE as u64 / 1000;
 
         Ok(Self {

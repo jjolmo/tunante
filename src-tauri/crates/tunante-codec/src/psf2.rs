@@ -50,6 +50,15 @@ impl Psf2Source {
     /// Uses catch_unwind to prevent panics in the C FFI layer from crashing
     /// the entire application.
     pub fn new(path: &Path) -> Result<Self, String> {
+        Self::with_options(path, crate::PlaybackOptions::default())
+    }
+
+    /// As [`Self::new`], deciding how long a looping track lasts.
+    ///
+    /// Same convention as PSF: the tagged length is one pass through the music,
+    /// played `loop_count` times and faded out. A fade in the rip's own tags
+    /// wins, because whoever made it knew where the music ends.
+    pub fn with_options(path: &Path, opts: crate::PlaybackOptions) -> Result<Self, String> {
         let path_owned = path.to_path_buf();
         let result = catch_unwind(AssertUnwindSafe(|| {
             Psf2Decoder::new(&path_owned)
@@ -78,14 +87,16 @@ impl Psf2Source {
         };
         let fade_ms = if tags.fade_ms > 0 {
             tags.fade_ms
+        } else if opts.fade_ms > 0 {
+            opts.fade_ms
         } else {
             DEFAULT_FADE_MS
         };
 
-        let total_ms = length_ms + fade_ms;
+        let body_ms = length_ms * opts.loop_count.max(1) as u64;
+        let total_ms = body_ms + fade_ms;
 
-        // Convert to frames
-        let frame_fade = length_ms * SAMPLE_RATE as u64 / 1000;
+        let frame_fade = body_ms * SAMPLE_RATE as u64 / 1000;
         let frame_total = total_ms * SAMPLE_RATE as u64 / 1000;
 
         Ok(Self {

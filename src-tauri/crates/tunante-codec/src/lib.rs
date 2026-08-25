@@ -23,7 +23,7 @@ mod vgmstream;
 pub mod metadata;
 mod open;
 
-pub use open::{open_source, BoxedSource, OpenError};
+pub use open::{open_source, open_source_with, BoxedSource, OpenError, PlaybackOptions};
 
 // Re-exported from the core so the decoders and the smoke test keep referring to
 // them as `crate::vgm_path` / `crate::dsp`.

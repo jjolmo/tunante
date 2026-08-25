@@ -28,7 +28,7 @@
 //!            seconds per file — the difference between a scan of minutes and
 //!            one of half an hour.
 //!
-//! tunante-decoder play <path> [duration_hint_ms]
+//! tunante-decoder play <path> [duration_hint_ms] [--loops N] [--fade MS]
 //!     stdout: one line of JSON header, then raw PCM until EOF
 //!             {"sample_rate":44100,"channels":2,"duration_ms":123456}
 //!             <f32 native-endian, interleaved>
@@ -59,7 +59,7 @@ fn main() -> ExitCode {
 
     let usage = || {
         eprintln!("usage: tunante-decoder probe <path> [--fast]");
-        eprintln!("       tunante-decoder play  <path> [duration_hint_ms]");
+        eprintln!("       tunante-decoder play  <path> [hint_ms] [--loops N] [--fade MS]");
         eprintln!("       tunante-decoder art   <path>");
     };
 
@@ -77,8 +77,25 @@ fn main() -> ExitCode {
         "probe" => probe(path, args.iter().any(|a| a == "--fast")),
         "art" => art(path),
         "play" => {
-            let hint = args.get(3).and_then(|s| s.parse::<i64>().ok()).unwrap_or(0);
-            play(path, hint)
+            let hint = args
+                .get(3)
+                .filter(|a| !a.starts_with('-'))
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+
+            let flag = |name: &str| -> Option<u64> {
+                args.iter().skip_while(|a| *a != name).nth(1)?.parse().ok()
+            };
+
+            let mut opts = tunante_codec::PlaybackOptions::default();
+            if let Some(n) = flag("--loops") {
+                opts.loop_count = n as u32;
+            }
+            if let Some(ms) = flag("--fade") {
+                opts.fade_ms = ms;
+            }
+
+            play(path, hint, opts)
         }
         other => Err(format!("unknown mode '{other}'")),
     };
@@ -172,8 +189,12 @@ fn watch_commands() {
 }
 
 /// Decode a file to PCM on stdout, until it ends or the reader goes away.
-fn play(path: &str, duration_hint_ms: i64) -> Result<(), String> {
-    let mut source = tunante_codec::open_source(Path::new(path), duration_hint_ms)
+fn play(
+    path: &str,
+    duration_hint_ms: i64,
+    opts: tunante_codec::PlaybackOptions,
+) -> Result<(), String> {
+    let mut source = tunante_codec::open_source_with(Path::new(path), duration_hint_ms, opts)
         .map_err(|e| e.to_string())?;
 
     let header = serde_json::json!({

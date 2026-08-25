@@ -262,6 +262,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(p) = player.borrow_mut().as_mut() {
         p.set_volume(saved.volume);
+        p.set_loop_settings(
+            ui.get_loop_count().max(1) as u32,
+            ui.get_fade_seconds() as u64 * 1000,
+        );
         p.set_shuffle(saved.shuffle);
         p.set_repeat(match saved.repeat {
             1 => tunante_core::RepeatMode::All,
@@ -558,7 +562,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     {
-        let (db, weak) = (db.clone(), ui.as_weak());
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
         ui.on_cycle_loops(move || {
             let Some(ui) = weak.upgrade() else { return };
             // 1 → 2 → 3 → ∞(0) → 1. Two is the usual choice for a chiptune rip.
@@ -570,10 +574,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             ui.set_loop_count(next);
             let _ = db.set_setting("mini.loop_count", &next.to_string());
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.set_loop_settings(next.max(1) as u32, ui.get_fade_seconds() as u64 * 1000);
+            }
         });
     }
     {
-        let (db, weak) = (db.clone(), ui.as_weak());
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
         ui.on_cycle_fade(move || {
             let Some(ui) = weak.upgrade() else { return };
             let next = match ui.get_fade_seconds() {
@@ -584,6 +591,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             ui.set_fade_seconds(next);
             let _ = db.set_setting("mini.fade_seconds", &next.to_string());
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.set_loop_settings(ui.get_loop_count().max(1) as u32, next as u64 * 1000);
+            }
         });
     }
 

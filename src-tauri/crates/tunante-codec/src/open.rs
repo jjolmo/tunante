@@ -22,6 +22,44 @@ use crate::{
 /// A decoder, whichever backend produced it.
 pub type BoxedSource = Box<dyn Source + Send>;
 
+/// How long a track that never ends should last.
+///
+/// Console music mostly loops forever by design — the hardware just kept
+/// playing until the level ended. A player has to decide when to stop, and the
+/// convention rips use is: play the tagged length `loop_count` times, then fade
+/// out over `fade_ms`.
+///
+/// Only the backends with a notion of length honour this — PSF, PSF2 and GME.
+/// vgmstream computes its own from the loop points in the container, and the
+/// standard formats have a real end.
+#[derive(Clone, Copy, Debug)]
+pub struct PlaybackOptions {
+    /// How many times to play the tagged length. Clamped to at least 1.
+    pub loop_count: u32,
+    /// Fade at the end, in milliseconds. 0 stops abruptly.
+    pub fade_ms: u64,
+}
+
+impl Default for PlaybackOptions {
+    /// Two loops and an eight-second fade: what most rips and most players
+    /// assume, and what makes an untagged track come out at a listenable length.
+    fn default() -> Self {
+        Self { loop_count: 2, fade_ms: 8_000 }
+    }
+}
+
+impl PlaybackOptions {
+    /// The total length of a track whose tagged body is `body_ms`.
+    pub fn total_ms(&self, body_ms: u64) -> u64 {
+        body_ms * self.loop_count.max(1) as u64 + self.fade_ms
+    }
+
+    /// Where the fade should begin, for a body of `body_ms`.
+    pub fn fade_start_ms(&self, body_ms: u64) -> u64 {
+        body_ms * self.loop_count.max(1) as u64
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum OpenError {
     #[error("IO error: {0}")]
@@ -43,6 +81,15 @@ pub enum OpenError {
 /// standard formats are matched before that same fallback because vgmstream can
 /// mishandle them.
 pub fn open_source(path: &Path, duration_hint_ms: i64) -> Result<BoxedSource, OpenError> {
+    open_source_with(path, duration_hint_ms, PlaybackOptions::default())
+}
+
+/// As [`open_source`], with control over how long looping tracks last.
+pub fn open_source_with(
+    path: &Path,
+    duration_hint_ms: i64,
+    opts: PlaybackOptions,
+) -> Result<BoxedSource, OpenError> {
     let path_str = path.to_string_lossy();
     let (actual_path_str, sub_track) = parse_vgm_path(&path_str);
     let actual_path = Path::new(actual_path_str);
@@ -71,10 +118,10 @@ pub fn open_source(path: &Path, duration_hint_ms: i64) -> Result<BoxedSource, Op
         Ok(Box::new(TwoSfSource::new(actual_path).map_err(decoder_err)?))
     } else if is_psf2_format(ext) {
         // PS2, via Highly Experimental
-        Ok(Box::new(Psf2Source::new(actual_path).map_err(decoder_err)?))
+        Ok(Box::new(Psf2Source::with_options(actual_path, opts).map_err(decoder_err)?))
     } else if is_psf_format(ext) {
         // PS1, via sexypsf
-        Ok(Box::new(PsfSource::new(actual_path).map_err(decoder_err)?))
+        Ok(Box::new(PsfSource::with_options(actual_path, opts).map_err(decoder_err)?))
     } else if ext.eq_ignore_ascii_case("opus") {
         // symphonia has no Opus support, so we carry our own decoder
         let file = BufReader::new(File::open(actual_path)?);
