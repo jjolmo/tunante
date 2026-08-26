@@ -25,6 +25,12 @@ makedepends="
 	cargo
 	rust
 	cmake
+	# abuild exporta CMAKE_GENERATOR=Ninja en su entorno, así que los build.rs
+	# que llaman a cmake piden Ninja aunque fuera de abuild se contenten con
+	# make. En Alpine quien provee /usr/bin/ninja es samurai. Sin esto la
+	# receta muere con "CMake was unable to find a build program corresponding
+	# to Ninja" — y sólo bajo abuild, que es lo que la hacía invisible.
+	samurai
 	build-base
 	musl-dev
 	fontconfig-dev
