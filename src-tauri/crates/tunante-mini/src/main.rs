@@ -431,6 +431,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (player, queue_model) = (player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_queue_cleared(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.clear_queue();
+                queue_model.set_vec(Vec::new());
+                // Emptying the queue stops the music, so the Playing tab and
+                // the mini-player have to stop claiming a track as well.
+                push_now_playing(&ui, p);
+            }
+        });
+    }
+    {
+        let (player, queue_model) = (player.clone(), queue_model.clone());
         ui.on_queue_removed(move |index| {
             if let Some(p) = player.borrow_mut().as_mut() {
                 p.remove_from_queue(index as usize);
@@ -985,11 +999,16 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
             }));
             ui.set_now_artist(SharedString::from(t.artist.as_str()));
             ui.set_now_album(SharedString::from(t.album.as_str()));
+            // The library marks its own row from this, rather than the rows
+            // carrying a flag: they are rebuilt in five places and none of them
+            // would hear about a track change.
+            ui.set_now_path(SharedString::from(t.path.as_str()));
         }
         None => {
             ui.set_now_title("Nada sonando".into());
             ui.set_now_artist(SharedString::new());
             ui.set_now_album(SharedString::new());
+            ui.set_now_path(SharedString::new());
         }
     }
     ui.set_playing(p.is_playing());

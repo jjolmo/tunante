@@ -205,6 +205,10 @@ component FolderPicker inherits Rectangle {
 component SwipeRow inherits Rectangle {
     in property <string> action-label;
     in property <color> action-color: Theme.accent;
+    // The row's own background. Configurable so a list can say "this is the one
+    // playing" without reaching inside; the surface has to be opaque either way
+    // or the swipe action underneath shows through at rest.
+    in property <color> surface-color: Theme.bg-primary;
     in property <bool> enabled: true;
     callback swiped();
     callback tapped();
@@ -264,7 +268,7 @@ component SwipeRow inherits Rectangle {
 
         surface := Rectangle {
             x: root.offset;
-            background: Theme.bg-primary;
+            background: root.surface-color;
 
             // El objetivo del toque va DEBAJO del contenido, no encima.
             //
@@ -395,8 +399,43 @@ component TabSwitcher inherits Rectangle {
     }
 }
 
+// The cover art. Square, and told how big to be by whoever places it — working
+// its own size out from the parent would drag it into the layout's size
+// calculation, which is the binding loop this file already had once.
+component Artwork inherits Rectangle {
+    in property <length> side;
+    in property <image> art;
+
+    height: root.side;
+    width: root.side;
+    background: Theme.bg-tertiary;
+    border-radius: Theme.radius;
+    clip: true;
+
+    Image {
+        source: root.art;
+        width: 100%;
+        height: 100%;
+        // Fill the square and crop, rather than letterboxing a non-square cover
+        // into a grey frame.
+        image-fit: cover;
+        visible: root.art.width > 0;
+    }
+
+    Text {
+        text: "♪";
+        color: Theme.text-muted;
+        // Relative, because the same component now serves the full-bleed cover
+        // on the Playing tab and a 44px thumbnail in the mini-player. Capped so
+        // a very large cover area does not turn the note into wallpaper.
+        font-size: min(64px, root.side / 3);
+        visible: root.art.width == 0;
+    }
+}
+
 // The strip above the tab bar: what is playing, and the transport.
 component MiniPlayer inherits Rectangle {
+    in property <image> art;
     in property <string> title;
     in property <string> artist;
     in property <bool> playing;
@@ -433,18 +472,12 @@ component MiniPlayer inherits Rectangle {
         padding-right: Theme.gap;
         spacing: Theme.gap;
 
-        // Artwork placeholder — a real cover goes here, decoded once at display
-        // size and held in a small LRU cache.
+        // The same Artwork the Playing tab uses, at strip size. It was a
+        // hardcoded placeholder here since the first day: the cover loaded and
+        // filled the tab above while this went on drawing a grey note.
         Rectangle {
             width: 44px;
-            background: Theme.bg-tertiary;
-            border-radius: 4px;
-
-            Text {
-                text: "♪";
-                color: Theme.text-muted;
-                font-size: 20px;
-            }
+            Artwork { side: 44px; art: root.art; }
         }
 
         VerticalLayout {
@@ -510,37 +543,6 @@ component MiniPlayer inherits Rectangle {
             Text { text: "▶▶"; color: Theme.text-secondary; font-size: 14px; }
             TouchArea { clicked => { root.next-track(); } }
         }
-    }
-}
-
-// The cover art. Square, and told how big to be by whoever places it — working
-// its own size out from the parent would drag it into the layout's size
-// calculation, which is the binding loop this file already had once.
-component Artwork inherits Rectangle {
-    in property <length> side;
-    in property <image> art;
-
-    height: root.side;
-    width: root.side;
-    background: Theme.bg-tertiary;
-    border-radius: Theme.radius;
-    clip: true;
-
-    Image {
-        source: root.art;
-        width: 100%;
-        height: 100%;
-        // Fill the square and crop, rather than letterboxing a non-square cover
-        // into a grey frame.
-        image-fit: cover;
-        visible: root.art.width > 0;
-    }
-
-    Text {
-        text: "♪";
-        color: Theme.text-muted;
-        font-size: 64px;
-        visible: root.art.width == 0;
     }
 }
 
@@ -1058,13 +1060,76 @@ component QueueTab inherits Rectangle {
     callback activated(int);
     callback removed(int);
     callback reordered(int, int);
+    callback cleared();
 
     property <length> row-height: Theme.touch-target + 8px;
     // Which row is being carried, and how far it has travelled. -1 for none.
     property <int> dragging: -1;
     property <length> drag-offset: 0px;
+    // Emptying the queue stops the music, so it asks first. The second tap
+    // lands where the first one did, which is why the strip does not move or
+    // change height between the two states.
+    property <bool> confirming: false;
+
+    VerticalLayout {
+
+    // Above the list rather than the first row in it.
+    //
+    // As a row it would scroll under the finger, and a destructive control that
+    // moves while you fling a list is a control you eventually hit by accident.
+    // Fixed, it is also still there when the queue is long.
+    if root.rows.length > 0: Rectangle {
+        height: Theme.touch-target;
+        background: root.confirming ? #a33333 : Theme.bg-secondary;
+
+        HorizontalLayout {
+            padding-left: Theme.gap;
+            padding-right: Theme.gap;
+            spacing: 8px;
+            alignment: center;
+
+            Text {
+                text: root.confirming ? "✕" : "🗑";
+                color: root.confirming ? #ffffff : Theme.text-secondary;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.confirming
+                    ? "¿Seguro? Toca otra vez"
+                    : "Vaciar la cola (" + root.rows.length + ")";
+                color: root.confirming ? #ffffff : Theme.text-secondary;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+            }
+        }
+
+        TouchArea {
+            clicked => {
+                if (root.confirming) {
+                    root.confirming = false;
+                    root.cleared();
+                } else {
+                    root.confirming = true;
+                    undo.running = true;
+                }
+            }
+        }
+
+        // A confirmation that waits forever is a trap of its own: come back to
+        // the tab five minutes later and the next tap empties the queue.
+        undo := Timer {
+            interval: 4s;
+            running: false;
+            triggered => {
+                self.running = false;
+                root.confirming = false;
+            }
+        }
+    }
 
     ListView {
+        vertical-stretch: 1;
         // Slint's default style builds its Flickable with `interactive: false`,
         // so the list only scrolls by its scrollbar and the finger does nothing.
         // Fine for a desktop with a wheel; wrong for anything held in a hand.
@@ -1076,6 +1141,7 @@ component QueueTab inherits Rectangle {
             opacity: root.dragging == i ? 0.85 : 1.0;
 
             SwipeRow {
+                surface-color: row.playing ? Theme.bg-selected : Theme.bg-primary;
                 // Swiping while carrying a row would be two gestures at once.
                 enabled: root.dragging == -1;
                 action-label: "Quitar";
@@ -1158,6 +1224,7 @@ component QueueTab inherits Rectangle {
             }
         }
     }
+    }
 }
 
 component LibraryTab inherits Rectangle {
@@ -1167,6 +1234,7 @@ component LibraryTab inherits Rectangle {
     // is the first thing worth dropping: it is a nicety, and searching is the
     // one moment the list needs every row it can get.
     in property <bool> cramped;
+    in property <string> now-path;
     in-out property <string> search;
     callback enqueued(int);
     // Focus the search field as soon as this tab is built. Only used by the
@@ -1245,6 +1313,9 @@ component LibraryTab inherits Rectangle {
 
             for row[i] in root.rows: SwipeRow {
                 height: Theme.touch-target;
+                // Where you are in the tree, without having to remember.
+                surface-color: !row.is-folder && row.path == root.now-path
+                    ? Theme.bg-selected : Theme.bg-primary;
                 // Sólo las pistas se encolan; una carpeta se despliega.
                 enabled: !row.is-folder;
                 action-label: "A la cola";
@@ -1320,6 +1391,10 @@ export component AppWindow inherits Window {
     in property <int> position-ms;
     in property <int> duration-ms;
     in property <image> now-art;
+    // The path of the track playing, so a row can recognise itself. Cheaper and
+    // steadier than marking rows in Rust: `to_ui_rows` is called from five
+    // places and none of them would know when the track changed underneath.
+    in property <string> now-path;
     in-out property <bool> shuffle;
     // 0 off · 1 all · 2 one
     in-out property <int> repeat;
@@ -1348,6 +1423,7 @@ export component AppWindow inherits Window {
     callback queue-activated(int);
     callback queue-removed(int);
     callback queue-reordered(int, int);
+    callback queue-cleared();
     callback search-changed(string);
     callback toggle-play();
     callback next-track();
@@ -1526,6 +1602,7 @@ export component AppWindow inherits Window {
                         activated(i) => { root.queue-activated(i); }
                         removed(i) => { root.queue-removed(i); }
                         reordered(from, to) => { root.queue-reordered(from, to); }
+                        cleared => { root.queue-cleared(); }
                     }
 
                     if root.tab == 3: SettingsTab {
@@ -1547,6 +1624,7 @@ export component AppWindow inherits Window {
                         rows: root.library-rows;
                         total: root.library-total;
                         cramped: root.cramped;
+                        now-path: root.now-path;
                         autofocus-search: root.autofocus-search;
                         search <=> root.search;
                         activated(i) => { root.library-activated(i); }
@@ -1558,6 +1636,7 @@ export component AppWindow inherits Window {
         }
 
         if !root.cramped: MiniPlayer {
+            art: root.now-art;
             title: root.now-title;
             artist: root.now-artist;
             playing: root.playing;

@@ -211,6 +211,21 @@ impl Player {
         }
     }
 
+    /// Empty the queue and stop.
+    ///
+    /// Unlike removing a single row, this does stop the music. Leaving a track
+    /// playing with nothing behind it would put the player in a state the queue
+    /// no longer explains, and "empty the queue" plainly means "stop".
+    ///
+    /// Both levels go: the context the queue was built from and the user queue
+    /// layered on top, which does not appear in `tracks()` and would otherwise
+    /// survive to start playing on its own.
+    pub fn clear_queue(&mut self) {
+        self.stop();
+        self.queue.set_tracks(Vec::new());
+        self.queue.clear_user_queue();
+    }
+
     /// Take a track out of the queue.
     ///
     /// Removing the one that is playing leaves it playing: stopping the music
