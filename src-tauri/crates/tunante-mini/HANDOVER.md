@@ -63,13 +63,13 @@ Everything below has been run on the phone, not just compiled.
 | Formats | All of them, on musl/aarch64. `all_supported_formats_decode` passes in CI. |
 | UI | Four tabs, portrait and landscape, on a real library of 2010 tracks. |
 | Library views | Tree, Discos (grid), Consolas (grid). Long-press menu in all three. |
-| MPRIS | Confirmed on the lock screen. Headset buttons are BlueZ's `mpris-proxy`, not ours. |
+| MPRIS | Confirmed on the lock screen. Play/Pause/Next/Previous, and the writable properties (`LoopStatus`, `Shuffle`, `Volume`) round-trip. Headset buttons are BlueZ's `mpris-proxy`, not ours. |
 | Session | Restores track, position, volume, shuffle, repeat. |
 | Sleep timer | Works. |
 | Renderer | femtovg (GPU) by default, software compiled in behind `SLINT_BACKEND=winit-software`. |
 | Frame rate | 69–82 fps while scrolling, on a 120 Hz panel. Was 20–23 when this started. |
 | CI | Alpine aarch64 (musl), green, ~8 min. |
-| Alpine package | The recipe builds. Never yet installed on a device — see What's left. |
+| Alpine package | Built, installed with `apk add`, and launched through its desktop entry — it came up, restored the session and played. 13.7 MB, because abuild strips; a dev build is 31 MB. |
 
 ### There is no back button
 
@@ -117,6 +117,23 @@ no cover".
 `probe` had it too, and there it is worse: it runs on every file of a scan, so a
 file with enough subsongs to push its JSON over 64 KB would have been dropped
 from the library silently. Both go through `capture()` now.
+
+### An MPRIS property you never publish is a property that lies
+
+`can_control(true)` tells every client that `LoopStatus`, `Shuffle` and `Volume`
+are writable. Setting them over D-Bus **succeeded** — `busctl set-property`
+returned 0 — and nothing happened, because only `connect_set_volume` was wired
+and `publish` hard-set `LoopStatus::None` on every playback-status change. So
+the lock screen's repeat and shuffle buttons did nothing, and the property
+reported "None" no matter what the UI showed.
+
+Volume was the worse half: the command *was* applied to the player and the
+property was never updated, so a client that set 0.4 heard 0.4 and read back
+1.0 — the two directions disagreed about the same number. Both ways are wired
+now, and `publish` sends all three when they change.
+
+There is no error to find here. A silent success on a write is what this looks
+like from the outside; only reading the property back afterwards catches it.
 
 ### `get_tracks_by_folder` is recursive
 
@@ -184,8 +201,12 @@ the filesystem, not the flag: `get_tracks_by_folder` on a file path matches
 - **`journalctl -u <unit>` mixes every past run of that unit.** Two measurements
   in a row will silently report the first one twice. Mark the time and use
   `--since`.
-- **A background build dies when the ssh session closes.** Use `systemd-run
-  --user --unit=…`.
+- **Anything you start over ssh dies when the session closes** — and `setsid
+  nohup` does not save it. logind puts the whole ssh session in a scope and
+  tears it down: `session-c427.scope: Killing process 347049 (tunante-mini)
+  with signal SIGTERM`. That reads exactly like the app crashing on launch, so
+  check the journal before believing it did. Use `systemd-run --user
+  --unit=…`, for the app as much as for a build.
 - **Do not build at `-j6` on a 500 mA port.** The PMIC cuts the rail with no
   oops, no panic and nothing in pstore. It happened three times. `-j2`.
 - **`perf` on a stripped binary gives a flat profile with no names**, which
@@ -260,10 +281,17 @@ compositor only raises it when the last input came from touch.
 
 ## What is left
 
-- **Install the package on a device.** The recipe builds and produces a signed
-  `.apk`; nothing has yet run `apk add` on it and launched the result.
 - **A long listen.** Hours of playback, to see whether anything degrades. This
-  needs time, not hands.
+  needs time, not hands. `escucha.sh` in the phone's home directory samples one
+  line a minute — UI and decoder PSS, playback status, position, the ALSA
+  substate and the battery — under `systemd-run --user --unit=escucha`. Read it
+  with `journalctl --user -u escucha`.
+- **The USB port does not keep up.** `pm8150b-charger` says `Charging` while
+  `qcom_qg` says `Discharging`: plugged in, the battery still falls. A listen
+  long enough to matter needs a real charger, or it ends by running out.
+- **Rebuild the package with the MPRIS fix.** The installed `0.1.237` still has
+  the properties that lie; the fix was verified with a native build in
+  `~/tunante-spike`, not through abuild.
 - `real_library_sweep` is ignored in CI on purpose — it wants a real collection
   via `TUNANTE_MUSIC_DIR`.
 - The GitHub ARM runner queue can back up badly; a job sat 1 h 46 m without
