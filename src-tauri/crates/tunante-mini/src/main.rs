@@ -395,10 +395,79 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // --- Swipes: add to the queue, take out of it ---------------------------
+    // --- Swipes and the long-press menu: add to the queue, take out of it ---
     {
-        let (db, rows_model, player, queue_model) =
+        let (db_folder, rows_folder, player_folder, queue_folder) =
             (db.clone(), rows_model.clone(), player.clone(), queue_model.clone());
+        let weak_folder = ui.as_weak();
+        ui.on_library_enqueue_folder(move |index, deep| {
+            let Some(ui) = weak_folder.upgrade() else { return };
+            let Some(row) = rows_folder.row_data(index as usize) else { return };
+            let path = row.path.to_string();
+
+            // `is_folder` on a row does not mean "directory". A file with
+            // several subsongs — an .nsf, a .gsflib — is shown as a folder too,
+            // because to whoever is listening that is what it is. Its `path` is
+            // the file. So ask the filesystem rather than trusting the flag.
+            let on_disk = std::path::Path::new(&path);
+            let mut tracks = if on_disk.is_dir() {
+                // Already the recursive answer: the query matches
+                // `path LIKE 'folder/%'`.
+                let mut all = db_folder.get_tracks_by_folder(&path).unwrap_or_default();
+                if !deep {
+                    let prefix = format!("{}/", path.trim_end_matches('/'));
+                    all.retain(|t| {
+                        // On the real file: a subsong's `#n` suffix does not
+                        // change which directory it lives in.
+                        let real = tunante_core::vgm_path::parse_vgm_path(&t.path).0;
+                        real.strip_prefix(prefix.as_str())
+                            .is_some_and(|rest| !rest.contains('/'))
+                    });
+                }
+                all
+            } else {
+                // A file, with or without subsongs. Take the whole thing:
+                // holding an .nsf and getting one of its forty tunes would be a
+                // surprise. Its siblings in the directory are filtered out by
+                // comparing real paths.
+                let parent = on_disk
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                let mut mine: Vec<_> = db_folder
+                    .get_tracks_by_folder(&parent)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|t| tunante_core::vgm_path::parse_vgm_path(&t.path).0 == path)
+                    .collect();
+                mine.sort_by_key(|t| tunante_core::vgm_path::parse_vgm_path(&t.path).1.unwrap_or(0));
+                mine
+            };
+
+            if tracks.is_empty() {
+                if let Ok(Some(t)) = db_folder.get_track_by_path(&path) {
+                    tracks.push(t);
+                } else {
+                    return;
+                }
+            }
+
+            if let Some(p) = player_folder.borrow_mut().as_mut() {
+                for t in tracks {
+                    p.enqueue(t);
+                }
+                // Nothing was playing, so the first of them becomes the track.
+                if p.current().is_none() {
+                    let _ = p.next();
+                    push_now_playing(&ui, p);
+                }
+                queue_folder.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+            }
+        });
+    }
+    {
+        let (player, queue_model) = (player.clone(), queue_model.clone());
+        let (db, rows_model) = (db.clone(), rows_model.clone());
         let weak = ui.as_weak();
         ui.on_library_enqueued(move |index| {
             let Some(ui) = weak.upgrade() else { return };
