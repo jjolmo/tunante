@@ -2233,11 +2233,17 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Above the mini-player rather than inside a tab: the app can lose its
-        // output while you are looking at the library, and this is the one
-        // message that has to reach you wherever you are.
-        if root.output-warning != "": Rectangle {
-            height: 34px;
+        // In the mini-player's place, not above it, and that is not a cosmetic
+        // choice. Added as a row of its own it took 34px the Playing tab did not
+        // have to give: the transport is laid out to the height it gets and the
+        // play button was clipped in half. Standing in for the mini-player it
+        // costs nothing, and there is nothing lost — the mini-player says what
+        // is playing, and at this moment nothing is.
+        //
+        // Outside a tab because the output can die while you are looking at the
+        // library, and this has to reach you wherever you are.
+        if root.output-warning != "" && !root.cramped: Rectangle {
+            height: 68px;
             background: Theme.warning-bg;
             HorizontalLayout {
                 padding-left: 12px;
@@ -2259,7 +2265,7 @@ export component AppWindow inherits Window {
             }
         }
 
-        if !root.cramped: MiniPlayer {
+        if !root.cramped && root.output-warning == "": MiniPlayer {
             art: root.now-art;
             title: root.now-title;
             artist: root.now-artist;

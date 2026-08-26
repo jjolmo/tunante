@@ -181,6 +181,12 @@ the filesystem, not the flag: `get_tracks_by_folder` on a file path matches
   grab and sends the TouchArea **nothing** (the `Cancel` that Slint's TouchArea
   emits only fires when the area is *disabled* while grabbed), so the timer
   survives a fling. `touch.pressed` at fire time is what catches that.
+- **A row added to the shell comes out of the tab, and the tab does not
+  shrink — it clips.** The dumb-output banner went in as 34px of its own above
+  the mini-player and cut the Playing tab's transport in half: the play button
+  lost its bottom third. Nothing warned, and only a screenshot showed it. It
+  stands in the mini-player's place now, which costs no height at all — and the
+  mini-player says what is playing, which at that moment is nothing.
 - **A tap still fires after a long press.** Holding a row opened the menu *and*
   enqueued the row on release.
 
@@ -370,13 +376,6 @@ compositor only raises it when the last input came from touch.
 - **The USB port does not keep up.** `pm8150b-charger` says `Charging` while
   `qcom_qg` says `Discharging`: plugged in, the battery still falls. A listen
   long enough to matter needs a real charger, or it ends by running out.
-- **Look at the dumb-output banner.** `output.rs` and what it does are verified
-  on the device — playback pauses, the position freezes, the warning lifts when
-  the speaker comes back — but the banner itself has never been seen: the
-  screen was locked on every attempt and this session refuses
-  `loginctl unlock-session`. Slint compiled it, so it exists and its bindings
-  resolve. Whether it looks right in portrait, in landscape and while `cramped`
-  is unknown.
 - **`docs/TODO-upstream.md`** holds the kernel bug underneath all of this: the
   sound card that does not survive a resume. Reporting it upstream is worth
   more than the workaround kept here.
