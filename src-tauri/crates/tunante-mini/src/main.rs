@@ -13,15 +13,28 @@
 //!
 //! ```text
 //! tunante-mini                     open the library it already knows
+//! tunante-mini <fichero>           play that file, queueing its folder
 //! tunante-mini --scan <carpeta>    scan a folder into the library first
-//! tunante-mini --rows N            fake rows instead, to measure the list
+//! ```
+//!
+//! # Instruments
+//!
+//! Two more flags exist, and they are not features — they are how the app gets
+//! measured and driven from a shell when nobody can put a finger on the glass:
+//!
+//! ```text
+//! tunante-mini --rows N            fake rows, to measure what the list costs
 //! tunante-mini --focus-search      start on Library with the search focused
 //! ```
 //!
-//! `--rows` is the measuring harness, not the app: it fills the library tab with
-//! generated entries to see what the list costs at a size no real collection
-//! reaches. Read **PSS** from `/proc/<pid>/smaps_rollup`, not RSS — RSS counts
-//! shared library pages the session already has resident.
+//! `--rows` fills the library tab with generated entries at a size no real
+//! collection reaches; the real library never materialises every row. Read
+//! **PSS** from `/proc/<pid>/smaps_rollup`, not RSS — RSS counts shared library
+//! pages the session already has resident and overstates this several times.
+//!
+//! `--focus-search` exists because a compositor only raises the on-screen
+//! keyboard when the last input came from touch, so focusing the field from a
+//! shell proves the request is sent but not that the keyboard appears.
 
 mod decoder;
 mod library;
