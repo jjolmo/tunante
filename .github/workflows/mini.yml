@@ -108,3 +108,88 @@ jobs:
             src-tauri/target/release/tunante-mini
             src-tauri/target/release/tunante-decoder
             src-tauri/crates/tunante-mini/dist/
+
+  package:
+    # The recipe, run for real. Until this existed the APKBUILD had never been
+    # executed once: it was a file that looked right.
+    #
+    # Here rather than on the phone because the recipe builds the whole
+    # workspace, vendored C included. That is eight minutes on this runner and
+    # the better part of an hour on the device at -j2 — on a charger that has
+    # already browned the phone out three times.
+    runs-on: ubuntu-24.04-arm
+    name: Alpine package (aarch64)
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # The version comes from the tags, like everywhere else.
+          fetch-depth: 0
+
+      - name: Build the apk
+        run: |
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          VERSION=${VERSION:-0.1.0}
+          echo "empaquetando $VERSION"
+
+          # A tarball of this checkout, laid out exactly as GitHub's release
+          # archive would be, so `builddir` in the recipe finds what it expects.
+          # git archive is no good here: it does not carry submodules, and the
+          # emulator cores are submodules.
+          mkdir -p /tmp/src
+          tar czf "/tmp/src/tunante-mini-$VERSION.tar.gz" \
+            --exclude=.git --exclude=target --exclude=node_modules \
+            --transform "s,^\.,tunante-$VERSION," .
+
+          docker run --rm -i \
+            -v "$PWD":/repo -v /tmp/src:/src -v "$PWD/out":/out \
+            -e "VERSION=$VERSION" \
+            alpine:edge sh -eux <<'ALPINE'
+          apk add --no-cache alpine-sdk sudo
+
+          # abuild refuses to run as root, so it gets a user of its own.
+          adduser -D empaqueta
+          addgroup empaqueta abuild
+          echo 'empaqueta ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          mkdir -p /home/empaqueta/recipe /var/cache/distfiles
+          chgrp abuild /var/cache/distfiles && chmod g+w /var/cache/distfiles
+
+          cp /repo/src-tauri/crates/tunante-mini/dist/APKBUILD /home/empaqueta/recipe/
+          # Stamp the version, exactly as release.yml does for the tree.
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" /home/empaqueta/recipe/APKBUILD
+          chown -R empaqueta:empaqueta /home/empaqueta
+
+          # The tarball goes into the distfiles cache under the name the recipe
+          # asks for. abuild checks the cache before fetching, so the `source=`
+          # URL stays as it is for a real release and nothing is downloaded.
+          cp "/src/tunante-mini-$VERSION.tar.gz" /var/cache/distfiles/
+          chgrp abuild "/var/cache/distfiles/tunante-mini-$VERSION.tar.gz"
+
+          su empaqueta -c '
+            set -eux
+            cd ~/recipe
+            abuild-keygen -a -n
+            abuild -r
+          '
+
+          mkdir -p /out
+          cp /home/empaqueta/packages/*/aarch64/*.apk /out/
+          ls -l /out
+          ALPINE
+
+      - name: What is inside it
+        run: |
+          for f in out/*.apk; do
+            echo "== $f  ($(stat -c%s "$f") bytes)"
+            # An apk is a gzipped tar; this is the whole point of the job —
+            # seeing that the recipe actually installs the binaries and the
+            # launcher entry, not just that it exited zero.
+            tar tzf "$f" | grep -v '^\.SIGN\|^\.PKGINFO' | sed 's/^/   /'
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunante-mini-apk-aarch64
+          path: out/*.apk
