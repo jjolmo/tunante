@@ -38,6 +38,7 @@
 
 mod boost;
 mod decoder;
+mod inhibit;
 mod library;
 mod mpris;
 mod picker;

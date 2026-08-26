@@ -184,6 +184,44 @@ the filesystem, not the flag: `get_tracks_by_folder` on a file path matches
 - **A tap still fires after a long press.** Holding a row opened the menu *and*
   enqueued the row on release.
 
+### Suspend takes the sound card away, and it does not come back
+
+The worst thing found so far, and it took a long listen to find it — nothing
+about it is visible in a session you are watching.
+
+Leave the phone alone with the screen off and PowerDevil suspends it on idle,
+mid-track. On resume the ADSP restarts, and the card does not survive it:
+
+```
+wcd937x_codec audio-codec: ASoC error (-16): at snd_soc_component_probe()
+snd-sm8250 sound: ASoC: failed to instantiate card -16
+```
+
+`/proc/asound/cards` then reads `--- no soundcards ---`. Unbinding and
+rebinding `snd-sm8250` fails with `Resource busy`. **Only a reboot brings the
+speaker back.** It did not happen on the first suspend and did happen on the
+second, so treat it as a race, not a certainty.
+
+That part is the sm7150 kernel's, not ours. Two things about it are ours:
+
+- **The app now holds a logind sleep inhibitor while it is playing**
+  (`inhibit.rs`), which is what stops the suspend that starts all this. It is
+  released the moment playback stops, so it costs nothing while paused. Before
+  that existed, the phone suspended itself in the middle of a track after
+  fifteen minutes of screen-off idling.
+
+  Appearing in `systemd-inhibit --list` is not the same as preventing
+  anything, so the check that counts is asking for a suspend while a track
+  plays and being told no: `Call to Suspend failed: Operation denied due to
+  active block inhibitor`.
+- **With the card gone, the app went on reporting `Playing` and advancing the
+  position** — 34 s, 42 s, 51 s, against silence and no sound card at all. A
+  running progress bar is a claim about the world, and this one was false.
+  Still unfixed; see What is left.
+
+The `pcm` column in `tools/escucha` exists for exactly this. `Playing` with the
+PCM not `RUNNING` — or with no `/proc/asound/card0` at all — is the signature.
+
 ### The phone
 
 - **`schedutil` punishes an efficient UI.** A UI is bursty — a few ms of work,
@@ -201,6 +239,16 @@ the filesystem, not the flag: `get_tracks_by_folder` on a file path matches
 - **`journalctl -u <unit>` mixes every past run of that unit.** Two measurements
   in a row will silently report the first one twice. Mark the time and use
   `--since`.
+- **There is a second way in, and it is worth knowing before you need it.**
+  The USB gadget at `cidwel@172.16.42.1` is the usual route and it goes away
+  for its own reasons — a suspend, a cable, a resume that re-enumerates. The
+  phone is also on wifi as `cidwel@surya`, which survived a session where USB
+  did not, and was the only reason the device did not have to be picked up.
+- **`ssh host 'a; b'` runs `b` even when the connection to run `a` never
+  happened.** An `echo` after the real work will report success it did not
+  witness: a reboot was announced here, and reported, that never took place —
+  the ssh had timed out and the `echo` ran locally-shaped and cheerful. Use
+  `&&`, and confirm the effect (`uptime`), not the exit code.
 - **Anything you start over ssh dies when the session closes** — and `setsid
   nohup` does not save it. logind puts the whole ssh session in a scope and
   tears it down: `session-c427.scope: Killing process 347049 (tunante-mini)
@@ -307,6 +355,15 @@ compositor only raises it when the last input came from touch.
 - **The USB port does not keep up.** `pm8150b-charger` says `Charging` while
   `qcom_qg` says `Discharging`: plugged in, the battery still falls. A listen
   long enough to matter needs a real charger, or it ends by running out.
+- **Notice when the output device dies.** The player keeps reporting `Playing`
+  and advancing the position after the sound card has gone — see the suspend
+  trap. The inhibitor means the app no longer *causes* that, but a phone can
+  lose its card for other reasons and the UI should not lie about it. Whatever
+  rodio reports when its stream dies is where to start.
+- **Why the card does not survive a resume** is worth chasing upstream rather
+  than working around: a phone that loses its speaker until you reboot it is a
+  bug in its own right, not just an obstacle to a long listen. `snd-sm8250`
+  and `wcd937x_codec` on postmarketOS edge, kernel 7.1.0-rc3-sm7150.
 - `real_library_sweep` is ignored in CI on purpose — it wants a real collection
   via `TUNANTE_MUSIC_DIR`.
 - The GitHub ARM runner queue can back up badly; a job sat 1 h 46 m without
