@@ -149,7 +149,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     let first_run = roots.is_empty();
-    let tree = Rc::new(RefCell::new(library::Tree::new(roots)));
+    // Cloned rather than moved: the console view needs the roots again to answer
+    // "everything of this console", which is a query across the whole library.
+    let tree = Rc::new(RefCell::new(library::Tree::new(roots.clone())));
     let rows_model = Rc::new(VecModel::from(Vec::<LibraryRow>::new()));
 
     let db = Rc::new(db);
@@ -368,7 +370,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if row.is_folder {
                 tree.borrow_mut().toggle(&path);
-                let rows = tree.borrow().rows(&db);
+                let modo = library::Mode::from_index(ui.get_library_mode());
+                let rows = tree.borrow().rows_for(&db, modo);
                 rows_model.set_vec(to_ui_rows(&rows));
                 ui.set_library_total(rows.len() as i32);
                 return;
@@ -395,15 +398,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    {
+        let (db_modo, tree_modo, rows_modo) = (db.clone(), tree.clone(), rows_model.clone());
+        let weak_modo = ui.as_weak();
+        ui.on_library_mode_changed(move |i| {
+            let Some(ui) = weak_modo.upgrade() else { return };
+            let rows = tree_modo
+                .borrow()
+                .rows_for(&db_modo, library::Mode::from_index(i));
+            rows_modo.set_vec(to_ui_rows(&rows));
+            ui.set_library_total(rows.len() as i32);
+        });
+    }
+
     // --- Swipes and the long-press menu: add to the queue, take out of it ---
     {
         let (db_folder, rows_folder, player_folder, queue_folder) =
             (db.clone(), rows_model.clone(), player.clone(), queue_model.clone());
+        let roots_folder = roots.clone();
         let weak_folder = ui.as_weak();
         ui.on_library_enqueue_folder(move |index, deep| {
             let Some(ui) = weak_folder.upgrade() else { return };
             let Some(row) = rows_folder.row_data(index as usize) else { return };
             let path = row.path.to_string();
+
+            // The console view builds rows whose `path` is not a path at all:
+            // `consola:NES` for a console, and `NES\u{1}/ruta/al/juego` for one
+            // of its games — the console has to be in the key because a folder
+            // holding both .spc rips and mp3s appears under two of them. Those
+            // are resolved here rather than in the view, so the enqueue side is
+            // the only place that has to know the encoding.
+            if let Some(consola) = path.strip_prefix("consola:") {
+                enqueue_all(
+                    &ui,
+                    &player_folder,
+                    &queue_folder,
+                    tracks_of_console(&db_folder, &roots_folder, consola),
+                );
+                return;
+            }
+            if let Some((consola, dir)) = path.split_once('\u{1}') {
+                let tracks = db_folder
+                    .get_tracks_by_folder(dir)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|t| library::console_of(&t.path) == consola)
+                    .collect();
+                enqueue_all(&ui, &player_folder, &queue_folder, tracks);
+                return;
+            }
 
             // `is_folder` on a row does not mean "directory". A file with
             // several subsongs — an .nsf, a .gsflib — is shown as a folder too,
@@ -452,17 +495,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            if let Some(p) = player_folder.borrow_mut().as_mut() {
-                for t in tracks {
-                    p.enqueue(t);
-                }
-                // Nothing was playing, so the first of them becomes the track.
-                if p.current().is_none() {
-                    let _ = p.next();
-                    push_now_playing(&ui, p);
-                }
-                queue_folder.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
-            }
+            enqueue_all(&ui, &player_folder, &queue_folder, tracks);
         });
     }
     {
@@ -981,6 +1014,45 @@ fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
         .and_then(|uri| decode_artwork(&uri, max_side));
 
     ui.set_now_art(art.unwrap_or_default());
+}
+
+/// Everything of one console, across the whole library.
+fn tracks_of_console(
+    db: &Database,
+    roots: &[PathBuf],
+    console: &str,
+) -> Vec<tunante_core::db::models::Track> {
+    roots
+        .iter()
+        .flat_map(|r| db.get_tracks_by_folder(&r.to_string_lossy()).unwrap_or_default())
+        .filter(|t| library::console_of(&t.path) == console)
+        .collect()
+}
+
+/// Put a batch at the end of the queue, and start it if nothing was playing.
+///
+/// Shared by every path that adds more than one track — a folder, a console,
+/// one game of a console — so they all behave the same when the player is idle.
+fn enqueue_all(
+    ui: &AppWindow,
+    player: &Rc<RefCell<Option<player::Player>>>,
+    queue_model: &Rc<VecModel<QueueRow>>,
+    tracks: Vec<tunante_core::db::models::Track>,
+) {
+    if tracks.is_empty() {
+        return;
+    }
+    if let Some(p) = player.borrow_mut().as_mut() {
+        for t in tracks {
+            p.enqueue(t);
+        }
+        // Nothing was playing, so the first of them becomes the track.
+        if p.current().is_none() {
+            let _ = p.next();
+            push_now_playing(ui, p);
+        }
+        queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+    }
 }
 
 fn to_ui_rows(rows: &[library::Row]) -> Vec<LibraryRow> {

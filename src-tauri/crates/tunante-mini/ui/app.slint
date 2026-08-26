@@ -1304,6 +1304,25 @@ component MenuAction inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
+// Una pestaña del conmutador de vistas de la biblioteca.
+component ModeTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+
+    background: root.selected ? Theme.bg-selected : Theme.bg-tertiary;
+    border-radius: Theme.radius;
+
+    Text {
+        text: root.label;
+        color: root.selected ? Theme.text-primary : Theme.text-secondary;
+        font-size: Theme.font-small;
+    }
+
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+
 component LibraryTab inherits Rectangle {
     in property <[LibraryRow]> rows;
     in property <int> total;
@@ -1313,6 +1332,8 @@ component LibraryTab inherits Rectangle {
     in property <bool> cramped;
     in property <string> now-path;
     in-out property <string> search;
+    in-out property <int> mode;
+    callback mode-changed(int);
     callback enqueued(int);
     // Índice de la fila cuyo menú está abierto, o -1. La ruta y el nombre se
     // copian al abrirlo: las filas se reconstruyen al desplegar una carpeta y
@@ -1335,6 +1356,38 @@ component LibraryTab inherits Rectangle {
     }
 
     VerticalLayout {
+
+        // Tres maneras de mirar lo mismo. El árbol refleja el disco, que es
+        // honesto pero obliga a bajar hasta un juego cuyo nombre ya sabes; las
+        // otras dos son índices sobre las mismas filas, y el menú de pulsación
+        // larga funciona igual en las tres.
+        Rectangle {
+            height: Theme.touch-target - 6px;
+            background: Theme.bg-primary;
+
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: 4px;
+
+                ModeTab {
+                    label: "Árbol";
+                    selected: root.mode == 0;
+                    clicked => { root.mode = 0; root.mode-changed(0); }
+                }
+                ModeTab {
+                    label: "Discos";
+                    selected: root.mode == 1;
+                    clicked => { root.mode = 1; root.mode-changed(1); }
+                }
+                ModeTab {
+                    label: "Consolas";
+                    selected: root.mode == 2;
+                    clicked => { root.mode = 2; root.mode-changed(2); }
+                }
+            }
+        }
+
         // The search field, and the reason this tab is the one that decides the
         // toolkit: tapping it has to raise the on-screen keyboard. TextInput is
         // the primitive Slint fires InputMethodRequest::Enable from, so this is
@@ -1577,6 +1630,8 @@ export component AppWindow inherits Window {
     callback library-activated(int);
     callback library-enqueued(int);
     callback library-enqueue-folder(int, bool);
+    in-out property <int> library-mode: 0;
+    callback library-mode-changed(int);
     callback queue-activated(int);
     callback queue-removed(int);
     callback queue-reordered(int, int);
@@ -1782,6 +1837,8 @@ export component AppWindow inherits Window {
                         total: root.library-total;
                         cramped: root.cramped;
                         now-path: root.now-path;
+                        mode <=> root.library-mode;
+                        mode-changed(i) => { root.library-mode-changed(i); }
                         autofocus-search: root.autofocus-search;
                         search <=> root.search;
                         activated(i) => { root.library-activated(i); }
