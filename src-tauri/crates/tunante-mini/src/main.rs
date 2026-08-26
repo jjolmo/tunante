@@ -1177,6 +1177,7 @@ fn refresh_library(
                             subtitle: SharedString::from(c.subtitle.as_str()),
                             path: SharedString::from(c.path.as_str()),
                             art: folder_art(art_cache, &c.art_dir),
+                            console: SharedString::from(c.console.as_str()),
                             playing: false,
                         })
                         .collect();

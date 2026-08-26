@@ -598,9 +598,10 @@ pub struct Cell {
     pub subtitle: String,
     /// Ruta real, o sintética (`consola:NES`).
     pub path: String,
-    /// De qué carpeta sacar la portada. Para un disco, la suya; para una
-    /// consola, la de su primer juego, que es mejor que un hueco gris.
+    /// De qué carpeta sacar la portada. Vacío en las consolas: ésas se dibujan.
     pub art_dir: String,
+    /// El nombre de la consola cuando la celda es una consola. Vacío si no.
+    pub console: String,
 }
 
 impl Tree {
@@ -634,29 +635,32 @@ impl Tree {
                         title: nombre_de(&dir),
                         subtitle: pistas(n),
                         art_dir: dir.clone(),
+                        console: String::new(),
                         path: dir,
                     })
                     .collect(),
             ),
             (Mode::Consoles, 0) => {
-                let mut por_consola: BTreeMap<&'static str, (usize, usize, String)> =
-                    BTreeMap::new();
-                for (consola, dir, n) in self.console_index(db) {
+                let mut por_consola: BTreeMap<&'static str, (usize, usize)> = BTreeMap::new();
+                for (consola, _dir, n) in self.console_index(db) {
                     let e = por_consola.entry(consola).or_default();
                     e.0 += 1;
                     e.1 += n;
-                    if e.2.is_empty() {
-                        e.2 = dir;
-                    }
                 }
                 Some(
                     por_consola
                         .into_iter()
-                        .map(|(c, (juegos_n, pistas_n, primer_juego))| Cell {
+                        .map(|(c, (_juegos_n, pistas_n))| Cell {
                             title: c.to_string(),
-                            subtitle: format!("{} · {}", juegos(juegos_n), pistas(pistas_n)),
+                            // Sólo las pistas: "4 juegos · 489 pistas" no cabe
+                            // en una tarjeta de tres columnas y se cortaba en
+                            // "489 pista". Cuántos juegos hay se ve al entrar.
+                            subtitle: pistas(pistas_n),
                             path: format!("consola:{c}"),
-                            art_dir: primer_juego,
+                            // El aparato se dibuja. La portada del primer juego
+                            // era un parche: decía "Sonic" donde pone "NES".
+                            art_dir: String::new(),
+                            console: c.to_string(),
                         })
                         .collect(),
                 )
@@ -671,6 +675,7 @@ impl Tree {
                             title: nombre_de(&dir),
                             subtitle: pistas(n),
                             art_dir: dir.clone(),
+                            console: String::new(),
                             path: dir,
                         })
                         .collect(),
