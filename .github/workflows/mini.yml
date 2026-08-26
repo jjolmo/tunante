@@ -171,6 +171,9 @@ jobs:
             set -eux
             cd ~/recipe
             abuild-keygen -a -n
+            # Contra el tarball que acabamos de dejar en la caché, que no es el
+            # de la release y por tanto no tiene su misma suma.
+            abuild checksum
             abuild -r
           '
 
