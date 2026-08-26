@@ -294,9 +294,6 @@ compositor only raises it when the last input came from touch.
 - **The USB port does not keep up.** `pm8150b-charger` says `Charging` while
   `qcom_qg` says `Discharging`: plugged in, the battery still falls. A listen
   long enough to matter needs a real charger, or it ends by running out.
-- **Rebuild the package with the MPRIS fix.** The installed `0.1.237` still has
-  the properties that lie; the fix was verified with a native build in
-  `~/tunante-spike`, not through abuild.
 - `real_library_sweep` is ignored in CI on purpose — it wants a real collection
   via `TUNANTE_MUSIC_DIR`.
 - The GitHub ARM runner queue can back up badly; a job sat 1 h 46 m without
