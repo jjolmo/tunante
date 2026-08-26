@@ -173,10 +173,19 @@ jobs:
           cp "/src/tunante-mini-$VERSION.tar.gz" /var/cache/distfiles/
           chgrp abuild "/var/cache/distfiles/tunante-mini-$VERSION.tar.gz"
 
+          su empaqueta -c 'cd ~/recipe && abuild-keygen -a -n'
+
+          # La clave pública, a mano y como root.
+          #
+          # `abuild-keygen -a` dice que la instala y en su propia salida avisa de
+          # que hay que copiarla a /etc/apk/keys. Sin eso, el último paso de
+          # `abuild -r` —crear el índice del repositorio— rechaza el paquete que
+          # el propio abuild acaba de firmar: "UNTRUSTED signature".
+          cp /home/empaqueta/.config/abuild/*.rsa.pub /etc/apk/keys/
+
           su empaqueta -c '
             set -eux
             cd ~/recipe
-            abuild-keygen -a -n
             # Contra el tarball que acabamos de dejar en la caché, que no es el
             # de la release y por tanto no tiene su misma suma.
             abuild checksum
