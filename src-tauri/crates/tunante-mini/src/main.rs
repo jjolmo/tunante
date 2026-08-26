@@ -165,6 +165,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_library_total(rows_model.row_count() as i32);
     ui.set_library_rows(ModelRc::from(rows_model.clone()));
 
+    let grid_model = Rc::new(VecModel::from(Vec::<GridLine>::new()));
+    let art_cache: Rc<RefCell<Vec<(String, slint::Image)>>> = Rc::new(RefCell::new(Vec::new()));
+    ui.set_library_grid_lines(ModelRc::from(grid_model.clone()));
+
     // Nothing monitored and nothing generated means a first run.
     if first_run && fake_rows.is_none() {
         ui.set_setup_mode(true);
@@ -359,8 +363,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Library: open a folder, or play a track -----------------------------
     {
-        let (tree, db, rows_model, player, queue_model) =
-            (tree.clone(), db.clone(), rows_model.clone(), player.clone(), queue_model.clone());
+        let (tree, db, rows_model, player, queue_model, grid_model, art_cache) = (
+            tree.clone(),
+            db.clone(),
+            rows_model.clone(),
+            player.clone(),
+            queue_model.clone(),
+            grid_model.clone(),
+            art_cache.clone(),
+        );
         let weak = ui.as_weak();
 
         ui.on_library_activated(move |index| {
@@ -370,10 +381,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if row.is_folder {
                 tree.borrow_mut().toggle(&path);
-                let modo = library::Mode::from_index(ui.get_library_mode());
-                let rows = tree.borrow().rows_for(&db, modo);
-                rows_model.set_vec(to_ui_rows(&rows));
-                ui.set_library_total(rows.len() as i32);
+                refresh_library(&ui, &tree, &db, &rows_model, &grid_model, &art_cache);
                 return;
             }
 
@@ -399,15 +407,68 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     {
-        let (db_modo, tree_modo, rows_modo) = (db.clone(), tree.clone(), rows_model.clone());
-        let weak_modo = ui.as_weak();
+        let (db_v, tree_v, rows_v, grid_v, art_v) = (
+            db.clone(),
+            tree.clone(),
+            rows_model.clone(),
+            grid_model.clone(),
+            art_cache.clone(),
+        );
+        let weak_v = ui.as_weak();
         ui.on_library_mode_changed(move |i| {
-            let Some(ui) = weak_modo.upgrade() else { return };
-            let rows = tree_modo
-                .borrow()
-                .rows_for(&db_modo, library::Mode::from_index(i));
-            rows_modo.set_vec(to_ui_rows(&rows));
-            ui.set_library_total(rows.len() as i32);
+            let Some(ui) = weak_v.upgrade() else { return };
+            tree_v.borrow_mut().mode = library::Mode::from_index(i);
+            // Changing view starts at the top of it. Coming back to Consoles
+            // three levels into where you were last time is disorienting, and
+            // the crumb would be the only clue.
+            tree_v.borrow_mut().nav.clear();
+            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
+        });
+    }
+    {
+        let (db_v, tree_v, rows_v, grid_v, art_v) = (
+            db.clone(),
+            tree.clone(),
+            rows_model.clone(),
+            grid_model.clone(),
+            art_cache.clone(),
+        );
+        let weak_v = ui.as_weak();
+        ui.on_library_columns_changed(move |_| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            // Turning the phone changes how many cards fit, and the lines are
+            // cut in Rust, so they have to be cut again.
+            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
+        });
+    }
+    {
+        let (db_v, tree_v, rows_v, grid_v, art_v) = (
+            db.clone(),
+            tree.clone(),
+            rows_model.clone(),
+            grid_model.clone(),
+            art_cache.clone(),
+        );
+        let weak_v = ui.as_weak();
+        ui.on_library_back(move || {
+            let Some(ui) = weak_v.upgrade() else { return };
+            tree_v.borrow_mut().nav.pop();
+            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
+        });
+    }
+    {
+        let (db_v, tree_v, rows_v, grid_v, art_v) = (
+            db.clone(),
+            tree.clone(),
+            rows_model.clone(),
+            grid_model.clone(),
+            art_cache.clone(),
+        );
+        let weak_v = ui.as_weak();
+        ui.on_library_grid_tapped(move |path| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            tree_v.borrow_mut().nav.push(path.to_string());
+            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
         });
     }
 
@@ -417,10 +478,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (db.clone(), rows_model.clone(), player.clone(), queue_model.clone());
         let roots_folder = roots.clone();
         let weak_folder = ui.as_weak();
-        ui.on_library_enqueue_folder(move |index, deep| {
+        ui.on_library_enqueue_path(move |path, deep| {
             let Some(ui) = weak_folder.upgrade() else { return };
-            let Some(row) = rows_folder.row_data(index as usize) else { return };
-            let path = row.path.to_string();
+            let path = path.to_string();
+            let _ = &rows_folder;
 
             // The console view builds rows whose `path` is not a path at all:
             // `consola:NES` for a console, and `NES\u{1}/ruta/al/juego` for one
@@ -780,25 +841,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Search --------------------------------------------------------------
     {
-        let (db, rows_model, tree) = (db.clone(), rows_model.clone(), tree.clone());
+        let (db, rows_model, tree, grid_model, art_cache) = (
+            db.clone(),
+            rows_model.clone(),
+            tree.clone(),
+            grid_model.clone(),
+            art_cache.clone(),
+        );
         let weak = ui.as_weak();
         ui.on_search_changed(move |text| {
             let Some(ui) = weak.upgrade() else { return };
-            let q = text.trim();
+            let q = text.trim().to_string();
+
+            // Two different things share one field, on purpose.
+            //
+            // In the tree it is a search: the whole library, through the FTS5
+            // index, because that is the view you use when you do not know
+            // where a thing is.
+            //
+            // In Discos and Consolas it is a filter over what is on screen.
+            // Searching the whole library from a grid of albums would replace
+            // the grid with a list of tracks, which is the one thing the grid
+            // exists not to be — and inside a console it would silently leave
+            // that console.
+            if tree.borrow().mode != library::Mode::Tree {
+                tree.borrow_mut().filter = q;
+                refresh_library(&ui, &tree, &db, &rows_model, &grid_model, &art_cache);
+                return;
+            }
 
             // Empty query returns to the tree rather than listing everything:
             // the whole point of not materialising the library is not to do that.
             if q.is_empty() {
-                let rows = tree.borrow().rows(&db);
-                ui.set_library_total(rows.len() as i32);
-                rows_model.set_vec(to_ui_rows(&rows));
+                refresh_library(&ui, &tree, &db, &rows_model, &grid_model, &art_cache);
                 return;
             }
 
             // Straight to the FTS5 index that already exists in the schema,
             // capped: nobody reads past a few hundred hits, and building more
             // rows than that is memory spent on nothing.
-            let hits = db.search_tracks(q).unwrap_or_default();
+            let hits = db.search_tracks(&q).unwrap_or_default();
             let rows: Vec<library::Row> = hits
                 .iter()
                 .take(300)
@@ -812,6 +894,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
                 .collect();
             ui.set_library_total(hits.len() as i32);
+            ui.set_library_grid(false);
+            grid_model.set_vec(Vec::new());
             rows_model.set_vec(to_ui_rows(&rows));
         });
     }
@@ -1014,6 +1098,114 @@ fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
         .and_then(|uri| decode_artwork(&uri, max_side));
 
     ui.set_now_art(art.unwrap_or_default());
+}
+
+/// Portadas de carpeta ya decodificadas y escaladas.
+///
+/// Con tope, y el tope es la razón de que exista: una rejilla construye todas
+/// sus celdas de golpe, y sin límite una biblioteca grande dejaría una portada
+/// residente por disco. A 224 px son 200 KB cada una; cuarenta son ocho megas
+/// en el peor caso, y el caso normal es mucho menos porque la mayoría de las
+/// carpetas de música de consola no traen imagen ninguna.
+const ART_SIDE: u32 = 224;
+const ART_CACHE: usize = 40;
+
+fn folder_art(
+    cache: &RefCell<Vec<(String, slint::Image)>>,
+    dir: &str,
+) -> slint::Image {
+    if dir.is_empty() {
+        return slint::Image::default();
+    }
+    if let Some((_, img)) = cache.borrow().iter().find(|(k, _)| k == dir) {
+        return img.clone();
+    }
+
+    let img = library::folder_image(std::path::Path::new(dir))
+        .and_then(|p| std::fs::read(p).ok())
+        .and_then(|bytes| image::load_from_memory(&bytes).ok())
+        .map(|d| d.thumbnail(ART_SIDE, ART_SIDE).to_rgba8())
+        .map(|rgba| {
+            let mut buf =
+                slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(rgba.width(), rgba.height());
+            buf.make_mut_bytes().copy_from_slice(rgba.as_raw());
+            slint::Image::from_rgba8(buf)
+        })
+        // Se cachea también el "no hay portada": si no, cada refresco vuelve a
+        // leer el directorio de todas las carpetas sin imagen, que son la
+        // mayoría.
+        .unwrap_or_default();
+
+    let mut c = cache.borrow_mut();
+    if c.len() >= ART_CACHE {
+        c.remove(0);
+    }
+    c.push((dir.to_string(), img.clone()));
+    img
+}
+
+/// Rebuild whatever the library tab should be showing right now.
+///
+/// One place decides between the three views and, inside the two grid ones,
+/// between a grid of cards and a list of tracks. Every path that can change what
+/// is on screen — switching view, tapping into a console, coming back, turning
+/// the phone — goes through here, so none of them can disagree with the others.
+fn refresh_library(
+    ui: &AppWindow,
+    tree: &Rc<RefCell<library::Tree>>,
+    db: &Rc<Database>,
+    rows_model: &Rc<VecModel<LibraryRow>>,
+    grid_model: &Rc<VecModel<GridLine>>,
+    art_cache: &Rc<RefCell<Vec<(String, slint::Image)>>>,
+) {
+    let t = tree.borrow();
+    let mode = t.mode;
+
+    ui.set_library_crumb(SharedString::from(t.crumb()));
+
+    match t.grid(db, mode) {
+        Some(cells) => {
+            let columns = ui.get_library_columns().max(1) as usize;
+            let total = cells.len();
+            let lines: Vec<GridLine> = cells
+                .chunks(columns)
+                .map(|chunk| {
+                    let mut fila: Vec<GridCell> = chunk
+                        .iter()
+                        .map(|c| GridCell {
+                            title: SharedString::from(c.title.as_str()),
+                            subtitle: SharedString::from(c.subtitle.as_str()),
+                            path: SharedString::from(c.path.as_str()),
+                            art: folder_art(art_cache, &c.art_dir),
+                            playing: false,
+                        })
+                        .collect();
+                    // The last line is padded to full width. The cells are drawn
+                    // as nothing and take no touches, and they are what lets the
+                    // ListView keep every line the same height — which is the
+                    // condition for it to virtualise at all.
+                    while fila.len() < columns {
+                        fila.push(GridCell::default());
+                    }
+                    GridLine { cells: ModelRc::from(Rc::new(VecModel::from(fila))) }
+                })
+                .collect();
+            grid_model.set_vec(lines);
+            rows_model.set_vec(Vec::new());
+            ui.set_library_grid(true);
+            ui.set_library_total(total as i32);
+        }
+        None => {
+            let rows = match mode {
+                library::Mode::Tree => t.rows_for(db, mode),
+                _ => t.grid_tracks(db, mode),
+            };
+            rows_model.set_vec(to_ui_rows(&rows));
+            grid_model.set_vec(Vec::new());
+            ui.set_library_grid(false);
+            ui.set_library_total(rows.len() as i32);
+        }
+    }
 }
 
 /// Everything of one console, across the whole library.

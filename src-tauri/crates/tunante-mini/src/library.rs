@@ -232,6 +232,23 @@ pub struct Tree {
     /// open — so opening the tenth folder cost ten queries, not one. The cache
     /// is only ever as large as what the user has actually opened.
     cache: std::cell::RefCell<std::collections::HashMap<String, FolderContents>>,
+    /// Qué vista está activa.
+    ///
+    /// Aquí y no leyéndola de la interfaz cuando hace falta: el estado es de
+    /// Rust, la interfaz sólo avisa de que cambió. Releer la propiedad hacía
+    /// que entrar en un disco de la rejilla mostrase el árbol, porque en ese
+    /// instante devolvía todavía el modo anterior.
+    pub mode: Mode,
+    /// Filtro sobre lo que se ve, en las vistas de rejilla. Vacío = todo.
+    pub filter: String,
+    /// Dónde estamos dentro de una vista de rejilla.
+    ///
+    /// Vacía = el nivel de arriba. En Consolas, `[consola]` son sus juegos y
+    /// `[consola, carpeta]` son las pistas de uno; en Discos, `[carpeta]` son
+    /// las pistas. Separada de `expanded` a propósito: el árbol despliega en el
+    /// sitio y la rejilla entra dentro, y mezclarlas haría que volver de una
+    /// consola dejase medio árbol abierto.
+    pub nav: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -257,7 +274,14 @@ impl Tree {
             .iter()
             .map(|r| r.to_string_lossy().to_string())
             .collect();
-        Self { roots, expanded, cache: Default::default() }
+        Self {
+            roots,
+            expanded,
+            cache: Default::default(),
+            mode: Mode::Tree,
+            filter: String::new(),
+            nav: Vec::new(),
+        }
     }
 
     pub fn toggle(&mut self, path: &str) {
@@ -566,4 +590,203 @@ pub fn format_duration(ms: i64) -> String {
     }
     let total = ms / 1000;
     format!("{}:{:02}", total / 60, total % 60)
+}
+
+/// Una tarjeta de la rejilla.
+pub struct Cell {
+    pub title: String,
+    pub subtitle: String,
+    /// Ruta real, o sintética (`consola:NES`).
+    pub path: String,
+    /// De qué carpeta sacar la portada. Para un disco, la suya; para una
+    /// consola, la de su primer juego, que es mejor que un hueco gris.
+    pub art_dir: String,
+}
+
+impl Tree {
+    /// Qué se ve ahora mismo en una vista de rejilla, y si es rejilla siquiera.
+    ///
+    /// Devuelve `None` cuando el nivel actual son pistas: eso se dibuja como
+    /// lista, porque un disco puede tener trescientas y una rejilla de trescientas
+    /// tarjetas no se lee.
+    pub fn grid(&self, db: &Database, mode: Mode) -> Option<Vec<Cell>> {
+        let celdas = self.grid_unfiltered(db, mode)?;
+        if self.filter.trim().is_empty() {
+            return Some(celdas);
+        }
+        // Sobre el título, que es lo que se ve. Sin acentos ni mayúsculas:
+        // "pokemon" tiene que encontrar "Pokémon".
+        let q = plegar(self.filter.trim());
+        Some(
+            celdas
+                .into_iter()
+                .filter(|c| plegar(&c.title).contains(&q))
+                .collect(),
+        )
+    }
+
+    fn grid_unfiltered(&self, db: &Database, mode: Mode) -> Option<Vec<Cell>> {
+        match (mode, self.nav.len()) {
+            (Mode::Albums, 0) => Some(
+                self.albums(db)
+                    .into_iter()
+                    .map(|(dir, n)| Cell {
+                        title: nombre_de(&dir),
+                        subtitle: pistas(n),
+                        art_dir: dir.clone(),
+                        path: dir,
+                    })
+                    .collect(),
+            ),
+            (Mode::Consoles, 0) => {
+                let mut por_consola: BTreeMap<&'static str, (usize, usize, String)> =
+                    BTreeMap::new();
+                for (consola, dir, n) in self.console_index(db) {
+                    let e = por_consola.entry(consola).or_default();
+                    e.0 += 1;
+                    e.1 += n;
+                    if e.2.is_empty() {
+                        e.2 = dir;
+                    }
+                }
+                Some(
+                    por_consola
+                        .into_iter()
+                        .map(|(c, (juegos_n, pistas_n, primer_juego))| Cell {
+                            title: c.to_string(),
+                            subtitle: format!("{} · {}", juegos(juegos_n), pistas(pistas_n)),
+                            path: format!("consola:{c}"),
+                            art_dir: primer_juego,
+                        })
+                        .collect(),
+                )
+            }
+            (Mode::Consoles, 1) => {
+                let quiero = self.nav[0].trim_start_matches("consola:").to_string();
+                Some(
+                    self.console_index(db)
+                        .into_iter()
+                        .filter(|(c, _, _)| *c == quiero)
+                        .map(|(_, dir, n)| Cell {
+                            title: nombre_de(&dir),
+                            subtitle: pistas(n),
+                            art_dir: dir.clone(),
+                            path: dir,
+                        })
+                        .collect(),
+                )
+            }
+            _ => None,
+        }
+    }
+
+    /// Migas: cómo se llama el sitio donde estamos, vacío en el nivel de arriba.
+    pub fn crumb(&self) -> String {
+        match self.nav.last() {
+            None => String::new(),
+            Some(k) => {
+                if let Some(c) = k.strip_prefix("consola:") {
+                    c.to_string()
+                } else {
+                    nombre_de(k)
+                }
+            }
+        }
+    }
+
+    /// Las pistas del nivel actual, cuando el nivel actual son pistas.
+    pub fn grid_tracks(&self, db: &Database, mode: Mode) -> Vec<Row> {
+        let Some(dir) = self.nav.last() else { return Vec::new() };
+        if mode == Mode::Consoles && self.nav.len() < 2 {
+            return Vec::new();
+        }
+        let mut tracks = self.contents(db, dir, Path::new(dir)).tracks;
+        if mode == Mode::Consoles {
+            let quiero = self.nav[0].trim_start_matches("consola:").to_string();
+            tracks.retain(|t| console_of(&t.path) == quiero);
+        }
+        let mut out = Vec::new();
+        self.push_tracks(tracks, 0, &mut out);
+        if !self.filter.trim().is_empty() {
+            let q = plegar(self.filter.trim());
+            out.retain(|r| plegar(&r.label).contains(&q));
+        }
+        out
+    }
+
+    /// (consola, carpeta, cuántas pistas de esa consola hay en ella)
+    fn console_index(&self, db: &Database) -> Vec<(&'static str, String, usize)> {
+        let mut acc: BTreeMap<(&'static str, String), usize> = BTreeMap::new();
+        for root in &self.roots {
+            for t in db
+                .get_tracks_by_folder(&root.to_string_lossy())
+                .unwrap_or_default()
+            {
+                let real = vgm_path::parse_vgm_path(&t.path).0;
+                let Some(dir) = Path::new(real).parent() else { continue };
+                *acc.entry((console_of(&t.path), dir.to_string_lossy().to_string()))
+                    .or_default() += 1;
+            }
+        }
+        acc.into_iter().map(|((c, d), n)| (c, d, n)).collect()
+    }
+}
+
+/// Minúsculas y sin acentos, para comparar como compara la gente.
+fn plegar(s: &str) -> String {
+    s.chars()
+        .flat_map(|c| c.to_lowercase())
+        .map(|c| match c {
+            'á' | 'à' | 'ä' | 'â' => 'a',
+            'é' | 'è' | 'ë' | 'ê' => 'e',
+            'í' | 'ì' | 'ï' | 'î' => 'i',
+            'ó' | 'ò' | 'ö' | 'ô' => 'o',
+            'ú' | 'ù' | 'ü' | 'û' => 'u',
+            otro => otro,
+        })
+        .collect()
+}
+
+fn nombre_de(ruta: &str) -> String {
+    Path::new(ruta)
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_else(|| ruta.to_string())
+}
+
+/// La imagen que hay en una carpeta, si la hay.
+///
+/// Deliberadamente aquí y no pidiéndosela al decodificador: es leer un
+/// directorio, no emular nada, y un proceso por tarjeta para pintar una rejilla
+/// de veintiocho sería absurdo. La carátula incrustada en un fichero sigue
+/// siendo cosa del decodificador, y sólo se pide para lo que está sonando.
+pub fn folder_image(dir: &Path) -> Option<PathBuf> {
+    const NOMBRES: &[&str] = &["cover", "folder", "front", "album", "albumart", "art", "thumb"];
+    const EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
+
+    let entradas: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).collect();
+
+    let imagen = |p: &Path| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()))
+    };
+
+    // Primero por nombre, sin distinguir mayúsculas: en esta biblioteca conviven
+    // `cover.jpg` y `Cover.jpg`, y ext4 no los considera el mismo fichero.
+    for n in NOMBRES {
+        if let Some(p) = entradas.iter().find(|p| {
+            imagen(p)
+                && p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|s| s.eq_ignore_ascii_case(n))
+        }) {
+            return Some(p.clone());
+        }
+    }
+    // Si no, la primera imagen que haya. Ordenada, para que la misma carpeta dé
+    // siempre la misma y la rejilla no cambie de aspecto entre visitas.
+    let mut sueltas: Vec<&PathBuf> = entradas.iter().filter(|p| imagen(p)).collect();
+    sueltas.sort();
+    sueltas.first().map(|p| (*p).clone())
 }

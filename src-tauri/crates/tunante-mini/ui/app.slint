@@ -11,6 +11,27 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 
+/// Una celda de la rejilla de Discos o Consolas.
+export struct GridCell {
+    title: string,
+    subtitle: string,
+    art: image,
+    /// La ruta real, o una sintética (`consola:NES`). Vacía en las celdas de
+    /// relleno de la última línea, que existen sólo para que la fila mida igual
+    /// que las demás y el ListView pueda virtualizar.
+    path: string,
+    playing: bool,
+}
+
+/// Una línea de la rejilla.
+///
+/// Rust reparte las celdas en líneas y el ListView virtualiza sobre líneas, no
+/// sobre celdas. Es lo que permite una rejilla sin renunciar a que sólo existan
+/// las filas visibles — que es la regla que sostiene toda esta interfaz.
+export struct GridLine {
+    cells: [GridCell],
+}
+
 export struct LibraryRow {
     title: string,
     subtitle: string,
@@ -1314,6 +1335,95 @@ component MenuAction inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
+// Una tarjeta de la rejilla: un disco o una consola.
+component GridItem inherits Rectangle {
+    in property <GridCell> cell;
+    in property <bool> current;
+    callback tapped();
+    callback held();
+
+    property <bool> already-held: false;
+
+    background: root.current
+        ? Theme.bg-selected
+        : (touch.pressed ? Theme.bg-hover : Theme.bg-tertiary);
+    border-radius: Theme.radius;
+    // Las celdas de relleno de la última línea no se pintan ni reciben toques.
+    visible: root.cell.path != "";
+
+    clip: true;
+
+    // La portada llena la tarjeta; el texto va encima, sobre un velo, para que
+    // se lea igual sobre una imagen clara que sobre una oscura.
+    Image {
+        source: root.cell.art;
+        width: 100%;
+        height: 100%;
+        image-fit: cover;
+        visible: root.cell.art.width > 0;
+    }
+    Rectangle {
+        background: #000000a0;
+        visible: root.cell.art.width > 0;
+    }
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 2px;
+        alignment: center;
+
+        Text {
+            text: root.cell.title;
+            color: Theme.text-primary;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            // Dos líneas: los nombres de estas carpetas son largos
+            // —"Sonic the Hedgehog 3 & Knuckles (1994)(…)"— y con una sola
+            // la rejilla entera dice lo mismo recortado.
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-stretch: 1;
+        }
+        Text {
+            text: root.cell.subtitle;
+            color: Theme.text-muted;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.cell.path != "";
+        clicked => {
+            if (!root.already-held) {
+                root.tapped();
+            }
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.already-held = false;
+                hold.running = true;
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                hold.running = false;
+            }
+        }
+    }
+
+    // Igual que en las filas: el Flickable se queda los arrastres verticales sin
+    // avisar, así que `pressed` es lo que distingue mantener de desplazar.
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if (touch.pressed) {
+                root.already-held = true;
+                root.held();
+            }
+        }
+    }
+}
+
 // Una pestaña del conmutador de vistas de la biblioteca.
 component ModeTab inherits Rectangle {
     in property <string> label;
@@ -1344,14 +1454,22 @@ component LibraryTab inherits Rectangle {
     in-out property <string> search;
     in-out property <int> mode;
     callback mode-changed(int);
+    // Discos y Consolas se dibujan en rejilla; el nivel de pistas, en lista.
+    in property <[GridLine]> grid-lines;
+    in property <bool> grid;
+    in property <int> columns: 3;
+    /// Dónde estamos dentro de una vista de rejilla, para poder volver.
+    in property <string> crumb;
+    callback grid-tapped(string);
+    callback go-back();
     callback enqueued(int);
-    // Índice de la fila cuyo menú está abierto, o -1. La ruta y el nombre se
-    // copian al abrirlo: las filas se reconstruyen al desplegar una carpeta y
-    // el índice dejaría de significar lo mismo con el menú delante.
-    property <int> menu-row: -1;
+    // Qué tiene el menú abierto, por ruta y no por índice: las filas se
+    // reconstruyen al desplegar una carpeta, y una tarjeta de la rejilla no
+    // tiene índice de fila siquiera. Vacía = cerrado.
+    property <string> menu-path;
     property <string> menu-name;
     property <bool> menu-is-folder;
-    callback enqueue-folder(int, bool);
+    callback enqueue-path(string, bool);
     // Focus the search field as soon as this tab is built. Only used by the
     // spike: it makes "does the on-screen keyboard come up?" answerable over
     // ssh, without needing someone to put a finger on the glass.
@@ -1451,7 +1569,77 @@ component LibraryTab inherits Rectangle {
         // fetched from SQLite when a folder is opened. Nothing builds the whole
         // structure in memory — that is what caused an OOM at 16k tracks in the
         // desktop app.
-        ListView {
+        // Migas: sólo aparecen dentro de una consola o de un disco, y son lo que
+        // devuelve atrás. En un móvil no hay una tecla de retroceso fiable dentro
+        // de la aplicación, así que tiene que estar en la propia pantalla.
+        if root.crumb != "": Rectangle {
+            height: Theme.touch-target;
+            background: Theme.bg-secondary;
+
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: 8px;
+
+                Text {
+                    text: "◂";
+                    color: Theme.accent;
+                    font-size: Theme.font-body;
+                    width: 16px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.crumb;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            TouchArea { clicked => { root.go-back(); } }
+        }
+
+        if root.grid: ListView {
+            mouse-drag-pan-enabled: true;
+            vertical-stretch: 1;
+
+            for line in root.grid-lines: linea := Rectangle {
+                // El ancho de una tarjeta, calculado una vez y aplicado a cada
+                // una. Fijarlo no es cosmético: el título lleva `wrap` y eso le
+                // da al texto un ancho mínimo —su palabra más larga—, que el
+                // HorizontalLayout respeta haciendo crecer la celda. Sin esto,
+                // "Game Boy Advance" ensancha su columna y la tercera se sale
+                // de la pantalla.
+                property <length> cell-w:
+                    (root.width - Theme.gap * 2 - (root.columns - 1) * 6px) / root.columns;
+
+                // Cuadradas, más un poco para el subtítulo.
+                height: linea.cell-w + 12px;
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+                    padding-bottom: 6px;
+                    spacing: 6px;
+
+                    for cell in line.cells: GridItem {
+                        width: linea.cell-w;
+                        cell: cell;
+                        current: cell.playing;
+                        tapped => { root.grid-tapped(cell.path); }
+                        held => {
+                            root.menu-path = cell.path;
+                            root.menu-name = cell.title;
+                            // Una tarjeta siempre es un contenedor: un disco o
+                            // una consola. Nunca es una pista suelta.
+                            root.menu-is-folder = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if !root.grid: ListView {
             // Slint's default style builds its Flickable with `interactive: false`,
             // so the list only scrolls by its scrollbar and the finger does nothing.
             // Fine for a desktop with a wheel; wrong for anything held in a hand.
@@ -1469,7 +1657,7 @@ component LibraryTab inherits Rectangle {
                 swiped => { root.enqueued(i); }
                 tapped => { root.activated(i); }
                 held => {
-                    root.menu-row = i;
+                    root.menu-path = row.path;
                     root.menu-name = row.title;
                     root.menu-is-folder = row.is-folder;
                 }
@@ -1526,12 +1714,12 @@ component LibraryTab inherits Rectangle {
     // Declarado después del layout, que en Slint es lo que lo pone encima y le
     // da los eventos. Sale desde abajo, al alcance del pulgar: el dedo ya está
     // ahí, que es donde acaba de mantener pulsado.
-    if root.menu-row >= 0: Rectangle {
+    if root.menu-path != "": Rectangle {
         background: #000000bb;
 
         // Tocar fuera cierra. Va antes que la hoja para quedar debajo de ella.
         TouchArea {
-            clicked => { root.menu-row = -1; }
+            clicked => { root.menu-path = ""; }
         }
 
         Rectangle {
@@ -1563,8 +1751,8 @@ component LibraryTab inherits Rectangle {
                         ? "Añadir todo, con las subcarpetas"
                         : "Añadir a la cola";
                     clicked => {
-                        root.enqueue-folder(root.menu-row, true);
-                        root.menu-row = -1;
+                        root.enqueue-path(root.menu-path, true);
+                        root.menu-path = "";
                     }
                 }
 
@@ -1574,15 +1762,15 @@ component LibraryTab inherits Rectangle {
                     glyph: "🗀";
                     label: "Añadir sólo esta carpeta";
                     clicked => {
-                        root.enqueue-folder(root.menu-row, false);
-                        root.menu-row = -1;
+                        root.enqueue-path(root.menu-path, false);
+                        root.menu-path = "";
                     }
                 }
 
                 MenuAction {
                     glyph: "✕";
                     label: "Cancelar";
-                    clicked => { root.menu-row = -1; }
+                    clicked => { root.menu-path = ""; }
                 }
             }
         }
@@ -1639,9 +1827,18 @@ export component AppWindow inherits Window {
 
     callback library-activated(int);
     callback library-enqueued(int);
-    callback library-enqueue-folder(int, bool);
+    callback library-enqueue-path(string, bool);
     in-out property <int> library-mode: 0;
     callback library-mode-changed(int);
+    in property <[GridLine]> library-grid-lines;
+    in property <bool> library-grid;
+    in property <string> library-crumb;
+    callback library-grid-tapped(string);
+    callback library-back();
+    /// Tres tarjetas de ancho en vertical, ocho en apaisado. Rust reparte las
+    /// celdas en líneas, así que tiene que enterarse cuando el número cambia.
+    in-out property <int> library-columns: 3;
+    callback library-columns-changed(int);
     callback queue-activated(int);
     callback queue-removed(int);
     callback queue-reordered(int, int);
@@ -1685,10 +1882,23 @@ export component AppWindow inherits Window {
     // binding on root.height would close a cycle Slint rejects outright.
     property <bool> cramped: false;
 
-    changed width => { root.portrait = root.height >= root.width; }
+    changed width => {
+        root.portrait = root.height >= root.width;
+        root.retile();
+    }
+
+    // Tres de ancho con el móvil de pie, ocho tumbado. Se avisa a Rust sólo
+    // cuando cambia de verdad: cada píxel de redimensionado dispara `changed`.
+    function retile() {
+        if (root.library-columns != (root.portrait ? 3 : 8)) {
+            root.library-columns = root.portrait ? 3 : 8;
+            root.library-columns-changed(root.library-columns);
+        }
+    }
     changed height => {
         root.portrait = root.height >= root.width;
         root.cramped = root.height < 300px;
+        root.retile();
     }
 
     // Changing tab slides the new one in from the edge it came from, so the
@@ -1849,11 +2059,17 @@ export component AppWindow inherits Window {
                         now-path: root.now-path;
                         mode <=> root.library-mode;
                         mode-changed(i) => { root.library-mode-changed(i); }
+                        grid-lines: root.library-grid-lines;
+                        grid: root.library-grid;
+                        columns: root.library-columns;
+                        crumb: root.library-crumb;
+                        grid-tapped(p) => { root.library-grid-tapped(p); }
+                        go-back => { root.library-back(); }
                         autofocus-search: root.autofocus-search;
                         search <=> root.search;
                         activated(i) => { root.library-activated(i); }
                         enqueued(i) => { root.library-enqueued(i); }
-                        enqueue-folder(i, hondo) => { root.library-enqueue-folder(i, hondo); }
+                        enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
                         search-changed(s) => { root.search-changed(s); }
                     }
                 }
