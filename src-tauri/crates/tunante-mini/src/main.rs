@@ -41,6 +41,7 @@ mod decoder;
 mod inhibit;
 mod library;
 mod mpris;
+mod output;
 mod picker;
 mod player;
 mod session;
@@ -909,6 +910,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // thread, where it belongs, instead of forcing the whole graph to be `Send`.
     let (mpris_tx, mpris_rx) = mpris::spawn();
 
+    // Watches whether the sound has anywhere to go. Cheap and silent until it
+    // has something to say; see output.rs for why this is not a rodio question.
+    let output_watch = output::spawn();
+    let was_silent = std::cell::Cell::new(false);
+
     // --- Progress, and moving to the next track when one ends ---------------
     let timer = slint::Timer::default();
     {
@@ -989,6 +995,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
                 }
+
+                // The output can vanish without anything failing: PulseAudio
+                // parks the stream on a null sink and the app plays into it
+                // for as long as you let it. See output.rs.
+                //
+                // Pausing on the way in, once, rather than on every tick: it
+                // saves your place and stops the phone decoding into nothing,
+                // but if you press play anyway that is your business and the
+                // banner is enough of an answer.
+                output_watch.note_playing(p.is_playing());
+                let silent = output_watch.is_silent();
+                if silent != was_silent.get() {
+                    was_silent.set(silent);
+                    if silent && p.is_playing() {
+                        p.toggle_play();
+                    }
+                    ui.set_output_warning(SharedString::from(if silent {
+                        "Sin salida de audio"
+                    } else {
+                        ""
+                    }));
+                }
+
                 ui.set_position_ms(p.position_ms() as i32);
                 ui.set_duration_ms(p.duration_ms() as i32);
                 ui.set_playing(p.is_playing());

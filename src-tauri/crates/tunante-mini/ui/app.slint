@@ -1965,6 +1965,8 @@ export component AppWindow inherits Window {
     in property <bool> sleep-running;
     in property <int> sleep-minutes;
     in property <string> library-summary;
+    // Empty unless the sound has nowhere to go. See output.rs.
+    in property <string> output-warning;
     in property <int> loop-count: 2;
     in property <int> fade-seconds: 8;
 
@@ -2227,6 +2229,32 @@ export component AppWindow inherits Window {
                         enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
                         search-changed(s) => { root.search-changed(s); }
                     }
+                }
+            }
+        }
+
+        // Above the mini-player rather than inside a tab: the app can lose its
+        // output while you are looking at the library, and this is the one
+        // message that has to reach you wherever you are.
+        if root.output-warning != "": Rectangle {
+            height: 34px;
+            background: Theme.warning-bg;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+                alignment: center;
+                Text {
+                    text: "⚠";
+                    color: Theme.warning-fg;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.output-warning;
+                    color: Theme.warning-fg;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    overflow: elide;
                 }
             }
         }
