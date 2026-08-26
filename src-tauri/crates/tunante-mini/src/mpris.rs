@@ -159,6 +159,10 @@ fn run(
         // The server task has to keep running for the bus name to stay claimed.
         let task = player.run();
 
+        // Riding on this thread because it is the only executor in the process.
+        // See the module docs in inhibit.rs.
+        let mut inhibitor = crate::inhibit::Inhibitor::new().await;
+
         let pump = async {
             let mut last: Option<Update> = None;
             loop {
@@ -166,6 +170,7 @@ fn run(
                 // executor, which also has the D-Bus task to drive.
                 match rx.try_recv() {
                     Ok(u) => {
+                        inhibitor.set_playing(u.playing && u.has_track).await;
                         publish(&player, &u, last.as_ref()).await;
                         last = Some(u);
                     }
