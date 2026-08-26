@@ -21,6 +21,10 @@ rodio = { version = "0.22", default-features = false, features = ["playback"] }
 serde_json = "1"
 walkdir = "2"
 
+# One syscall: sched_setattr, to raise this thread's uclamp.min. See src/boost.rs
+# — it is worth 68 fps against 112 on the phone, and there is no std API for it.
+libc = "0.2"
+
 # Lock-screen controls and headset buttons. Not a luxury on this phone: the
 # 3.5 mm jack has no driver, so headphones mean Bluetooth, and the only controls
 # in reach are the ones on the headset. zbus is already in the tree via Slint.

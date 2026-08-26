@@ -36,6 +36,7 @@
 //! keyboard when the last input came from touch, so focusing the field from a
 //! shell proves the request is sent but not that the keyboard appears.
 
+mod boost;
 mod decoder;
 mod library;
 mod mpris;
@@ -54,6 +55,13 @@ use tunante_core::db::Database;
 slint::include_modules!();
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Before anything else, and on this thread: `main` is where the Slint event
+    // loop runs, and the clamp is per-thread. See boost.rs for the measurements
+    // — this is the difference between 68 fps and 112 on the phone.
+    if !boost::ask_for_ui_clock() {
+        eprintln!("uclamp no disponible: la interfaz irá a la frecuencia que elija el gobernador");
+    }
+
     let args: Vec<String> = std::env::args().collect();
     let arg_value = |name: &str| -> Option<String> {
         args.iter().skip_while(|a| *a != name).nth(1).cloned()
