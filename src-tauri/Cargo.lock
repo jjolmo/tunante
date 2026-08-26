@@ -8818,6 +8818,7 @@ dependencies = [
  "slint-build",
  "tunante-core",
  "walkdir",
+ "zbus",
 ]
 
 [[package]]
