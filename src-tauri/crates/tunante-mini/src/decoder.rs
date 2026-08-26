@@ -37,6 +37,47 @@ pub fn decoder_path() -> PathBuf {
 
 /// Read every track a file contains, by asking the helper.
 ///
+/// Run a helper to completion and hand back everything it printed.
+///
+/// The pipe has to be drained while the child is still running. A pipe holds
+/// 64 KB; write more than that with nobody reading and the writer blocks, so it
+/// never exits, so a wait-then-read caller sits until its own deadline and
+/// kills a child that was doing what it was told.
+///
+/// The failure is size-dependent, which is what makes it nasty: everything that
+/// fits in the buffer works, and only the big answers vanish. It cost an
+/// afternoon here — folder covers of a megabyte or two came back empty and
+/// looked like files that simply had no artwork.
+fn capture(mut child: Child, timeout: Duration) -> Result<String, String> {
+    let stdout = child.stdout.take().ok_or("no stdout")?;
+    let reader = std::thread::spawn(move || {
+        let mut out = String::new();
+        let mut stdout = stdout;
+        let _ = stdout.read_to_string(&mut out);
+        out
+    });
+
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if std::time::Instant::now() > deadline => {
+                // Killing it also ends the reader: its end of the pipe closes.
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("timed out after {}s", timeout.as_secs()));
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(15)),
+            Err(e) => {
+                let _ = child.kill();
+                return Err(e.to_string());
+            }
+        }
+    }
+
+    reader.join().map_err(|_| "the reader thread panicked".to_string())
+}
+
 /// Out of process on purpose: the emulator-backed readers can hang, and a
 /// timeout cannot interrupt a loop running in C — it can only abandon the
 /// thread. Here the scanner can kill the child and move on.
@@ -51,35 +92,13 @@ pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_jso
         cmd.arg("--fast");
     }
 
-    let mut child = cmd
+    let child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .map_err(|e| format!("spawning the decoder: {e}"))?;
 
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if std::time::Instant::now() > deadline {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!("timed out after {}s", timeout.as_secs()));
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-            Err(e) => return Err(e.to_string()),
-        }
-    }
-
-    let mut out = String::new();
-    child
-        .stdout
-        .take()
-        .ok_or("no stdout")?
-        .read_to_string(&mut out)
-        .map_err(|e| e.to_string())?;
+    let out = capture(child, timeout)?;
 
     let parsed: serde_json::Value =
         serde_json::from_str(out.trim()).map_err(|e| format!("decoder said: {e}"))?;
@@ -97,7 +116,7 @@ pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_jso
 /// on every file of a library scan: carrying the artwork of thousands of tracks
 /// through a pipe would slow the scan down for nobody's benefit.
 pub fn artwork(path: &Path, timeout: Duration) -> Option<String> {
-    let mut child = Command::new(decoder_path())
+    let child = Command::new(decoder_path())
         .arg("art")
         .arg(path)
         .stdout(Stdio::piped())
@@ -105,22 +124,7 @@ pub fn artwork(path: &Path, timeout: Duration) -> Option<String> {
         .spawn()
         .ok()?;
 
-    let deadline = std::time::Instant::now() + timeout;
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if std::time::Instant::now() > deadline => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return None;
-            }
-            Ok(None) => std::thread::sleep(Duration::from_millis(15)),
-            Err(_) => return None,
-        }
-    }
-
-    let mut out = String::new();
-    child.stdout.take()?.read_to_string(&mut out).ok()?;
+    let out = capture(child, timeout).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(out.trim()).ok()?;
     parsed["art"].as_str().map(|s| s.to_string())
 }
