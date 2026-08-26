@@ -1,0 +1,19 @@
+[package]
+name = "tunante-core"
+version = "0.1.0"
+edition = "2021"
+description = "UI-agnostic core for Tunante: library database, play queue, DSP chain"
+license = "GPL-2.0-or-later"
+
+[features]
+default = ["dsp"]
+# The DSP chain wraps a `rodio::Source`, so it is the only part of the core that
+# needs an audio backend. tunante-mini does not use it — leaving the feature off
+# keeps rodio and cpal out of that build entirely.
+dsp = ["rodio"]
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+rodio = { version = "0.22", default-features = false, optional = true }

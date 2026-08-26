@@ -69,9 +69,12 @@ jobs:
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-      - name: Patch viogsf for ARM build
-        run: |
-          sed -i 's@^#ifdef __GNUC__$@#if defined(__GNUC__) \&\& (defined(__i386__) || defined(__x86_64__))@' src-tauri/viogsf/vbam/gba/GBAcpu.h
+          # The phone app and its Alpine package, which were left out and so
+          # still claimed 0.1.0 while the tags had reached 0.1.246.
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" \
+            src-tauri/crates/tunante-mini/Cargo.toml
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" \
+            src-tauri/crates/tunante-mini/dist/APKBUILD
       - name: Install system dependencies
         run: |
           sudo apt-get update
@@ -90,7 +93,7 @@ jobs:
       - run: npm ci
       - run: npm install -g @tauri-apps/cli
       - name: Music format smoke test
-        run: cargo test --manifest-path src-tauri/Cargo.toml --release --lib audio::format_smoke -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p tunante-codec -p tunante-decoder --release -- --nocapture
       - name: Build
         run: npm run tauri build
         env:
@@ -120,10 +123,6 @@ jobs:
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-      - name: Patch viogsf for ARM build
-        shell: bash
-        run: |
-          sed -i 's@^#ifdef __GNUC__$@#if defined(__GNUC__) \&\& (defined(__i386__) || defined(__x86_64__))@' src-tauri/viogsf/vbam/gba/GBAcpu.h
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -136,7 +135,7 @@ jobs:
       - run: npm ci
       - run: npm install -g @tauri-apps/cli
       - name: Music format smoke test
-        run: cargo test --manifest-path src-tauri/Cargo.toml --release --lib audio::format_smoke -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p tunante-codec -p tunante-decoder --release -- --nocapture
       - name: Build
         run: npm run tauri build
         env:
@@ -166,9 +165,6 @@ jobs:
           sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
-      - name: Patch viogsf for ARM build
-        run: |
-          sed -i '' 's@^#ifdef __GNUC__$@#if defined(__GNUC__) \&\& (defined(__i386__) || defined(__x86_64__))@' src-tauri/viogsf/vbam/gba/GBAcpu.h
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -181,7 +177,7 @@ jobs:
       - run: npm ci
       - run: npm install -g @tauri-apps/cli
       - name: Music format smoke test
-        run: cargo test --manifest-path src-tauri/Cargo.toml --release --lib audio::format_smoke -- --nocapture
+        run: cargo test --manifest-path src-tauri/Cargo.toml -p tunante-codec -p tunante-decoder --release -- --nocapture
       - name: Build
         run: npm run tauri build
         env:

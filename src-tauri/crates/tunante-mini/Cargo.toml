@@ -1,0 +1,77 @@
+[package]
+name = "tunante-mini"
+version = "0.1.0"
+edition = "2021"
+description = "Tunante for the phone: native Slint UI, no webview"
+license = "GPL-2.0-or-later"
+
+[[bin]]
+name = "tunante-mini"
+path = "src/main.rs"
+
+[dependencies]
+# No `dsp` feature: mini has no DSP chain. It still needs rodio itself, to own
+# the audio output and play what the decoder helper pipes back.
+tunante-core = { path = "../tunante-core", default-features = false }
+
+# No symphonia features: this process decodes nothing. Every format, standard
+# ones included, arrives as raw PCM from tunante-decoder, so all rodio does here
+# is mix and talk to ALSA.
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+serde_json = "1"
+walkdir = "2"
+
+# One syscall: sched_setattr, to raise this thread's uclamp.min. See src/boost.rs
+# — it is worth 68 fps against 112 on the phone, and there is no std API for it.
+libc = "0.2"
+
+# Lock-screen controls and headset buttons. Not a luxury on this phone: the
+# 3.5 mm jack has no driver, so headphones mean Bluetooth, and the only controls
+# in reach are the ones on the headset. zbus is already in the tree via Slint.
+mpris-server = "0.10"
+async-io = "2"
+futures-lite = "2"
+
+# Cover art arrives as a base64 data URI and Slint only takes a file path or
+# decoded pixels, so it is decoded here. Two formats: everything embedded in an
+# audio tag is JPEG or PNG, and pulling in AVIF or WebP decoders for cover art
+# would cost more than the feature.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+base64 = "0.22"
+
+# Two renderers, chosen at run time with SLINT_BACKEND.
+#
+# femtovg draws on the GPU through GLES2 and is the default: Slint picks it over
+# the software renderer on its own when both are compiled in. Measured on the
+# phone (Poco X3, Adreno 618, 1080x2400 panel at 120 Hz), flinging a 2000-row
+# list and counting only the inertia animation, no finger down:
+#
+#     femtovg   38-43 fps
+#     software  20-23 fps
+#
+# Roughly double. Neither reaches 120 — redrawing 2.6 million pixels is not free
+# either way — but 40 fps of inertia reads as smooth and 20 reads as stuttering.
+#
+# Do not measure this with SLINT_DEBUG_PERFORMANCE=refresh_full_speed and call
+# it scroll performance: that mode redraws unconditionally and flatters both
+# renderers (46-50 vs 29-33). And during a finger-down drag Slint redraws once
+# per touch event, so a synthetic uinput drag measures the test harness's event
+# rate, not the app.
+#
+# renderer-software stays compiled in as the way out. It needs no GPU API at
+# all, so if freedreno or Turnip misbehave on a given device the app still runs:
+# `SLINT_BACKEND=winit-software`.
+#
+# backend-winit covers Wayland and X11 so the same source runs on a desktop
+# while developing; the Alpine package should narrow it to
+# `backend-winit-wayland`, which is smaller and forces the Wayland path.
+slint = { version = "1.17", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-femtovg",
+    "renderer-software",
+] }
+
+[build-dependencies]
+slint-build = "1.17"
