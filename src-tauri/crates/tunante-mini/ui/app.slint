@@ -1368,27 +1368,36 @@ component GridItem inherits Rectangle {
     }
 
     VerticalLayout {
-        padding: 8px;
+        padding: 6px;
         spacing: 2px;
-        alignment: center;
 
-        Text {
-            text: root.cell.title;
-            color: Theme.text-primary;
-            font-size: Theme.font-small;
-            horizontal-alignment: center;
-            // Dos líneas: los nombres de estas carpetas son largos
-            // —"Sonic the Hedgehog 3 & Knuckles (1994)(…)"— y con una sola
-            // la rejilla entera dice lo mismo recortado.
-            wrap: word-wrap;
-            overflow: elide;
+        // El título se queda con lo que sobre, y el subtítulo tiene sitio fijo.
+        //
+        // Antes el título iba suelto en un layout centrado, y su altura
+        // preferida son todas las líneas que necesite: "Sonic the Hedgehog 3 &
+        // Knuckles (1994)(Sonic Team, Sega Technical Institute)(Sega)" ocupaba
+        // seis y echaba el "58 pistas" fuera de la tarjeta. Con la caja de
+        // altura acotada, `elide` corta y el recuento siempre se ve.
+        Rectangle {
             vertical-stretch: 1;
+            Text {
+                text: root.cell.title;
+                color: Theme.text-primary;
+                font-size: Theme.font-small;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                wrap: word-wrap;
+                overflow: elide;
+                width: 100%;
+                height: 100%;
+            }
         }
         Text {
             text: root.cell.subtitle;
             color: Theme.text-muted;
             font-size: Theme.font-small;
             horizontal-alignment: center;
+            height: 15px;
         }
     }
 
