@@ -1,0 +1,83 @@
+# Contributor: cidwel
+# Maintainer: cidwel
+pkgname=tunante-mini
+pkgver=0.1.0
+pkgrel=0
+pkgdesc="Reproductor de música de videojuegos para el móvil: Slint nativo, sin webview"
+url="https://github.com/jjolmo/tunante"
+# Only aarch64 is built. The desktop app covers x86_64, and nothing here has
+# been tested on the other arches.
+arch="aarch64"
+license="GPL-2.0-or-later"
+
+# rust/cargo from Alpine, never rustup: rustup's musl target has crt-static on
+# by default, and this links dynamically against fontconfig, freetype and alsa.
+# Alpine patches crt_static_default to false. See main/rust/alpine-target.patch.
+makedepends="
+	cargo
+	rust
+	cmake
+	build-base
+	musl-dev
+	fontconfig-dev
+	alsa-lib-dev
+	zlib-dev
+	bsd-compat-headers
+	"
+
+# Everything listed here is a runtime dependency abuild cannot work out on its
+# own. It derives depends by scanning the ELF, which catches alsa-lib, freetype
+# and the rest — and catches none of these, because none of them is linked:
+#
+#   fontconfig        opened by name, and what lets Slint find a font at all.
+#                     Missing, the interface draws empty boxes instead of
+#                     failing to start, which is the worse failure.
+#   mesa-egl,         dlopened by femtovg's GL backend. `ldd` on the binary
+#   mesa-gles         lists neither libEGL nor libGLESv2.
+#   mesa-dri-gallium  the driver behind them; on this phone, freedreno.
+#
+# The GPU renderer is not a nicety here: measured on the device it draws the
+# library list at roughly twice the frame rate of the software one. That one is
+# still compiled in and reachable with SLINT_BACKEND=winit-software, so a device
+# whose GL stack misbehaves still has a way to run.
+depends="fontconfig ttf-dejavu mesa-egl mesa-gles mesa-dri-gallium"
+
+source="$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz"
+builddir="$srcdir/tunante-$pkgver"
+
+# The vendored emulator cores are ~1.7 GB of C and take about ten minutes on the
+# device itself. Building in a chroot on a desktop under qemu is slower still.
+options="!check net"
+
+build() {
+	cd "$builddir/src-tauri"
+
+	# musl gives a thread 128 KiB where glibc gives megabytes, and the emulator
+	# cores put deep interpreters and multi-KB scratch buffers on the stack.
+	# The main thread keeps RLIMIT_STACK, so a core can work when called from
+	# main() and segfault the moment it moves to a worker thread — which is
+	# exactly what rodio does.
+	export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,stack-size=8388608"
+
+	cargo build --release --frozen \
+		-p tunante-mini \
+		-p tunante-decoder
+}
+
+package() {
+	cd "$builddir/src-tauri"
+
+	# Both binaries go in the same prefix: tunante-mini finds the decoder as a
+	# sibling of itself, and splitting them breaks playback with a message that
+	# does not explain why.
+	install -Dm755 target/release/tunante-mini "$pkgdir/usr/bin/tunante-mini"
+	install -Dm755 target/release/tunante-decoder "$pkgdir/usr/bin/tunante-decoder"
+
+	local dist="crates/tunante-mini/dist"
+	install -Dm644 "$dist/tunante-mini.desktop" \
+		"$pkgdir/usr/share/applications/tunante-mini.desktop"
+	install -Dm644 "$dist/tunante-mini.svg" \
+		"$pkgdir/usr/share/icons/hicolor/scalable/apps/tunante-mini.svg"
+}
+
+sha512sums="SKIP"

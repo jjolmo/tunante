@@ -8810,6 +8810,7 @@ dependencies = [
  "base64 0.22.1",
  "futures-lite",
  "image",
+ "libc",
  "mpris-server",
  "rodio",
  "serde_json",
