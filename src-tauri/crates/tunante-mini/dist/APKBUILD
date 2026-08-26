@@ -1,6 +1,11 @@
 # Contributor: cidwel
 # Maintainer: cidwel
 pkgname=tunante-mini
+# Placeholder, like the 0.1.0 in package.json, tauri.conf.json and
+# src-tauri/Cargo.toml. None of those is the real version either: release.yml
+# takes it from `git describe --tags`, bumps the patch, tags it and rewrites all
+# of them at build time. The tag is the source of truth — the tree was at
+# "0.1.0" while the releases had reached v0.1.246.
 pkgver=0.1.0
 pkgrel=0
 pkgdesc="Reproductor de música de videojuegos para el móvil: Slint nativo, sin webview"

@@ -69,6 +69,12 @@ jobs:
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
+          # The phone app and its Alpine package, which were left out and so
+          # still claimed 0.1.0 while the tags had reached 0.1.246.
+          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" \
+            src-tauri/crates/tunante-mini/Cargo.toml
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" \
+            src-tauri/crates/tunante-mini/dist/APKBUILD
       - name: Install system dependencies
         run: |
           sudo apt-get update
