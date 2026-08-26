@@ -267,14 +267,18 @@ python3 /tmp/tactil.py tap|flick|drag|hold …
 
 `dist/empaquetar <version>` builds the Alpine package on the phone and installs
 it — the same sequence as the CI job, ending in the `apk add` the runner cannot
-do. It lived in `/tmp` on the phone for a while, which is exactly as durable as
-that sounds.
+do.
 
-`tactil.py` is a virtual touchscreen over `/dev/uinput`. It lives in `/tmp` on
-the phone and **does not survive a reboot**. Its `hold` exists because the
-Flickable claims any vertical drag that starts within 500 ms of the press.
-Screen coordinates are the device's own only in portrait; rotated right, the
-mapping is `device(dx,dy) → screen(dy, 1080−dx)`.
+`tools/` holds what you copy to the phone to work on it. All three of these
+lived in `/tmp` at some point, which is exactly as durable as it sounds; the
+copies on the device are disposable, the ones here are not.
+
+- `tools/tactil.py` is a virtual touchscreen over `/dev/uinput`. Its `hold`
+  exists because the Flickable claims any vertical drag that starts within
+  500 ms of the press. Screen coordinates are the device's own only in
+  portrait; rotated right, the mapping is `device(dx,dy) → screen(dy, 1080−dx)`.
+- `tools/escucha` is the long-listen sampler: one line a minute, the numbers
+  that would show a creep. Run it under `systemd-run --user --unit=escucha`.
 
 Two instrument flags on the binary, and they are not features:
 `--rows N` fills the library with generated rows to measure what a list costs,
@@ -287,10 +291,11 @@ compositor only raises it when the last input came from touch.
 ## What is left
 
 - **A long listen.** Hours of playback, to see whether anything degrades. This
-  needs time, not hands. `escucha.sh` in the phone's home directory samples one
-  line a minute — UI and decoder PSS, playback status, position, the ALSA
-  substate and the battery — under `systemd-run --user --unit=escucha`. Read it
-  with `journalctl --user -u escucha`.
+  needs time, not hands. `tools/escucha` is what takes the measurements; read
+  them with `journalctl --user -u escucha`. What you are looking for is a
+  trend, not a value: `ui_pss` climbing line by line, a `Paused` nobody asked
+  for, or a `UI GONE`. Forty-odd minutes on the packaged binary showed none of
+  the three, with `ui_pss` returning the same number every time.
 - **The USB port does not keep up.** `pm8150b-charger` says `Charging` while
   `qcom_qg` says `Discharging`: plugged in, the battery still falls. A listen
   long enough to matter needs a real charger, or it ends by running out.
