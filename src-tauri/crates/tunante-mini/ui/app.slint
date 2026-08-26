@@ -1351,6 +1351,42 @@ export component AppWindow inherits Window {
     changed width => { root.portrait = root.height >= root.width; }
     changed height => { root.portrait = root.height >= root.width; }
 
+    // Changing tab slides the new one in from the edge it came from, so the
+    // gesture and the tab bar agree about which way the app just moved.
+    //
+    // Only the incoming tab exists. Laying all four side by side in a strip and
+    // translating it would be the obvious way to write this, but it keeps four
+    // tabs instantiated forever — including the library's ListView, with its
+    // viewport and its visible window of rows — for an effect that lasts 180 ms.
+    // That trades permanent memory and per-frame work for an animation.
+    //
+    // Sliding a tab that has just been created needs the offset to jump to the
+    // edge and then travel back, and in Slint any write to an animated property
+    // animates. The jump is made instant by driving the duration itself: 0 ms
+    // for the jump, then a one-shot timer restores the real duration and asks
+    // for 0. `interval: 1ms` is not a delay, it is "next event loop turn".
+    property <float> slide: 0;
+    property <duration> slide-duration: 0ms;
+    property <int> shown-tab: 0;
+    animate slide { duration: root.slide-duration; easing: ease-out-quad; }
+
+    changed tab => {
+        root.slide-duration = 0ms;
+        root.slide = root.tab > root.shown-tab ? 1.0 : -1.0;
+        root.shown-tab = root.tab;
+        slide-settle.running = true;
+    }
+
+    slide-settle := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.slide-duration = 180ms;
+            root.slide = 0;
+        }
+    }
+
     // First run replaces the shell entirely: there is no library to show tabs
     // for, and offering them would only be three empty screens.
     if root.setup-mode: FolderPicker {
@@ -1387,6 +1423,10 @@ export component AppWindow inherits Window {
 
             Rectangle {
                 horizontal-stretch: 1;
+                // Keeps the sliding tab off the side rail in landscape, and off
+                // the tab bar's own pixels in portrait. Axis-aligned, so this is
+                // a scissor rectangle, not a render layer.
+                clip: true;
 
                 // Deslizar de lado cambia de solapa. Sólo horizontal a
                 // propósito: si capturase también el vertical se comería el
@@ -1403,61 +1443,69 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                if root.tab == 0: NowPlayingTab {
-                    title: root.now-title;
-                    artist: root.now-artist;
-                    album: root.now-album;
-                    art: root.now-art;
-                    playing: root.playing;
-                    shuffle: root.shuffle;
-                    repeat: root.repeat;
-                    position-ms: root.position-ms;
-                    duration-ms: root.duration-ms;
-                    portrait: root.portrait;
-                    toggle-play => { root.toggle-play(); }
-                    next-track => { root.next-track(); }
-                    prev-track => { root.prev-track(); }
-                    cycle-repeat => { root.cycle-repeat(); }
-                    toggle-shuffle => { root.toggle-shuffle(); }
-                    seek(ms) => { root.seek-to(ms); }
-                    // Derived from the window, which the compositor imposes, so
-                    // these never feed back into the layout that sizes the tab.
-                    // Portrait leaves room under the cover for three lines of
-                    // text and the two bars; landscape is simply height-bound.
-                    art-portrait: min(root.width - Theme.gap * 4, root.height - 300px);
-                    art-landscape: root.height - 190px;
-                }
+                // Declared after the gesture handler so the tabs keep winning
+                // pointer events: in Slint the later sibling is on top.
+                Rectangle {
+                    x: root.slide * parent.width;
+                    width: parent.width;
+                    height: parent.height;
 
-                if root.tab == 1: QueueTab {
-                    rows: root.queue-rows;
-                    activated(i) => { root.queue-activated(i); }
-                    removed(i) => { root.queue-removed(i); }
-                    reordered(from, to) => { root.queue-reordered(from, to); }
-                }
+                    if root.tab == 0: NowPlayingTab {
+                        title: root.now-title;
+                        artist: root.now-artist;
+                        album: root.now-album;
+                        art: root.now-art;
+                        playing: root.playing;
+                        shuffle: root.shuffle;
+                        repeat: root.repeat;
+                        position-ms: root.position-ms;
+                        duration-ms: root.duration-ms;
+                        portrait: root.portrait;
+                        toggle-play => { root.toggle-play(); }
+                        next-track => { root.next-track(); }
+                        prev-track => { root.prev-track(); }
+                        cycle-repeat => { root.cycle-repeat(); }
+                        toggle-shuffle => { root.toggle-shuffle(); }
+                        seek(ms) => { root.seek-to(ms); }
+                        // Derived from the window, which the compositor imposes, so
+                        // these never feed back into the layout that sizes the tab.
+                        // Portrait leaves room under the cover for three lines of
+                        // text and the two bars; landscape is simply height-bound.
+                        art-portrait: min(root.width - Theme.gap * 4, root.height - 300px);
+                        art-landscape: root.height - 190px;
+                    }
 
-                if root.tab == 3: SettingsTab {
-                    volume: root.volume;
-                    sleep-running: root.sleep-running;
-                    sleep-minutes: root.sleep-minutes;
-                    library-summary: root.library-summary;
-                    loop-count: root.loop-count;
-                    fade-seconds: root.fade-seconds;
-                    set-volume(v) => { root.set-volume(v); }
-                    cycle-sleep => { root.cycle-sleep(); }
-                    rescan => { root.rescan(); }
-                    add-folder => { root.add-folder(); }
-                    cycle-loops => { root.cycle-loops(); }
-                    cycle-fade => { root.cycle-fade(); }
-                }
+                    if root.tab == 1: QueueTab {
+                        rows: root.queue-rows;
+                        activated(i) => { root.queue-activated(i); }
+                        removed(i) => { root.queue-removed(i); }
+                        reordered(from, to) => { root.queue-reordered(from, to); }
+                    }
 
-                if root.tab == 2: LibraryTab {
-                    rows: root.library-rows;
-                    total: root.library-total;
-                    autofocus-search: root.autofocus-search;
-                    search <=> root.search;
-                    activated(i) => { root.library-activated(i); }
-                    enqueued(i) => { root.library-enqueued(i); }
-                    search-changed(s) => { root.search-changed(s); }
+                    if root.tab == 3: SettingsTab {
+                        volume: root.volume;
+                        sleep-running: root.sleep-running;
+                        sleep-minutes: root.sleep-minutes;
+                        library-summary: root.library-summary;
+                        loop-count: root.loop-count;
+                        fade-seconds: root.fade-seconds;
+                        set-volume(v) => { root.set-volume(v); }
+                        cycle-sleep => { root.cycle-sleep(); }
+                        rescan => { root.rescan(); }
+                        add-folder => { root.add-folder(); }
+                        cycle-loops => { root.cycle-loops(); }
+                        cycle-fade => { root.cycle-fade(); }
+                    }
+
+                    if root.tab == 2: LibraryTab {
+                        rows: root.library-rows;
+                        total: root.library-total;
+                        autofocus-search: root.autofocus-search;
+                        search <=> root.search;
+                        activated(i) => { root.library-activated(i); }
+                        enqueued(i) => { root.library-enqueued(i); }
+                        search-changed(s) => { root.search-changed(s); }
+                    }
                 }
             }
         }
