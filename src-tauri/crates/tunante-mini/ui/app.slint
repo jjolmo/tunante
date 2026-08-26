@@ -8,7 +8,7 @@
 // is what lets the library tab hold a hundred thousand entries without the
 // memory blowing up.
 
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 
 /// Una celda de la rejilla de Discos o Consolas.
@@ -16,6 +16,9 @@ export struct GridCell {
     title: string,
     subtitle: string,
     art: image,
+    /// No vacío cuando la celda es una consola: entonces la tarjeta dibuja el
+    /// aparato en vez de una portada.
+    console: string,
     /// La ruta real, o una sintética (`consola:NES`). Vacía en las celdas de
     /// relleno de la última línea, que existen sólo para que la fila mida igual
     /// que las demás y el ListView pueda virtualizar.
@@ -897,6 +900,16 @@ component SettingsTab inherits Rectangle {
     callback cycle-loops();
     callback cycle-fade();
 
+    // Desplazable, y no es un detalle: en apaisado la ventana deja unos 288
+    // puntos y estas filas suman bastante más. Sin esto, tumbado el móvil, el
+    // temporizador de apagado y "volver a analizar" quedaban fuera de la
+    // pantalla sin manera de llegar a ellos.
+    ScrollView {
+        // El estilo por defecto de Slint construye su Flickable con
+        // `interactive: false`, así que sin esto sólo se desplaza por la barra
+        // lateral y el dedo no hace nada. Lo mismo que en las listas.
+        mouse-drag-pan-enabled: true;
+
     VerticalLayout {
         padding-top: Theme.gap;
 
@@ -1017,6 +1030,7 @@ component SettingsTab inherits Rectangle {
         }
 
         Rectangle { vertical-stretch: 1; }
+    }
     }
 }
 
@@ -1335,6 +1349,129 @@ component MenuAction inherits Rectangle {
     touch := TouchArea { clicked => { root.clicked(); } }
 }
 
+// El mando o la consola, dibujados.
+//
+// Dibujados y no imágenes: no hay que empaquetar ficheros, no se toca ningún
+// logo ajeno, escalan igual a tres columnas que a ocho y no cuestan un byte de
+// memoria de imagen. Se reconocen por la silueta, que a este tamaño es lo único
+// que se llega a ver.
+//
+// Todo va en proporción al lado de la tarjeta, que es lo que cambia al girar.
+component ConsoleArt inherits Rectangle {
+    in property <string> console;
+    property <length> u: root.width / 100;   // unidad: la centésima del ancho
+
+    // --- Piezas comunes -----------------------------------------------------
+    // Una cruceta: dos barras cruzadas.
+    // Un botón: un círculo.
+    // Se repiten lo justo; hacer componentes de esto costaría más de lo que ahorra.
+
+    // NES: el mando rectangular, cruceta y dos botones rojos.
+    if root.console == "NES": Rectangle {
+        width: 74 * root.u; height: 34 * root.u;
+        background: #3a3a3c; border-radius: 3 * root.u;
+        Rectangle { x: 10 * root.u; y: 13 * root.u; width: 20 * root.u; height: 7 * root.u; background: #17171a; }
+        Rectangle { x: 16.5 * root.u; y: 6.5 * root.u; width: 7 * root.u; height: 20 * root.u; background: #17171a; }
+        Rectangle { x: 44 * root.u; y: 13 * root.u; width: 9 * root.u; height: 9 * root.u; border-radius: 4.5 * root.u; background: #c0392b; }
+        Rectangle { x: 57 * root.u; y: 13 * root.u; width: 9 * root.u; height: 9 * root.u; border-radius: 4.5 * root.u; background: #c0392b; }
+    }
+
+    // Super Nintendo: mando redondeado y los cuatro botones en rombo.
+    if root.console == "Super Nintendo": Rectangle {
+        width: 76 * root.u; height: 32 * root.u;
+        background: #cfcfd6; border-radius: 16 * root.u;
+        Rectangle { x: 9 * root.u; y: 12 * root.u; width: 19 * root.u; height: 7 * root.u; background: #4a4a55; }
+        Rectangle { x: 15 * root.u; y: 6 * root.u; width: 7 * root.u; height: 19 * root.u; background: #4a4a55; }
+        Rectangle { x: 55 * root.u; y: 5 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #8e79c4; }
+        Rectangle { x: 55 * root.u; y: 19 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #6f5aa8; }
+        Rectangle { x: 48 * root.u; y: 12 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #6f5aa8; }
+        Rectangle { x: 62 * root.u; y: 12 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #8e79c4; }
+    }
+
+    // Game Boy: de pie, con su pantalla verde.
+    if root.console == "Game Boy": Rectangle {
+        width: 42 * root.u; height: 66 * root.u;
+        background: #b9b7a6; border-radius: 4 * root.u;
+        Rectangle { x: 7 * root.u; y: 6 * root.u; width: 28 * root.u; height: 25 * root.u; background: #6d7b3f; border-radius: 2 * root.u; }
+        Rectangle { x: 8 * root.u; y: 40 * root.u; width: 14 * root.u; height: 5 * root.u; background: #3b3b40; }
+        Rectangle { x: 12.5 * root.u; y: 35.5 * root.u; width: 5 * root.u; height: 14 * root.u; background: #3b3b40; }
+        Rectangle { x: 26 * root.u; y: 42 * root.u; width: 7 * root.u; height: 7 * root.u; border-radius: 3.5 * root.u; background: #93285f; }
+    }
+
+    // Game Boy Advance: tumbada, pantalla al centro.
+    if root.console == "Game Boy Advance": Rectangle {
+        width: 76 * root.u; height: 38 * root.u;
+        background: #4b3f9e; border-radius: 12 * root.u;
+        Rectangle { x: 24 * root.u; y: 8 * root.u; width: 28 * root.u; height: 22 * root.u; background: #6d7b3f; border-radius: 2 * root.u; }
+        Rectangle { x: 6 * root.u; y: 16 * root.u; width: 13 * root.u; height: 5 * root.u; background: #2c245e; }
+        Rectangle { x: 10 * root.u; y: 12 * root.u; width: 5 * root.u; height: 13 * root.u; background: #2c245e; }
+        Rectangle { x: 58 * root.u; y: 18 * root.u; width: 7 * root.u; height: 7 * root.u; border-radius: 3.5 * root.u; background: #2c245e; }
+        Rectangle { x: 66 * root.u; y: 12 * root.u; width: 7 * root.u; height: 7 * root.u; border-radius: 3.5 * root.u; background: #2c245e; }
+    }
+
+    // Nintendo DS: las dos pantallas y la bisagra.
+    if root.console == "Nintendo DS": Rectangle {
+        width: 52 * root.u; height: 64 * root.u;
+        Rectangle { y: 0; width: 52 * root.u; height: 29 * root.u; background: #b8bcc4; border-radius: 3 * root.u;
+            Rectangle { x: 6 * root.u; y: 4 * root.u; width: 40 * root.u; height: 21 * root.u; background: #23262e; border-radius: 1 * root.u; }
+        }
+        Rectangle { y: 31 * root.u; width: 52 * root.u; height: 4 * root.u; background: #7f838b; }
+        Rectangle { y: 35 * root.u; width: 52 * root.u; height: 29 * root.u; background: #b8bcc4; border-radius: 3 * root.u;
+            Rectangle { x: 6 * root.u; y: 4 * root.u; width: 40 * root.u; height: 21 * root.u; background: #23262e; border-radius: 1 * root.u; }
+        }
+    }
+
+    // Nintendo 64: los tres brazos. Con Path, que es lo único que dibuja ángulos.
+    if root.console == "Nintendo 64": Path {
+        width: 78 * root.u; height: 56 * root.u;
+        viewbox-width: 100; viewbox-height: 72;
+        fill: #d8d8de;
+        commands: "M 42 0 L 58 0 L 62 26 L 38 26 Z"
+                + "M 30 22 L 46 30 L 34 68 L 16 62 Z"
+                + "M 70 22 L 84 62 L 66 68 L 54 30 Z";
+    }
+
+    // PlayStation: sus cuatro símbolos. Es lo que cualquiera reconoce de lejos.
+    if root.console == "PlayStation" || root.console == "PlayStation 2"
+        || root.console == "PlayStation (streams)": Rectangle {
+        property <color> tinte: root.console == "PlayStation 2" ? #6ea8ff : #d5d5dd;
+        width: 60 * root.u; height: 60 * root.u;
+        Text { x: 22 * root.u; y: 0; text: "△"; color: tinte; font-size: 20 * root.u; }
+        Text { x: 0; y: 20 * root.u; text: "□"; color: tinte; font-size: 20 * root.u; }
+        Text { x: 42 * root.u; y: 20 * root.u; text: "○"; color: tinte; font-size: 20 * root.u; }
+        Text { x: 22 * root.u; y: 40 * root.u; text: "✕"; color: tinte; font-size: 20 * root.u; }
+    }
+
+    // Mega Drive y compañía: el mando negro de tres botones.
+    if root.console == "VGM (Mega Drive y compañía)": Rectangle {
+        width: 74 * root.u; height: 32 * root.u;
+        background: #1f1f22; border-radius: 14 * root.u;
+        Rectangle { x: 9 * root.u; y: 12 * root.u; width: 19 * root.u; height: 7 * root.u; background: #4f4f57; }
+        Rectangle { x: 15 * root.u; y: 6 * root.u; width: 7 * root.u; height: 19 * root.u; background: #4f4f57; }
+        Rectangle { x: 42 * root.u; y: 13 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
+        Rectangle { x: 52 * root.u; y: 11 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
+        Rectangle { x: 62 * root.u; y: 9 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
+    }
+
+    // Rips de disco: un disco.
+    if root.console == "Rips de GameCube, Wii y 3DS": Rectangle {
+        width: 60 * root.u; height: 60 * root.u;
+        border-radius: 30 * root.u; background: #8f9bb3;
+        Rectangle { x: 22 * root.u; y: 22 * root.u; width: 16 * root.u; height: 16 * root.u;
+                    border-radius: 8 * root.u; background: Theme.bg-tertiary; }
+    }
+
+    // Lo que no es de ninguna consola: unas barras de sonido.
+    if root.console == "Otros": Rectangle {
+        width: 56 * root.u; height: 46 * root.u;
+        Rectangle { x: 0;             y: 14 * root.u; width: 8 * root.u; height: 18 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 12 * root.u;   y: 4 * root.u;  width: 8 * root.u; height: 38 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 24 * root.u;   y: 18 * root.u; width: 8 * root.u; height: 10 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 36 * root.u;   y: 9 * root.u;  width: 8 * root.u; height: 28 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 48 * root.u;   y: 16 * root.u; width: 8 * root.u; height: 14 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+    }
+}
+
 // Una tarjeta de la rejilla: un disco o una consola.
 component GridItem inherits Rectangle {
     in property <GridCell> cell;
@@ -1353,51 +1490,50 @@ component GridItem inherits Rectangle {
 
     clip: true;
 
-    // La portada llena la tarjeta; el texto va encima, sobre un velo, para que
-    // se lea igual sobre una imagen clara que sobre una oscura.
-    Image {
-        source: root.cell.art;
-        width: 100%;
-        height: 100%;
-        image-fit: cover;
-        visible: root.cell.art.width > 0;
-    }
-    Rectangle {
-        background: #000000a0;
-        visible: root.cell.art.width > 0;
-    }
-
+    // Arte arriba, texto abajo, sin pisarse.
+    //
+    // Centrar el texto sobre la imagen funciona con una portada —un velo y se
+    // lee— pero sobre un dibujo de línea queda "Game Boy" escrito encima de la
+    // Game Boy. Separados, cada cosa se ve entera.
     VerticalLayout {
-        padding: 6px;
+        padding: 5px;
         spacing: 2px;
 
-        // El título se queda con lo que sobre, y el subtítulo tiene sitio fijo.
-        //
-        // Antes el título iba suelto en un layout centrado, y su altura
-        // preferida son todas las líneas que necesite: "Sonic the Hedgehog 3 &
-        // Knuckles (1994)(Sonic Team, Sega Technical Institute)(Sega)" ocupaba
-        // seis y echaba el "58 pistas" fuera de la tarjeta. Con la caja de
-        // altura acotada, `elide` corta y el recuento siempre se ve.
         Rectangle {
             vertical-stretch: 1;
-            Text {
-                text: root.cell.title;
-                color: Theme.text-primary;
-                font-size: Theme.font-small;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-                wrap: word-wrap;
-                overflow: elide;
+            clip: true;
+
+            Image {
+                source: root.cell.art;
+                width: 100%;
+                height: 100%;
+                image-fit: cover;
+                visible: root.cell.art.width > 0;
+            }
+            if root.cell.console != "": ConsoleArt {
+                console: root.cell.console;
                 width: 100%;
                 height: 100%;
             }
+        }
+
+        Text {
+            text: root.cell.title;
+            color: Theme.text-primary;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            overflow: elide;
+            height: 15px;
         }
         Text {
             text: root.cell.subtitle;
             color: Theme.text-muted;
             font-size: Theme.font-small;
             horizontal-alignment: center;
-            height: 15px;
+            overflow: elide;
+            // 16 y no 14: con 14 la caja corta los rasgos que bajan y "36
+            // pistas" aparecía descabezado por abajo.
+            height: 16px;
         }
     }
 
@@ -1552,7 +1688,11 @@ component LibraryTab inherits Rectangle {
                         // squiggle. Text we control always draws.
                         Text {
                             x: 0;
-                            text: "Buscar…";
+                            // Dice lo que hace: en el árbol busca en toda la
+                            // biblioteca, y en las rejillas filtra lo que hay
+                            // delante. Es el mismo campo haciendo dos cosas, y
+                            // callárselo sería mentir sobre cuál.
+                            text: root.mode == 0 ? "Buscar…" : "Filtrar lo que se ve…";
                             color: Theme.text-muted;
                             font-size: Theme.font-body;
                             vertical-alignment: center;
@@ -1694,12 +1834,18 @@ component LibraryTab inherits Rectangle {
                         font-size: Theme.font-body;
                         vertical-alignment: center;
                         overflow: elide;
+                        // Se queda todo el hueco sobrante, que es lo que ancla
+                        // la cifra de la derecha. Sin esto el layout repartía el
+                        // sobrante entre los dos y cada "258 pistas" o cada
+                        // "2:44" caía a una altura distinta, en escalera.
+                        horizontal-stretch: 1;
                     }
                     Text {
                         text: row.subtitle;
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                         vertical-alignment: center;
+                        horizontal-alignment: right;
                     }
                 }
 
