@@ -67,7 +67,13 @@ build() {
 	# exactly what rodio does.
 	export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,stack-size=8388608"
 
-	cargo build --release --frozen \
+	# --locked y no --frozen. `--frozen` es `--locked` más `--offline`, y sin
+	# crates vendorizados no hay nada que resolver sin red: en un contenedor
+	# limpio cargo responde "no matching package named `rodio` found", que no
+	# se parece en nada a lo que de verdad pasa. `options` ya declara `net`,
+	# así que descargar está permitido; lo que se quiere es que el Cargo.lock
+	# mande, y eso es exactamente `--locked`.
+	cargo build --release --locked \
 		-p tunante-mini \
 		-p tunante-decoder
 }
