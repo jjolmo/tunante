@@ -68,7 +68,7 @@ Everything below has been run on the phone, not just compiled.
 | Sleep timer | Works. |
 | Renderer | femtovg (GPU) by default, software compiled in behind `SLINT_BACKEND=winit-software`. |
 | Frame rate | 69–82 fps while scrolling, on a 120 Hz panel. Was 20–23 when this started. |
-| CI | Alpine aarch64 (musl), green, ~8 min. |
+| CI | Alpine aarch64 (musl), green, ~8 min. The package job next to it builds the `.apk` and uploads it as an artifact. |
 | Alpine package | Built, installed with `apk add`, and launched through its desktop entry — it came up, restored the session and played. 13.7 MB, because abuild strips; a dev build is 31 MB. |
 
 ### There is no back button
@@ -264,6 +264,11 @@ SLINT_DEBUG_PERFORMANCE=refresh_lazy,console tunante-mini
 # drive it without a finger on the glass
 python3 /tmp/tactil.py tap|flick|drag|hold …
 ```
+
+`dist/empaquetar <version>` builds the Alpine package on the phone and installs
+it — the same sequence as the CI job, ending in the `apk add` the runner cannot
+do. It lived in `/tmp` on the phone for a while, which is exactly as durable as
+that sounds.
 
 `tactil.py` is a virtual touchscreen over `/dev/uinput`. It lives in `/tmp` on
 the phone and **does not survive a reboot**. Its `hold` exists because the
