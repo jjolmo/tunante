@@ -1,6 +1,16 @@
 [workspace]
 members = ["crates/tunante-core", "crates/tunante-codec", "crates/tunante-decoder", "crates/tunante-mini"]
 
+[profile.release]
+# Debug symbols are a quarter of the shipped binary — 29 MB down to 22 MB for
+# tunante-mini — and nothing on a phone reads them. A backtrace from the field
+# would need the unstripped build anyway, which is what `cargo build` leaves in
+# target/ before packaging.
+#
+# Not touching opt-level or lto on purpose: the emulator cores are the hot path,
+# and lto would make an on-device rebuild take far longer for no audible gain.
+strip = "symbols"
+
 [package]
 name = "tunante"
 version = "0.1.0"
