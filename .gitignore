@@ -2,6 +2,11 @@ node_modules/
 build/
 .svelte-kit/
 dist/
+# …except this one, which is source and not output: the Alpine package, the
+# launcher entry, the icon and the install script for the phone app. The rule
+# above is meant for SvelteKit's build output, and it had been quietly
+# swallowing all four ever since they were written.
+!src-tauri/crates/tunante-mini/dist/
 target/
 *.swp
 *.swo

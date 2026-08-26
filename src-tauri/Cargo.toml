@@ -1,9 +1,35 @@
+[workspace]
+members = ["crates/tunante-core", "crates/tunante-codec", "crates/tunante-decoder", "crates/tunante-mini"]
+
+[profile.release]
+# Debug symbols are a quarter of the shipped binary — 29 MB down to 22 MB for
+# tunante-mini — and nothing on a phone reads them. A backtrace from the field
+# would need the unstripped build anyway, which is what `cargo build` leaves in
+# target/ before packaging.
+#
+# Not touching opt-level or lto on purpose: the emulator cores are the hot path,
+# and lto would make an on-device rebuild take far longer for no audible gain.
+#
+# Worth knowing before profiling on the phone: `perf` reads the symbol table of
+# the binary at the path it recorded, so a stripped install produces a report
+# with no function names — and a flat one, which reads like a profile with no
+# hot spot rather than like a missing symbol table. Install a build made with
+#
+#     cargo build --release --config 'profile.release.strip="none"'
+#
+# That is how femtovg's per-frame Bézier tessellation and parley's per-frame
+# line breaking turned up at all.
+strip = "symbols"
+
 [package]
 name = "tunante"
 version = "0.1.0"
 edition = "2021"
 description = "Cross-platform music player for video game music and standard audio formats"
-license = "GPL-2.0"
+# "or later" is required to link Slint (GPL-3.0-only) into tunante-mini. It is
+# available to us because the vendored GPL cores are themselves "version 2 ... or
+# (at your option) any later version" — see sexypsf and DeSmuME headers.
+license = "GPL-2.0-or-later"
 
 [lib]
 name = "tunante_lib"
@@ -19,6 +45,8 @@ global-mouse = ["evdev", "core-graphics", "core-foundation"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+tunante-core = { path = "crates/tunante-core" }
+tunante-codec = { path = "crates/tunante-codec" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
@@ -27,7 +55,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rodio = { version = "0.22", features = ["symphonia-mp3", "symphonia-flac", "symphonia-isomp4", "symphonia-aac", "symphonia-ogg", "symphonia-vorbis", "symphonia-wav", "symphonia-pcm"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
-lofty = "0.21"
 uuid = { version = "1", features = ["v4"] }
 walkdir = "2"
 log = "0.4"
@@ -35,15 +62,8 @@ thiserror = "2"
 parking_lot = "0.12"
 base64 = "0.22"
 notify = { version = "7", features = ["macos_kqueue"] }
-ogg = "0.9"
-opus-decoder = { path = "opus-decoder-patch" }
-game-music-emu = { path = "game-music-emu-patch", default-features = false, features = ["ay", "gbs", "gym", "hes", "kss", "nsf", "nsfe", "sap", "spc", "vgm"] }
-vgmstream-rs = { path = "vgmstream-rs" }
-lazygsf-rs = { path = "lazygsf-rs" }
-viogsf-rs = { path = "viogsf-rs" }
-vio2sf-rs = { path = "vio2sf-rs" }
-hepsf-rs = { path = "hepsf-rs" }
-lazyusf2-rs = { path = "lazyusf2-rs" }
+# The decoders, the metadata readers and every vendored emulator core now come in
+# through tunante-codec — this crate no longer links them directly.
 reqwest = { version = "0.13.2", features = ["json"] }
 sha2 = "0.10"
 urlencoding = "2"

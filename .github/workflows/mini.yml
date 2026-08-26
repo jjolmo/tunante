@@ -1,0 +1,222 @@
+name: tunante-mini (Alpine aarch64)
+
+# Builds the phone app the way the phone actually builds it: Alpine, musl,
+# aarch64, with Alpine's own rust.
+#
+# Separate from release.yml on purpose. That workflow builds the desktop app for
+# glibc targets and auto-bumps a tag on every push; this one only has to answer
+# "does the mobile build still compile and pass its format tests", which is a
+# different question with a different failure mode.
+
+on:
+  push:
+    branches: [main, tunante-mini]
+    paths:
+      - 'src-tauri/crates/**'
+      - 'src-tauri/*-rs/**'
+      - 'src-tauri/*-patch/**'
+      - '.github/workflows/mini.yml'
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    # Native aarch64 rather than qemu. The vendored emulator cores are ~1.7 GB
+    # of C; under emulation this job would take hours.
+    runs-on: ubuntu-24.04-arm
+    name: Alpine aarch64 (musl)
+
+    # Alpine is a step here, not the job's container.
+    #
+    # `container: alpine:edge` is the obvious way to write this, and it fails
+    # before compiling a line:
+    #
+    #     JavaScript Actions in Alpine containers are only supported on x64
+    #     Linux runners. Detected Linux Arm64
+    #
+    # actions/checkout and actions/upload-artifact are JavaScript, and GitHub
+    # ships a musl build of Node for x64 only. So the runner stays glibc and
+    # does the checkout and the upload, and everything that needs musl runs
+    # inside `docker run`.
+    #
+    # The script goes in on stdin rather than as an argument: quoted as an
+    # argument it could not contain a single quote, which rules out an
+    # apostrophe in a comment, and <<'ALPINE' also stops the host shell
+    # expanding anything meant for the container.
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build and test on Alpine
+        env:
+          # musl gives a thread 128 KiB where glibc gives megabytes, and the
+          # emulator cores put deep interpreters on the stack. The main thread
+          # keeps RLIMIT_STACK, so a core can work from main() and segfault the
+          # moment it moves to a worker thread — which is what rodio does.
+          RUSTFLAGS: -C link-arg=-Wl,-z,stack-size=8388608
+        run: |
+          docker run --rm -i \
+            -v "$PWD":/src -w /src/src-tauri \
+            -e CARGO_TERM_COLOR \
+            -e RUSTFLAGS \
+            -e "HOST_UID=$(id -u)" \
+            -e "HOST_GID=$(id -g)" \
+            alpine:edge sh -eux <<'ALPINE'
+          apk add --no-cache \
+            git tar \
+            cargo rust cmake build-base musl-dev \
+            fontconfig-dev alsa-lib-dev zlib-dev bsd-compat-headers
+
+          # Alpine's rust, never rustup: rustup's musl target has crt-static on
+          # by default, and this links dynamically against fontconfig and alsa.
+          rustc --version
+
+          # The tree was cloned by a different user on the host, and cargo shells
+          # out to git for the vendored submodules that build.rs patches.
+          git config --global --add safe.directory '*'
+
+          cargo build --release -p tunante-mini -p tunante-decoder
+
+          # The bar for "no regression": every emulator backend opens a real
+          # fixture and returns PCM that is not silence, and the out-of-process
+          # decoder returns the same bytes as decoding in-process.
+          cargo test --release -p tunante-codec -p tunante-decoder -- --nocapture
+
+          # A static musl binary would build and then fail at runtime: Slint
+          # needs dlopen and ALSA dlopens its PCM modules. Catch that here
+          # rather than on the phone.
+          for b in tunante-mini tunante-decoder; do
+            echo "== $b"
+            ldd "target/release/$b" | grep -q ld-musl-aarch64 \
+              || { echo "no está enlazado contra musl dinámicamente"; exit 1; }
+          done
+
+          # docker ran as root, so what it wrote is root-owned and the runner
+          # user could not pick it up for the artifact.
+          chown -R "$HOST_UID:$HOST_GID" target/release
+          ALPINE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunante-mini-aarch64-musl
+          path: |
+            src-tauri/target/release/tunante-mini
+            src-tauri/target/release/tunante-decoder
+            src-tauri/crates/tunante-mini/dist/
+
+  package:
+    # The recipe, run for real. Until this existed the APKBUILD had never been
+    # executed once: it was a file that looked right.
+    #
+    # Here rather than on the phone because the recipe builds the whole
+    # workspace, vendored C included. That is eight minutes on this runner and
+    # the better part of an hour on the device at -j2 — on a charger that has
+    # already browned the phone out three times.
+    runs-on: ubuntu-24.04-arm
+    name: Alpine package (aarch64)
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # The version comes from the tags, like everywhere else.
+          fetch-depth: 0
+
+      - name: The recipe is a shell script, so check it parses as one
+        # Un segundo, y habría ahorrado diez minutos de runner: un comentario
+        # dentro de la cadena de `makedepends` cerró las comillas a media lista
+        # y el resto de la receta se ejecutó como órdenes sueltas.
+        run: sh -n src-tauri/crates/tunante-mini/dist/APKBUILD
+
+      - name: Build the apk
+        run: |
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          VERSION=${VERSION:-0.1.0}
+          echo "empaquetando $VERSION"
+
+          # A tarball of this checkout, laid out exactly as GitHub's release
+          # archive would be, so `builddir` in the recipe finds what it expects.
+          # git archive is no good here: it does not carry submodules, and the
+          # emulator cores are submodules.
+          mkdir -p /tmp/src
+          tar czf "/tmp/src/tunante-mini-$VERSION.tar.gz" \
+            --exclude=.git --exclude=target --exclude=node_modules \
+            --transform "s,^\.,tunante-$VERSION," .
+
+          docker run --rm -i \
+            -v "$PWD":/repo -v /tmp/src:/src -v "$PWD/out":/out \
+            -e "VERSION=$VERSION" \
+            alpine:edge sh -eux <<'ALPINE'
+          apk add --no-cache alpine-sdk sudo
+
+          # abuild refuses to run as root, so it gets a user of its own.
+          adduser -D empaqueta
+          addgroup empaqueta abuild
+          echo 'empaqueta ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+          mkdir -p /home/empaqueta/recipe /var/cache/distfiles
+          chgrp abuild /var/cache/distfiles && chmod g+w /var/cache/distfiles
+
+          cp /repo/src-tauri/crates/tunante-mini/dist/APKBUILD /home/empaqueta/recipe/
+          # Stamp the version, exactly as release.yml does for the tree.
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" /home/empaqueta/recipe/APKBUILD
+          chown -R empaqueta:empaqueta /home/empaqueta
+
+          # The tarball goes into the distfiles cache under the name the recipe
+          # asks for. abuild checks the cache before fetching, so the `source=`
+          # URL stays as it is for a real release and nothing is downloaded.
+          cp "/src/tunante-mini-$VERSION.tar.gz" /var/cache/distfiles/
+          chgrp abuild "/var/cache/distfiles/tunante-mini-$VERSION.tar.gz"
+
+          su empaqueta -c 'cd ~/recipe && abuild-keygen -a -n'
+
+          # La clave pública, a mano y como root.
+          #
+          # `abuild-keygen -a` dice que la instala y en su propia salida avisa de
+          # que hay que copiarla a /etc/apk/keys. Sin eso, el último paso de
+          # `abuild -r` —crear el índice del repositorio— rechaza el paquete que
+          # el propio abuild acaba de firmar: "UNTRUSTED signature".
+          cp /home/empaqueta/.config/abuild/*.rsa.pub /etc/apk/keys/
+
+          su empaqueta -c '
+            set -eux
+            cd ~/recipe
+            # Contra el tarball que acabamos de dejar en la caché, que no es el
+            # de la release y por tanto no tiene su misma suma.
+            abuild checksum
+            abuild -r
+          '
+
+          # Buscado, no adivinado.
+          #
+          # abuild deja el paquete en $REPODEST/<repo>/<arch>, y <repo> sale del
+          # directorio PADRE del que contiene el APKBUILD — aquí "empaqueta", no
+          # "recipe". Un patrón con la ruta a mano no encontró nada y el shell lo
+          # pasó tal cual, así que cp se quejó del asterisco.
+          mkdir -p /out
+          find /home/empaqueta/packages -name '*.apk' -exec cp {} /out/ \;
+          # El contenedor es root y /out está montado del anfitrión: sin esto el
+          # usuario del runner no puede leerlos para subir el artefacto.
+          chmod a+r /out/*.apk
+          ls -l /out
+          ALPINE
+
+      - name: What is inside it
+        run: |
+          for f in out/*.apk; do
+            echo "== $f  ($(stat -c%s "$f") bytes)"
+            # An apk is a gzipped tar; this is the whole point of the job —
+            # seeing that the recipe actually installs the binaries and the
+            # launcher entry, not just that it exited zero.
+            tar tzf "$f" | grep -v '^\.SIGN\|^\.PKGINFO' | sed 's/^/   /'
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tunante-mini-apk-aarch64
+          path: out/*.apk
