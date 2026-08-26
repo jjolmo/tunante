@@ -262,7 +262,7 @@ systemd-run --user --unit=build --working-directory=$D \
 SLINT_DEBUG_PERFORMANCE=refresh_lazy,console tunante-mini
 
 # drive it without a finger on the glass
-python3 /tmp/tactil.py tap|flick|drag|hold …
+python3 ~/tactil.py tap|flick|drag|hold …
 ```
 
 `dist/empaquetar <version>` builds the Alpine package on the phone and installs
@@ -275,8 +275,16 @@ copies on the device are disposable, the ones here are not.
 
 - `tools/tactil.py` is a virtual touchscreen over `/dev/uinput`. Its `hold`
   exists because the Flickable claims any vertical drag that starts within
-  500 ms of the press. Screen coordinates are the device's own only in
-  portrait; rotated right, the mapping is `device(dx,dy) → screen(dy, 1080−dx)`.
+  500 ms of the press.
+
+  **Screen coordinates are the device's own only in portrait**, and which way
+  they turn depends on which way the phone is. Rotated right the mapping is
+  `device(dx,dy) → screen(dy, 1080−dx)`; rotated left it is
+  `screen(2400−dy, dx)`, and taps computed for the wrong one land in the
+  neighbouring widget, which reads like the app ignoring you rather than like
+  bad arithmetic. `kscreen-doctor -o` will not tell you: it reports the mode as
+  1080x2400 while the compositor is drawing 2400x1080. Take a screenshot, tap
+  once, take another — the resolution of the PNG is the honest answer.
 - `tools/escucha` is the long-listen sampler: one line a minute, the numbers
   that would show a creep. Run it under `systemd-run --user --unit=escucha`.
 
