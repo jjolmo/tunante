@@ -235,12 +235,6 @@ component SwipeRow inherits Rectangle {
         }
     }
 
-    surface := Rectangle {
-        x: root.offset;
-        background: Theme.bg-primary;
-        @children
-    }
-
     swipe := SwipeGestureHandler {
         enabled: root.enabled;
         handle-swipe-left: true;
@@ -259,8 +253,22 @@ component SwipeRow inherits Rectangle {
             root.offset = 0px;
         }
 
-        TouchArea {
-            clicked => { root.tapped(); }
+        surface := Rectangle {
+            x: root.offset;
+            background: Theme.bg-primary;
+
+            // El objetivo del toque va DEBAJO del contenido, no encima.
+            //
+            // En Slint el hermano declarado después queda encima y se lleva los
+            // eventos. Con este TouchArea detrás de @children tapaba por
+            // completo cualquier cosa que el contenido pusiera dentro —el asa de
+            // reordenar, sin ir más lejos, que no recibía un solo evento y
+            // parecía que el gesto lo robaba el Flickable.
+            TouchArea {
+                clicked => { root.tapped(); }
+            }
+
+            @children
         }
     }
 
@@ -1084,11 +1092,23 @@ component QueueTab inherits Rectangle {
                         }
                     }
 
-                    // The grip. Reordering lives on its own target rather than
-                    // on the whole row: a row that moves when you drag anywhere
-                    // on it cannot also be a list you scroll with your finger.
+                    // El asa. Reordenar vive en un objetivo propio y no en toda
+                    // la fila: una fila que se mueve al arrastrar en cualquier
+                    // punto no puede ser además una lista que se desplaza con el
+                    // dedo.
+                    //
+                    // Hay que MANTENER pulsado antes de arrastrar, y no es un
+                    // capricho de diseño: el Flickable de la lista se queda
+                    // cualquier gesto vertical que empiece dentro de los
+                    // primeros 500 ms de la pulsación (DISTANCE_THRESHOLD y
+                    // DURATION_THRESHOLD en items/flickable.rs). Pasado ese
+                    // umbral, el arrastre llega aquí. Por eso el asa se enciende
+                    // al pulsar: es la única pista de que aguantar sirve para
+                    // algo.
                     Rectangle {
                         width: Theme.touch-target;
+                        border-radius: Theme.radius;
+                        background: grip.pressed ? Theme.bg-hover : transparent;
 
                         Text {
                             text: "≡";
