@@ -7,8 +7,10 @@ set(CMAKE_C_STANDARD 11)
 # VBA-M GBA emulator sources
 set(VBAM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../viogsf/vbam")
 
-# psflib (reuse from lazygsf, rename symbols to avoid collision)
-set(PSFLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../lazygsf-rs/psflib")
+# psflib. Lived in lazygsf-rs until that crate was dropped; this is now its only
+# consumer, so it lives here. The symbol renaming below is not optional: several
+# crates link their own copy of psflib into the same binary.
+set(PSFLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/psflib")
 
 # Bundled zlib (fallback for Windows which doesn't have system zlib)
 set(ZLIB_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../hepsf-rs/zlib")

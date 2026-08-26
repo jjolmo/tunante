@@ -232,6 +232,25 @@ impl Player {
         }
     }
 
+    /// Move a track to another position in the queue.
+    ///
+    /// The playing track keeps playing wherever it lands: reordering a list is
+    /// housekeeping, and stopping the music for it would be a surprise.
+    pub fn reorder(&mut self, from: usize, to: usize) {
+        let mut tracks = self.queue.tracks().to_vec();
+        if from >= tracks.len() || from == to {
+            return;
+        }
+        let to = to.min(tracks.len().saturating_sub(1));
+        let track = tracks.remove(from);
+        tracks.insert(to, track);
+
+        match self.queue.current().map(|t| t.id.clone()) {
+            Some(id) => self.queue.update_context(tracks, &id),
+            None => self.queue.set_tracks(tracks),
+        }
+    }
+
     /// Index of the current track in the queue, for marking it in the UI.
     pub fn current_index(&self) -> Option<usize> {
         self.queue.current_index()

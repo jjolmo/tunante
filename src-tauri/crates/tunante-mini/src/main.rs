@@ -401,6 +401,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (player, queue_model) = (player.clone(), queue_model.clone());
+        ui.on_queue_reordered(move |from, to| {
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.reorder(from.max(0) as usize, to.max(0) as usize);
+                queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+            }
+        });
+    }
+    {
+        let (player, queue_model) = (player.clone(), queue_model.clone());
         ui.on_queue_removed(move |index| {
             if let Some(p) = player.borrow_mut().as_mut() {
                 p.remove_from_queue(index as usize);
