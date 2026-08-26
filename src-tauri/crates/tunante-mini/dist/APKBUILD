@@ -85,4 +85,11 @@ package() {
 		"$pkgdir/usr/share/icons/hicolor/scalable/apps/tunante-mini.svg"
 }
 
-sha512sums="SKIP"
+# Lo rellena `abuild checksum`, contra el tarball de la release que declara
+# `source=`. Vacío hasta que exista esa release: abuild se niega a construir sin
+# la línea, y ponerle un número inventado sería peor que no ponerle ninguno.
+#
+# Aquí decía `sha512sums="SKIP"`, que es sintaxis de ebuild de Gentoo. abuild no
+# la entiende y para con "is missing in checksums" — cosa que no se descubrió
+# hasta que el CI ejecutó la receta por primera vez.
+sha512sums=""
