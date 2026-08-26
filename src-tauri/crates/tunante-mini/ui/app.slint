@@ -214,10 +214,19 @@ component SwipeRow inherits Rectangle {
     property <length> threshold: 90px;
     property <length> offset: 0px;
 
-    clip: true;
+    // Only while the row is actually travelling. At rest nothing overflows, and
+    // a clip region costs a scissor change per row — with one SwipeRow per list
+    // row, that was eighteen batch breaks per frame to contain nothing.
+    clip: root.offset != 0px;
 
     // What shows through from underneath as the row slides away.
-    Rectangle {
+    //
+    // Built on demand. As an always-present child it was a rectangle and a
+    // string laid out on every frame of every row, entirely hidden behind the
+    // surface above it. Hidden is not free: Slint still runs the line breaking,
+    // and `parley::BreakLines::break_remaining` was 2.2% of the whole process
+    // in a profile taken on the phone.
+    if root.offset != 0px: Rectangle {
         background: root.action-color;
         opacity: min(1.0, abs(root.offset) / root.threshold);
 
