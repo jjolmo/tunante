@@ -192,8 +192,17 @@ jobs:
             abuild -r
           '
 
+          # Buscado, no adivinado.
+          #
+          # abuild deja el paquete en $REPODEST/<repo>/<arch>, y <repo> sale del
+          # directorio PADRE del que contiene el APKBUILD — aquí "empaqueta", no
+          # "recipe". Un patrón con la ruta a mano no encontró nada y el shell lo
+          # pasó tal cual, así que cp se quejó del asterisco.
           mkdir -p /out
-          cp /home/empaqueta/packages/*/aarch64/*.apk /out/
+          find /home/empaqueta/packages -name '*.apk' -exec cp {} /out/ \;
+          # El contenedor es root y /out está montado del anfitrión: sin esto el
+          # usuario del runner no puede leerlos para subir el artefacto.
+          chmod a+r /out/*.apk
           ls -l /out
           ALPINE
 
