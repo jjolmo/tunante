@@ -230,8 +230,23 @@ impl Iterator for PipeSource {
 }
 
 impl Source for PipeSource {
+    /// A finite span, and it has to be finite even though ours never changes.
+    ///
+    /// `None` reads as "these parameters are eternal", and rodio takes it at its
+    /// word: `UniformSourceIterator::bootstrap` builds the resampler from
+    /// `sample_rate()` once, wraps the source in a `Take` with no limit, and so
+    /// never runs it out and never rebuilds. The rate captured at that moment is
+    /// then applied to every track that follows, whatever its own rate is.
+    ///
+    /// PSF2 is the only format here that is not 44100 — the PS2's SPU2 runs at
+    /// 48000 — so it was the only one that came out wrong, playing at
+    /// 44100/48000 of its speed: 8.8% slow and a sixth of a semitone flat.
+    ///
+    /// Any finite answer fixes it, and rodio caps whatever it gets at 32768
+    /// anyway, so it rebuilds on that period for every ordinary source too.
+    /// This is the normal path, not a workaround.
     fn current_span_len(&self) -> Option<usize> {
-        None
+        Some(32768)
     }
 
     fn channels(&self) -> NonZeroU16 {
@@ -271,5 +286,90 @@ impl Drop for PipeSource {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rodio::source::UniformSourceIterator;
+    use rodio::Source;
+    use std::num::{NonZeroU16, NonZeroU32};
+    use std::time::Duration;
+
+    /// A source of a known rate that answers `current_span_len` however we ask.
+    struct Tone {
+        left: usize,
+        rate: u32,
+        span: Option<usize>,
+    }
+
+    impl Iterator for Tone {
+        type Item = f32;
+        fn next(&mut self) -> Option<f32> {
+            if self.left == 0 {
+                return None;
+            }
+            self.left -= 1;
+            Some(0.0)
+        }
+    }
+
+    impl Source for Tone {
+        fn current_span_len(&self) -> Option<usize> {
+            self.span
+        }
+        fn channels(&self) -> NonZeroU16 {
+            NonZeroU16::new(2).unwrap()
+        }
+        fn sample_rate(&self) -> NonZeroU32 {
+            NonZeroU32::new(self.rate).unwrap()
+        }
+        fn total_duration(&self) -> Option<Duration> {
+            None
+        }
+    }
+
+    fn resampled(span: Option<usize>) -> usize {
+        // One second of 48 kHz stereo, asked to come out at 44100.
+        let tone = Tone { left: 48000 * 2, rate: 48000, span };
+        UniformSourceIterator::new(
+            tone,
+            NonZeroU16::new(2).unwrap(),
+            NonZeroU32::new(44100).unwrap(),
+        )
+        .count()
+    }
+
+    /// The bug that made every PS2 track play 8.8% slow.
+    ///
+    /// `None` means "my parameters never change", and rodio acts on it:
+    /// `bootstrap` builds the resampler once, wraps the source in a `Take` with
+    /// no limit, and so never runs it out and never rebuilds. One second of
+    /// 48 kHz then comes out as 48000 frames at 44100, which takes 1.088
+    /// seconds to play.
+    ///
+    /// This test does not assert the broken number, only that the two answers
+    /// differ — if a future rodio makes `None` behave, the fix stops being
+    /// needed rather than starting to fail.
+    #[test]
+    fn an_endless_span_defeats_the_resampler() {
+        let sin_limite = resampled(None);
+        let con_limite = resampled(Some(32768));
+        assert_ne!(
+            sin_limite, con_limite,
+            "si estos coinciden, rodio ya no necesita un span finito"
+        );
+    }
+
+    /// One second in has to be one second out, whatever the rates.
+    #[test]
+    fn a_finite_span_resamples_to_the_target_rate() {
+        let frames = resampled(Some(32768)) / 2;
+        let error = (frames as f64 - 44100.0).abs() / 44100.0;
+        assert!(
+            error < 0.001,
+            "44100 esperados, {frames} obtenidos ({:.2}% de error)",
+            error * 100.0
+        );
     }
 }

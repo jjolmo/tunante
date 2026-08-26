@@ -218,6 +218,10 @@ component SwipeRow inherits Rectangle {
     // enough that brushing the glass while scrolling does not fire it.
     property <length> threshold: 90px;
     property <length> offset: 0px;
+    /// Puesto por la pulsación larga y leído al soltar. Sin esto el dedo hace
+    /// las dos cosas: sale el menú y, al levantarlo, `clicked` encola la fila
+    /// que hay debajo.
+    property <bool> already-held: false;
 
     // Only while the row is actually travelling. At rest nothing overflows, and
     // a clip region costs a scissor change per row — with one SwipeRow per list
@@ -279,7 +283,11 @@ component SwipeRow inherits Rectangle {
             // reordenar, sin ir más lejos, que no recibía un solo evento y
             // parecía que el gesto lo robaba el Flickable.
             tap := TouchArea {
-                clicked => { root.tapped(); }
+                clicked => {
+                    if (!root.already-held) {
+                        root.tapped();
+                    }
+                }
 
                 // Long press. Slint has no such gesture, so it is a timer armed
                 // on the way down and disarmed by anything else: lifting the
@@ -290,6 +298,7 @@ component SwipeRow inherits Rectangle {
                 // gesture almost never fires.
                 pointer-event(e) => {
                     if (e.kind == PointerEventKind.down) {
+                        root.already-held = false;
                         hold.running = true;
                     } else if (e.kind == PointerEventKind.up
                             || e.kind == PointerEventKind.cancel) {
@@ -316,6 +325,7 @@ component SwipeRow inherits Rectangle {
                     // The offset catches the horizontal case: the row is being
                     // swiped, which is a different gesture with its own answer.
                     if (tap.pressed && abs(root.offset) < 8px) {
+                        root.already-held = true;
                         root.held();
                     }
                 }
