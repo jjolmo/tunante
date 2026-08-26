@@ -217,7 +217,22 @@ That part is the sm7150 kernel's, not ours. Two things about it are ours:
 - **With the card gone, the app went on reporting `Playing` and advancing the
   position** — 34 s, 42 s, 51 s, against silence and no sound card at all. A
   running progress bar is a claim about the world, and this one was false.
-  Still unfixed; see What is left.
+  `output.rs` now asks PulseAudio whether any sink can still make a sound, and
+  pauses rather than play on into nothing.
+
+  Nothing inside rodio can answer this, and that was established by experiment,
+  not assumed: with the card removed from PulseAudio by hand, cpal's error
+  callback never fired, no error surfaced anywhere, and tracks went on ending
+  and starting on time. `module-always-sink` hands the client `auto_null`,
+  which consumes at real time, so from inside the process a dead speaker and a
+  working one are indistinguishable.
+
+  It polls, and it is worth knowing why the obvious thing was abandoned:
+  `pactl subscribe` does emit the right events, but its stdout is fully
+  buffered into a pipe, so they sit in libc's buffer and arrive when the
+  process ends — which for a subscription is never. `stdbuf` would fix it and
+  is not on this phone. So `output.rs` asks every ten seconds, and only while
+  the app thinks it is playing or already knows something is wrong.
 
 The `pcm` column in `tools/escucha` exists for exactly this. `Playing` with the
 PCM not `RUNNING` — or with no `/proc/asound/card0` at all — is the signature.
@@ -355,15 +370,16 @@ compositor only raises it when the last input came from touch.
 - **The USB port does not keep up.** `pm8150b-charger` says `Charging` while
   `qcom_qg` says `Discharging`: plugged in, the battery still falls. A listen
   long enough to matter needs a real charger, or it ends by running out.
-- **Notice when the output device dies.** The player keeps reporting `Playing`
-  and advancing the position after the sound card has gone — see the suspend
-  trap. The inhibitor means the app no longer *causes* that, but a phone can
-  lose its card for other reasons and the UI should not lie about it. Whatever
-  rodio reports when its stream dies is where to start.
-- **Why the card does not survive a resume** is worth chasing upstream rather
-  than working around: a phone that loses its speaker until you reboot it is a
-  bug in its own right, not just an obstacle to a long listen. `snd-sm8250`
-  and `wcd937x_codec` on postmarketOS edge, kernel 7.1.0-rc3-sm7150.
+- **Look at the dumb-output banner.** `output.rs` and what it does are verified
+  on the device — playback pauses, the position freezes, the warning lifts when
+  the speaker comes back — but the banner itself has never been seen: the
+  screen was locked on every attempt and this session refuses
+  `loginctl unlock-session`. Slint compiled it, so it exists and its bindings
+  resolve. Whether it looks right in portrait, in landscape and while `cramped`
+  is unknown.
+- **`docs/TODO-upstream.md`** holds the kernel bug underneath all of this: the
+  sound card that does not survive a resume. Reporting it upstream is worth
+  more than the workaround kept here.
 - `real_library_sweep` is ignored in CI on purpose — it wants a real collection
   via `TUNANTE_MUSIC_DIR`.
 - The GitHub ARM runner queue can back up badly; a job sat 1 h 46 m without
