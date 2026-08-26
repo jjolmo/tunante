@@ -684,6 +684,12 @@ component TrackInfo {
 }
 
 component Transport inherits VerticalLayout {
+    // Landscape hands this row about 1600 physical pixels. `space-around` over
+    // that leaves the five buttons floating a finger's width apart each, which
+    // reads as five unrelated controls rather than one transport. Wide mode
+    // keeps them together in the middle and lets the seek bar have the width,
+    // which is the part that actually benefits from it.
+    in property <bool> wide;
     in property <bool> playing;
     in property <bool> shuffle;
     in property <int> repeat;          // 0 off · 1 all · 2 one
@@ -711,7 +717,8 @@ component Transport inherits VerticalLayout {
 
     HorizontalLayout {
         padding: Theme.gap;
-        alignment: space-around;
+        alignment: root.wide ? center : space-around;
+        spacing: root.wide ? Theme.gap * 2 : 0px;
 
         RoundButton {
             glyph: "⤨";
@@ -1004,7 +1011,12 @@ component NowPlayingTab inherits Rectangle {
     if !root.portrait: HorizontalLayout {
         padding: Theme.gap;
         spacing: Theme.gap;
-        alignment: start;
+        // No `alignment` on purpose. Setting one — this said `start` — makes
+        // Slint give every child its preferred width and pack them, which
+        // silently voids the `horizontal-stretch` below: the whole right-hand
+        // third of the screen stayed empty while the seek bar sat squeezed in
+        // the middle. The default is stretch, and the cover keeps its size
+        // regardless because Artwork binds its own width.
 
         Artwork { side: root.art-landscape; art: root.art; }
 
@@ -1024,6 +1036,7 @@ component NowPlayingTab inherits Rectangle {
             Rectangle { vertical-stretch: 1; }
 
             Transport {
+                wide: true;
                 playing: root.playing;
                 shuffle: root.shuffle;
                 repeat: root.repeat;
@@ -1150,6 +1163,10 @@ component QueueTab inherits Rectangle {
 component LibraryTab inherits Rectangle {
     in property <[LibraryRow]> rows;
     in property <int> total;
+    // True when the on-screen keyboard has taken most of the window. The count
+    // is the first thing worth dropping: it is a nicety, and searching is the
+    // one moment the list needs every row it can get.
+    in property <bool> cramped;
     in-out property <string> search;
     callback enqueued(int);
     // Focus the search field as soon as this tab is built. Only used by the
@@ -1269,7 +1286,7 @@ component LibraryTab inherits Rectangle {
             }
         }
 
-        Rectangle {
+        if !root.cramped: Rectangle {
             height: 22px;
             background: Theme.bg-secondary;
 
@@ -1357,8 +1374,24 @@ export component AppWindow inherits Window {
     // not a binding, so no edge is added to the dependency graph.
     property <bool> portrait: true;
 
+    // The on-screen keyboard does not overlay the window, it shrinks it. In
+    // landscape that leaves about 205 logical pixels, and out of those the
+    // mini-player was taking 68 — the library showed a single row while
+    // searching it, which is the one moment the list matters most.
+    //
+    // So below a threshold the mini-player goes. Nothing is lost: the Playing
+    // tab still has the full transport, and the lock screen has MPRIS.
+    //
+    // Snapshotted from `changed`, like `portrait` and for the same reason: the
+    // mini-player's existence decides the layout's height, so writing this as a
+    // binding on root.height would close a cycle Slint rejects outright.
+    property <bool> cramped: false;
+
     changed width => { root.portrait = root.height >= root.width; }
-    changed height => { root.portrait = root.height >= root.width; }
+    changed height => {
+        root.portrait = root.height >= root.width;
+        root.cramped = root.height < 300px;
+    }
 
     // Changing tab slides the new one in from the edge it came from, so the
     // gesture and the tab bar agree about which way the app just moved.
@@ -1481,7 +1514,11 @@ export component AppWindow inherits Window {
                         // Portrait leaves room under the cover for three lines of
                         // text and the two bars; landscape is simply height-bound.
                         art-portrait: min(root.width - Theme.gap * 4, root.height - 300px);
-                        art-landscape: root.height - 190px;
+                        // Everything the window has, minus what sits under it:
+                        // the mini-player is 68px and the tab pads by `gap` top
+                        // and bottom. The old figure, 190px, left the cover at
+                        // little over half the height it could have had.
+                        art-landscape: root.height - 68px - Theme.gap * 2;
                     }
 
                     if root.tab == 1: QueueTab {
@@ -1509,6 +1546,7 @@ export component AppWindow inherits Window {
                     if root.tab == 2: LibraryTab {
                         rows: root.library-rows;
                         total: root.library-total;
+                        cramped: root.cramped;
                         autofocus-search: root.autofocus-search;
                         search <=> root.search;
                         activated(i) => { root.library-activated(i); }
@@ -1519,7 +1557,7 @@ export component AppWindow inherits Window {
             }
         }
 
-        MiniPlayer {
+        if !root.cramped: MiniPlayer {
             title: root.now-title;
             artist: root.now-artist;
             playing: root.playing;
