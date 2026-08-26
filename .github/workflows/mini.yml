@@ -24,59 +24,82 @@ env:
 
 jobs:
   build:
+    # Native aarch64 rather than qemu. The vendored emulator cores are ~1.7 GB
+    # of C; under emulation this job would take hours.
     runs-on: ubuntu-24.04-arm
     name: Alpine aarch64 (musl)
 
-    # Native aarch64 runner rather than qemu. The vendored emulator cores are
-    # ~1.7 GB of C; under emulation this job would take hours.
-    container:
-      image: alpine:edge
+    # Alpine is a step here, not the job's container.
+    #
+    # `container: alpine:edge` is the obvious way to write this, and it fails
+    # before compiling a line:
+    #
+    #     JavaScript Actions in Alpine containers are only supported on x64
+    #     Linux runners. Detected Linux Arm64
+    #
+    # actions/checkout and actions/upload-artifact are JavaScript, and GitHub
+    # ships a musl build of Node for x64 only. So the runner stays glibc and
+    # does the checkout and the upload, and everything that needs musl runs
+    # inside `docker run`.
+    #
+    # The script goes in on stdin rather than as an argument: quoted as an
+    # argument it could not contain a single quote, which rules out an
+    # apostrophe in a comment, and <<'ALPINE' also stops the host shell
+    # expanding anything meant for the container.
 
     steps:
-      - name: Install the toolchain
-        run: |
-          apk add --no-cache \
-            git tar \
-            cargo rust cmake build-base musl-dev \
-            fontconfig-dev alsa-lib-dev zlib-dev bsd-compat-headers
-          # Alpine's rust, never rustup: rustup's musl target has crt-static on
-          # by default and this links dynamically against fontconfig and alsa.
-          rustc --version
-
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Build the mobile binaries
-        working-directory: src-tauri
+      - name: Build and test on Alpine
         env:
           # musl gives a thread 128 KiB where glibc gives megabytes, and the
           # emulator cores put deep interpreters on the stack. The main thread
           # keeps RLIMIT_STACK, so a core can work from main() and segfault the
           # moment it moves to a worker thread — which is what rodio does.
           RUSTFLAGS: -C link-arg=-Wl,-z,stack-size=8388608
-        run: cargo build --release -p tunante-mini -p tunante-decoder
-
-      - name: Formats still decode
-        working-directory: src-tauri
-        env:
-          RUSTFLAGS: -C link-arg=-Wl,-z,stack-size=8388608
-        # The bar for "no regression": every emulator backend opens a real
-        # fixture and returns PCM that is not silence, and the out-of-process
-        # decoder returns the same bytes as decoding in-process.
-        run: cargo test --release -p tunante-codec -p tunante-decoder -- --nocapture
-
-      - name: It links against musl, dynamically
-        working-directory: src-tauri
-        # A static musl binary would build and then fail at runtime: Slint needs
-        # dlopen, and ALSA dlopens its PCM modules. Catch that here rather than
-        # on the phone.
         run: |
+          docker run --rm -i \
+            -v "$PWD":/src -w /src/src-tauri \
+            -e CARGO_TERM_COLOR \
+            -e RUSTFLAGS \
+            -e "HOST_UID=$(id -u)" \
+            -e "HOST_GID=$(id -g)" \
+            alpine:edge sh -eux <<'ALPINE'
+          apk add --no-cache \
+            git tar \
+            cargo rust cmake build-base musl-dev \
+            fontconfig-dev alsa-lib-dev zlib-dev bsd-compat-headers
+
+          # Alpine's rust, never rustup: rustup's musl target has crt-static on
+          # by default, and this links dynamically against fontconfig and alsa.
+          rustc --version
+
+          # The tree was cloned by a different user on the host, and cargo shells
+          # out to git for the vendored submodules that build.rs patches.
+          git config --global --add safe.directory '*'
+
+          cargo build --release -p tunante-mini -p tunante-decoder
+
+          # The bar for "no regression": every emulator backend opens a real
+          # fixture and returns PCM that is not silence, and the out-of-process
+          # decoder returns the same bytes as decoding in-process.
+          cargo test --release -p tunante-codec -p tunante-decoder -- --nocapture
+
+          # A static musl binary would build and then fail at runtime: Slint
+          # needs dlopen and ALSA dlopens its PCM modules. Catch that here
+          # rather than on the phone.
           for b in tunante-mini tunante-decoder; do
             echo "== $b"
-            ldd "target/release/$b" | grep -q 'ld-musl-aarch64' \
+            ldd "target/release/$b" | grep -q ld-musl-aarch64 \
               || { echo "no está enlazado contra musl dinámicamente"; exit 1; }
           done
+
+          # docker ran as root, so what it wrote is root-owned and the runner
+          # user could not pick it up for the artifact.
+          chown -R "$HOST_UID:$HOST_GID" target/release
+          ALPINE
 
       - uses: actions/upload-artifact@v4
         with:
