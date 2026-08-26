@@ -21,15 +21,19 @@ license="GPL-2.0-or-later"
 # rust/cargo from Alpine, never rustup: rustup's musl target has crt-static on
 # by default, and this links dynamically against fontconfig, freetype and alsa.
 # Alpine patches crt_static_default to false. See main/rust/alpine-target.patch.
+# samurai va aquí porque abuild exporta CMAKE_GENERATOR=Ninja en su entorno: los
+# build.rs que llaman a cmake piden Ninja, aunque fuera de abuild se conformen
+# con make. En Alpine quien provee /usr/bin/ninja es samurai.
+#
+# Y va fuera de las comillas, como todos los comentarios de este fichero: un
+# APKBUILD es un script de shell, y un comentario dentro de una cadena
+# entrecomillada no es un comentario. Uno que llevaba comillas dobles cerró
+# `makedepends` a media lista y el resto se ejecutó como órdenes:
+# "APKBUILD: line 31: was: not found".
 makedepends="
 	cargo
 	rust
 	cmake
-	# abuild exporta CMAKE_GENERATOR=Ninja en su entorno, así que los build.rs
-	# que llaman a cmake piden Ninja aunque fuera de abuild se contenten con
-	# make. En Alpine quien provee /usr/bin/ninja es samurai. Sin esto la
-	# receta muere con "CMake was unable to find a build program corresponding
-	# to Ninja" — y sólo bajo abuild, que es lo que la hacía invisible.
 	samurai
 	build-base
 	musl-dev

@@ -128,6 +128,12 @@ jobs:
           # The version comes from the tags, like everywhere else.
           fetch-depth: 0
 
+      - name: The recipe is a shell script, so check it parses as one
+        # Un segundo, y habría ahorrado diez minutos de runner: un comentario
+        # dentro de la cadena de `makedepends` cerró las comillas a media lista
+        # y el resto de la receta se ejecutó como órdenes sueltas.
+        run: sh -n src-tauri/crates/tunante-mini/dist/APKBUILD
+
       - name: Build the apk
         run: |
           VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
