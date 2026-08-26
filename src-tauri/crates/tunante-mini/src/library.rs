@@ -162,7 +162,12 @@ pub struct Tree {
 
 #[derive(Clone)]
 struct FolderContents {
+    /// Only what sits directly in this folder. Not its descendants.
     tracks: Vec<Track>,
+    /// Everything underneath, subfolders included. For the count on the folder
+    /// row, which is more useful as "how much is in here" than as "how many
+    /// files did I put loose in this one directory".
+    total: usize,
     subdirs: Vec<PathBuf>,
 }
 
@@ -192,8 +197,27 @@ impl Tree {
         if let Some(hit) = self.cache.borrow().get(key) {
             return hit.clone();
         }
+        // get_tracks_by_folder matches `path LIKE 'folder/%'`, so it returns
+        // every descendant. Listing those under the folder row as well as its
+        // subfolders is what made the root show 1839 file rows and repeat every
+        // one of them inside the subfolder it actually lives in.
+        let all = db.get_tracks_by_folder(key).unwrap_or_default();
+        let total = all.len();
+        let prefix = format!("{}/", key.trim_end_matches('/'));
+        let tracks = all
+            .into_iter()
+            .filter(|t| {
+                // Compare on the real file: a subsong's path carries a `#n`
+                // suffix, and the directory is the same either way.
+                let real = vgm_path::parse_vgm_path(&t.path).0;
+                real.strip_prefix(prefix.as_str())
+                    .is_some_and(|rest| !rest.contains('/'))
+            })
+            .collect();
+
         let value = FolderContents {
-            tracks: db.get_tracks_by_folder(key).unwrap_or_default(),
+            tracks,
+            total,
             subdirs: child_dirs(dir),
         };
         self.cache.borrow_mut().insert(key.to_string(), value.clone());
@@ -222,14 +246,14 @@ impl Tree {
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| key.clone());
 
-        let FolderContents { tracks, subdirs } = self.contents(db, &key, dir);
+        let FolderContents { tracks, total, subdirs } = self.contents(db, &key, dir);
 
         out.push(Row {
             label,
-            detail: if tracks.is_empty() {
+            detail: if total == 0 {
                 String::new()
             } else {
-                format!("{} pistas", tracks.len())
+                format!("{total} pistas")
             },
             depth,
             is_folder: true,
