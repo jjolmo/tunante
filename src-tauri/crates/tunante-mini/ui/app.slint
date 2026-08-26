@@ -212,6 +212,7 @@ component SwipeRow inherits Rectangle {
     in property <bool> enabled: true;
     callback swiped();
     callback tapped();
+    callback held();
 
     // How far it has to travel to count. Short enough to feel light, long
     // enough that brushing the glass while scrolling does not fire it.
@@ -277,8 +278,47 @@ component SwipeRow inherits Rectangle {
             // completo cualquier cosa que el contenido pusiera dentro —el asa de
             // reordenar, sin ir más lejos, que no recibía un solo evento y
             // parecía que el gesto lo robaba el Flickable.
-            TouchArea {
+            tap := TouchArea {
                 clicked => { root.tapped(); }
+
+                // Long press. Slint has no such gesture, so it is a timer armed
+                // on the way down and disarmed by anything else: lifting the
+                // finger, or the swipe handler above claiming the gesture and
+                // moving the row.
+                // Only up and cancel disarm it. Not move: a finger resting on
+                // glass jitters, and disarming on movement would mean the
+                // gesture almost never fires.
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        hold.running = true;
+                    } else if (e.kind == PointerEventKind.up
+                            || e.kind == PointerEventKind.cancel) {
+                        hold.running = false;
+                    }
+                }
+            }
+
+            hold := Timer {
+                interval: 500ms;
+                running: false;
+                triggered => {
+                    self.running = false;
+                    // Two things have to still be true, and neither is
+                    // redundant.
+                    //
+                    // `pressed` catches the vertical case: when the list's
+                    // Flickable decides a drag is a scroll it takes the grab,
+                    // and it does not send this TouchArea an up or a cancel —
+                    // the Cancel in Slint's TouchArea is only emitted when the
+                    // area is disabled while grabbed. Without this guard,
+                    // flinging the list would pop a menu half a second later.
+                    //
+                    // The offset catches the horizontal case: the row is being
+                    // swiped, which is a different gesture with its own answer.
+                    if (tap.pressed && abs(root.offset) < 8px) {
+                        root.held();
+                    }
+                }
             }
 
             @children
@@ -1227,6 +1267,43 @@ component QueueTab inherits Rectangle {
     }
 }
 
+// Una entrada del menú de pulsación larga.
+//
+// Alta a propósito: sale bajo un dedo que ya está apoyado en la pantalla, y una
+// fila de 48px con el pulgar encima se falla más de lo que parece.
+component MenuAction inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    callback clicked();
+
+    height: Theme.touch-target + 8px;
+    background: touch.pressed ? Theme.bg-selected : (touch.has-hover ? Theme.bg-hover : transparent);
+    border-radius: Theme.radius;
+
+    HorizontalLayout {
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        spacing: Theme.gap;
+
+        Text {
+            text: root.glyph;
+            color: Theme.text-secondary;
+            font-size: Theme.font-body;
+            width: 20px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
 component LibraryTab inherits Rectangle {
     in property <[LibraryRow]> rows;
     in property <int> total;
@@ -1237,6 +1314,13 @@ component LibraryTab inherits Rectangle {
     in property <string> now-path;
     in-out property <string> search;
     callback enqueued(int);
+    // Índice de la fila cuyo menú está abierto, o -1. La ruta y el nombre se
+    // copian al abrirlo: las filas se reconstruyen al desplegar una carpeta y
+    // el índice dejaría de significar lo mismo con el menú delante.
+    property <int> menu-row: -1;
+    property <string> menu-name;
+    property <bool> menu-is-folder;
+    callback enqueue-folder(int, bool);
     // Focus the search field as soon as this tab is built. Only used by the
     // spike: it makes "does the on-screen keyboard come up?" answerable over
     // ssh, without needing someone to put a finger on the glass.
@@ -1321,6 +1405,11 @@ component LibraryTab inherits Rectangle {
                 action-label: "A la cola";
                 swiped => { root.enqueued(i); }
                 tapped => { root.activated(i); }
+                held => {
+                    root.menu-row = i;
+                    root.menu-name = row.title;
+                    root.menu-is-folder = row.is-folder;
+                }
 
                 HorizontalLayout {
                     padding-left: Theme.gap + row.depth * 16px;
@@ -1365,6 +1454,73 @@ component LibraryTab inherits Rectangle {
                 text: root.total == 1 ? "1 elemento" : root.total + " elementos";
                 color: Theme.text-muted;
                 font-size: Theme.font-small;
+            }
+        }
+    }
+
+    // El menú de la pulsación larga.
+    //
+    // Declarado después del layout, que en Slint es lo que lo pone encima y le
+    // da los eventos. Sale desde abajo, al alcance del pulgar: el dedo ya está
+    // ahí, que es donde acaba de mantener pulsado.
+    if root.menu-row >= 0: Rectangle {
+        background: #000000bb;
+
+        // Tocar fuera cierra. Va antes que la hoja para quedar debajo de ella.
+        TouchArea {
+            clicked => { root.menu-row = -1; }
+        }
+
+        Rectangle {
+            y: parent.height - self.height;
+            height: sheet.preferred-height;
+            background: Theme.bg-secondary;
+
+            // Se come los toques que caen en la hoja, para que no lleguen al
+            // fondo y la cierren nada más abrirla.
+            TouchArea { }
+
+            sheet := VerticalLayout {
+                padding: Theme.gap;
+                spacing: 2px;
+
+                Text {
+                    text: root.menu-name;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-body;
+                    overflow: elide;
+                    height: Theme.touch-target;
+                    vertical-alignment: center;
+                }
+                Rectangle { height: 1px; background: Theme.border; }
+
+                MenuAction {
+                    glyph: "≡";
+                    label: root.menu-is-folder
+                        ? "Añadir todo, con las subcarpetas"
+                        : "Añadir a la cola";
+                    clicked => {
+                        root.enqueue-folder(root.menu-row, true);
+                        root.menu-row = -1;
+                    }
+                }
+
+                // Sólo tiene sentido en una carpeta: para un fichero suelto las
+                // dos entradas harían lo mismo y una de ellas sobraría.
+                if root.menu-is-folder: MenuAction {
+                    glyph: "🗀";
+                    label: "Añadir sólo esta carpeta";
+                    clicked => {
+                        root.enqueue-folder(root.menu-row, false);
+                        root.menu-row = -1;
+                    }
+                }
+
+                MenuAction {
+                    glyph: "✕";
+                    label: "Cancelar";
+                    clicked => { root.menu-row = -1; }
+                }
             }
         }
     }
@@ -1420,6 +1576,7 @@ export component AppWindow inherits Window {
 
     callback library-activated(int);
     callback library-enqueued(int);
+    callback library-enqueue-folder(int, bool);
     callback queue-activated(int);
     callback queue-removed(int);
     callback queue-reordered(int, int);
@@ -1629,6 +1786,7 @@ export component AppWindow inherits Window {
                         search <=> root.search;
                         activated(i) => { root.library-activated(i); }
                         enqueued(i) => { root.library-enqueued(i); }
+                        enqueue-folder(i, hondo) => { root.library-enqueue-folder(i, hondo); }
                         search-changed(s) => { root.search-changed(s); }
                     }
                 }
