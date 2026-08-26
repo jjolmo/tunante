@@ -192,16 +192,26 @@ jobs:
             abuild -r
           '
 
-          # Buscado, no adivinado.
+          # Searched for, not guessed at — and from the home directory, not
+          # from "packages".
           #
-          # abuild deja el paquete en $REPODEST/<repo>/<arch>, y <repo> sale del
-          # directorio PADRE del que contiene el APKBUILD — aquí "empaqueta", no
-          # "recipe". Un patrón con la ruta a mano no encontró nada y el shell lo
-          # pasó tal cual, así que cp se quejó del asterisco.
+          # abuild leaves the package in $REPODEST/<repo>/<arch>, and <repo> is
+          # the name of the PARENT of the directory holding the APKBUILD — here
+          # "empaqueta", not "recipe". A hand-written path matched nothing, the
+          # shell passed the pattern through, and cp complained about a literal
+          # asterisk.
+          #
+          # REPODEST is not $HOME/packages either: recent abuild uses XDG paths,
+          # so $HOME/.local/share/abuild. Searching the home directory covers
+          # both. The build itself finished fine and the job died here, on the
+          # very last step, with "No such file or directory".
           mkdir -p /out
-          find /home/empaqueta/packages -name '*.apk' -exec cp {} /out/ \;
-          # El contenedor es root y /out está montado del anfitrión: sin esto el
-          # usuario del runner no puede leerlos para subir el artefacto.
+          find /home/empaqueta -name '*.apk' -exec cp {} /out/ \;
+          # Without this, the failure surfaces further down as an unexpanded
+          # asterisk, which reads like anything but "there is no package".
+          [ -n "$(ls -A /out)" ] || { echo "abuild produced no .apk"; exit 1; }
+          # The container is root and /out is bind-mounted from the host:
+          # without this the runner's user cannot read them to upload.
           chmod a+r /out/*.apk
           ls -l /out
           ALPINE
