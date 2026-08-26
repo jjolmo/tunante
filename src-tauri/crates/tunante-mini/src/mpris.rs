@@ -22,6 +22,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use mpris_server::{
     LoopStatus, Metadata, PlaybackStatus, Player, Time, TrackId,
 };
+use tunante_core::RepeatMode;
 
 /// What the outside world asks of the player.
 #[derive(Debug, Clone)]
@@ -33,6 +34,8 @@ pub enum Command {
     Next,
     Previous,
     SetVolume(f64),
+    SetRepeat(RepeatMode),
+    SetShuffle(bool),
     Seek(i64),
 }
 
@@ -46,6 +49,25 @@ pub struct Update {
     pub position_ms: u64,
     pub playing: bool,
     pub has_track: bool,
+    pub volume: f64,
+    pub shuffle: bool,
+    pub repeat: RepeatMode,
+}
+
+fn to_loop_status(mode: RepeatMode) -> LoopStatus {
+    match mode {
+        RepeatMode::Off => LoopStatus::None,
+        RepeatMode::All => LoopStatus::Playlist,
+        RepeatMode::One => LoopStatus::Track,
+    }
+}
+
+fn from_loop_status(status: LoopStatus) -> RepeatMode {
+    match status {
+        LoopStatus::None => RepeatMode::Off,
+        LoopStatus::Playlist => RepeatMode::All,
+        LoopStatus::Track => RepeatMode::One,
+    }
 }
 
 /// Start the D-Bus server on its own thread.
@@ -113,6 +135,18 @@ fn run(
             let tx = cmd_tx.clone();
             player.connect_set_volume(move |_, v| {
                 let _ = tx.send(Command::SetVolume(v));
+            });
+        }
+        {
+            let tx = cmd_tx.clone();
+            player.connect_set_loop_status(move |_, s| {
+                let _ = tx.send(Command::SetRepeat(from_loop_status(s)));
+            });
+        }
+        {
+            let tx = cmd_tx.clone();
+            player.connect_set_shuffle(move |_, on| {
+                let _ = tx.send(Command::SetShuffle(on));
             });
         }
         {
@@ -188,7 +222,19 @@ async fn publish(player: &Player, u: &Update, last: Option<&Update>) {
             PlaybackStatus::Paused
         };
         let _ = player.set_playback_status(status).await;
-        let _ = player.set_loop_status(LoopStatus::None).await;
+    }
+
+    // These three are writable under MPRIS, so a client that sets one expects
+    // to read it back. Publishing them is also what makes the property tell
+    // the truth about what the UI is doing, rather than a constant.
+    if last.is_none_or(|l| l.repeat != u.repeat) {
+        let _ = player.set_loop_status(to_loop_status(u.repeat)).await;
+    }
+    if last.is_none_or(|l| l.shuffle != u.shuffle) {
+        let _ = player.set_shuffle(u.shuffle).await;
+    }
+    if last.is_none_or(|l| l.volume != u.volume) {
+        let _ = player.set_volume(u.volume).await;
     }
 
     // Position is not a property change under MPRIS — clients poll it — so this

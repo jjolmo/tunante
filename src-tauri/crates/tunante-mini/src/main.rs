@@ -973,6 +973,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = p.prev();
                         }
                         mpris::Command::SetVolume(v) => p.set_volume(v as f32),
+                        mpris::Command::SetRepeat(mode) => p.set_repeat(mode),
+                        mpris::Command::SetShuffle(on) => p.set_shuffle(on),
                         // Seeking needs the decoder protocol to grow a seek
                         // command first. Advertised as unsupported, so nothing
                         // well-behaved should be asking.
@@ -1036,6 +1038,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     position_ms: p.position_ms(),
                     playing: p.is_playing(),
                     has_track: p.current().is_some(),
+                    volume: p.volume() as f64,
+                    shuffle: p.shuffle(),
+                    repeat: p.repeat(),
                 });
             },
         );
