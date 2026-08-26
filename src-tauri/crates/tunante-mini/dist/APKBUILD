@@ -1,5 +1,8 @@
-# Contributor: cidwel
-# Maintainer: cidwel
+# abuild exige RFC822 aquí y para con "is not a valid rfc822 address" si sólo
+# hay un nombre. Es el mismo correo que firma cada commit del repositorio: no
+# publica nada que no estuviera ya publicado.
+# Contributor: jjolmo <olmogil@gmail.com>
+# Maintainer: jjolmo <olmogil@gmail.com>
 pkgname=tunante-mini
 # Placeholder, like the 0.1.0 in package.json, tauri.conf.json and
 # src-tauri/Cargo.toml. None of those is the real version either: release.yml
