@@ -82,12 +82,12 @@ pub fn add_tracks_to_playlist(
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     let db = state.db.lock();
-    for track_id in track_ids {
-        let entry_id = Uuid::new_v4().to_string();
-        db.add_track_to_playlist(&entry_id, &playlist_id, &track_id)
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    // One transaction for the batch. Per track it was four committed
+    // transactions each, and this command is what a drag of a multi-selection
+    // onto a playlist lands in.
+    db.add_tracks_to_playlist(&playlist_id, &track_ids)
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -157,13 +157,13 @@ pub fn create_playlist_from_folder(
         }
 
         // 3. Add all tracks to the playlist
+        //
+        // One transaction, which matters most here: this is the path that walks
+        // a whole folder tree, so the batch is the entire scan.
         {
             let db = state_inner.db.lock();
-            for track_id in &track_ids {
-                let entry_id = Uuid::new_v4().to_string();
-                if let Err(e) = db.add_track_to_playlist(&entry_id, &playlist_id, track_id) {
-                    log::error!("Failed to add track to playlist: {}", e);
-                }
+            if let Err(e) = db.add_tracks_to_playlist(&playlist_id, &track_ids) {
+                log::error!("Failed to add tracks to playlist: {}", e);
             }
         }
 
