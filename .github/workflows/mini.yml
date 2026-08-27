@@ -19,6 +19,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# To attach the apk to the release. Read-only is the default for everything
+# else, which is what a build workflow wants.
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -230,3 +235,45 @@ jobs:
         with:
           name: tunante-mini-apk-aarch64
           path: out/*.apk
+
+      # And onto the release, so the package is installable without a GitHub
+      # account.
+      #
+      # An artifact is not a download: it needs an authenticated API call and it
+      # expires. The phone's setup script has to be able to `wget` this, which
+      # means a release asset.
+      #
+      # Attached to the tag rather than to a rolling "latest": that tag is the
+      # code this apk was built from, and `release.yml` pushes it in its first
+      # job, minutes before this one gets here. Note this workflow is path
+      # filtered, so not every release carries an apk — whoever fetches it has
+      # to ask for the newest release that *has* one, not the newest release.
+      - name: Attach it to the release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$TAG" ]; then
+            echo "no tag to attach to; nothing to do"
+            exit 0
+          fi
+
+          # release.yml creates the release after its three desktop builds, so
+          # it can still be in flight when this finishes. Wait rather than fail:
+          # the alternative is a release that is missing its phone package for
+          # no better reason than job ordering.
+          for _ in $(seq 1 30); do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            echo "waiting for release $TAG…"
+            sleep 20
+          done
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG never appeared; leaving the artifact as the only copy"
+            exit 0
+          fi
+
+          gh release upload "$TAG" out/*.apk --clobber
+          echo "attached to $TAG:"
+          gh release view "$TAG" --json assets --jq '.assets[].name'
