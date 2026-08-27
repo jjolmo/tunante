@@ -18,6 +18,23 @@ pub struct Database {
     conn: Connection,
 }
 
+/// Escape a path so it can be used as a literal prefix inside a `LIKE` pattern.
+///
+/// SQLite's `LIKE` treats `_` as "any one character" and `%` as "anything at
+/// all", and neither is special in a filename. Underscores are everywhere in a
+/// game-music library — `sky_temple-the-ark`, `boot_hwio` — so this is not a
+/// theoretical case.
+///
+/// Left unescaped it was worse than a wrong search result: removing the tracks
+/// under `/m/sky_temple` also removed those under `/m/skyXtemple`, because the
+/// `_` matched the `X`. Every query below that builds a pattern out of a path
+/// goes through here and pairs it with `ESCAPE '\'`.
+fn like_prefix(path: &str) -> String {
+    path.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 impl Database {
     pub fn new(path: &Path) -> Result<Self, DbError> {
         let conn = Connection::open(path)?;
@@ -643,20 +660,20 @@ impl Database {
 
         // Remove FTS entries for matching tracks
         self.conn.execute(
-            "DELETE FROM tracks_fts WHERE rowid IN (SELECT rowid FROM tracks WHERE path LIKE ?1 OR path = ?2)",
-            params![format!("{}%", prefix), folder_path],
+            "DELETE FROM tracks_fts WHERE rowid IN (SELECT rowid FROM tracks WHERE path LIKE ?1 ESCAPE '\\' OR path = ?2)",
+            params![format!("{}%", like_prefix(&prefix)), folder_path],
         )?;
 
         // Remove playlist_tracks references for matching tracks
         self.conn.execute(
-            "DELETE FROM playlist_tracks WHERE track_id IN (SELECT id FROM tracks WHERE path LIKE ?1 OR path = ?2)",
-            params![format!("{}%", prefix), folder_path],
+            "DELETE FROM playlist_tracks WHERE track_id IN (SELECT id FROM tracks WHERE path LIKE ?1 ESCAPE '\\' OR path = ?2)",
+            params![format!("{}%", like_prefix(&prefix)), folder_path],
         )?;
 
         // Remove the tracks themselves
         let deleted = self.conn.execute(
-            "DELETE FROM tracks WHERE path LIKE ?1 OR path = ?2",
-            params![format!("{}%", prefix), folder_path],
+            "DELETE FROM tracks WHERE path LIKE ?1 ESCAPE '\\' OR path = ?2",
+            params![format!("{}%", like_prefix(&prefix)), folder_path],
         )?;
 
         Ok(deleted)
@@ -679,9 +696,9 @@ impl Database {
 
         // Build the shared selector predicate and its parameters once.
         // ?1 = "<prefix>%", ?2 = exact folder path, ?3.. = keep prefixes ("<kp>%").
-        let mut sel = String::from("(path LIKE ?1 OR path = ?2)");
+        let mut sel = String::from("(path LIKE ?1 ESCAPE '\\' OR path = ?2)");
         let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
-            Box::new(format!("{}%", prefix)),
+            Box::new(format!("{}%", like_prefix(&prefix))),
             Box::new(folder_path.to_string()),
         ];
         for kp in keep_prefixes {
@@ -690,8 +707,11 @@ impl Database {
             } else {
                 format!("{}/", kp)
             };
-            params.push(Box::new(format!("{}%", kp_prefix)));
-            sel.push_str(&format!(" AND path NOT LIKE ?{}", params.len()));
+            // Escaped too, and this one is the dangerous direction: a keep-prefix
+            // that fails to match is a folder deleted when it should have been
+            // spared.
+            params.push(Box::new(format!("{}%", like_prefix(&kp_prefix))));
+            sel.push_str(&format!(" AND path NOT LIKE ?{} ESCAPE '\\'", params.len()));
         }
 
         let refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
@@ -872,12 +892,12 @@ impl Database {
         };
         let mut stmt = self.conn.prepare(
             "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
-             FROM tracks WHERE path LIKE ?1
+             FROM tracks WHERE path LIKE ?1 ESCAPE '\\'
              ORDER BY disc_number, track_number, title",
         )?;
 
         let tracks = stmt
-            .query_map(params![format!("{}%", prefix)], |row| {
+            .query_map(params![format!("{}%", like_prefix(&prefix))], |row| {
                 Ok(Track {
                     id: row.get(0)?,
                     path: row.get(1)?,
@@ -986,8 +1006,8 @@ impl Database {
     /// This handles both single-track files and multi-track VGM files.
     pub fn remove_tracks_by_base_path(&self, base_path: &str) -> Result<(), DbError> {
         self.conn.execute(
-            "DELETE FROM tracks WHERE path = ?1 OR path LIKE ?2",
-            params![base_path, format!("{}#%", base_path)],
+            "DELETE FROM tracks WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'",
+            params![base_path, format!("{}#%", like_prefix(base_path))],
         )?;
         Ok(())
     }
@@ -1002,9 +1022,9 @@ impl Database {
 
         let mut stmt = self
             .conn
-            .prepare("SELECT path FROM tracks WHERE path LIKE ?1")?;
+            .prepare("SELECT path FROM tracks WHERE path LIKE ?1 ESCAPE '\\'")?;
         let paths = stmt
-            .query_map(params![format!("{}%", prefix)], |row| row.get(0))?
+            .query_map(params![format!("{}%", like_prefix(&prefix))], |row| row.get(0))?
             .collect::<Result<Vec<String>, _>>()?;
         Ok(paths)
     }
@@ -1095,6 +1115,60 @@ mod tests {
                 let _ = std::fs::remove_file(&p);
             }
         }
+    }
+
+    /// SQLite's LIKE treats `_` as "any one character", and folder names are
+    /// full of underscores — this library has a `sky_temple-the-ark` in it.
+    ///
+    /// Reading one folder and getting another's tracks is a display bug. The
+    /// next test is the same flaw where it deletes.
+    #[test]
+    fn an_underscore_in_a_folder_name_is_not_a_wildcard() {
+        let tmp = TempDb::new("like-read");
+        let db = tmp.open();
+        db.insert_track(&track("1", "/m/sky_temple/a.mp3")).unwrap();
+        db.insert_track(&track("2", "/m/skyXtemple/b.mp3")).unwrap();
+
+        assert_eq!(
+            db.get_track_paths_under("/m/sky_temple").unwrap(),
+            ["/m/sky_temple/a.mp3"],
+            "`_` matched the X and dragged in a folder nobody asked about"
+        );
+        assert_eq!(db.get_tracks_by_folder("/m/sky_temple").unwrap().len(), 1);
+    }
+
+    /// The same flaw, but this one deletes.
+    #[test]
+    fn removing_a_folder_leaves_its_wildcard_lookalikes_alone() {
+        let tmp = TempDb::new("like-delete");
+        let db = tmp.open();
+        db.insert_track(&track("1", "/m/sky_temple/a.mp3")).unwrap();
+        db.insert_track(&track("2", "/m/skyXtemple/b.mp3")).unwrap();
+
+        db.remove_tracks_by_folder_path("/m/sky_temple").unwrap();
+
+        let left: Vec<String> =
+            db.get_all_tracks().unwrap().into_iter().map(|t| t.path).collect();
+        assert_eq!(
+            left,
+            ["/m/skyXtemple/b.mp3"],
+            "deleting one folder took another one with it"
+        );
+    }
+
+    /// `%` is rarer in a path than `_` but means "anything at all", so it is the
+    /// one that could empty a library from one folder.
+    #[test]
+    fn a_percent_in_a_folder_name_does_not_match_everything() {
+        let tmp = TempDb::new("like-percent");
+        let db = tmp.open();
+        db.insert_track(&track("1", "/m/100%/a.mp3")).unwrap();
+        db.insert_track(&track("2", "/m/other/b.mp3")).unwrap();
+
+        assert_eq!(
+            db.get_track_paths_under("/m/100%").unwrap(),
+            ["/m/100%/a.mp3"],
+        );
     }
 
     fn track(id: &str, path: &str) -> Track {
