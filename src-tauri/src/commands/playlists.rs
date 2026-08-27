@@ -85,9 +85,22 @@ pub fn add_tracks_to_playlist(
     // One transaction for the batch. Per track it was four committed
     // transactions each, and this command is what a drag of a multi-selection
     // onto a playlist lands in.
-    db.add_tracks_to_playlist(&playlist_id, &track_ids)
-        .map(|_| ())
-        .map_err(|e| e.to_string())
+    let added = db
+        .add_tracks_to_playlist(&playlist_id, &track_ids)
+        .map_err(|e| e.to_string())?;
+
+    // Not the same as the old per-track loop, which aborted the whole call the
+    // moment one id failed its foreign key. Skipping is the better answer — the
+    // rest of the selection still lands — but it must not be a silent one, or a
+    // library that has drifted under the UI looks like a playlist that quietly
+    // drops tracks. Duplicates are skipped too, and are the ordinary case.
+    let skipped = track_ids.len().saturating_sub(added);
+    if skipped > 0 {
+        log::info!(
+            "add_tracks_to_playlist: {added} added, {skipped} skipped (already present, or no such track)"
+        );
+    }
+    Ok(())
 }
 
 #[tauri::command]
