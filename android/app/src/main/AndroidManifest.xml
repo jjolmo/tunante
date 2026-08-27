@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      All-files access, and it has to be this one.
+
+      READ_MEDIA_AUDIO is the permission Google Play allows, and under it
+      MediaProvider decides file by file: a row must exist in MediaStore and its
+      media_type must say audio. media_type is derived from the extension via
+      Android's MIME map, and .vgz .psf .nsf .spc .gsf .2sf are not in it. They
+      are not indexed, so they cannot be opened — readdir() does not even list
+      them. A normal music player never notices; this one does not work at all.
+
+      The failure is quiet too: stat() succeeds, access(F_OK) returns 0, and
+      open() gives EACCES.
+
+      Play forbids MANAGE_EXTERNAL_STORAGE for media players, so this build can
+      never ship there. That is a decision the plan makes explicitly — see
+      docs/plan-android.md. It is a distribution policy, not a platform limit:
+      sideload and F-Droid grant it identically.
+    -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+    <!-- Playing with the screen off. Since Android 17 the foreground service is
+         not optional for background audio, and its absence fails silently. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- API 33+: without it the media notification never appears. The service
+         still runs, which makes this a confusing one to debug. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:label="Tunante"
+        android:theme="@android:style/Theme.Material.NoActionBar"><!-- extractNativeLibs lives in
+        app/build.gradle.kts as packaging.jniLibs.useLegacyPackaging: AGP warns if
+        it is set here as well, and the build file is the one that wins. -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".PlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+    </application>
+
+</manifest>
