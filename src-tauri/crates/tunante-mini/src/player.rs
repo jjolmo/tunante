@@ -202,11 +202,27 @@ impl Player {
     /// in the library means "and then this one", which is a different intent
     /// from the desktop's play-next queue.
     pub fn enqueue(&mut self, track: Track) {
+        self.enqueue_many(vec![track]);
+    }
+
+    /// Put a batch at the end of the queue, without touching what is playing.
+    ///
+    /// One copy of the context and one `update_context` for the whole batch, not
+    /// one per track. Per-track it is quadratic — every call clones the entire
+    /// vector and regenerates the shuffle permutation — and the batches here are
+    /// not small: a folder tree or a whole playlist is thousands of tracks.
+    pub fn enqueue_many(&mut self, more: Vec<Track>) {
+        if more.is_empty() {
+            return;
+        }
         let mut tracks = self.queue.tracks().to_vec();
         let current = self.queue.current().map(|t| t.id.clone());
-        tracks.push(track);
+        tracks.extend(more);
         match current {
             Some(id) => self.queue.update_context(tracks, &id),
+            // Nothing playing, so there is no current track to keep hold of. This
+            // leaves `current_index` at None: a full queue and silence, which is
+            // exactly what "add to the queue" should do on its own.
             None => self.queue.set_tracks(tracks),
         }
     }

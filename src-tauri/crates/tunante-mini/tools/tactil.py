@@ -16,11 +16,17 @@ reaches the item underneath instead of scrolling the list.
 
 Coordinates are the device's own only in portrait. Rotated right, the mapping
 is device(dx, dy) -> screen(dy, 1080 - dx).
+
+The virtual panel is the phone's by default. Set TACTIL_W/TACTIL_H to drive a
+desktop build instead, where the panel has to span the whole virtual desktop: a
+compositor maps an absolute pointing device across every output at once, so a
+two-monitor session needs their combined extent, not one screen's.
 """
 
 import fcntl, os, struct, sys, time
 
-W, H = 1080, 2400
+W = int(os.environ.get("TACTIL_W", 1080))
+H = int(os.environ.get("TACTIL_H", 2400))
 
 EV_SYN, EV_KEY, EV_ABS = 0x00, 0x01, 0x03
 SYN_REPORT = 0

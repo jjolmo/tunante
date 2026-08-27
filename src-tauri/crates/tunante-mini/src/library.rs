@@ -157,6 +157,9 @@ pub enum Mode {
     /// One row per console, from the format of the files. Open it and the games
     /// for that console are inside.
     Consoles,
+    /// The saved playlists. Not an index over the library like the two above:
+    /// the only view whose contents and order the user chose by hand.
+    Playlists,
 }
 
 impl Mode {
@@ -164,6 +167,7 @@ impl Mode {
         match i {
             1 => Mode::Albums,
             2 => Mode::Consoles,
+            3 => Mode::Playlists,
             _ => Mode::Tree,
         }
     }
@@ -342,6 +346,9 @@ impl Tree {
             }
             Mode::Albums => self.rows_albums(db),
             Mode::Consoles => self.rows_consoles(db),
+            // Las listas no salen del árbol ni de un índice sobre él: las arma
+            // `refresh_library` desde la base, en el orden que alguien eligió.
+            Mode::Playlists => Vec::new(),
         }
     }
 
@@ -584,6 +591,27 @@ fn file_label(path: &str) -> String {
     }
 }
 
+/// A playlist's entries as rows: flat, one per entry, in the order stored.
+///
+/// Deliberately not `push_tracks`. That one groups a file's subsongs under a
+/// collapsible header and sorts by real path, which is right for a folder and
+/// wrong here twice over: a playlist's order is the one thing the user chose,
+/// and a subsong they picked one by one should not be folded back into the file
+/// it came from.
+pub fn playlist_rows(tracks: &[Track]) -> Vec<Row> {
+    tracks
+        .iter()
+        .map(|t| Row {
+            label: if t.title.is_empty() { file_label(&t.path) } else { t.title.clone() },
+            detail: format_duration(t.duration_ms),
+            depth: 0,
+            is_folder: false,
+            expanded: false,
+            path: t.path.clone(),
+        })
+        .collect()
+}
+
 pub fn format_duration(ms: i64) -> String {
     if ms <= 0 {
         return String::new();
@@ -738,7 +766,7 @@ impl Tree {
 }
 
 /// Minúsculas y sin acentos, para comparar como compara la gente.
-fn plegar(s: &str) -> String {
+pub fn plegar(s: &str) -> String {
     s.chars()
         .flat_map(|c| c.to_lowercase())
         .map(|c| match c {

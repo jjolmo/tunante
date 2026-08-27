@@ -30,16 +30,51 @@ impl Database {
             "ALTER TABLE tracks ADD COLUMN rating INTEGER NOT NULL DEFAULT 0;",
         );
 
-        // Migration: add position column to playlists for manual ordering
-        let _ = conn.execute_batch(
-            "ALTER TABLE playlists ADD COLUMN position INTEGER NOT NULL DEFAULT 0;",
-        );
-        // Seed initial positions in alphabetical order for existing playlists
-        let _ = conn.execute_batch(
-            "UPDATE playlists SET position = (
-                 SELECT COUNT(*) FROM playlists p2 WHERE p2.name < playlists.name
-             ) WHERE position = 0;",
-        );
+        // Migration: add position column to playlists for manual ordering.
+        //
+        // Whether this succeeds is the one durable record of which build got here
+        // first: it fails if and only if the column is already there, which means
+        // some earlier build already added it — and, back then, already ran the
+        // alphabetical seeding below.
+        let column_is_new = conn
+            .execute_batch("ALTER TABLE playlists ADD COLUMN position INTEGER NOT NULL DEFAULT 0;")
+            .is_ok();
+
+        // Seed initial positions alphabetically, for playlists that predate the
+        // column. Exactly once, ever.
+        //
+        // Re-running it corrupts the very order it exists to establish:
+        // `create_playlist` legitimately hands position 0 to the first playlist,
+        // and a later pass re-seeds that row to its alphabetical rank, colliding
+        // with whoever already sits there. Earlier builds ran it on every open,
+        // which is why a manual reordering never survived a restart.
+        //
+        // The flag alone is not enough to stop it. A database written by one of
+        // those builds has no flag, so a first open here would run the seeding one
+        // final time and then freeze that result — the same corruption, once,
+        // made permanent. `column_is_new` is what distinguishes "never seeded"
+        // from "seeded by an older build": in the second case the right move is to
+        // set the flag and leave the stored order exactly as it is.
+        let seeded: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM settings WHERE key = 'playlist_positions_seeded')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !seeded {
+            if column_is_new {
+                let _ = conn.execute_batch(
+                    "UPDATE playlists SET position = (
+                         SELECT COUNT(*) FROM playlists p2 WHERE p2.name < playlists.name
+                     ) WHERE position = 0;",
+                );
+            }
+            let _ = conn.execute_batch(
+                "INSERT OR REPLACE INTO settings (key, value, updated_at)
+                 VALUES ('playlist_positions_seeded', '1', strftime('%s', 'now'));",
+            );
+        }
 
         Ok(Self { conn })
     }
@@ -397,6 +432,133 @@ impl Database {
             params![playlist_id],
         )?;
 
+        Ok(())
+    }
+
+    /// One playlist by id, or `None` if it is gone.
+    pub fn get_playlist(&self, id: &str) -> Result<Option<Playlist>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT p.id, p.name, p.created_at, p.updated_at,
+                    (SELECT COUNT(*) FROM playlist_tracks pt WHERE pt.playlist_id = p.id) as track_count
+             FROM playlists p WHERE p.id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            Ok(Playlist {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                created_at: row.get(2)?,
+                updated_at: row.get(3)?,
+                track_count: row.get(4)?,
+            })
+        })?;
+        Ok(rows.next().transpose()?)
+    }
+
+    /// Create a playlist and hand back the id it was given.
+    ///
+    /// The id is minted in SQL rather than by the caller so that crates without a
+    /// uuid dependency — `tunante-mini` — can create playlists too.
+    pub fn create_playlist_named(&self, name: &str) -> Result<String, DbError> {
+        let id: String = self.conn.query_row(
+            "INSERT INTO playlists (id, name, position)
+             SELECT lower(hex(randomblob(16))), ?1, COALESCE(MAX(position), -1) + 1
+             FROM playlists
+             RETURNING id",
+            params![name],
+            |row| row.get(0),
+        )?;
+        Ok(id)
+    }
+
+    /// Append tracks to a playlist, skipping ones already in it. Returns how many
+    /// were actually added.
+    ///
+    /// One transaction and four statements plus the inserts, where the per-track
+    /// `add_track_to_playlist` would be four *committed* transactions each. That
+    /// difference is the whole feature on a phone: adding a folder tree is
+    /// thousands of tracks, and thousands of WAL fsyncs on eMMC are seconds of a
+    /// frozen UI.
+    pub fn add_tracks_to_playlist(
+        &self,
+        playlist_id: &str,
+        track_ids: &[String],
+    ) -> Result<usize, DbError> {
+        if track_ids.is_empty() {
+            return Ok(0);
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+
+        let mut seen: std::collections::HashSet<String> = tx
+            .prepare("SELECT track_id FROM playlist_tracks WHERE playlist_id = ?1")?
+            .query_map(params![playlist_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<_, _>>()?;
+
+        let mut position: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_tracks WHERE playlist_id = ?1",
+            params![playlist_id],
+            |row| row.get(0),
+        )?;
+
+        let mut added = 0usize;
+        {
+            // The `WHERE EXISTS` is load-bearing, not belt-and-braces. `foreign_keys`
+            // is ON, and a foreign key violation aborts the statement — `INSERT OR
+            // IGNORE` does not swallow it. Without the guard a single stale track id
+            // rolls back the entire batch.
+            let mut stmt = tx.prepare(
+                "INSERT INTO playlist_tracks (id, playlist_id, track_id, position)
+                 SELECT lower(hex(randomblob(16))), ?1, ?2, ?3
+                 WHERE EXISTS (SELECT 1 FROM tracks WHERE id = ?2)",
+            )?;
+            for track_id in track_ids {
+                // Inserting as we go dedups within the incoming batch too, not just
+                // against what the playlist already holds.
+                if !seen.insert(track_id.clone()) {
+                    continue;
+                }
+                if stmt.execute(params![playlist_id, track_id, position])? > 0 {
+                    position += 1;
+                    added += 1;
+                }
+            }
+        }
+
+        tx.execute(
+            "UPDATE playlists SET updated_at = strftime('%s', 'now') WHERE id = ?1",
+            params![playlist_id],
+        )?;
+
+        tx.commit()?;
+        Ok(added)
+    }
+
+    /// Put a playlist's tracks in exactly this order, renumbering from zero.
+    ///
+    /// Renumbering densely is safe because `idx_playlist_tracks_playlist` is not a
+    /// unique index: a plain sequential pass cannot trip over a position another
+    /// row still holds. It also closes the gaps that `remove_track_from_playlist`
+    /// leaves behind.
+    pub fn reorder_playlist_tracks(
+        &self,
+        playlist_id: &str,
+        ordered_track_ids: &[String],
+    ) -> Result<(), DbError> {
+        let tx = self.conn.unchecked_transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "UPDATE playlist_tracks SET position = ?1
+                 WHERE playlist_id = ?2 AND track_id = ?3",
+            )?;
+            for (position, track_id) in ordered_track_ids.iter().enumerate() {
+                stmt.execute(params![position as i64, playlist_id, track_id])?;
+            }
+        }
+        tx.execute(
+            "UPDATE playlists SET updated_at = strftime('%s', 'now') WHERE id = ?1",
+            params![playlist_id],
+        )?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -887,5 +1049,263 @@ impl Database {
         }
 
         Ok(deleted)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    /// A database on disk, deleted when the guard drops.
+    ///
+    /// On disk and not `:memory:` because the thing most worth testing here is
+    /// what a *reopen* does, and an in-memory database is a fresh one every time.
+    struct TempDb(std::path::PathBuf);
+
+    impl TempDb {
+        fn new(tag: &str) -> Self {
+            static N: AtomicU32 = AtomicU32::new(0);
+            let mut p = std::env::temp_dir();
+            p.push(format!(
+                "tunante-test-{}-{}-{}.db",
+                tag,
+                std::process::id(),
+                N.fetch_add(1, Ordering::Relaxed)
+            ));
+            let _ = std::fs::remove_file(&p);
+            Self(p)
+        }
+
+        fn open(&self) -> Database {
+            Database::new(&self.0).expect("open")
+        }
+    }
+
+    impl Drop for TempDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+            for suffix in ["-wal", "-shm"] {
+                let mut p = self.0.clone();
+                p.set_file_name(format!(
+                    "{}{}",
+                    self.0.file_name().unwrap().to_string_lossy(),
+                    suffix
+                ));
+                let _ = std::fs::remove_file(&p);
+            }
+        }
+    }
+
+    fn track(id: &str, path: &str) -> Track {
+        Track {
+            id: id.into(),
+            path: path.into(),
+            title: path.into(),
+            artist: String::new(),
+            album: String::new(),
+            album_artist: String::new(),
+            track_number: None,
+            disc_number: None,
+            duration_ms: 1000,
+            sample_rate: None,
+            channels: None,
+            bitrate: None,
+            codec: "test".into(),
+            file_size: 0,
+            has_artwork: false,
+            rating: 0,
+            modified_at: 0,
+        }
+    }
+
+    fn positions(db: &Database, playlist_id: &str) -> Vec<i64> {
+        db.conn
+            .prepare("SELECT position FROM playlist_tracks WHERE playlist_id = ?1 ORDER BY position")
+            .unwrap()
+            .query_map(params![playlist_id], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    /// The regression that motivated the one-shot flag: the alphabetical seeding
+    /// used to run on every open, and would drag whichever playlist held position
+    /// 0 back to its alphabetical rank.
+    #[test]
+    fn playlist_order_survives_reopen() {
+        let tmp = TempDb::new("order");
+
+        {
+            let db = tmp.open();
+            for name in ["Zeta", "Alfa", "Beta"] {
+                db.create_playlist_named(name).unwrap();
+            }
+        }
+
+        let expected = vec!["Zeta", "Alfa", "Beta"];
+        for pass in 0..3 {
+            let db = tmp.open();
+            let got: Vec<String> = db
+                .get_playlists()
+                .unwrap()
+                .into_iter()
+                .map(|p| p.name)
+                .collect();
+            assert_eq!(got, expected, "creation order lost on reopen {pass}");
+        }
+    }
+
+    #[test]
+    fn manual_reorder_survives_reopen() {
+        let tmp = TempDb::new("reorder-pl");
+
+        // Names chosen so the manual order is the exact reverse of the alphabetical
+        // one. Pick them carelessly and the broken re-seed happens to land on the
+        // right answer anyway, and the test passes with the bug still in place.
+        let ids: Vec<String> = {
+            let db = tmp.open();
+            ["Alfa", "Beta", "Gamma"]
+                .iter()
+                .map(|n| db.create_playlist_named(n).unwrap())
+                .collect()
+        };
+
+        {
+            // Reversing parks "Gamma" on position 0 — exactly the row the old
+            // seeding pass would have dragged back to its alphabetical rank.
+            let db = tmp.open();
+            db.reorder_playlists(&[ids[2].clone(), ids[1].clone(), ids[0].clone()])
+                .unwrap();
+        }
+
+        let db = tmp.open();
+        let got: Vec<String> = db
+            .get_playlists()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(got, vec!["Gamma", "Beta", "Alfa"]);
+    }
+
+    /// Opening a database written by an older build must not reorder it.
+    ///
+    /// The one path that actually runs the alphabetical seeding, and the one the
+    /// other two tests cannot reach: `TempDb` always starts from a deleted file,
+    /// so its first open writes the flag while `playlists` is still empty and
+    /// every later open takes the already-seeded branch. Only an upgrade arrives
+    /// with playlists present and no flag.
+    #[test]
+    fn upgrading_an_older_database_leaves_the_order_alone() {
+        let tmp = TempDb::new("upgrade");
+
+        let ids: Vec<String> = {
+            let db = tmp.open();
+            ["Alfa", "Beta", "Gamma"]
+                .iter()
+                .map(|n| db.create_playlist_named(n).unwrap())
+                .collect()
+        };
+
+        {
+            let db = tmp.open();
+            db.reorder_playlists(&[ids[2].clone(), ids[1].clone(), ids[0].clone()])
+                .unwrap();
+            // Back-date the database to what an older build would have left: the
+            // `position` column present, and nothing recording that it was seeded.
+            db.conn
+                .execute(
+                    "DELETE FROM settings WHERE key = 'playlist_positions_seeded'",
+                    [],
+                )
+                .unwrap();
+        }
+
+        let db = tmp.open();
+        let got: Vec<String> = db
+            .get_playlists()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(got, vec!["Gamma", "Beta", "Alfa"]);
+    }
+
+    #[test]
+    fn bulk_add_dedups_and_packs_positions() {
+        let tmp = TempDb::new("bulk");
+        let db = tmp.open();
+
+        let ids: Vec<String> = (0..500)
+            .map(|i| db.insert_track(&track(&format!("t{i}"), &format!("/m/{i}.flac"))).unwrap())
+            .collect();
+
+        let pl = db.create_playlist_named("Lote").unwrap();
+
+        assert_eq!(db.add_tracks_to_playlist(&pl, &ids).unwrap(), 500);
+        // Second pass adds nothing: every track is already in.
+        assert_eq!(db.add_tracks_to_playlist(&pl, &ids).unwrap(), 0);
+        // Duplicates inside one batch collapse too.
+        let mut doubled = ids.clone();
+        doubled.extend(ids.clone());
+        assert_eq!(db.add_tracks_to_playlist(&pl, &doubled).unwrap(), 0);
+
+        assert_eq!(db.get_playlist_tracks(&pl).unwrap().len(), 500);
+        assert_eq!(positions(&db, &pl), (0..500).collect::<Vec<i64>>());
+        assert_eq!(db.get_playlist(&pl).unwrap().unwrap().track_count, 500);
+    }
+
+    /// A track id with no row in `tracks` must be skipped, not abort the batch.
+    #[test]
+    fn bulk_add_skips_unknown_track_ids() {
+        let tmp = TempDb::new("stale");
+        let db = tmp.open();
+
+        let real = db.insert_track(&track("real", "/m/real.flac")).unwrap();
+        let pl = db.create_playlist_named("Mixta").unwrap();
+
+        let added = db
+            .add_tracks_to_playlist(&pl, &["fantasma".to_string(), real.clone()])
+            .unwrap();
+
+        assert_eq!(added, 1);
+        let tracks = db.get_playlist_tracks(&pl).unwrap();
+        assert_eq!(tracks.len(), 1);
+        assert_eq!(tracks[0].id, real);
+    }
+
+    #[test]
+    fn reorder_tracks_round_trips_and_closes_gaps() {
+        let tmp = TempDb::new("reorder-tr");
+        let db = tmp.open();
+
+        let ids: Vec<String> = (0..5)
+            .map(|i| db.insert_track(&track(&format!("t{i}"), &format!("/m/{i}.flac"))).unwrap())
+            .collect();
+        let pl = db.create_playlist_named("Orden").unwrap();
+        db.add_tracks_to_playlist(&pl, &ids).unwrap();
+
+        // Removing from the middle leaves a hole at position 2.
+        db.remove_track_from_playlist(&pl, &ids[2]).unwrap();
+        assert_eq!(positions(&db, &pl), vec![0, 1, 3, 4]);
+
+        // Reversing renumbers densely and the order reads back as written.
+        let reversed: Vec<String> = vec![
+            ids[4].clone(),
+            ids[3].clone(),
+            ids[1].clone(),
+            ids[0].clone(),
+        ];
+        db.reorder_playlist_tracks(&pl, &reversed).unwrap();
+
+        assert_eq!(positions(&db, &pl), vec![0, 1, 2, 3]);
+        let got: Vec<String> = db
+            .get_playlist_tracks(&pl)
+            .unwrap()
+            .into_iter()
+            .map(|t| t.id)
+            .collect();
+        assert_eq!(got, reversed);
     }
 }

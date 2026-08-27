@@ -19,12 +19,14 @@
 //!
 //! # Instruments
 //!
-//! Two more flags exist, and they are not features — they are how the app gets
+//! A few more flags exist, and they are not features — they are how the app gets
 //! measured and driven from a shell when nobody can put a finger on the glass:
 //!
 //! ```text
 //! tunante-mini --rows N            fake rows, to measure what the list costs
 //! tunante-mini --focus-search      start on Library with the search focused
+//! tunante-mini --mode N            start on Library in view N (0..3)
+//! tunante-mini --open-playlist X   start inside the playlist named X
 //! ```
 //!
 //! `--rows` fills the library tab with generated entries at a size no real
@@ -35,6 +37,11 @@
 //! `--focus-search` exists because a compositor only raises the on-screen
 //! keyboard when the last input came from touch, so focusing the field from a
 //! shell proves the request is sent but not that the keyboard appears.
+//!
+//! `--mode` and `--open-playlist` reach a view that otherwise takes two taps.
+//! A desktop session will happily move the pointer over this window and then
+//! drop the button event on the floor, so "does this screen draw correctly?" is
+//! not answerable by clicking from a script — only by starting there.
 
 mod boost;
 mod decoder;
@@ -72,6 +79,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fake_rows = arg_value("--rows").and_then(|s| s.parse::<usize>().ok());
     let scan_target = arg_value("--scan").map(PathBuf::from);
     let focus_search = args.iter().any(|a| a == "--focus-search");
+    let start_mode = arg_value("--mode").and_then(|s| s.parse::<i32>().ok());
+    let open_playlist = arg_value("--open-playlist");
 
     // A bare path means "play this". The .desktop file declares MIME types, so
     // a file manager or another app can hand us a track directly, and that has
@@ -170,6 +179,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let grid_model = Rc::new(VecModel::from(Vec::<GridLine>::new()));
     let art_cache: Rc<RefCell<Vec<(String, slint::Image)>>> = Rc::new(RefCell::new(Vec::new()));
     ui.set_library_grid_lines(ModelRc::from(grid_model.clone()));
+
+    // Two playlist models, not one. The picker that "add to a playlist" opens has
+    // to show every playlist even while the search box is narrowing the Listas
+    // view, and filtering a single shared model would hide playlists from it
+    // without ever saying why.
+    let playlists_model = Rc::new(VecModel::from(Vec::<PlaylistRow>::new()));
+    let all_playlists_model = Rc::new(VecModel::from(Vec::<PlaylistRow>::new()));
+    ui.set_playlists(ModelRc::from(playlists_model.clone()));
+    ui.set_all_playlists(ModelRc::from(all_playlists_model.clone()));
+
+    let views = Views {
+        rows: rows_model.clone(),
+        grid: grid_model.clone(),
+        playlists: playlists_model.clone(),
+        all_playlists: all_playlists_model.clone(),
+        art: art_cache.clone(),
+    };
+
+    // El primer dibujado del árbol no pasa por `refresh_library`, así que el
+    // selector de listas estaría vacío hasta el primer toque.
+    refresh_playlists(&db, &views, "");
+
+    // Instruments: land on a view directly instead of tapping to reach it.
+    if start_mode.is_some() || open_playlist.is_some() {
+        let mode = start_mode.unwrap_or(3);
+        {
+            let mut t = tree.borrow_mut();
+            t.mode = library::Mode::from_index(mode);
+            t.nav.clear();
+            if let Some(name) = &open_playlist {
+                if let Some(p) = db
+                    .get_playlists()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .find(|p| p.name == *name)
+                {
+                    t.mode = library::Mode::Playlists;
+                    t.nav.push(p.id);
+                } else {
+                    eprintln!("no hay ninguna lista llamada «{name}»");
+                }
+            }
+        }
+        ui.set_library_mode(if open_playlist.is_some() { 3 } else { mode });
+        ui.set_tab(2);
+        refresh_library(&ui, &tree, &db, &views);
+    }
 
     // Nothing monitored and nothing generated means a first run.
     if first_run && fake_rows.is_none() {
@@ -365,14 +421,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Library: open a folder, or play a track -----------------------------
     {
-        let (tree, db, rows_model, player, queue_model, grid_model, art_cache) = (
+        let (tree, db, rows_model, player, queue_model, views) = (
             tree.clone(),
             db.clone(),
             rows_model.clone(),
             player.clone(),
             queue_model.clone(),
-            grid_model.clone(),
-            art_cache.clone(),
+            views.clone(),
         );
         let weak = ui.as_weak();
 
@@ -383,17 +438,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if row.is_folder {
                 tree.borrow_mut().toggle(&path);
-                refresh_library(&ui, &tree, &db, &rows_model, &grid_model, &art_cache);
+                refresh_library(&ui, &tree, &db, &views);
                 return;
             }
 
-            // Playing a track makes its folder the queue, which is what anyone
-            // expects: tapping one song from an album queues the album.
-            let folder = std::path::Path::new(&path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
+            // Inside a playlist the context is the playlist, not the folder the
+            // file happens to sit in: a playlist exists precisely to be an order
+            // the disk does not have.
+            let open_playlist = {
+                let t = tree.borrow();
+                if t.mode == library::Mode::Playlists {
+                    t.nav.first().cloned()
+                } else {
+                    None
+                }
+            };
+
+            let tracks = match &open_playlist {
+                Some(id) => db.get_playlist_tracks(id).unwrap_or_default(),
+                // Playing a track makes its folder the queue, which is what
+                // anyone expects: tapping one song from an album queues the
+                // album.
+                None => {
+                    let folder = std::path::Path::new(&path)
+                        .parent()
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default();
+                    db.get_tracks_by_folder(&folder).unwrap_or_default()
+                }
+            };
+            // By path and not by the row index: with the search box narrowing the
+            // rows, index `i` addresses the filtered list while the context here
+            // is the whole playlist.
             let start = tracks.iter().position(|t| t.path == path).unwrap_or(0);
 
             if let Some(p) = player.borrow_mut().as_mut() {
@@ -409,13 +485,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     {
-        let (db_v, tree_v, rows_v, grid_v, art_v) = (
-            db.clone(),
-            tree.clone(),
-            rows_model.clone(),
-            grid_model.clone(),
-            art_cache.clone(),
-        );
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
         let weak_v = ui.as_weak();
         ui.on_library_mode_changed(move |i| {
             let Some(ui) = weak_v.upgrade() else { return };
@@ -424,53 +494,196 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // three levels into where you were last time is disorienting, and
             // the crumb would be the only clue.
             tree_v.borrow_mut().nav.clear();
-            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
         });
     }
     {
-        let (db_v, tree_v, rows_v, grid_v, art_v) = (
-            db.clone(),
-            tree.clone(),
-            rows_model.clone(),
-            grid_model.clone(),
-            art_cache.clone(),
-        );
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
         let weak_v = ui.as_weak();
         ui.on_library_columns_changed(move |_| {
             let Some(ui) = weak_v.upgrade() else { return };
             // Turning the phone changes how many cards fit, and the lines are
             // cut in Rust, so they have to be cut again.
-            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
         });
     }
     {
-        let (db_v, tree_v, rows_v, grid_v, art_v) = (
-            db.clone(),
-            tree.clone(),
-            rows_model.clone(),
-            grid_model.clone(),
-            art_cache.clone(),
-        );
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
         let weak_v = ui.as_weak();
         ui.on_library_back(move || {
             let Some(ui) = weak_v.upgrade() else { return };
             tree_v.borrow_mut().nav.pop();
-            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
         });
     }
     {
-        let (db_v, tree_v, rows_v, grid_v, art_v) = (
-            db.clone(),
-            tree.clone(),
-            rows_model.clone(),
-            grid_model.clone(),
-            art_cache.clone(),
-        );
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
         let weak_v = ui.as_weak();
         ui.on_library_grid_tapped(move |path| {
             let Some(ui) = weak_v.upgrade() else { return };
             tree_v.borrow_mut().nav.push(path.to_string());
-            refresh_library(&ui, &tree_v, &db_v, &rows_v, &grid_v, &art_v);
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
+        });
+    }
+
+    // --- Playlists -----------------------------------------------------------
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let weak_v = ui.as_weak();
+        ui.on_playlist_open_requested(move |id| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            {
+                let mut t = tree_v.borrow_mut();
+                // Same `nav` the grid views use, so the crumb strip and
+                // `on_library_back` work here without a line of new navigation.
+                t.nav.push(id.to_string());
+                // Entering a playlist with the search box still narrowing the
+                // list of playlists would hide most of what is inside it.
+                t.filter.clear();
+            }
+            ui.set_search(SharedString::from(""));
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
+        });
+    }
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let weak_v = ui.as_weak();
+        ui.on_playlist_create(move |name| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            let name = name.trim().to_string();
+            // Un nombre en blanco deja la lista sin migas, y la tira de volver
+            // sólo existe si hay migas: entrar en ella sería quedarse dentro.
+            // La interfaz ya lo impide; esto es la red de abajo.
+            if name.is_empty() {
+                return;
+            }
+            if let Err(e) = db_v.create_playlist_named(&name) {
+                eprintln!("no se pudo crear la lista: {e}");
+                return;
+            }
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
+        });
+    }
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let roots_v = roots.clone();
+        let weak_v = ui.as_weak();
+        ui.on_add_path_to_playlist(move |path, deep, playlist_id| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            add_to_playlist(
+                &ui, &db_v, &tree_v, &views_v, &roots_v, &path, deep, &playlist_id,
+            );
+        });
+    }
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let roots_v = roots.clone();
+        let weak_v = ui.as_weak();
+        ui.on_add_path_to_new_playlist(move |path, deep, name| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return;
+            }
+            match db_v.create_playlist_named(&name) {
+                Ok(id) => add_to_playlist(
+                    &ui, &db_v, &tree_v, &views_v, &roots_v, &path, deep, &id,
+                ),
+                Err(e) => eprintln!("no se pudo crear la lista: {e}"),
+            }
+        });
+    }
+    {
+        let (db_v, tree_v, player_v, queue_v) =
+            (db.clone(), tree.clone(), player.clone(), queue_model.clone());
+        ui.on_playlist_enqueue_all(move || {
+            let Some(id) = tree_v.borrow().nav.first().cloned() else { return };
+            enqueue_playlist(&db_v, &player_v, &queue_v, &id);
+        });
+    }
+    {
+        let (db_v, player_v, queue_v) = (db.clone(), player.clone(), queue_model.clone());
+        ui.on_playlist_enqueue_id(move |id| {
+            enqueue_playlist(&db_v, &player_v, &queue_v, &id);
+        });
+    }
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let weak_v = ui.as_weak();
+        ui.on_playlist_track_removed(move |path| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            let Some(pid) = tree_v.borrow().nav.first().cloned() else { return };
+            let Ok(Some(track)) = db_v.get_track_by_path(&path) else { return };
+            if let Err(e) = db_v.remove_track_from_playlist(&pid, &track.id) {
+                eprintln!("no se pudo quitar de la lista: {e}");
+                return;
+            }
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
+        });
+    }
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let weak_v = ui.as_weak();
+        ui.on_playlist_reordered(move |from, to| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            let Some(pid) = tree_v.borrow().nav.first().cloned() else { return };
+            let mut tracks = db_v.get_playlist_tracks(&pid).unwrap_or_default();
+
+            let from = from.max(0) as usize;
+            if from >= tracks.len() {
+                return;
+            }
+            // El destino se recorta en vez de descartarse: arrastrar más allá del
+            // final quiere decir "al final", no "no me hagas caso".
+            let to = to.clamp(0, tracks.len() as i32 - 1) as usize;
+            if from == to {
+                return;
+            }
+
+            let moved = tracks.remove(from);
+            tracks.insert(to, moved);
+            let ids: Vec<String> = tracks.into_iter().map(|t| t.id).collect();
+            if let Err(e) = db_v.reorder_playlist_tracks(&pid, &ids) {
+                eprintln!("no se pudo reordenar la lista: {e}");
+                return;
+            }
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
+        });
+    }
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let weak_v = ui.as_weak();
+        ui.on_playlist_rename(move |id, name| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            let name = name.trim().to_string();
+            if name.is_empty() {
+                return;
+            }
+            if let Err(e) = db_v.rename_playlist(&id, &name) {
+                eprintln!("no se pudo renombrar la lista: {e}");
+                return;
+            }
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
+        });
+    }
+    {
+        let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let weak_v = ui.as_weak();
+        ui.on_playlist_delete(move |id| {
+            let Some(ui) = weak_v.upgrade() else { return };
+            if let Err(e) = db_v.delete_playlist(&id) {
+                eprintln!("no se pudo borrar la lista: {e}");
+                return;
+            }
+            // Si estabas dentro de la que acaba de irse, salir. Quedarse sería
+            // una vista sin nada y con unas migas que nombran a un fantasma.
+            {
+                let mut t = tree_v.borrow_mut();
+                if t.nav.first().is_some_and(|open| *open == id.as_str()) {
+                    t.nav.clear();
+                }
+            }
+            refresh_library(&ui, &tree_v, &db_v, &views_v);
         });
     }
 
@@ -482,82 +695,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak_folder = ui.as_weak();
         ui.on_library_enqueue_path(move |path, deep| {
             let Some(ui) = weak_folder.upgrade() else { return };
-            let path = path.to_string();
             let _ = &rows_folder;
-
-            // The console view builds rows whose `path` is not a path at all:
-            // `consola:NES` for a console, and `NES\u{1}/ruta/al/juego` for one
-            // of its games — the console has to be in the key because a folder
-            // holding both .spc rips and mp3s appears under two of them. Those
-            // are resolved here rather than in the view, so the enqueue side is
-            // the only place that has to know the encoding.
-            if let Some(consola) = path.strip_prefix("consola:") {
-                enqueue_all(
-                    &ui,
-                    &player_folder,
-                    &queue_folder,
-                    tracks_of_console(&db_folder, &roots_folder, consola),
-                );
-                return;
-            }
-            if let Some((consola, dir)) = path.split_once('\u{1}') {
-                let tracks = db_folder
-                    .get_tracks_by_folder(dir)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|t| library::console_of(&t.path) == consola)
-                    .collect();
-                enqueue_all(&ui, &player_folder, &queue_folder, tracks);
-                return;
-            }
-
-            // `is_folder` on a row does not mean "directory". A file with
-            // several subsongs — an .nsf, a .gsflib — is shown as a folder too,
-            // because to whoever is listening that is what it is. Its `path` is
-            // the file. So ask the filesystem rather than trusting the flag.
-            let on_disk = std::path::Path::new(&path);
-            let mut tracks = if on_disk.is_dir() {
-                // Already the recursive answer: the query matches
-                // `path LIKE 'folder/%'`.
-                let mut all = db_folder.get_tracks_by_folder(&path).unwrap_or_default();
-                if !deep {
-                    let prefix = format!("{}/", path.trim_end_matches('/'));
-                    all.retain(|t| {
-                        // On the real file: a subsong's `#n` suffix does not
-                        // change which directory it lives in.
-                        let real = tunante_core::vgm_path::parse_vgm_path(&t.path).0;
-                        real.strip_prefix(prefix.as_str())
-                            .is_some_and(|rest| !rest.contains('/'))
-                    });
-                }
-                all
-            } else {
-                // A file, with or without subsongs. Take the whole thing:
-                // holding an .nsf and getting one of its forty tunes would be a
-                // surprise. Its siblings in the directory are filtered out by
-                // comparing real paths.
-                let parent = on_disk
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let mut mine: Vec<_> = db_folder
-                    .get_tracks_by_folder(&parent)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|t| tunante_core::vgm_path::parse_vgm_path(&t.path).0 == path)
-                    .collect();
-                mine.sort_by_key(|t| tunante_core::vgm_path::parse_vgm_path(&t.path).1.unwrap_or(0));
-                mine
-            };
-
+            let tracks = tracks_for_path(&db_folder, &roots_folder, &path, deep);
             if tracks.is_empty() {
-                if let Ok(Some(t)) = db_folder.get_track_by_path(&path) {
-                    tracks.push(t);
-                } else {
-                    return;
-                }
+                return;
             }
-
             enqueue_all(&ui, &player_folder, &queue_folder, tracks);
         });
     }
@@ -843,13 +985,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Search --------------------------------------------------------------
     {
-        let (db, rows_model, tree, grid_model, art_cache) = (
-            db.clone(),
-            rows_model.clone(),
-            tree.clone(),
-            grid_model.clone(),
-            art_cache.clone(),
-        );
+        let (db, rows_model, tree, views) =
+            (db.clone(), rows_model.clone(), tree.clone(), views.clone());
         let weak = ui.as_weak();
         ui.on_search_changed(move |text| {
             let Some(ui) = weak.upgrade() else { return };
@@ -868,14 +1005,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // that console.
             if tree.borrow().mode != library::Mode::Tree {
                 tree.borrow_mut().filter = q;
-                refresh_library(&ui, &tree, &db, &rows_model, &grid_model, &art_cache);
+                refresh_library(&ui, &tree, &db, &views);
                 return;
             }
 
             // Empty query returns to the tree rather than listing everything:
             // the whole point of not materialising the library is not to do that.
             if q.is_empty() {
-                refresh_library(&ui, &tree, &db, &rows_model, &grid_model, &art_cache);
+                refresh_library(&ui, &tree, &db, &views);
                 return;
             }
 
@@ -1179,22 +1316,118 @@ fn folder_art(
     img
 }
 
+/// Everything `refresh_library` writes into.
+///
+/// A bundle rather than five loose parameters: they always travel together, and
+/// threading them one by one through every closure that can change the screen was
+/// already five clones per closure before the playlists arrived.
+#[derive(Clone)]
+struct Views {
+    rows: Rc<VecModel<LibraryRow>>,
+    grid: Rc<VecModel<GridLine>>,
+    playlists: Rc<VecModel<PlaylistRow>>,
+    all_playlists: Rc<VecModel<PlaylistRow>>,
+    art: Rc<RefCell<Vec<(String, slint::Image)>>>,
+}
+
+/// "1 pista" y no "1 pistas", igual que en la biblioteca.
+fn playlist_subtitle(n: i64) -> String {
+    if n == 1 { "1 pista".to_string() } else { format!("{n} pistas") }
+}
+
+/// Refill both playlist models from the database.
+///
+/// `all` is never filtered; `playlists` honours the search box.
+fn refresh_playlists(db: &Database, views: &Views, filter: &str) {
+    let all = db.get_playlists().unwrap_or_default();
+    let row = |p: &tunante_core::db::models::Playlist| PlaylistRow {
+        id: SharedString::from(p.id.as_str()),
+        name: SharedString::from(p.name.as_str()),
+        subtitle: SharedString::from(playlist_subtitle(p.track_count)),
+    };
+
+    views.all_playlists.set_vec(all.iter().map(row).collect::<Vec<_>>());
+
+    let needle = library::plegar(filter);
+    let visible: Vec<PlaylistRow> = all
+        .iter()
+        .filter(|p| needle.is_empty() || library::plegar(&p.name).contains(&needle))
+        .map(row)
+        .collect();
+    views.playlists.set_vec(visible);
+}
+
 /// Rebuild whatever the library tab should be showing right now.
 ///
-/// One place decides between the three views and, inside the two grid ones,
-/// between a grid of cards and a list of tracks. Every path that can change what
-/// is on screen — switching view, tapping into a console, coming back, turning
-/// the phone — goes through here, so none of them can disagree with the others.
+/// One place decides between the four views and, inside the two grid ones and
+/// Listas, between a grid of cards, a list of playlists and a list of tracks.
+/// Every path that can change what is on screen — switching view, tapping into a
+/// console, opening a playlist, coming back, turning the phone — goes through
+/// here, so none of them can disagree with the others.
 fn refresh_library(
     ui: &AppWindow,
     tree: &Rc<RefCell<library::Tree>>,
     db: &Rc<Database>,
-    rows_model: &Rc<VecModel<LibraryRow>>,
-    grid_model: &Rc<VecModel<GridLine>>,
-    art_cache: &Rc<RefCell<Vec<(String, slint::Image)>>>,
+    views: &Views,
 ) {
+    let (rows_model, grid_model, art_cache) = (&views.rows, &views.grid, &views.art);
     let t = tree.borrow();
     let mode = t.mode;
+
+    // Siempre, no sólo en el modo Listas: el selector de «añadir a una lista» se
+    // abre desde el árbol y desde las rejillas, y si el modelo sólo se llenase
+    // al visitar Listas saldría vacío para quien no haya pasado por allí. Es una
+    // consulta sobre una tabla de un puñado de filas, contra un toque que ya
+    // hace consultas de carpeta.
+    refresh_playlists(db, views, &t.filter);
+
+    if mode == library::Mode::Playlists {
+        ui.set_library_grid(false);
+        grid_model.set_vec(Vec::new());
+
+        match t.nav.first() {
+            // El listado de listas.
+            None => {
+                ui.set_showing_playlists(true);
+                ui.set_playlist_open(false);
+                ui.set_library_crumb(SharedString::from(""));
+                ui.set_playlist_count(0);
+                rows_model.set_vec(Vec::new());
+                ui.set_library_total(views.playlists.row_count() as i32);
+            }
+            // Dentro de una lista.
+            Some(id) => {
+                ui.set_showing_playlists(false);
+                ui.set_playlist_open(true);
+                // El nombre en las migas es lo que convierte la tira de volver
+                // que ya existe en el botón "atrás" de esta vista.
+                let name = db
+                    .get_playlist(id)
+                    .ok()
+                    .flatten()
+                    .map(|p| p.name)
+                    .unwrap_or_default();
+                ui.set_library_crumb(SharedString::from(name.as_str()));
+
+                let tracks = db.get_playlist_tracks(id).unwrap_or_default();
+                ui.set_playlist_count(tracks.len() as i32);
+
+                let mut rows = library::playlist_rows(&tracks);
+                let needle = library::plegar(&t.filter);
+                if !needle.is_empty() {
+                    rows.retain(|r| library::plegar(&r.label).contains(&needle));
+                }
+                rows_model.set_vec(to_ui_rows(&rows));
+                ui.set_library_total(rows.len() as i32);
+            }
+        }
+        return;
+    }
+
+    // Fuera del modo Listas ninguna de las dos puede quedar encendida: es lo que
+    // mantiene excluyentes las ramas de lista del .slint.
+    ui.set_showing_playlists(false);
+    ui.set_playlist_open(false);
 
     ui.set_library_crumb(SharedString::from(t.crumb()));
 
@@ -1257,6 +1490,131 @@ fn tracks_of_console(
         .collect()
 }
 
+/// Put a whole playlist at the end of the queue, without starting anything.
+///
+/// Deliberately not `enqueue_all`: that one starts playing when the player is
+/// idle, and neither of the two buttons that land here promises more than to add.
+fn enqueue_playlist(
+    db: &Database,
+    player: &Rc<RefCell<Option<player::Player>>>,
+    queue_model: &Rc<VecModel<QueueRow>>,
+    playlist_id: &str,
+) {
+    let tracks = db.get_playlist_tracks(playlist_id).unwrap_or_default();
+    if tracks.is_empty() {
+        return;
+    }
+    if let Some(p) = player.borrow_mut().as_mut() {
+        p.enqueue_many(tracks);
+        queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+    }
+}
+
+/// Resolve a row's path and put whatever it holds into a playlist.
+///
+/// Shared by "add to that one" and "add to a new one", which differ only in
+/// where the playlist id comes from.
+#[allow(clippy::too_many_arguments)]
+fn add_to_playlist(
+    ui: &AppWindow,
+    db: &Rc<Database>,
+    tree: &Rc<RefCell<library::Tree>>,
+    views: &Views,
+    roots: &[PathBuf],
+    path: &str,
+    deep: bool,
+    playlist_id: &str,
+) {
+    let tracks = tracks_for_path(db, roots, path, deep);
+    if tracks.is_empty() {
+        return;
+    }
+    let ids: Vec<String> = tracks.into_iter().map(|t| t.id).collect();
+    if let Err(e) = db.add_tracks_to_playlist(playlist_id, &ids) {
+        eprintln!("no se pudo añadir a la lista: {e}");
+        return;
+    }
+    // Los recuentos del listado y del selector han cambiado, y si resulta que
+    // estamos dentro de esa misma lista, también sus filas.
+    refresh_library(ui, tree, db, views);
+}
+
+/// What a row's `path` actually stands for, as tracks.
+///
+/// Shared by "add to the queue" and "add to a playlist", which have to agree on
+/// this to the letter: everything below is an encoding the views invented, and
+/// two copies of it would drift the first time one of them was fixed.
+///
+/// `deep` only means anything for a real directory. Empty means nothing matched.
+fn tracks_for_path(
+    db: &Database,
+    roots: &[PathBuf],
+    path: &str,
+    deep: bool,
+) -> Vec<tunante_core::db::models::Track> {
+    // The console view builds rows whose `path` is not a path at all:
+    // `consola:NES` for a console, and `NES\u{1}/ruta/al/juego` for one of its
+    // games — the console has to be in the key because a folder holding both
+    // .spc rips and mp3s appears under two of them. Those are resolved here
+    // rather than in the view, so this is the only place that knows the encoding.
+    if let Some(consola) = path.strip_prefix("consola:") {
+        return tracks_of_console(db, roots, consola);
+    }
+    if let Some((consola, dir)) = path.split_once('\u{1}') {
+        return db
+            .get_tracks_by_folder(dir)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| library::console_of(&t.path) == consola)
+            .collect();
+    }
+
+    // `is_folder` on a row does not mean "directory". A file with several
+    // subsongs — an .nsf, a .gsflib — is shown as a folder too, because to
+    // whoever is listening that is what it is. Its `path` is the file. So ask
+    // the filesystem rather than trusting the flag.
+    let on_disk = std::path::Path::new(path);
+    let mut tracks = if on_disk.is_dir() {
+        // Already the recursive answer: the query matches `path LIKE 'folder/%'`.
+        let mut all = db.get_tracks_by_folder(path).unwrap_or_default();
+        if !deep {
+            let prefix = format!("{}/", path.trim_end_matches('/'));
+            all.retain(|t| {
+                // On the real file: a subsong's `#n` suffix does not change
+                // which directory it lives in.
+                let real = tunante_core::vgm_path::parse_vgm_path(&t.path).0;
+                real.strip_prefix(prefix.as_str())
+                    .is_some_and(|rest| !rest.contains('/'))
+            });
+        }
+        all
+    } else {
+        // A file, with or without subsongs. Take the whole thing: holding an
+        // .nsf and getting one of its forty tunes would be a surprise. Its
+        // siblings in the directory are filtered out by comparing real paths.
+        let parent = on_disk
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let mut mine: Vec<_> = db
+            .get_tracks_by_folder(&parent)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|t| tunante_core::vgm_path::parse_vgm_path(&t.path).0 == path)
+            .collect();
+        mine.sort_by_key(|t| tunante_core::vgm_path::parse_vgm_path(&t.path).1.unwrap_or(0));
+        mine
+    };
+
+    if tracks.is_empty() {
+        if let Ok(Some(t)) = db.get_track_by_path(path) {
+            tracks.push(t);
+        }
+    }
+
+    tracks
+}
+
 /// Put a batch at the end of the queue, and start it if nothing was playing.
 ///
 /// Shared by every path that adds more than one track — a folder, a console,
@@ -1271,9 +1629,7 @@ fn enqueue_all(
         return;
     }
     if let Some(p) = player.borrow_mut().as_mut() {
-        for t in tracks {
-            p.enqueue(t);
-        }
+        p.enqueue_many(tracks);
         // Nothing was playing, so the first of them becomes the track.
         if p.current().is_none() {
             let _ = p.next();
