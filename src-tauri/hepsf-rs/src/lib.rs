@@ -363,7 +363,7 @@ pub mod psf2 {
 
     extern "C" {
         // Renamed via -Dpsf_load=hepsf_psf_load in build.rs to avoid
-        // symbol collision with lazygsf-rs and vio2sf-rs psflib copies
+        // symbol collision with viogsf-rs and vio2sf-rs psflib copies
         #[link_name = "hepsf_psf_load"]
         fn psf_load(
             uri: *const c_char,

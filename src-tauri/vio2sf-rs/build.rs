@@ -31,7 +31,7 @@ fn main() {
         // Symbol namespacing to avoid collisions with other libraries
         .define("BARRAY_DECORATE", "TWOSF")
         .define("RESAMPLER_DECORATE", "TWOSF")
-        // Rename psf_load to avoid symbol collision with lazygsf-rs and hepsf-rs
+        // Rename psf_load to avoid symbol collision with viogsf-rs and hepsf-rs
         .define("psf_load", "twosf_psf_load")
         .define("strrpbrk", "twosf_strrpbrk");
 
@@ -94,20 +94,30 @@ fn main() {
     cpp_build.file(desmume_dir.join("SPU.cpp"));
     cpp_build.compile("vio2sf_cpp");
 
-    // Link C++ standard library (needed for SPU.cpp)
-    #[cfg(target_os = "linux")]
-    println!("cargo:rustc-link-lib=stdc++");
-    #[cfg(target_os = "macos")]
-    println!("cargo:rustc-link-lib=c++");
+    // Link C++ standard library (needed for SPU.cpp).
+    //
+    // These used to be `#[cfg(target_os = ...)]`, which inside a build script
+    // is the HOST, not the target. Android is checked first because its triple
+    // contains "linux", and it needs libc++: bionic's libstdc++.so is a stub
+    // with only operator new/delete.
+    if target.contains("android") {
+        println!("cargo:rustc-link-lib=c++_shared");
+    } else if target.contains("linux") {
+        println!("cargo:rustc-link-lib=stdc++");
+    } else if is_macos {
+        println!("cargo:rustc-link-lib=c++");
+    }
 
     // On macOS, use system zlib instead of vendored (avoids Xcode 16+ SDK conflicts)
     if is_macos {
         println!("cargo:rustc-link-lib=z");
     }
 
-    // Link math library on Unix
-    #[cfg(unix)]
-    println!("cargo:rustc-link-lib=m");
+    // Link math library on Unix. Bionic folds libm into libc, but the NDK
+    // ships a stub libm so the flag stays harmless there.
+    if !target.contains("windows") {
+        println!("cargo:rustc-link-lib=m");
+    }
 
     println!("cargo:rerun-if-changed=vio2sf/");
     println!("cargo:rerun-if-changed=psflib/");

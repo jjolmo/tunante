@@ -145,7 +145,7 @@ fn main() {
         .define("EMU_LITTLE_ENDIAN", None)
         // Use stdint.h types
         .define("HAVE_STDINT_H", None)
-        // Rename psf_load to avoid symbol collision with lazygsf-rs and vio2sf-rs
+        // Rename psf_load to avoid symbol collision with viogsf-rs and vio2sf-rs
         .define("psf_load", "hepsf_psf_load")
         .define("strrpbrk", "hepsf_strrpbrk")
         .define("psf2fs_create", "hepsf_psf2fs_create")
@@ -175,13 +175,19 @@ fn main() {
 
     he.compile("hepsf_he");
 
-    // Link math library on Unix (needed by SPU reverb calculations)
-    #[cfg(unix)]
-    println!("cargo:rustc-link-lib=m");
+    // Link math library on Unix (needed by SPU reverb calculations).
+    //
+    // Was `#[cfg(unix)]`, which in a build script asks about the host.
+    if !target.contains("windows") {
+        println!("cargo:rustc-link-lib=m");
+    }
 
-    // Link pthread on Unix (needed by thread-based bridge in wrapper)
-    #[cfg(unix)]
-    println!("cargo:rustc-link-lib=pthread");
+    // Link pthread on Unix (needed by thread-based bridge in wrapper).
+    // Bionic has pthread inside libc; the NDK keeps a stub libpthread so the
+    // flag resolves, but there is nothing to gain by passing it.
+    if !target.contains("windows") && !target.contains("android") {
+        println!("cargo:rustc-link-lib=pthread");
+    }
 
     // On macOS, use system zlib instead of vendored (avoids Xcode 16+ SDK conflicts)
     if is_macos {
