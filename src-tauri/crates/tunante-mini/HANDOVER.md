@@ -336,7 +336,28 @@ python3 ~/tactil.py tap|flick|drag|hold …
 
 `dist/empaquetar <version>` builds the Alpine package on the phone and installs
 it — the same sequence as the CI job, ending in the `apk add` the runner cannot
-do.
+do. It packages `$HOME/fuente`, which is a *copy* of the repo and not a
+checkout.
+
+**Reconcile that copy against the whole tree, not against your own diff.** Sync
+only the files you touched and everything still builds for twenty-odd minutes —
+the emulator cores are the bulk of it — and then dies at the very end, when
+`slint-build` finally compiles `app.slint` against a `theme.slint` from three
+commits ago that is missing a colour token. Twenty-three minutes for a
+one-symbol error. The check is seconds:
+
+```sh
+for f in $(git ls-files src-tauri/crates); do
+    a=$(md5sum "$f" | cut -d' ' -f1)
+    b=$(ssh cidwel@172.16.42.1 "md5sum ~/fuente/$f 2>/dev/null | cut -d' ' -f1")
+    [ "$a" != "$b" ] && echo "stale: $f"
+done
+```
+
+Also send its stdout somewhere you can read. Under `systemd-run` the build runs
+through `su`, and the journal ends up with the `sudo` PAM chatter and none of
+`abuild`'s output — so a failure looks like `status=1/FAILURE` and nothing else.
+`... > ~/pkg.log 2>&1` is enough.
 
 `tools/` holds what you copy to the phone to work on it. Most of these lived in
 `/tmp` at some point, which is exactly as durable as it sounds; the copies on
