@@ -43,3 +43,35 @@ go on the way down.
 while it is playing (`src-tauri/crates/tunante-mini/src/inhibit.rs`), so the app
 no longer causes the suspend that triggers this. That is a way of not stepping
 on the rake, not a repair.
+
+---
+
+## The library lists tracks it cannot play
+
+**Where it belongs:** here, not upstream. It is an asymmetry of our own making.
+
+Seen on Android and on the desktop, identically — so this is not a port
+problem.
+
+`/storage/emulated/0/Music/Samsung/Over_the_Horizon.m4a`, a ringtone Samsung
+ships, is an `mp42` container with a `dby1` brand: Dolby, 768 kbps. The scan
+accepts it and the player cannot open it:
+
+```
+probe --fast   ok = true, codec = M4A, has_artwork = true
+play           Decoder error: The format of the data has not been recognized.
+```
+
+The two answers come from different code. Metadata is read with **lofty**, which
+parses tags and never decodes; playback goes through **symphonia**, which has no
+AC-4. So the track lands in the library with its title, album, duration and
+cover art, looks completely ordinary, and fails the moment it is pressed.
+
+Making the scan agree would mean decoding a frame of every file, and `probe
+--fast` exists precisely because a library scan cannot afford that — it is the
+difference between 4 ms and over a second per file (see
+`tunante-helper::scan`).
+
+The cheap answer is the other way round: when `play` fails, remember that this
+path could not be opened and draw it differently, so the library learns from the
+one moment it does find out. Not done.
