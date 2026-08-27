@@ -1,0 +1,447 @@
+package com.tunante.android
+
+import android.Manifest
+import android.app.Activity
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
+import android.util.Log
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.tunante.android.ui.Folder
+import com.tunante.android.ui.LibraryView
+import com.tunante.android.ui.DirListing
+import com.tunante.android.ui.FolderPicker
+import com.tunante.android.ui.PlayerState
+import com.tunante.android.ui.Playlist
+import com.tunante.android.ui.Tab
+import com.tunante.android.ui.Track
+import com.tunante.android.ui.TunanteApp
+import com.tunante.android.ui.TunanteTheme
+import com.tunante.android.ui.pollState
+import org.json.JSONObject
+import java.io.File
+import kotlin.concurrent.thread
+
+/**
+ * The screen.
+ *
+ * Everything below the pixels is Rust, reached through [NativeBridge]: the
+ * library database, the scan, the queue, the decoder. This class owns no state
+ * of its own beyond what it is currently drawing — it asks, twice a second, the
+ * same way [PlaybackService] does.
+ */
+class MainActivity : ComponentActivity() {
+
+    private var view by mutableStateOf(LibraryView())
+    private var tab by mutableStateOf(Tab.Library)
+    private var playlists by mutableStateOf(emptyList<Playlist>())
+    private var openPlaylist by mutableStateOf<Playlist?>(null)
+    private var playlistTracks by mutableStateOf(emptyList<Track>())
+    private var hasFiles by mutableStateOf(false)
+    private var picking by mutableStateOf(false)
+    private var listing by mutableStateOf(DirListing())
+    private var roots by mutableStateOf(emptyList<String>())
+
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        val decoder = File(applicationInfo.nativeLibraryDir, "libtunante_decoder.so").absolutePath
+        if (!NativeBridge.nativeInit(this, decoder)) {
+            Log.e(TAG, "native init failed — see the lines above")
+        }
+        NativeBridge.nativeOpenDb(filesDir.absolutePath)
+
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
+        }
+        startForegroundService(Intent(this, PlaybackService::class.java))
+
+        hasFiles = hasAllFiles()
+        browse("")
+        reloadPlaylists()
+        reloadRoots()
+        Log.i(TAG, "session: " + NativeBridge.nativeRestoreSession())
+
+        setContent {
+            TunanteTheme {
+                val state = pollState { readState() }
+                if (picking) {
+                    FolderPicker(
+                        listing = listing,
+                        roots = roots,
+                        onEnter = ::listDirs,
+                        onUp = { listing.parent?.let(::listDirs) },
+                        onToggleRoot = ::toggleRoot,
+                        onDone = { picking = false; scan() },
+                    )
+                    return@TunanteTheme
+                }
+                TunanteApp(
+                    tab = tab,
+                    onTab = ::switchTab,
+                    playlists = playlists,
+                    openPlaylist = openPlaylist,
+                    playlistTracks = playlistTracks,
+                    onOpenPlaylist = ::openPlaylist,
+                    onClosePlaylist = { openPlaylist = null; playlistTracks = emptyList() },
+                    onCreatePlaylist = ::createPlaylist,
+                    onDeletePlaylist = ::deletePlaylist,
+                    onPlayPlaylistIndex = ::playPlaylistAt,
+                    onAddToPlaylist = ::addToPlaylist,
+                    onEnqueue = { NativeBridge.nativeEnqueue(it.path) },
+                    onRemoveFromPlaylist = ::removeFromPlaylist,
+                    view = view,
+                    state = state,
+                    hasAllFiles = hasFiles,
+                    onGrantFiles = ::requestAllFiles,
+                    onScan = ::rescanOrPick,
+                    onPickFolders = ::openPicker,
+                    onQuery = ::search,
+                    onOpenFolder = ::openRow,
+                    onUp = ::up,
+                    onPlayIndex = ::playAt,
+                    onTogglePlay = { NativeBridge.nativeTogglePlay() },
+                    onNext = { NativeBridge.nativeNext() },
+                    onPrev = { NativeBridge.nativePrev() },
+                    onShuffle = { NativeBridge.nativeSetShuffle(it) },
+                    onRepeat = { NativeBridge.nativeSetRepeat(it) },
+                    onSleep = { NativeBridge.nativeSetSleepTimer(it) },
+                    onClearQueue = { NativeBridge.nativeClearQueue() },
+                )
+            }
+        }
+
+        handleTestIntent()
+    }
+
+    @Deprecated("The replacement, OnBackPressedDispatcher, needs androidx.activity's callback API; this activity has one back action and no fragments.")
+    override fun onBackPressed() {
+        // Android has a back button where Plasma Mobile does not, so it gets
+        // wired to the same action as the breadcrumb rather than closing the app
+        // from whatever depth you happened to be at.
+        if (picking) {
+            picking = false
+        } else if (tab == Tab.Playlists && openPlaylist != null) {
+            openPlaylist = null
+            playlistTracks = emptyList()
+        } else if (tab != Tab.Library && view.here.isEmpty()) {
+            switchTab(Tab.Library)
+        } else if (view.searching || view.here.isNotEmpty()) {
+            up()
+        } else {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // The hook the service's five-second cadence cannot give us: this fires
+        // at the moment the system is most likely to kill the process next.
+        NativeBridge.nativeSaveSession()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Coming back from the Settings page that grants all-files access is the
+        // main reason this can have changed under us.
+        hasFiles = hasAllFiles()
+    }
+
+    private fun readState(): PlayerState {
+        val s = JSONObject(NativeBridge.nativeState())
+        if (!s.optBoolean("ok", false)) return PlayerState()
+        return PlayerState(
+            playing = s.optBoolean("playing"),
+            hasSource = s.optBoolean("hasSource"),
+            title = s.optString("title"),
+            artist = s.optString("artist"),
+            positionMs = s.optLong("positionMs"),
+            durationMs = s.optLong("durationMs"),
+            index = s.optInt("index", -1),
+            shuffle = s.optBoolean("shuffle"),
+            repeat = s.optInt("repeat"),
+            sleepMinutes = s.optInt("sleepMinutes"),
+            queued = s.optInt("queued"),
+            queuedNext = s.optString("queuedNext"),
+            queueLen = s.optInt("queueLen"),
+            path = s.optString("path"),
+        )
+    }
+
+    private fun tracksFrom(array: org.json.JSONArray?): List<Track> {
+        if (array == null) return emptyList()
+        return (0 until array.length()).map { i ->
+            val t = array.getJSONObject(i)
+            Track(
+                path = t.optString("path"),
+                title = t.optString("title"),
+                artist = t.optString("artist"),
+                album = t.optString("album"),
+                durationMs = t.optLong("duration_ms"),
+            )
+        }
+    }
+
+    private fun reloadPlaylists() {
+        val s = JSONObject(NativeBridge.nativePlaylists())
+        if (!s.optBoolean("ok", false)) return
+        val a = s.optJSONArray("playlists") ?: return
+        playlists = (0 until a.length()).map { i ->
+            val p = a.getJSONObject(i)
+            Playlist(p.optString("id"), p.optString("name"), p.optInt("track_count"))
+        }
+    }
+
+    private fun openPlaylist(playlist: Playlist) {
+        openPlaylist = playlist
+        val s = JSONObject(NativeBridge.nativePlaylistTracks(playlist.id))
+        playlistTracks = if (s.optBoolean("ok", false)) tracksFrom(s.optJSONArray("tracks")) else emptyList()
+    }
+
+    private fun createPlaylist(name: String) {
+        NativeBridge.nativeCreatePlaylist(name)
+        reloadPlaylists()
+    }
+
+    private fun deletePlaylist(playlist: Playlist) {
+        NativeBridge.nativeDeletePlaylist(playlist.id)
+        if (openPlaylist?.id == playlist.id) {
+            openPlaylist = null
+            playlistTracks = emptyList()
+        }
+        reloadPlaylists()
+    }
+
+    private fun addToPlaylist(playlist: Playlist, track: Track) {
+        val paths = org.json.JSONArray().put(track.path)
+        Log.i(TAG, "add: " + NativeBridge.nativeAddToPlaylist(playlist.id, paths.toString()))
+        reloadPlaylists()
+    }
+
+    private fun removeFromPlaylist(playlist: Playlist, track: Track) {
+        NativeBridge.nativeRemoveFromPlaylist(playlist.id, track.path)
+        openPlaylist(playlist)
+        reloadPlaylists()
+    }
+
+    private fun playPlaylistAt(index: Int) {
+        val paths = org.json.JSONArray()
+        playlistTracks.forEach { paths.put(it.path) }
+        NativeBridge.nativePlayList(paths.toString(), index)
+    }
+
+    /**
+     * The three library shapes share one screen: all of them are folders and
+     * tracks, and only where the rows come from changes.
+     */
+    private fun switchTab(next: Tab) {
+        tab = next
+        when (next) {
+            Tab.Library -> browse("")
+            Tab.Albums -> load { NativeBridge.nativeAlbums() }
+            Tab.Consoles -> load { NativeBridge.nativeConsoles("") }
+            Tab.Playlists -> reloadPlaylists()
+        }
+    }
+
+    /**
+     * Read a `{folders, tracks}` answer into the view.
+     *
+     * Off the main thread, always: every one of these reads the whole track
+     * table to derive its rows, so on a real collection it is a full table read
+     * plus the JSON for it — not something to do between two frames.
+     */
+    private fun load(here: String = "", call: () -> String) {
+        thread(name = "load") {
+            val s = JSONObject(call())
+            if (!s.optBoolean("ok", false)) return@thread
+            val folders = s.optJSONArray("folders")
+            val next = LibraryView(
+                here = here,
+                folders = (0 until (folders?.length() ?: 0)).map { i ->
+                    val f = folders!!.getJSONObject(i)
+                    Folder(
+                        f.optString("path"),
+                        f.optString("name"),
+                        f.optInt("count"),
+                        f.optString("cover"),
+                    )
+                },
+                tracks = tracksFrom(s.optJSONArray("tracks")),
+                query = "",
+            )
+            runOnUiThread { view = next }
+        }
+    }
+
+    /** Show one level of the tree. */
+    private fun browse(folder: String) = load(folder) { NativeBridge.nativeBrowse(folder) }
+
+    /** Opening a row means something different in each shape. */
+    private fun openRow(path: String) {
+        when (tab) {
+            Tab.Consoles -> load(path) { NativeBridge.nativeConsoles(path) }
+            // An album row and a tree row are both directories.
+            else -> browse(path)
+        }
+    }
+
+    /**
+     * Search replaces the tree rather than filtering it.
+     *
+     * When you are after a title you do not care which folder it was in, and a
+     * filtered tree makes you walk down to find out.
+     */
+    private fun search(query: String) {
+        if (query.isEmpty()) {
+            browse(view.here)
+            return
+        }
+        val s = JSONObject(NativeBridge.nativeSearch(query))
+        view = view.copy(
+            query = query,
+            folders = emptyList(),
+            tracks = if (s.optBoolean("ok", false)) tracksFrom(s.optJSONArray("tracks")) else emptyList(),
+        )
+    }
+
+    /** Out of a search, or one folder up. */
+    private fun up() {
+        when {
+            view.searching -> search("")
+            // In the indexes there is one level to come back from, and it is
+            // the index itself rather than a parent directory.
+            tab == Tab.Consoles && view.here.isNotEmpty() -> switchTab(Tab.Consoles)
+            tab == Tab.Albums && view.here.isNotEmpty() -> switchTab(Tab.Albums)
+            view.here.isEmpty() -> Unit
+            else -> browse(view.here.substringBeforeLast('/', ""))
+        }
+    }
+
+    /**
+     * Play what is on screen, starting where they tapped.
+     *
+     * The queue is exactly the list being shown — not `get_tracks_by_folder`,
+     * which also matches subfolders and would put a different track under the
+     * finger than the one it landed on.
+     */
+    private fun playAt(index: Int) {
+        val paths = org.json.JSONArray()
+        view.tracks.forEach { paths.put(it.path) }
+        NativeBridge.nativePlayList(paths.toString(), index)
+    }
+
+    /** Empty means every folder the library is built from. */
+    private fun scan(root: String = "") {
+        thread(name = "scan") {
+            val result = NativeBridge.nativeScan(root)
+            Log.i(TAG, "scan: $result")
+            runOnUiThread { switchTab(tab) }
+        }
+    }
+
+    private fun reloadRoots() {
+        val s = JSONObject(NativeBridge.nativeRoots())
+        val a = s.optJSONArray("roots") ?: return
+        roots = (0 until a.length()).map { a.getJSONObject(it).optString("path") }
+    }
+
+    /**
+     * Rescan when there is something to rescan; otherwise ask where the music
+     * is, because a scan with no roots has nothing to say.
+     */
+    private fun rescanOrPick() {
+        if (roots.isEmpty()) openPicker() else scan()
+    }
+
+    private fun openPicker() {
+        picking = true
+        // Start where the roots are if there are any, so the common case is
+        // "add another folder next to the one I already use".
+        listDirs(roots.firstOrNull()?.substringBeforeLast('/') ?: "")
+    }
+
+    private fun listDirs(path: String) {
+        thread(name = "dirs") {
+            val s = JSONObject(NativeBridge.nativeListDirs(path))
+            if (!s.optBoolean("ok", false)) return@thread
+            val d = s.optJSONArray("dirs")
+            val next = DirListing(
+                here = s.optString("here"),
+                parent = if (s.isNull("parent")) null else s.optString("parent"),
+                dirs = (0 until (d?.length() ?: 0)).map { d!!.getString(it) },
+            )
+            runOnUiThread { listing = next }
+        }
+    }
+
+    private fun toggleRoot(path: String, add: Boolean) {
+        Log.i(TAG, "root: " + NativeBridge.nativeSetRoot(path, add))
+        reloadRoots()
+    }
+
+    /**
+     * Whether we can read the user's music by plain absolute path.
+     *
+     * Below API 30 there is nothing to ask about: the old READ_EXTERNAL_STORAGE
+     * model still applies and paths just work.
+     */
+    private fun hasAllFiles(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()
+
+    /**
+     * Send the user to the system screen that grants it.
+     *
+     * There is no runtime dialog for this one — it is a Settings page with a
+     * toggle. Deep-linked to our own entry so it is one tap rather than a scroll
+     * through every installed app.
+     */
+    private fun requestAllFiles() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        startActivity(
+            Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:$packageName"),
+            )
+        )
+    }
+
+    /**
+     * The hooks the phases were tested through, kept because CI will need them.
+     *
+     *     adb shell am start -S -n com.tunante.android/.MainActivity --es scan /path
+     *     adb shell am start -S -n com.tunante.android/.MainActivity --es playFolder /path
+     *     adb shell am start -S -n com.tunante.android/.MainActivity --es play /path/to/file
+     *
+     * `-S` is not optional: without it, `am start` on a live activity delivers
+     * onNewIntent and onCreate never runs, so the test appears to pass without
+     * having done anything.
+     */
+    private fun handleTestIntent() {
+        val i = intent ?: return
+        i.getStringExtra("scan")?.let { scan(it) }
+        i.getStringExtra("playFolder")?.let {
+            Log.i(TAG, "playFolder: " + NativeBridge.nativePlayFolder(it, 0))
+        }
+        i.getStringExtra("play")?.let { NativeBridge.nativePlay(it) }
+        i.getStringExtra("enqueue")?.let {
+            Log.i(TAG, "enqueue: " + NativeBridge.nativeEnqueue(it))
+        }
+    }
+
+    companion object {
+        private const val TAG = "tunante"
+    }
+}

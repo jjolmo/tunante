@@ -1,0 +1,10 @@
+# Gradle and AGP output. The wrapper itself (gradlew, gradle/wrapper/) is
+# committed on purpose: it pins the Gradle version and CI has no gradle at all.
+.gradle/
+build/
+app/build/
+local.properties
+
+# Staged by build.sh from cargo output and from the NDK, never edited by hand.
+app/src/main/jniLibs/
+app/src/main/assets/
