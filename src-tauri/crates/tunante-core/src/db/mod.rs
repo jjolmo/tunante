@@ -1256,6 +1256,51 @@ mod tests {
         assert_eq!(db.get_playlist(&pl).unwrap().unwrap().track_count, 500);
     }
 
+    /// The batch must land exactly where the old per-track loop did.
+    ///
+    /// The desktop swapped `add_track_to_playlist` in a loop for one call to
+    /// `add_tracks_to_playlist`, and the two only differ in how they report a
+    /// bad id. Everything a user can see — which tracks are in, in what order,
+    /// at which positions — has to match, so this builds two playlists the two
+    /// ways and compares them.
+    #[test]
+    fn batch_add_matches_the_per_track_loop() {
+        let tmp = TempDb::new("equiv");
+        let db = tmp.open();
+
+        let ids: Vec<String> = (0..40)
+            .map(|i| db.insert_track(&track(&format!("t{i}"), &format!("/m/{i}.flac"))).unwrap())
+            .collect();
+
+        let uno_a_uno = db.create_playlist_named("bucle").unwrap();
+        let en_lote = db.create_playlist_named("lote").unwrap();
+
+        // El orden de entrada no es el alfabético ni el de inserción, y trae
+        // repetidos: si el lote reordenase o duplicase, aquí se ve.
+        let entrada: Vec<String> = [7usize, 3, 39, 3, 0, 21, 7, 12]
+            .iter()
+            .map(|i| ids[*i].clone())
+            .collect();
+
+        for (n, id) in entrada.iter().enumerate() {
+            db.add_track_to_playlist(&format!("entry{n}"), &uno_a_uno, id)
+                .unwrap();
+        }
+        db.add_tracks_to_playlist(&en_lote, &entrada).unwrap();
+
+        let leer = |pl: &str| -> Vec<String> {
+            db.get_playlist_tracks(pl)
+                .unwrap()
+                .into_iter()
+                .map(|t| t.id)
+                .collect()
+        };
+
+        assert_eq!(leer(&uno_a_uno), leer(&en_lote));
+        assert_eq!(positions(&db, &uno_a_uno), positions(&db, &en_lote));
+        assert_eq!(leer(&en_lote).len(), 6, "los repetidos deben colapsar");
+    }
+
     /// A track id with no row in `tracks` must be skipped, not abort the batch.
     #[test]
     fn bulk_add_skips_unknown_track_ids() {
