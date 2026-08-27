@@ -1,6 +1,24 @@
 use std::env;
 use std::path::PathBuf;
 
+/// Point CMake at the NDK toolchain when cross-compiling to Android.
+///
+/// See the copy in viogsf-rs/build.rs for why this cannot be left to the
+/// environment that `cargo ndk` sets up.
+fn configure_android_ndk(cfg: &mut cmake::Config) {
+    let toolchain = env::var("CARGO_NDK_CMAKE_TOOLCHAIN_PATH").expect(
+        "cross-compiling to Android but CARGO_NDK_CMAKE_TOOLCHAIN_PATH is unset; \
+         build through `cargo ndk` so CMake can find the NDK toolchain file",
+    );
+    cfg.define("CMAKE_TOOLCHAIN_FILE", toolchain);
+    if let Ok(abi) = env::var("ANDROID_ABI") {
+        cfg.define("ANDROID_ABI", abi);
+    }
+    if let Ok(platform) = env::var("CARGO_NDK_ANDROID_PLATFORM") {
+        cfg.define("ANDROID_PLATFORM", platform);
+    }
+}
+
 fn main() {
     let target = env::var("TARGET").unwrap_or_default();
     let is_macos = target.contains("apple");
@@ -17,6 +35,9 @@ fn main() {
         .join("vgmstream");
 
     let mut cfg = cmake::Config::new(&vgmstream_dir);
+    if target.contains("android") {
+        configure_android_ndk(&mut cfg);
+    }
     cfg.define("BUILD_STATIC", "ON")
         .define("BUILD_CLI", "OFF")
         .define("BUILD_FB2K", "OFF")
@@ -54,8 +75,15 @@ fn main() {
         println!("cargo:rustc-link-lib=m");
     }
 
-    // C++ standard library (vgmstream is C but uses some C++ in codecs)
-    if target.contains("linux") {
+    // C++ standard library (vgmstream is C but uses some C++ in codecs).
+    //
+    // Android must be tested first: "aarch64-linux-android" contains "linux",
+    // so it used to fall into the branch below. Bionic's libstdc++.so is a stub
+    // with only operator new/delete, so that link fails on the first real std::
+    // symbol rather than at the flag.
+    if target.contains("android") {
+        println!("cargo:rustc-link-lib=c++_shared");
+    } else if target.contains("linux") {
         println!("cargo:rustc-link-lib=stdc++");
     } else if is_macos {
         println!("cargo:rustc-link-lib=c++");
