@@ -315,7 +315,7 @@ impl AudioEngine {
         // Brief pause to let rodio's audio thread drop the old source.
         // Critical for PSF/PSF2/GSF/2SF: these decoders wrap C libraries with
         // global state. The old decoder MUST be fully dropped before creating
-        // a new one, or the C globals (sexypsf, lazygsf, etc.) will conflict.
+        // a new one, or the C globals (sexypsf, VBA-M, DeSmuME, etc.) will conflict.
         std::thread::sleep(Duration::from_millis(50));
         self.player = Player::connect_new(&self._device.mixer());
         self.player.set_volume(initial_volume.clamp(0.0, 1.0));

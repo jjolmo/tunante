@@ -141,7 +141,6 @@ src-tauri/game-music-emu-patch/  # Patched game-music-emu (C++ chiptune emulatio
 src-tauri/vgmstream/             # vgmstream submodule (C, game audio decoding)
 src-tauri/vgmstream-rs/          # Rust bindings for vgmstream
 src-tauri/hepsf-rs/              # PSF/PSF2 playback (C, Highly Experimental + sexypsf)
-src-tauri/lazygsf-rs/            # GSF playback (C, Lazy GSF + mGBA core)
 src-tauri/vio2sf-rs/             # 2SF playback (C, vio2sf + DeSmuME core)
 src-tauri/opus-decoder-patch/    # Pure Rust Opus decoder (patched)
 ```
