@@ -338,13 +338,30 @@ python3 ~/tactil.py tap|flick|drag|hold …
 it — the same sequence as the CI job, ending in the `apk add` the runner cannot
 do.
 
-`tools/` holds what you copy to the phone to work on it. All three of these
-lived in `/tmp` at some point, which is exactly as durable as it sounds; the
-copies on the device are disposable, the ones here are not.
+`tools/` holds what you copy to the phone to work on it. Most of these lived in
+`/tmp` at some point, which is exactly as durable as it sounds; the copies on
+the device are disposable, the ones here are not.
 
+- `tools/despertar.py` presses the power button over `/dev/uinput`. **Do this
+  first, before any screenshot.** With the panel off the compositor stops
+  painting, so `spectacle` hands you the last frame it drew — a screenshot with
+  a clock half an hour stale, which looks exactly like an app that has stopped
+  responding. `/sys/class/backlight/backlight/bl_power` is the honest check: 4
+  is off, 0 is on. Touch does not wake it (the panel is suspended too, so
+  `tactil.py` events go nowhere) and neither does
+  `qdbus6 org.freedesktop.ScreenSaver SetActive false`, which returns happily
+  and changes nothing.
+
+  Waking is not unlocking: past the lock screen the phone asks for its PIN, and
+  that is the one thing none of this can supply.
 - `tools/tactil.py` is a virtual touchscreen over `/dev/uinput`. Its `hold`
   exists because the Flickable claims any vertical drag that starts within
-  500 ms of the press.
+  500 ms of the press. `TACTIL_W`/`TACTIL_H` override the panel size, for
+  driving a desktop build.
+
+  Its own setup costs about 1.5 s — it waits for the compositor to notice a new
+  touchscreen before emitting. Subtract that before believing any timing you
+  measure from the moment you invoke it.
 
   **Screen coordinates are the device's own only in portrait**, and which way
   they turn depends on which way the phone is. Rotated right the mapping is
@@ -357,11 +374,16 @@ copies on the device are disposable, the ones here are not.
 - `tools/escucha` is the long-listen sampler: one line a minute, the numbers
   that would show a creep. Run it under `systemd-run --user --unit=escucha`.
 
-Two instrument flags on the binary, and they are not features:
-`--rows N` fills the library with generated rows to measure what a list costs,
-and `--focus-search` starts on Library with the field focused — which proves the
+Four instrument flags on the binary, and they are not features:
+`--rows N` fills the library with generated rows to measure what a list costs;
+`--focus-search` starts on Library with the field focused — which proves the
 text-input request is sent but *not* that the keyboard appears, because a
-compositor only raises it when the last input came from touch.
+compositor only raises it when the last input came from touch; and `--mode N` /
+`--open-playlist X` land straight on a library view or inside a named playlist.
+The last two were written for the desktop, where a session will move the pointer
+onto the window and then drop the button event on the floor — synthetic input
+does not reach it by XTEST, by uinput touch, or by a uinput mouse, so a screen
+that takes two taps to reach cannot be reached from a script at all.
 
 ---
 
