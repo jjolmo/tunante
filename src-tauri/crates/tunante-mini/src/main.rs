@@ -44,14 +44,13 @@
 //! not answerable by clicking from a script — only by starting there.
 
 mod boost;
-mod decoder;
 mod inhibit;
 mod library;
 mod mpris;
 mod output;
 mod picker;
 mod player;
-mod session;
+use tunante_core::session;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -395,7 +394,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Not in the library yet — ask the decoder about it directly, so the
         // app can play a file it has never scanned.
         if tracks.is_empty() {
-            if let Ok(values) = decoder::probe(
+            if let Ok(values) = tunante_helper::probe(
                 std::path::Path::new(&path),
                 std::time::Duration::from_secs(20),
                 false,
@@ -1265,7 +1264,7 @@ fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
     let art = path
         .and_then(|p| {
             let real = tunante_core::vgm_path::parse_vgm_path(p).0.to_string();
-            decoder::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
+            tunante_helper::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
         })
         .and_then(|uri| decode_artwork(&uri, max_side));
 

@@ -9,127 +9,15 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use tunante_core::db::models::Track;
 use tunante_core::db::Database;
 use tunante_core::vgm_path;
-use walkdir::WalkDir;
 
-use crate::decoder;
 
-/// How long a single file gets before the scanner gives up on it.
-///
-/// Generous, because a PSF2 or USF set legitimately takes seconds to open. The
-/// point is not speed, it is that a file which never returns cannot stall the
-/// whole scan.
-const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
-
-pub struct ScanProgress {
-    pub scanned: usize,
-    pub total: usize,
-    pub added: usize,
-    pub failed: usize,
-    pub current: String,
-}
-
-/// Walk `root`, probe everything that looks like audio, and insert what comes back.
-///
-/// `on_progress` is called as files are processed, so a UI can show movement on
-/// what is, for a real collection, a minutes-long job.
-///
-/// # Why this is parallel
-///
-/// Each file costs a process spawn plus however long its format takes to open —
-/// which for the emulator formats is the dominant term, and it is spent waiting
-/// on one core. Running several at once is the natural shape for a design that
-/// already puts every decode in its own process, and on this phone's eight cores
-/// it is the difference between a scan of minutes and one of half an hour.
-///
-/// SQLite is left on this thread: the writes are trivial next to the probes, and
-/// keeping one writer avoids `SQLITE_BUSY` entirely.
-pub fn scan_folder(
-    db: &Database,
-    root: &Path,
-    mut on_progress: impl FnMut(&ScanProgress),
-) -> Result<usize, String> {
-    let files: Vec<PathBuf> = WalkDir::new(root)
-        .follow_links(false)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .map(|e| e.into_path())
-        .filter(|p| vgm_path::is_audio_file(p))
-        .collect();
-
-    let mut progress = ScanProgress {
-        scanned: 0,
-        total: files.len(),
-        added: 0,
-        failed: 0,
-        current: String::new(),
-    };
-
-    // Leave a core or two for the session — this runs on a phone the user is
-    // holding, and a scan that makes the interface stutter is worse than a slow
-    // one.
-    let workers = std::thread::available_parallelism()
-        .map(|n| (n.get().saturating_sub(2)).max(2))
-        .unwrap_or(2);
-
-    let queue = std::sync::Arc::new(std::sync::Mutex::new(files.into_iter()));
-    let (tx, rx) = std::sync::mpsc::channel::<(String, Result<Vec<serde_json::Value>, String>)>();
-
-    let mut handles = Vec::new();
-    for _ in 0..workers {
-        let queue = queue.clone();
-        let tx = tx.clone();
-        handles.push(std::thread::spawn(move || loop {
-            let next = { queue.lock().ok().and_then(|mut q| q.next()) };
-            let Some(path) = next else { return };
-            let name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let result = decoder::probe(&path, PROBE_TIMEOUT, true);
-            if tx.send((name, result)).is_err() {
-                return;
-            }
-        }));
-    }
-    drop(tx);
-
-    for (name, result) in rx {
-        progress.scanned += 1;
-        progress.current = name;
-
-        match result {
-            Ok(tracks) => {
-                // One file can hold many tracks: a GME set or a vgmstream
-                // container has one per subsong, each addressed as `path#n`.
-                for value in tracks {
-                    match serde_json::from_value::<Track>(value) {
-                        Ok(track) => {
-                            if db.insert_track(&track).is_ok() {
-                                progress.added += 1;
-                            }
-                        }
-                        Err(_) => progress.failed += 1,
-                    }
-                }
-            }
-            Err(_) => progress.failed += 1,
-        }
-
-        on_progress(&progress);
-    }
-
-    for h in handles {
-        let _ = h.join();
-    }
-
-    Ok(progress.added)
-}
+// The scan moved to `tunante-helper::scan`, which tunante-android needs too.
+// Re-exported so the rest of this module and its callers read unchanged.
+pub use tunante_helper::scan::scan_folder;
 
 /// One line of the library tab: a folder or a track, with how deep it sits.
 #[derive(Clone, Debug)]
@@ -192,34 +80,8 @@ fn juegos(n: usize) -> String {
 /// Everything with no console is grouped rather than dropped: the point of this
 /// view is to reach music, and hiding a third of the library because it is an
 /// mp3 would defeat it.
-pub fn console_of(path: &str) -> &'static str {
-    let real = vgm_path::parse_vgm_path(path).0;
-    let ext = Path::new(real)
-        .extension()
-        .map(|e| e.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
-
-    match ext.as_str() {
-        "nsf" | "nsfe" => "NES",
-        "spc" => "Super Nintendo",
-        "gbs" => "Game Boy",
-        "gsf" | "minigsf" | "gsflib" => "Game Boy Advance",
-        "2sf" | "mini2sf" | "2sflib" => "Nintendo DS",
-        "usf" | "miniusf" => "Nintendo 64",
-        "psf" | "minipsf" | "psflib" => "PlayStation",
-        "psf2" | "minipsf2" | "psf2lib" => "PlayStation 2",
-        "vgm" | "vgz" => "VGM (Mega Drive y compañía)",
-        "sid" => "Commodore 64",
-        "ay" => "ZX Spectrum",
-        "hes" => "PC Engine",
-        "kss" => "MSX",
-        "xa" => "PlayStation (streams)",
-        "adx" | "ast" | "dsp" | "brstm" | "bcstm" | "strm" | "bfstm" | "hps" => {
-            "Rips de GameCube, Wii y 3DS"
-        }
-        _ => "Otros",
-    }
-}
+// Moved to `tunante_core::console`, which tunante-android needs too.
+pub use tunante_core::console::console_of;
 
 /// The library as a flat list of visible rows.
 ///
@@ -793,33 +655,7 @@ fn nombre_de(ruta: &str) -> String {
 /// directorio, no emular nada, y un proceso por tarjeta para pintar una rejilla
 /// de veintiocho sería absurdo. La carátula incrustada en un fichero sigue
 /// siendo cosa del decodificador, y sólo se pide para lo que está sonando.
-pub fn folder_image(dir: &Path) -> Option<PathBuf> {
-    const NOMBRES: &[&str] = &["cover", "folder", "front", "album", "albumart", "art", "thumb"];
-    const EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
 
-    let entradas: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).collect();
+// Moved to `tunante-helper::art`, which tunante-android needs too.
+pub use tunante_helper::art::folder_image;
 
-    let imagen = |p: &Path| {
-        p.extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()))
-    };
-
-    // Primero por nombre, sin distinguir mayúsculas: en esta biblioteca conviven
-    // `cover.jpg` y `Cover.jpg`, y ext4 no los considera el mismo fichero.
-    for n in NOMBRES {
-        if let Some(p) = entradas.iter().find(|p| {
-            imagen(p)
-                && p.file_stem()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|s| s.eq_ignore_ascii_case(n))
-        }) {
-            return Some(p.clone());
-        }
-    }
-    // Si no, la primera imagen que haya. Ordenada, para que la misma carpeta dé
-    // siempre la misma y la rejilla no cambie de aspecto entre visitas.
-    let mut sueltas: Vec<&PathBuf> = entradas.iter().filter(|p| imagen(p)).collect();
-    sueltas.sort();
-    sueltas.first().map(|p| (*p).clone())
-}

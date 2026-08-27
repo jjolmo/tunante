@@ -1,26 +1,80 @@
 //! Talking to the `tunante-decoder` helper process.
 //!
-//! The emulator cores are not linked into this program. To play a track we spawn
+//! The emulator cores are not linked into the caller. To play a track we spawn
 //! the helper, read a JSON header line describing the stream, and then treat the
 //! rest of its stdout as raw PCM — which is exactly what a [`rodio::Source`]
 //! needs to yield. Killing the child on drop is what returns its memory, which
 //! is the whole point of the arrangement: an NDS core costs ~43 MB while it
 //! plays and nothing at all a moment later.
+//!
+//! Shared by `tunante-mini` and `tunante-android`, which need the same client
+//! but find the helper in very different places — see [`set_decoder_path`].
 
 use std::io::{BufRead, BufReader, Read};
 use std::num::{NonZeroU16, NonZeroU32};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdout, Command, Stdio};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use rodio::Source;
 
+pub mod art;
+pub mod scan;
+
+static DECODER: OnceLock<PathBuf> = OnceLock::new();
+
+/// Name the helper explicitly, once, before anything else calls in.
+///
+/// Android has to: `current_exe()` there is `/system/bin/app_process64`, an app
+/// has no useful `PATH`, and the helper lives in `nativeLibraryDir` under a name
+/// it does not choose — `lib*.so`, because only files matching that are unpacked
+/// into the one directory an app is allowed to `execve` from.
+///
+/// Returns whether it was accepted; a later call is ignored rather than swapping
+/// the decoder under a playing track.
+pub fn set_decoder_path(path: impl Into<PathBuf>) -> bool {
+    DECODER.set(path.into()).is_ok()
+}
+
+/// A `Command` for the helper, with whatever the platform needs around it.
+fn decoder_command() -> Command {
+    let path = decoder_path();
+
+    // Android only, and not optional there: without it the child dies before
+    // main() with
+    //
+    //     CANNOT LINK EXECUTABLE: library "libc++_shared.so" not found
+    //
+    // even though libc++_shared.so sits in the very same directory. The app's
+    // own libraries load because ART builds a linker namespace for us with
+    // nativeLibraryDir in it; a process started with execve inherits none of
+    // that, only the environment — and the environment does not name it.
+    //
+    // Deliberately not done elsewhere: prepending a directory to the library
+    // search path on a desktop could shadow a system library for no reason.
+    #[cfg(target_os = "android")]
+    {
+        let mut cmd = Command::new(&path);
+        if let Some(dir) = path.parent() {
+            cmd.env("LD_LIBRARY_PATH", dir);
+        }
+        return cmd;
+    }
+    #[cfg(not(target_os = "android"))]
+    Command::new(&path)
+}
+
 /// Where the helper binary lives.
 ///
-/// `TUNANTE_DECODER` wins, then a sibling of this executable — which covers both
-/// `cargo run` and an installed package, since the two binaries ship together —
-/// and finally bare `tunante-decoder` for whatever `PATH` offers.
+/// An explicit [`set_decoder_path`] wins, then `TUNANTE_DECODER`, then a sibling
+/// of this executable — which covers both `cargo run` and an installed package,
+/// since the two binaries ship together — and finally bare `tunante-decoder` for
+/// whatever `PATH` offers.
 pub fn decoder_path() -> PathBuf {
+    if let Some(p) = DECODER.get() {
+        return p.clone();
+    }
     if let Ok(p) = std::env::var("TUNANTE_DECODER") {
         return PathBuf::from(p);
     }
@@ -86,7 +140,7 @@ fn capture(mut child: Child, timeout: Duration) -> Result<String, String> {
 /// declare none. It decodes the track in full, so it costs over a second a file;
 /// a library scan cannot afford that and does not need it.
 pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_json::Value>, String> {
-    let mut cmd = Command::new(decoder_path());
+    let mut cmd = decoder_command();
     cmd.arg("probe").arg(path);
     if fast {
         cmd.arg("--fast");
@@ -116,7 +170,7 @@ pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_jso
 /// on every file of a library scan: carrying the artwork of thousands of tracks
 /// through a pipe would slow the scan down for nobody's benefit.
 pub fn artwork(path: &Path, timeout: Duration) -> Option<String> {
-    let child = Command::new(decoder_path())
+    let child = decoder_command()
         .arg("art")
         .arg(path)
         .stdout(Stdio::piped())
@@ -155,7 +209,7 @@ impl PipeSource {
         loops: u32,
         fade_ms: u64,
     ) -> Result<Self, String> {
-        let mut child = Command::new(decoder_path())
+        let mut child = decoder_command()
             .arg("play")
             .arg(path)
             .arg(duration_hint_ms.to_string())
@@ -165,9 +219,23 @@ impl PipeSource {
             .arg(fade_ms.to_string())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            // This used to go to /dev/null, which on a desktop is reasonable —
+            // the helper's stderr lands in the terminal. On Android a child's
+            // stderr goes nowhere at all, so a decoder that dies on startup is
+            // completely silent and looks exactly like a track that ended. It
+            // is drained to the log instead, and on a thread: a pipe nobody
+            // reads fills at 64 KB and would block the decoder mid-track.
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("spawning the decoder: {e}"))?;
+
+        if let Some(stderr) = child.stderr.take() {
+            std::thread::spawn(move || {
+                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    log::warn!("decoder: {line}");
+                }
+            });
+        }
 
         let control = child.stdin.take();
         let stdout = child.stdout.take().ok_or("no stdout")?;
@@ -180,8 +248,14 @@ impl PipeSource {
 
         if header.trim().is_empty() {
             let _ = child.kill();
-            let _ = child.wait();
-            return Err("the decoder produced no header — it could not open the file".into());
+            let status = child.wait();
+            // The exit status is the only other thing the child left behind, and
+            // it separates "refused the file" from "died on a signal". The rest
+            // is in the `decoder:` lines the thread above logged.
+            return Err(format!(
+                "the decoder produced no header for {} (exit: {status:?})",
+                path.display()
+            ));
         }
 
         let h: serde_json::Value = serde_json::from_str(header.trim())

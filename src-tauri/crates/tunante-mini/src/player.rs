@@ -1,7 +1,7 @@
 //! The audio output, and the queue on top of it.
 //!
 //! Deliberately thin. Everything hard about decoding happens in another process
-//! (see [`crate::decoder`]); what is left here is opening one ALSA client, keeping
+//! (see the `tunante-helper` crate); what is left here is opening one ALSA client, keeping
 //! it open for the life of the app, and pushing sources at it.
 //!
 //! One ALSA client for the whole session matters on this hardware: handing the
@@ -13,19 +13,19 @@ use std::time::{Duration, Instant};
 
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player as RodioPlayer, Source};
 use tunante_core::db::models::Track;
-use tunante_core::{PlayQueue, RepeatMode};
+use tunante_core::{PlayClock, PlayQueue, RepeatMode};
 
-use crate::decoder::PipeSource;
+use tunante_helper::PipeSource;
 
 pub struct Player {
     _device: MixerDeviceSink,
     player: RodioPlayer,
     queue: PlayQueue,
     volume: f32,
-    /// Wall-clock position. The decoder pipe carries no timing of its own, and
-    /// this is accurate enough for a progress bar.
-    started_at: Option<Instant>,
-    accumulated: Duration,
+    /// Where the track is. Wall-clock, because the decoder pipe carries no
+    /// timing of its own. Moved to `tunante_core::clock` so tunante-android
+    /// cannot reinvent it differently — which it did, and got seeking wrong.
+    clock: PlayClock,
     duration_ms: u64,
     /// rodio reports an empty player for a moment after a source is appended,
     /// before the mixer starts pulling. Without a short grace period the
@@ -49,8 +49,7 @@ impl Player {
             player,
             queue: PlayQueue::new(),
             volume: 1.0,
-            started_at: None,
-            accumulated: Duration::ZERO,
+            clock: PlayClock::new(),
             duration_ms: 0,
             appended_at: Instant::now(),
             has_source: false,
@@ -98,8 +97,7 @@ impl Player {
         self.player.set_volume(self.volume);
         self.player.play();
 
-        self.started_at = Some(Instant::now());
-        self.accumulated = Duration::ZERO;
+        self.clock.start();
         self.appended_at = Instant::now();
         self.has_source = true;
         Ok(())
@@ -108,14 +106,10 @@ impl Player {
     pub fn toggle_play(&mut self) {
         if self.player.is_paused() {
             self.player.play();
-            if self.started_at.is_none() {
-                self.started_at = Some(Instant::now());
-            }
+            self.clock.resume();
         } else {
             self.player.pause();
-            if let Some(s) = self.started_at.take() {
-                self.accumulated += s.elapsed();
-            }
+            self.clock.pause();
         }
     }
 
@@ -143,8 +137,7 @@ impl Player {
     pub fn stop(&mut self) {
         self.player.stop();
         self.has_source = false;
-        self.started_at = None;
-        self.accumulated = Duration::ZERO;
+        self.clock.stop();
         self.duration_ms = 0;
     }
 
@@ -189,10 +182,7 @@ impl Player {
     pub fn seek(&mut self, ms: u64) {
         let pos = Duration::from_millis(ms.min(self.duration_ms));
         if self.player.try_seek(pos).is_ok() {
-            self.accumulated = pos;
-            if self.started_at.is_some() {
-                self.started_at = Some(Instant::now());
-            }
+            self.clock.seek(pos);
         }
     }
 
@@ -288,8 +278,7 @@ impl Player {
     }
 
     pub fn position_ms(&self) -> u64 {
-        let running = self.started_at.map(|s| s.elapsed()).unwrap_or(Duration::ZERO);
-        (self.accumulated + running).as_millis() as u64
+        self.clock.position_ms()
     }
 
     pub fn duration_ms(&self) -> u64 {
