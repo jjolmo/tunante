@@ -2253,12 +2253,24 @@ component LibraryTab inherits Rectangle {
 
         Rectangle {
             y: parent.height - self.height;
-            height: sheet.preferred-height;
+            // Con tope, y el tope importa en apaisado: sobre una carpeta la hoja
+            // lleva cinco entradas y su titulo, y eso es mas alto que los 1080
+            // px que quedan girado el telefono. Sin el, `y` se vuelve negativa y
+            // lo que se sale por arriba es justo el nombre de la carpeta sobre
+            // la que se va a actuar.
+            height: min(sheet.preferred-height, parent.height);
             background: Theme.bg-secondary;
 
             // Se come los toques que caen en la hoja, para que no lleguen al
             // fondo y la cierren nada más abrirla.
             TouchArea { }
+
+            // Y desplazable, porque recortar por arriba o por abajo son igual de
+            // malos: arriba se pierde sobre qué estás actuando, abajo se pierde
+            // "Cancelar", que es la salida.
+            ScrollView {
+                height: parent.height;
+                mouse-drag-pan-enabled: true;
 
             sheet := VerticalLayout {
                 padding: Theme.gap;
@@ -2338,6 +2350,7 @@ component LibraryTab inherits Rectangle {
                     label: "Cancelar";
                     clicked => { root.menu-path = ""; }
                 }
+            }
             }
         }
     }
