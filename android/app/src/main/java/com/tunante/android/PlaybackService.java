@@ -310,7 +310,7 @@ public class PlaybackService extends Service {
         return new Notification.Builder(this, CHANNEL)
                 .setContentTitle(title)
                 .setContentText(artist)
-                .setSmallIcon(android.R.drawable.ic_media_play)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentIntent(open)
                 .setOngoing(true)
                 .setStyle(new Notification.MediaStyle().setMediaSession(session.getSessionToken()))

@@ -255,6 +255,35 @@ impl Player {
 
     pub fn enqueue(&mut self, track: Track) {
         self.queue.enqueue_track(track);
+        self.start_if_idle();
+    }
+
+    /// Put a batch at the end of the queue, and start it if nothing was playing.
+    ///
+    /// Shared by every path that adds more than one track, so a folder, a
+    /// console and a game all behave the same when the player is idle.
+    pub fn enqueue_many(&mut self, tracks: Vec<Track>) {
+        for t in tracks {
+            self.queue.enqueue_track(t);
+        }
+        self.start_if_idle();
+    }
+
+    /// Queueing onto a stopped player has to make a sound.
+    ///
+    /// Without this "Añadir a la cola" on an idle player was indistinguishable
+    /// from a button that does nothing: the count went up and the phone stayed
+    /// silent, with no way to start what had just been added except finding one
+    /// of the tracks again in the library and tapping it. tunante-mini's
+    /// `enqueue_all` has always taken the first one in this case.
+    ///
+    /// A playlist is deliberately not routed through here -- see
+    /// `nativeEnqueuePlaylist`. Those two buttons promise to add and nothing
+    /// more.
+    fn start_if_idle(&mut self) {
+        if self.queue.current().is_none() {
+            self.next();
+        }
     }
 
     /// What is waiting, in order. Does not include what is playing.
