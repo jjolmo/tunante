@@ -252,36 +252,6 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
     env.new_string(out).expect("new_string")
 }
 
-/// Every track under `folder`, or the whole library when it is empty.
-#[no_mangle]
-pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeTracks<'a>(
-    mut env: JNIEnv<'a>,
-    _class: JClass,
-    folder: JString,
-) -> jni::objects::JString<'a> {
-    let out = match jstring_to_string(&mut env, &folder) {
-        Ok(f) => {
-            let guard = DB.lock().unwrap();
-            match guard.as_ref() {
-                None => fail("nativeTracks before nativeOpenDb"),
-                Some(db) => {
-                    let tracks = if f.is_empty() {
-                        db.get_all_tracks()
-                    } else {
-                        db.get_tracks_by_folder(&f)
-                    };
-                    match tracks {
-                        Ok(t) => serde_json::json!({ "ok": true, "tracks": t }).to_string(),
-                        Err(e) => fail(e),
-                    }
-                }
-            }
-        }
-        Err(e) => fail(e),
-    };
-    env.new_string(out).expect("new_string")
-}
-
 /// One level of the library tree: the folders under `parent`, and the tracks
 /// that sit in it.
 ///
@@ -742,6 +712,30 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeQueue<'a>(
         Some(e) => serde_json::json!({ "ok": true, "tracks": e.user_queue() }).to_string(),
         None => fail("nativeQueue before nativeInit"),
     };
+    env.new_string(out).expect("new_string")
+}
+
+/// Play something that was waiting, now.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativePlayQueued<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    path: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let path = jstring_to_string(&mut env, &path)?;
+        let mut guard = ENGINE.lock().unwrap();
+        let engine = guard.as_mut().ok_or("nativePlayQueued before nativeInit")?;
+        let id = engine
+            .user_queue()
+            .iter()
+            .find(|t| t.path == path)
+            .map(|t| t.id.clone())
+            .ok_or_else(|| format!("{path} is not waiting"))?;
+        engine.play_queued(&id)?;
+        Ok(engine.state().to_string())
+    })()
+    .unwrap_or_else(fail);
     env.new_string(out).expect("new_string")
 }
 
@@ -1233,18 +1227,6 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeStop(
     _class: JClass,
 ) {
     with_engine!(|e: &mut Player| e.stop())
-}
-
-/// True while a track is actually playing.
-#[no_mangle]
-pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeIsPlaying(
-    _env: JNIEnv,
-    _class: JClass,
-) -> jboolean {
-    match ENGINE.lock().unwrap().as_ref() {
-        Some(engine) if engine.is_playing() => 1,
-        _ => 0,
-    }
 }
 
 /// The heartbeat, called by the foreground service.

@@ -63,6 +63,7 @@ fun PlaylistsTab(
     onRename: (Playlist, String) -> Unit,
     onMove: (Int, Int) -> Unit,
     onEnqueueAll: (Playlist) -> Unit,
+    onEnqueueOne: (Track) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         if (open == null) {
@@ -120,6 +121,10 @@ fun PlaylistsTab(
                                 track = t,
                                 selected = state.hasSource && t.path == state.path,
                                 onClick = { onPlayIndex(i) },
+                                // The same verb the library gives a long press
+                                // would be "add to playlist", which makes no
+                                // sense inside one. Queueing is what is left.
+                                onLongClick = { onEnqueueOne(t) },
                             )
                         }
                     }

@@ -228,6 +228,23 @@ impl Player {
         self.fade_ms
     }
 
+    /// Play something that was waiting, now, and take it out of the queue.
+    ///
+    /// The rest of the queue keeps its order and the folder underneath is
+    /// untouched: jumping to the third thing waiting should not throw away the
+    /// first two.
+    pub fn play_queued(&mut self, track_id: &str) -> Result<(), String> {
+        let track = self
+            .queue
+            .get_user_queue()
+            .iter()
+            .find(|t| t.id == track_id)
+            .cloned()
+            .ok_or("that track is no longer waiting")?;
+        self.queue.dequeue_track(track_id);
+        self.start(&track, true)
+    }
+
     pub fn dequeue(&mut self, track_id: &str) {
         self.queue.dequeue_track(track_id);
     }

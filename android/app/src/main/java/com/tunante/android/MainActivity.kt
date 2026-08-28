@@ -84,6 +84,7 @@ class MainActivity : ComponentActivity() {
                         tracks = queue,
                         onClose = { showingQueue = false },
                         onRemove = { NativeBridge.nativeDequeue(it.path); reloadQueue() },
+                        onPlay = { NativeBridge.nativePlayQueued(it.path); reloadQueue() },
                         onMove = { f, t -> NativeBridge.nativeMoveInQueue(f, t); reloadQueue() },
                         onClear = { NativeBridge.nativeClearQueue(); reloadQueue() },
                     )
@@ -116,6 +117,7 @@ class MainActivity : ComponentActivity() {
                     onRenamePlaylist = ::renamePlaylist,
                     onMovePlaylist = ::movePlaylist,
                     onEnqueuePlaylist = ::enqueuePlaylist,
+                    onEnqueueTrack = { NativeBridge.nativeEnqueue(it.path) },
                     onEnqueue = { NativeBridge.nativeEnqueue(it.path) },
                     onRemoveFromPlaylist = ::removeFromPlaylist,
                     view = view,
