@@ -97,7 +97,7 @@ fun Breadcrumb(view: LibraryView, onUp: () -> Unit) {
 }
 
 @Composable
-fun SearchBox(query: String, onQuery: (String) -> Unit) {
+fun SearchBox(query: String, hint: String = "Buscar…", onQuery: (String) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -107,7 +107,7 @@ fun SearchBox(query: String, onQuery: (String) -> Unit) {
     ) {
         Box(Modifier.weight(1f).heightIn(min = T.touchTarget), Alignment.CenterStart) {
             if (query.isEmpty()) {
-                Label("Buscar…", T.textMuted, T.fontBody)
+                Label(hint, T.textMuted, T.fontBody)
             }
             BasicTextField(
                 value = query,
@@ -208,3 +208,20 @@ fun FolderGrid(
         }
     }
 }
+
+/**
+ * Loose text matching, for the filter box.
+ *
+ * Accent-insensitive because nobody types "Pokémon" with the accent when they
+ * are looking for it, and the tags in a rip are inconsistent about it anyway.
+ * `plegar` in tunante-mini does the same job.
+ */
+fun folds(haystack: String, needle: String): Boolean {
+    if (needle.isBlank()) return true
+    return fold(haystack).contains(fold(needle))
+}
+
+private fun fold(s: String): String =
+    java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+        .lowercase()

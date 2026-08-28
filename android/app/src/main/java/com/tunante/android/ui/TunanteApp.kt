@@ -320,21 +320,36 @@ private fun Library(
             return@Column
         }
 
-        // Search only makes sense over the library itself; the indexes are
-        // already a way of finding something.
+        // One box doing two jobs, saying which. Over the tree it searches the
+        // whole library through the database; over an index it narrows what is
+        // already on the screen, because an index has no deeper level to search
+        // into. mini writes the same two placeholders for the same reason: the
+        // field looks identical in both and hiding the difference would be
+        // lying about which one you are getting.
+        //
+        // It used to appear only over the tree, which left no way at all to
+        // find one album among four hundred.
+        var filter by remember(tab, view.here) { mutableStateOf("") }
         if (tab == Tab.Library) {
-            SearchBox(view.query, onQuery)
+            SearchBox(view.query, onQuery = onQuery)
+        } else {
+            SearchBox(filter, hint = "Filtrar lo que se ve…") { filter = it }
         }
         Breadcrumb(view, onUp)
 
+        val folders = if (tab == Tab.Library) view.folders
+        else view.folders.filter { folds(it.name, filter) }
+        val tracks = if (tab == Tab.Library) view.tracks
+        else view.tracks.filter { folds(it.title.ifEmpty { it.path }, filter) }
+
         Box(Modifier.weight(1f)) {
-            if (view.folders.isEmpty() && view.tracks.isEmpty()) {
+            if (folders.isEmpty() && tracks.isEmpty()) {
                 Empty(view)
-            } else if (view.folders.isNotEmpty() && view.tracks.isEmpty() && !view.searching) {
+            } else if (folders.isNotEmpty() && tracks.isEmpty() && !view.searching) {
                 // A level that is only folders is a shelf, and a shelf is worth
                 // showing as covers. A level with tracks in it is a track list,
                 // and covers there would push the titles off the screen.
-                FolderGrid(view.folders, coverOf = { it.cover }, onLongPress = onFolderLongPress) {
+                FolderGrid(folders, coverOf = { it.cover }, onLongPress = onFolderLongPress) {
                     onOpenFolder(it.path)
                 }
             } else {
@@ -342,19 +357,24 @@ private fun Library(
                     // Folders first, then what is loose in this one. The order
                     // matters for the index handed to onPlayIndex: it counts
                     // tracks only, so the queue and the list agree.
-                    items(view.folders) { folder ->
+                    items(folders) { folder ->
                         FolderRow(
                             folder,
                             onClick = { onOpenFolder(folder.path) },
                             onLongClick = { onFolderLongPress(folder) },
                         )
                     }
-                    itemsIndexed(view.tracks) { i, track ->
+                    items(tracks) { track ->
                         SwipeRow("A la cola", { onEnqueue(track) }) {
                             TrackRow(
                                 track = track,
                                 selected = state.hasSource && track.path == state.path,
-                                onClick = { onPlayIndex(i) },
+                                // The index into the *unfiltered* list, always.
+                                // A filtered list renumbers its rows, and the
+                                // queue is built from what the level holds, so
+                                // handing over the visible position would play
+                                // a different track than the one pressed.
+                                onClick = { onPlayIndex(view.tracks.indexOf(track)) },
                                 // Long press is where "add to playlist" goes: a
                                 // button on every row would compete with the row
                                 // itself for a finger, and the row is what you
@@ -371,7 +391,7 @@ private fun Library(
         // a title bar above it.
         Rule()
         Row(Modifier.fillMaxWidth().padding(horizontal = T.gap, vertical = 6.dp)) {
-            val n = view.folders.size + view.tracks.size
+            val n = folders.size + tracks.size
             Label(
                 when (n) {
                     0 -> "sin biblioteca"
