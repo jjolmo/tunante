@@ -58,6 +58,70 @@ impl CoverRequest {
     }
 }
 
+/// The names worth trying for one track, best first.
+///
+/// All three apps build a request the same way, so the rule lives here.
+///
+/// The folder is included even when the classifier already chose a name, and
+/// that is the point rather than belt-and-braces. A rip's album tag is the
+/// *soundtrack's* title, which is often not the game's: a track under
+/// `NDS/Final Fantasy Tactics A2/` is tagged
+/// "Final Fantasy Tactics A2: The Sealed Grimoire", while the archive calls the
+/// game "Final Fantasy Tactics A2 - Grimoire of the Rift". The tag matches
+/// nothing and the folder matches exactly. The reverse is just as common —
+/// a folder called `ct` whose tag says "Chrono Trigger" — which is why both go
+/// in and the most confident answer wins.
+pub fn candidates_for(game: &str, album: &str, path: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |s: &str| {
+        let s = s.trim();
+        if s.len() >= 2 && !out.iter().any(|x: &String| x.eq_ignore_ascii_case(s)) {
+            out.push(s.to_string());
+        }
+    };
+    push(game);
+    push(album);
+
+    // The folder the track sits in — and the one above it *only* when this one
+    // is a disc, as in `Genshin Impact/Disc 2 - Blazing Stars/`. Going up
+    // unconditionally offers the console folder as a game name, so a DS track
+    // arrived here asking the archive about "NDS".
+    let real = path.split('#').next().unwrap_or(path);
+    let parent = std::path::Path::new(real).parent();
+    if let Some(name) = parent.and_then(|d| d.file_name()).and_then(|n| n.to_str()) {
+        push(name);
+        if looks_like_a_disc(name) {
+            if let Some(up) = parent.and_then(|d| d.parent()) {
+                if let Some(n) = up.file_name().and_then(|n| n.to_str()) {
+                    push(n);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// `Disc 2`, `CD1`, `Disc 3 - Bonus Tracks`.
+///
+/// A narrower copy of the same idea in `tunante_core::classify`, kept here
+/// because this crate deliberately does not depend on that one and because this
+/// only has to recognise the folder, not classify it.
+fn looks_like_a_disc(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    let mut words = lower
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty());
+    let Some(first) = words.next() else { return false };
+    let split = first.find(|c: char| c.is_ascii_digit()).unwrap_or(first.len());
+    let (word, fused) = first.split_at(split);
+    let word = if word.is_empty() { first } else { word };
+    if !matches!(word, "disc" | "disk" | "cd" | "dvd" | "vol" | "volume") {
+        return matches!(lower.as_str(), "bonus" | "extras" | "extra");
+    }
+    let number = if fused.is_empty() { words.next().unwrap_or("") } else { fused };
+    number.parse::<u32>().is_ok_and(|n| (1..=20).contains(&n))
+}
+
 /// A cover, downloaded and checked.
 #[derive(Debug, Clone)]
 pub struct Resolved {
@@ -540,6 +604,53 @@ mod tests {
         // The two must never be the same value: undo consumes `written`.
         assert_ne!(plans[0].written, plans[0].existing);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The bug that made a real library show no cover for a game the archive
+    /// plainly has.
+    #[test]
+    fn the_folder_is_tried_even_when_the_tag_named_something_else() {
+        let c = candidates_for(
+            "Final Fantasy Tactics A2: The Sealed Grimoire",
+            "Final Fantasy Tactics A2: The Sealed Grimoire",
+            "/m/OST/NDS/Final Fantasy Tactics A2/101 Main Theme.mini2sf",
+        );
+        assert!(
+            c.iter().any(|x| x == "Final Fantasy Tactics A2"),
+            "the folder names the game and was not offered: {c:?}"
+        );
+        // The tag is still first: it is what rescues an abbreviated folder.
+        assert_eq!(c[0], "Final Fantasy Tactics A2: The Sealed Grimoire");
+    }
+
+    /// ...and the abbreviated-folder case still works the other way round.
+    #[test]
+    fn the_tag_still_leads_for_an_abbreviated_folder() {
+        let c = candidates_for("Chrono Trigger", "Chrono Trigger", "/m/OST/snes spc osts/ct/01.spc");
+        assert_eq!(c[0], "Chrono Trigger");
+        assert!(c.iter().any(|x| x == "ct"));
+    }
+
+    /// A disc folder is not a game, so the one above it goes in too.
+    #[test]
+    fn a_disc_folder_offers_its_parent() {
+        let c = candidates_for("", "", "/m/OST/PC/Genshin Impact/Disc 2 - Blazing Stars/01.mp3");
+        assert!(c.iter().any(|x| x == "Genshin Impact"), "{c:?}");
+    }
+
+    /// ...but an ordinary game folder must not offer the console above it. A DS
+    /// track was asking the archive about a game called "NDS".
+    #[test]
+    fn an_ordinary_folder_does_not_offer_the_console_above_it() {
+        let c = candidates_for("", "", "/m/OST/NDS/Final Fantasy Tactics A2/101.mini2sf");
+        assert!(c.iter().any(|x| x == "Final Fantasy Tactics A2"), "{c:?}");
+        assert!(!c.iter().any(|x| x == "NDS"), "the console folder was offered: {c:?}");
+    }
+
+    #[test]
+    fn a_subsong_suffix_does_not_leak_into_a_candidate() {
+        let c = candidates_for("", "", "/m/GB/Pokemon Blue/pokemon.gbs#7");
+        assert!(c.iter().any(|x| x == "Pokemon Blue"), "{c:?}");
     }
 
     /// The default has to be the safe one: this writes into a synced library.

@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use tauri::{Emitter, State};
 use tunante_art::folder::{Manifest, Overwrite};
-use tunante_art::resolver::{BulkOptions, CoverRequest, Plan, Resolver};
+use tunante_art::resolver::{self, BulkOptions, CoverRequest, Plan, Resolver};
 use tunante_art::{cache, Confidence};
 use tunante_core::console::{self, CONSOLES};
 use tunante_core::db::models::Track;
@@ -56,13 +56,7 @@ fn all_systems() -> Vec<(String, String)> {
 /// resolved `game` comes first, and for a rip that is the album tag — an SPC's
 /// ID666 header names the game even when the folder is called `ct/`.
 fn request_for(track: &Track, store_in_folder: bool) -> CoverRequest {
-    let mut candidates = Vec::new();
-    if !track.game.trim().is_empty() {
-        candidates.push(track.game.clone());
-    }
-    if !track.album.trim().is_empty() && !track.album.eq_ignore_ascii_case(&track.game) {
-        candidates.push(track.album.clone());
-    }
+    let candidates = resolver::candidates_for(&track.game, &track.album, &track.path);
 
     let (real, _) = vgm_path::parse_vgm_path(&track.path);
     let dir = store_in_folder
@@ -193,20 +187,43 @@ fn tracks_for_scope(state: &AppState, scope: &str, target: &str) -> Result<Vec<T
 }
 
 /// What a bulk run would do, without doing any of it.
+///
+/// Reports progress and can be cancelled, for the same reason the real run can:
+/// over a whole library this is several hundred lookups and takes minutes. A
+/// button that says "Looking…" for eight minutes with no way out is
+/// indistinguishable from one that has hung.
 #[tauri::command]
 pub async fn preview_cover_downloads(
     scope: String,
     target: String,
     state: State<'_, Arc<AppState>>,
+    app: tauri::AppHandle,
 ) -> Result<Vec<Plan>, String> {
-    let tracks = tracks_for_scope(&state, &scope, &target)?;
+    if running().swap(true, Ordering::SeqCst) {
+        return Err("a cover run is already going".into());
+    }
+    cancel_flag().store(false, Ordering::SeqCst);
+
+    let tracks = match tracks_for_scope(&state, &scope, &target) {
+        Ok(t) => t,
+        Err(e) => {
+            running().store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+    };
     let reqs: Vec<CoverRequest> = tracks.iter().map(|t| request_for(t, false)).collect();
-    tauri::async_runtime::spawn_blocking(move || {
-        let opts = BulkOptions { dry_run: true, ..Default::default() };
-        resolver().resolve_many(reqs, &opts, |_| {})
+    let cancel = Arc::clone(cancel_flag());
+
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        let opts = BulkOptions { dry_run: true, cancel, ..Default::default() };
+        resolver().resolve_many(reqs, &opts, |p| {
+            let _ = app.emit("cover-progress", p);
+        })
     })
-    .await
-    .map_err(|e| e.to_string())
+    .await;
+
+    running().store(false, Ordering::SeqCst);
+    out.map_err(|e| e.to_string())
 }
 
 /// Run it for real. Progress arrives as `cover-progress`, the summary as
@@ -264,6 +281,10 @@ pub fn download_covers(
         let _ = app.emit("cover-complete", &plans);
         running().store(false, Ordering::SeqCst);
     });
+
+    // Note: `running` is cleared inside the thread. If that thread ever unwinds
+    // before reaching it, the flag would stay set and refuse every later run —
+    // worth a scoped guard if this grows more early returns.
 
     Ok(stamp)
 }
