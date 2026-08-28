@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun QueueScreen(
     tracks: List<Track>,
-    onClose: () -> Unit,
     onRemove: (Track) -> Unit,
     onPlay: (Track) -> Unit,
     onMove: (Int, Int) -> Unit,
@@ -43,11 +42,6 @@ fun QueueScreen(
                 .padding(horizontal = T.gap),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier.heightIn(min = T.touchTarget).clickable(onClick = onClose),
-                contentAlignment = Alignment.Center,
-            ) { Label("◂", T.accent, T.fontTitle) }
-            Spacer(Modifier.width(T.gap))
             Column(Modifier.weight(1f)) {
                 Label("En cola", T.textPrimary, T.fontBody, maxLines = 1)
                 Label(
