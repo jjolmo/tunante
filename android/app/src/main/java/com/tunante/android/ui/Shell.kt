@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 
 /**
@@ -81,8 +82,27 @@ fun MiniPlayer(
     onNext: () -> Unit,
     onPrev: () -> Unit,
 ) {
-    if (!state.hasSource) return
+    // Out of the way when there is no room for it, which is mini's rule
+    // (`height < 300px`) in Android's units. In landscape the tabs, the search
+    // box, the count strip, this bar and the four destinations leave the
+    // library itself a single row of covers. The bar is the one of those that
+    // repeats something already reachable: the destinations below it include
+    // Sonando.
+    if (LocalConfiguration.current.screenHeightDp < 420) return
+
     Rule()
+    // Progress along the top edge, a hairline rather than a slider: this is
+    // where you glance at how far in you are from any destination, and mini
+    // has had it since it had a mini-player. Dragging it belongs on the seek
+    // bar of the Playing screen, which is one tap away.
+    val done = if (state.durationMs > 0) {
+        (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    Box(Modifier.fillMaxWidth().height(2.dp).background(T.bgTertiary)) {
+        Box(Modifier.fillMaxWidth(done).height(2.dp).background(T.accent))
+    }
     Row(
         Modifier
             .fillMaxWidth()
@@ -94,14 +114,21 @@ fun MiniPlayer(
         Cover(state.path, 40.dp)
         Spacer(Modifier.width(T.gap))
         Column(Modifier.weight(1f)) {
-            Label(state.label, T.textPrimary, T.fontBody, maxLines = 1)
             Label(
-                "${mmss(state.positionMs)} / ${mmss(state.durationMs)}" +
-                    if (state.artist.isNotEmpty()) "  ·  ${state.artist}" else "",
-                T.textSecondary,
-                T.fontSmall,
+                if (state.hasSource) state.label else "Nada sonando",
+                if (state.hasSource) T.textPrimary else T.textMuted,
+                T.fontBody,
                 maxLines = 1,
             )
+            if (state.hasSource) {
+                Label(
+                    "${mmss(state.positionMs)} / ${mmss(state.durationMs)}" +
+                        if (state.artist.isNotEmpty()) "  ·  ${state.artist}" else "",
+                    T.textSecondary,
+                    T.fontSmall,
+                    maxLines = 1,
+                )
+            }
         }
         TransportButton("◀◀", onPrev)
         TransportButton(if (state.playing) "❚❚" else "▶", onTogglePlay)
