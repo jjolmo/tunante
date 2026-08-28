@@ -13,8 +13,24 @@ android {
         // 26 is the floor for cpal's AAudio backend, so it is ours.
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // From the release tag when there is one, so an installed app can say
+        // which build it is. The APK used to be *named* after the version while
+        // reporting versionName 0.1.0 from inside, which is the wrong half:
+        // the name is lost the moment it is installed.
+        //
+        // versionCode matters more than it looks. Android decides whether an
+        // install is an upgrade by that number, and it was pinned at 1, so
+        // every release looked like the same one. Packed as
+        // major*1e6 + minor*1e3 + patch, which stays monotonic while minor and
+        // patch are under a thousand -- this project is at 0.1.262.
+        val release = (System.getenv("TUNANTE_VERSION") ?: "0.1.0").removePrefix("v")
+        val parts = release.split(".")
+        versionName = release
+        versionCode = (
+            (parts.getOrNull(0)?.toIntOrNull() ?: 0) * 1_000_000 +
+            (parts.getOrNull(1)?.toIntOrNull() ?: 0) * 1_000 +
+            (parts.getOrNull(2)?.toIntOrNull() ?: 0)
+        ).coerceAtLeast(1)
 
         ndk {
             // The phone and the emulator, unless build.sh was told otherwise.

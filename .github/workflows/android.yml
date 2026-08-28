@@ -110,6 +110,38 @@ jobs:
       # release installs *over* the previous one. Without it Android refuses —
       # INSTALL_FAILED_UPDATE_INCOMPATIBLE — and the only way through is to
       # uninstall, losing the scanned library.
+      # Wait for the tag that points at *this* commit before naming anything.
+      #
+      # `git describe --tags` was what this used, and the first time the step
+      # ever ran on main it produced tunante-android-0.1.261.apk from 0.1.262's
+      # code and hung it off the previous release. release.yml creates the tag
+      # in its first job, which can easily finish after this job has already
+      # checked out -- so describe returns the newest tag this clone happens to
+      # know, which is the one before. The wrong number is worse than the wrong
+      # place: an asset that lies about which build it is cannot be told apart
+      # from a good one later.
+      #
+      # `--points-at HEAD` cannot make that mistake: either the tag for this
+      # commit exists or there is none, and a push that is not a release is
+      # exactly the case that should fall through to the default.
+      - name: Wait for this commit's tag
+        id: tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          for _ in $(seq 1 30); do
+            git fetch -q --tags origin 2>/dev/null || true
+            TAG=$(git tag --points-at HEAD | head -1)
+            [ -n "$TAG" ] && break
+            echo "waiting for release.yml to tag this commit…"
+            sleep 20
+          done
+          if [ -z "$TAG" ]; then
+            echo "no tag appeared for this commit"
+          else
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "this commit is $TAG"
+          fi
+
       - name: Unpack the signing key
         id: key
         env:
@@ -124,6 +156,8 @@ jobs:
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Build
+        env:
+          TUNANTE_VERSION: ${{ steps.tag.outputs.tag }}
         working-directory: android
         # Only the phone's ABI. build.sh also knows how to build x86_64, which
         # exists so the interface can be looked at in an emulator — nobody
@@ -175,7 +209,7 @@ jobs:
       - name: Name it after the version
         id: name
         run: |
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          VERSION=$(echo "${{ steps.tag.outputs.tag }}" | sed 's/^v//')
           VERSION=${VERSION:-0.1.0}
           cp "${{ steps.apk.outputs.path }}" "tunante-android-$VERSION.apk"
           echo "file=tunante-android-$VERSION.apk" >> "$GITHUB_OUTPUT"
@@ -197,9 +231,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          TAG="${{ steps.tag.outputs.tag }}"
           if [ -z "$TAG" ]; then
-            echo "no tag to attach to; nothing to do"
+            echo "no tag for this commit; leaving the artifact as the only copy"
             exit 0
           fi
 
