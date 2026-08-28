@@ -15,8 +15,21 @@ name: tunante-android (arm64-v8a)
 # by hand. See docs/plan-android.md.
 
 on:
+  # No path filter on main, on purpose.
+  #
+  # release.yml publishes on every push here, so a filtered build meant most
+  # releases carried no APK -- including, usually, the newest one, which is what
+  # the releases page shows first. "I don't see the apk" is the correct reading
+  # of that page, and the release notes telling you to scroll for an older
+  # release that has one is a worse answer than just building it.
+  #
+  # It costs about nine minutes of runner per release. The desktop side already
+  # builds three platforms.
   push:
-    branches: [main, tunante-android]
+    branches: [main]
+  # On a pull request the filter still makes sense: nothing is published, and a
+  # change to the Svelte frontend has nothing to say about an Android build.
+  pull_request:
     paths:
       - 'src-tauri/crates/**'
       - 'src-tauri/*-rs/**'
@@ -24,7 +37,6 @@ on:
       - 'src-tauri/viogsf/**'
       - 'android/**'
       - '.github/workflows/android.yml'
-  pull_request:
   workflow_dispatch:
 
 # To attach the apk to the release. Read-only is the default for everything else.
@@ -126,7 +138,7 @@ jobs:
       # exactly the case that should fall through to the default.
       - name: Wait for this commit's tag
         id: tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           for _ in $(seq 1 30); do
             git fetch -q --tags origin 2>/dev/null || true
@@ -227,7 +239,7 @@ jobs:
       # an artifact needs an authenticated API call and expires, and the phone
       # has to be able to just fetch a URL.
       - name: Attach it to the release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

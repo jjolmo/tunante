@@ -18,3 +18,7 @@ target/
 src-tauri/.cargo/
 run-dev.sh
 .claude/
+
+# The signing key lives outside the tree; this only says where.
+android/KEY.local.md
+*.local.md
