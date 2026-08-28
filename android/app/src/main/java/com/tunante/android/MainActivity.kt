@@ -20,7 +20,7 @@ import com.tunante.android.ui.LibraryView
 import com.tunante.android.ui.DirListing
 import com.tunante.android.ui.FolderPicker
 import com.tunante.android.ui.PlayerState
-import com.tunante.android.ui.QueueScreen
+import com.tunante.android.ui.Dest
 import com.tunante.android.ui.Playlist
 import com.tunante.android.ui.Tab
 import com.tunante.android.ui.Track
@@ -50,7 +50,13 @@ class MainActivity : ComponentActivity() {
     private var picking by mutableStateOf(false)
     private var listing by mutableStateOf(DirListing())
     private var roots by mutableStateOf(emptyList<String>())
-    private var showingQueue by mutableStateOf(false)
+    /**
+     * Which of the four the app is showing.
+     *
+     * Starts on the library because that is where you go to put music on; mini
+     * starts there too.
+     */
+    private var dest by mutableStateOf(Dest.Library)
     private var queue by mutableStateOf(emptyList<Track>())
 
 
@@ -79,17 +85,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             TunanteTheme {
                 val state = pollState { readState() }
-                if (showingQueue) {
-                    QueueScreen(
-                        tracks = queue,
-                        onClose = { showingQueue = false },
-                        onRemove = { NativeBridge.nativeDequeue(it.path); reloadQueue() },
-                        onPlay = { NativeBridge.nativePlayQueued(it.path); reloadQueue() },
-                        onMove = { f, t -> NativeBridge.nativeMoveInQueue(f, t); reloadQueue() },
-                        onClear = { NativeBridge.nativeClearQueue(); reloadQueue() },
-                    )
-                    return@TunanteTheme
-                }
                 if (picking) {
                     FolderPicker(
                         listing = listing,
@@ -102,6 +97,13 @@ class MainActivity : ComponentActivity() {
                     return@TunanteTheme
                 }
                 TunanteApp(
+                    dest = dest,
+                    onDest = { d -> if (d == Dest.Queue) reloadQueue(); dest = d },
+                    roots = roots,
+                    queue = queue,
+                    onQueueRemove = { NativeBridge.nativeDequeue(it.path); reloadQueue() },
+                    onQueuePlay = { NativeBridge.nativePlayQueued(it.path); reloadQueue() },
+                    onQueueMove = { f, t -> NativeBridge.nativeMoveInQueue(f, t); reloadQueue() },
                     tab = tab,
                     onTab = ::switchTab,
                     playlists = playlists,
@@ -140,7 +142,6 @@ class MainActivity : ComponentActivity() {
                     onSeek = { NativeBridge.nativeSeek(it) },
                     onLoops = { NativeBridge.nativeCycleLoops() },
                     onFade = { NativeBridge.nativeCycleFade() },
-                    onOpenQueue = { reloadQueue(); showingQueue = true },
                 )
             }
         }
@@ -168,9 +169,10 @@ class MainActivity : ComponentActivity() {
         // Android has a back button where Plasma Mobile does not, so it gets
         // wired to the same action as the breadcrumb rather than closing the app
         // from whatever depth you happened to be at.
-        if (showingQueue) {
-            showingQueue = false
-        } else if (picking) {
+        // Back out of a destination to the library before it leaves the app:
+        // the four are siblings, not a stack, so there is nothing else for
+        // "back" to mean once you are somewhere other than where you started.
+        if (picking) {
             picking = false
         } else if (tab == Tab.Playlists && openPlaylist != null) {
             openPlaylist = null
@@ -179,6 +181,8 @@ class MainActivity : ComponentActivity() {
             switchTab(Tab.Library)
         } else if (view.searching || view.here.isNotEmpty()) {
             up()
+        } else if (dest != Dest.Library) {
+            dest = Dest.Library
         } else {
             @Suppress("DEPRECATION")
             super.onBackPressed()
