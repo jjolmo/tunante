@@ -38,9 +38,17 @@
         app/build.gradle.kts as packaging.jniLibs.useLegacyPackaging: AGP warns if
         it is set here as well, and the build file is the one that wins. -->
 
+        <!--
+          launchMode=singleTop: one instance, reused. A player launched again —
+          from the launcher, from a file manager, from the media notification —
+          should come back to what is playing rather than stack another copy of
+          itself on top. It is also what makes onNewIntent fire at all, and
+          without that an intent arriving at a running app does nothing.
+        -->
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

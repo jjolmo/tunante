@@ -64,6 +64,8 @@ data class PlayerState(
     val sleepMinutes: Int = 0,
     val queued: Int = 0,
     val queuedNext: String = "",
+    val loops: Int = 2,
+    val fadeSeconds: Int = 8,
 ) {
     /**
      * What to call the track on screen.
@@ -97,6 +99,10 @@ fun TunanteApp(
     onDeletePlaylist: (Playlist) -> Unit,
     onPlayPlaylistIndex: (Int) -> Unit,
     onAddToPlaylist: (Playlist, Track) -> Unit,
+    onNewPlaylistWith: (String, Track) -> Unit,
+    onRenamePlaylist: (Playlist, String) -> Unit,
+    onMovePlaylist: (Int, Int) -> Unit,
+    onEnqueuePlaylist: (Playlist) -> Unit,
     onEnqueue: (Track) -> Unit,
     onRemoveFromPlaylist: (Playlist, Track) -> Unit,
     view: LibraryView,
@@ -117,6 +123,9 @@ fun TunanteApp(
     onSleep: (Int) -> Unit,
     onClearQueue: () -> Unit,
     onSeek: (Long) -> Unit,
+    onLoops: () -> Unit,
+    onFade: () -> Unit,
+    onOpenQueue: () -> Unit,
 ) {
     // Declared out here, not inside the Column: the picker it drives is drawn
     // on top of the whole screen, which is a sibling of the Column and not a
@@ -149,11 +158,14 @@ fun TunanteApp(
                     onDelete = onDeletePlaylist,
                     onPlayIndex = onPlayPlaylistIndex,
                     onRemove = onRemoveFromPlaylist,
+                    onRename = onRenamePlaylist,
+                    onMove = onMovePlaylist,
+                    onEnqueueAll = onEnqueuePlaylist,
                 )
             }
             if (state.hasSource) {
                 NowPlaying(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSleep,
-                    onClearQueue, onSeek)
+                    onClearQueue, onSeek, onLoops, onFade, onOpenQueue)
             }
             return@Column
         }
@@ -201,7 +213,7 @@ fun TunanteApp(
 
         if (state.hasSource) {
             NowPlaying(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSleep,
-                    onClearQueue, onSeek)
+                    onClearQueue, onSeek, onLoops, onFade, onOpenQueue)
         }
     }
 
@@ -210,6 +222,7 @@ fun TunanteApp(
             track = track,
             playlists = playlists,
             onPick = { p -> onAddToPlaylist(p, track); adding = null },
+            onCreate = { name -> onNewPlaylistWith(name, track); adding = null },
             onDismiss = { adding = null },
         )
     }
@@ -227,8 +240,10 @@ private fun PlaylistPicker(
     track: Track,
     playlists: List<Playlist>,
     onPick: (Playlist) -> Unit,
+    onCreate: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    var name by remember { mutableStateOf("") }
     Box(
         Modifier
             .fillMaxSize()
@@ -248,18 +263,42 @@ private fun PlaylistPicker(
                 T.textPrimary, T.fontBody, maxLines = 1,
             )
             Spacer(Modifier.height(T.gap))
-            if (playlists.isEmpty()) {
-                Label("No hay listas. Crea una en la pestaña Listas.", T.textMuted, T.fontSmall)
-            } else {
-                for (p in playlists) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = T.touchTarget)
-                            .clickable { onPick(p) },
-                        contentAlignment = Alignment.CenterStart,
-                    ) { Label(p.name, T.accent, T.fontBody, maxLines = 1) }
+            for (p in playlists) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = T.touchTarget)
+                        .clickable { onPick(p) },
+                    contentAlignment = Alignment.CenterStart,
+                ) { Label(p.name, T.accent, T.fontBody, maxLines = 1) }
+            }
+            // A new list, from here. Going to the Listas tab to create one and
+            // then coming back to find the track again is three screens for
+            // something that is one intention.
+            Rule()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f).heightIn(min = T.touchTarget), Alignment.CenterStart) {
+                    if (name.isEmpty()) {
+                        Label("Lista nueva…", T.textMuted, T.fontBody)
+                    }
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        singleLine = true,
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            color = T.textPrimary, fontSize = T.fontBody,
+                        ),
+                        cursorBrush = androidx.compose.ui.graphics.SolidColor(T.accent),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
+                Box(
+                    Modifier
+                        .heightIn(min = T.touchTarget)
+                        .clickable(enabled = name.isNotBlank()) { onCreate(name.trim()) }
+                        .padding(horizontal = T.gap),
+                    contentAlignment = Alignment.Center,
+                ) { Label("Crear", if (name.isBlank()) T.textMuted else T.accent, T.fontBody) }
             }
         }
     }
@@ -377,10 +416,12 @@ private fun NowPlaying(
     onSleep: (Int) -> Unit,
     onClearQueue: () -> Unit,
     onSeek: (Long) -> Unit,
+    onLoops: () -> Unit,
+    onFade: () -> Unit,
+    onOpenQueue: () -> Unit,
 ) {
     Rule()
     Column(Modifier.fillMaxWidth().background(T.bgSecondary)) {
-        QueueStrip(state, onClearQueue)
         Progress(state, onSeek)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = T.gap, vertical = 8.dp),
@@ -407,7 +448,7 @@ private fun NowPlaying(
             TapTarget(onTogglePlay) { Glyph(if (state.playing) "❚❚" else "▶") }
             TapTarget(onNext) { Glyph("▶▶") }
         }
-        Modes(state, onShuffle, onRepeat, onSleep)
+        Modes(state, onShuffle, onRepeat, onSleep, onLoops, onFade, onOpenQueue)
     }
 }
 
@@ -424,7 +465,32 @@ private fun Modes(
     onShuffle: (Boolean) -> Unit,
     onRepeat: (Int) -> Unit,
     onSleep: (Int) -> Unit,
+    onLoops: () -> Unit,
+    onFade: () -> Unit,
+    onOpenQueue: () -> Unit,
 ) {
+    // Two rows. Loops and fade are not general playback settings — they are
+    // what *makes* a length for music that has none, and they belong next to
+    // each other rather than scattered among shuffle and repeat.
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = T.gap),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Mode(
+            if (state.loops == 0) "Bucle ∞" else "Bucle ×${state.loops}",
+            state.loops != 2,
+            onLoops,
+        )
+        Mode(
+            if (state.fadeSeconds == 0) "Sin fundido" else "Fundido ${state.fadeSeconds}s",
+            state.fadeSeconds != 8,
+            onFade,
+        )
+        Spacer(Modifier.weight(1f))
+        if (state.queued > 0) {
+            Mode("Cola (${state.queued})", true, onOpenQueue)
+        }
+    }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = T.gap).padding(bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -480,45 +546,6 @@ private fun Mode(text: String, on: Boolean, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Label(text, if (on) T.accent else T.textMuted, T.fontSmall, maxLines = 1)
-    }
-}
-
-/**
- * What is waiting, when anything is.
- *
- * Swiping a row queues it, and without this the track vanishes into somewhere
- * the screen never mentions again — a feature you cannot see is a feature that
- * looks like a bug the first time it plays something you forgot about.
- */
-@Composable
-private fun QueueStrip(state: PlayerState, onClear: () -> Unit) {
-    if (state.queued == 0) return
-    Rule()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(T.bgTertiary)
-            .heightIn(min = T.touchTarget)
-            .padding(horizontal = T.gap),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Label("En cola", T.accent, T.fontSmall, maxLines = 1)
-        Spacer(Modifier.width(T.gap))
-        Label(
-            if (state.queued == 1) state.queuedNext
-            else "${state.queuedNext}  (+${state.queued - 1})",
-            T.textSecondary,
-            T.fontSmall,
-            maxLines = 1,
-        )
-        Spacer(Modifier.weight(1f))
-        Box(
-            Modifier
-                .heightIn(min = T.touchTarget)
-                .clickable(onClick = onClear)
-                .padding(start = T.gap),
-            contentAlignment = Alignment.Center,
-        ) { Label("Vaciar", T.accent, T.fontSmall) }
     }
 }
 

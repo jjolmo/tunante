@@ -1186,6 +1186,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             tunante_core::RepeatMode::One => 2,
                             tunante_core::RepeatMode::Off => 0,
                         },
+                        // These already had their own settings keys, written
+                        // from the cycle handlers. Going through Session too
+                        // means one place writes them and one place reads them
+                        // back, rather than two halves that can disagree.
+                        ui.get_loop_count().max(0) as u32,
+                        ui.get_fade_seconds().max(0) as u64,
                     );
                 }
 

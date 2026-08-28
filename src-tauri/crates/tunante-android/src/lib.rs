@@ -346,6 +346,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRestoreSessio
         let mut engine = ENGINE.lock().unwrap();
         let engine = engine.as_mut().ok_or("nativeRestoreSession before nativeInit")?;
         engine.set_volume(saved.volume);
+        engine.set_loop_settings(saved.loops, saved.fade_seconds * 1000);
         engine.set_shuffle(saved.shuffle);
         engine.set_repeat(match saved.repeat {
             1 => tunante_core::RepeatMode::All,
@@ -414,6 +415,8 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeSaveSession(
         engine.volume(),
         engine.shuffle(),
         engine.repeat() as u8,
+        engine.loops(),
+        engine.fade_ms() / 1000,
     );
 }
 
@@ -689,6 +692,156 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeClearQueue(
     _class: JClass,
 ) {
     with_engine!(|e: &mut Player| e.clear_user_queue())
+}
+
+/// Cycle how many times a looping track plays: 1, 2, 3, then forever.
+///
+/// The same four steps `tunante-mini` offers, stored under the same settings
+/// key, so a shared library does not change how it sounds when you change which
+/// program is reading it.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCycleLoops(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    with_engine!(|e: &mut Player| {
+        let next = match e.loops() {
+            1 => 2,
+            2 => 3,
+            3 => 0,
+            _ => 1,
+        };
+        e.set_loop_settings(next, e.fade_ms());
+    })
+}
+
+/// Cycle the fade at the end of a looping track: none, 4, 8, 15 seconds.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCycleFade(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    with_engine!(|e: &mut Player| {
+        let next = match e.fade_ms() / 1000 {
+            0 => 4,
+            4 => 8,
+            8 => 15,
+            _ => 0,
+        };
+        e.set_loop_settings(e.loops(), next * 1000);
+    })
+}
+
+/// Everything waiting, in order.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeQueue<'a>(
+    env: JNIEnv<'a>,
+    _class: JClass,
+) -> jni::objects::JString<'a> {
+    let out = match ENGINE.lock().unwrap().as_ref() {
+        Some(e) => serde_json::json!({ "ok": true, "tracks": e.user_queue() }).to_string(),
+        None => fail("nativeQueue before nativeInit"),
+    };
+    env.new_string(out).expect("new_string")
+}
+
+/// Take one track out of the waiting list, by path.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeDequeue(
+    mut env: JNIEnv,
+    _class: JClass,
+    path: JString,
+) {
+    let Ok(path) = jstring_to_string(&mut env, &path) else { return };
+    let mut guard = ENGINE.lock().unwrap();
+    let Some(engine) = guard.as_mut() else { return };
+    // By path, like everything else the screen hands back; the id is a UUID
+    // nobody sees. A track queued twice loses the copy that matched first,
+    // which is the one the row showed.
+    let Some(id) = engine.user_queue().iter().find(|t| t.path == path).map(|t| t.id.clone())
+    else {
+        return;
+    };
+    engine.dequeue(&id);
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeMoveInQueue(
+    _env: JNIEnv,
+    _class: JClass,
+    from: jint,
+    to: jint,
+) {
+    with_engine!(|e: &mut Player| e.move_in_queue(from.max(0) as usize, to.max(0) as usize))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRenamePlaylist<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    id: JString,
+    name: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let id = jstring_to_string(&mut env, &id)?;
+        let name = jstring_to_string(&mut env, &name)?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err("a playlist needs a name".into());
+        }
+        let guard = DB.lock().unwrap();
+        let db = guard.as_ref().ok_or("nativeRenamePlaylist before nativeOpenDb")?;
+        db.rename_playlist(&id, name).map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "ok": true }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
+/// Store the playlists in this order.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeReorderPlaylists<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    ids_json: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let raw = jstring_to_string(&mut env, &ids_json)?;
+        let ids: Vec<String> =
+            serde_json::from_str(&raw).map_err(|e| format!("the id list was not JSON: {e}"))?;
+        let guard = DB.lock().unwrap();
+        let db = guard.as_ref().ok_or("nativeReorderPlaylists before nativeOpenDb")?;
+        db.reorder_playlists(&ids).map_err(|e| e.to_string())?;
+        Ok(serde_json::json!({ "ok": true }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
+/// Put a whole playlist in the waiting list, in its stored order.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeEnqueuePlaylist<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    id: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let id = jstring_to_string(&mut env, &id)?;
+        let tracks = {
+            let guard = DB.lock().unwrap();
+            let db = guard.as_ref().ok_or("nativeEnqueuePlaylist before nativeOpenDb")?;
+            db.get_playlist_tracks(&id).map_err(|e| e.to_string())?
+        };
+        let n = tracks.len();
+        let mut guard = ENGINE.lock().unwrap();
+        let engine = guard.as_mut().ok_or("nativeEnqueuePlaylist before nativeInit")?;
+        for t in tracks {
+            engine.enqueue(t);
+        }
+        Ok(serde_json::json!({ "ok": true, "added": n }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
 }
 
 /// Every playlist, with its track count.
