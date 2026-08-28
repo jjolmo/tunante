@@ -79,8 +79,15 @@ pub struct Plan {
     pub confidence: Confidence,
     /// `None` when nothing was found.
     pub url: Option<String>,
-    /// Set when the folder already has art and would be left alone.
+    /// The image already in the folder, which is left alone. Recording this is
+    /// *not* what undo wants — see `written`.
     pub existing: Option<String>,
+    /// The file this run created, if it created one.
+    ///
+    /// This, and only this, is what may be undone. Conflating it with
+    /// `existing` would make "undo" delete the user's own artwork — the exact
+    /// files [`crate::folder::store_cover`] refuses to overwrite.
+    pub written: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -322,6 +329,8 @@ impl Resolver {
                                 confidence: h.confidence,
                                 url: Some(h.url),
                                 existing: existing.map(|p| p.display().to_string()),
+                                // A preview writes nothing.
+                                written: None,
                             },
                             false,
                         ),
@@ -329,18 +338,25 @@ impl Resolver {
                     }
                 } else {
                     match me.resolve_and_store(&req, min_conf, overwrite) {
-                        Ok((Some(found), stored)) => (
-                            Plan {
-                                game,
-                                console_id: req.console_id.clone(),
-                                source: found.source,
-                                matched_name: found.matched_name,
-                                confidence: found.confidence,
-                                url: None,
-                                existing: existing.map(|p| p.display().to_string()),
-                            },
-                            matches!(stored, Some(Stored::Written(_))),
-                        ),
+                        Ok((Some(found), stored)) => {
+                            let written = match &stored {
+                                Some(Stored::Written(p)) => Some(p.display().to_string()),
+                                _ => None,
+                            };
+                            (
+                                Plan {
+                                    game,
+                                    console_id: req.console_id.clone(),
+                                    source: found.source,
+                                    matched_name: found.matched_name,
+                                    confidence: found.confidence,
+                                    url: None,
+                                    existing: existing.map(|p| p.display().to_string()),
+                                    written: written.clone(),
+                                },
+                                written.is_some(),
+                            )
+                        }
                         Ok((None, _)) => (miss(game, &req, existing), false),
                         Err(e) => {
                             log::warn!("cover for {game}: {e}");
@@ -387,6 +403,7 @@ fn miss(game: String, req: &CoverRequest, existing: Option<PathBuf>) -> Plan {
         confidence: Confidence::Low,
         url: None,
         existing: existing.map(|p| p.display().to_string()),
+        written: None,
     }
 }
 
@@ -481,6 +498,40 @@ mod tests {
         let opts = BulkOptions { dry_run: true, cancel, ..Default::default() };
         let reqs: Vec<CoverRequest> = (0..50).map(|i| req(&[&format!("Game {i}")])).collect();
         assert!(r.resolve_many(reqs, &opts, |_| {}).is_empty());
+    }
+
+    /// The bug this field exists for.
+    ///
+    /// `existing` is the image that was already in the folder and was left
+    /// alone; `written` is what the run created. Recording the wrong one in the
+    /// undo manifest — which is what the first version of the Tauri command did
+    /// — turns "undo the last run" into "delete the covers the user chose".
+    /// A test on `Manifest` alone passed happily while that was true, because
+    /// the mistake was in the wiring.
+    #[test]
+    fn a_run_records_what_it_wrote_and_not_what_it_found() {
+        let d = std::env::temp_dir().join(format!("tunante-art-undo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        // The user's own artwork, which store_cover must never touch.
+        std::fs::write(d.join("front.png"), b"mine").unwrap();
+
+        let http = Arc::new(FakeHttp::new());
+        let r = Arc::new(Resolver::with_http(http));
+        let mut q = req(&["Whatever"]);
+        q.dir = Some(d.clone());
+        let opts = BulkOptions::default();
+        let plans = r.resolve_many(vec![q], &opts, |_| {});
+
+        assert_eq!(plans.len(), 1);
+        assert!(plans[0].written.is_none(), "nothing was written, so nothing is undoable");
+        assert!(
+            plans[0].existing.as_deref().is_some_and(|e| e.ends_with("front.png")),
+            "the user's image should be reported as existing"
+        );
+        // The two must never be the same value: undo consumes `written`.
+        assert_ne!(plans[0].written, plans[0].existing);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// The default has to be the safe one: this writes into a synced library.

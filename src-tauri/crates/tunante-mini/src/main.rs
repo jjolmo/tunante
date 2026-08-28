@@ -178,6 +178,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let grid_model = Rc::new(VecModel::from(Vec::<GridLine>::new()));
     let art_cache: Rc<RefCell<Vec<(String, slint::Image)>>> = Rc::new(RefCell::new(Vec::new()));
+    /// Set by the cover-download worker, acted on by the UI timer.
+    ///
+    /// The cache is an `Rc` owned by the UI thread and the download runs on its
+    /// own, so this is the handover. It matters because the cache remembers
+    /// *misses* too: without clearing it, every folder the run just gave a cover
+    /// to keeps showing the placeholder until the app restarts.
+    let art_dirty = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     ui.set_library_grid_lines(ModelRc::from(grid_model.clone()));
 
     // Two playlist models, not one. The picker that "add to a playlist" opens has
@@ -959,6 +966,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // as `on_rescan` above on purpose: one idiom in this app for "long job
         // with a message under it", not two.
         let (db, scan_tx) = (db.clone(), scan_tx.clone());
+        let dirty_outer = std::sync::Arc::clone(&art_dirty);
         let weak = ui.as_weak();
         ui.on_descargar_caratulas(move || {
             let Some(ui) = weak.upgrade() else { return };
@@ -968,6 +976,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             ui.set_scan_status("Buscando carátulas…".into());
             let tx = scan_tx.clone();
+            let dirty = std::sync::Arc::clone(&dirty_outer);
             std::thread::spawn(move || {
                 let all: Vec<(String, String)> = tunante_core::console::CONSOLES
                     .iter()
@@ -1013,6 +1022,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     )));
                 });
                 let found = plans.iter().filter(|p| p.source != "none").count();
+                dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                 let _ = tx.send(Some(format!(
                     "{found} carátulas de {} juegos",
                     plans.len()
@@ -1162,6 +1172,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         None => scan_done = true,
                     }
                 }
+                // Covers arrived: drop what we remember about folder art —
+                // including the misses — and redraw whatever is on screen.
+                if art_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    art_cache.borrow_mut().clear();
+                    let path = ui.get_now_path().to_string();
+                    refresh_artwork(&ui, (!path.is_empty()).then_some(path.as_str()), MAX_ART_SIDE);
+                    let rows = tree.borrow().rows(&db);
+                    rows_model.set_vec(to_ui_rows(&rows));
+                }
+
                 if scan_done {
                     ui.set_scan_status(SharedString::new());
                     // The roots only exist once the scan has been asked for, so
