@@ -648,9 +648,18 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeGames<'a>(
 
 /// One row per console, from the format of the files.
 ///
-/// Empty `console` lists the consoles; naming one lists its tracks. The mapping
-/// is `tunante_core::console`, shared with tunante-mini so the two group the
-/// library the same way.
+/// Three levels, the same as tunante-mini's: empty lists the consoles, a
+/// console name lists its games, and `console\u{1}/dir` lists that game's
+/// tracks. The middle level is what makes the tab usable at all -- a console
+/// with a real collection under it is thousands of tracks, and a flat list of
+/// them is not something anybody scrolls.
+///
+/// The console has to be in the key of the third level rather than the folder
+/// alone: a directory holding both .spc rips and mp3s appears under two
+/// consoles, and only the pair says which of the two was opened.
+///
+/// The mapping is `tunante_core::console`, shared with tunante-mini so the two
+/// group the library the same way.
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeConsoles<'a>(
     mut env: JNIEnv<'a>,
@@ -683,11 +692,48 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeConsoles<'a>(
             );
         }
 
-        let tracks: Vec<_> = all
-            .iter()
-            .filter(|t| tunante_core::console::console_of(&t.path) == want)
+        // Third level: one game of one console.
+        if let Some((console, dir)) = want.split_once('\u{1}') {
+            let prefix = format!("{}/", dir.trim_end_matches('/'));
+            let tracks: Vec<_> = all
+                .iter()
+                .filter(|t| tunante_core::console::console_of(&t.path) == console)
+                .filter(|t| {
+                    // On the real file: a subsong's `#n` suffix does not change
+                    // which directory it lives in. Direct children only, so a
+                    // game does not swallow the one filed inside it.
+                    let file = t.path.split('#').next().unwrap_or(&t.path);
+                    file.strip_prefix(prefix.as_str())
+                        .is_some_and(|rest| !rest.contains('/'))
+                })
+                .collect();
+            return Ok(
+                serde_json::json!({ "ok": true, "folders": [], "tracks": tracks }).to_string()
+            );
+        }
+
+        // Second level: the games of one console, which are its directories.
+        let mut by_dir: std::collections::BTreeMap<String, (usize, String)> = Default::default();
+        for t in &all {
+            if tunante_core::console::console_of(&t.path) != want {
+                continue;
+            }
+            let file = t.path.split('#').next().unwrap_or(&t.path);
+            let Some(dir) = Path::new(file).parent().map(|p| p.to_string_lossy().to_string())
+            else {
+                continue;
+            };
+            let e = by_dir.entry(dir).or_insert((0, t.path.clone()));
+            e.0 += 1;
+        }
+        let folders: Vec<_> = by_dir
+            .into_iter()
+            .map(|(path, (count, cover))| {
+                let name = path.rsplit('/').next().unwrap_or(&path).to_string();
+                serde_json::json!({ "path": path, "name": name, "count": count, "cover": cover })
+            })
             .collect();
-        Ok(serde_json::json!({ "ok": true, "folders": [], "tracks": tracks }).to_string())
+        Ok(serde_json::json!({ "ok": true, "folders": folders, "tracks": [] }).to_string())
     })()
     .unwrap_or_else(fail);
     env.new_string(out).expect("new_string")
