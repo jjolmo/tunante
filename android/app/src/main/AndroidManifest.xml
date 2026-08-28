@@ -45,9 +45,26 @@
           itself on top. It is also what makes onNewIntent fire at all, and
           without that an intent arriving at a running app does nothing.
         -->
+        <!--
+          Handle rotation here instead of being recreated for it.
+
+          Every piece of screen state this activity has (which destination,
+          which library tab, how far down the tree, what was searched, whether a
+          playlist was open) lives in its own fields, and Android throws the
+          activity away on a configuration change. Turning the phone put you
+          back at the root of the library with the destination reset, which
+          reads as the app having crashed and reopened.
+
+          Safe to claim because the UI is Compose, which re-measures itself, and
+          because nothing here loads an orientation-specific resource: there is
+          no -land layout, no -land drawable, no dimension that changes. The two
+          places that care about the shape of the screen ask
+          LocalConfiguration for it and recompose.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
