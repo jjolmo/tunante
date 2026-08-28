@@ -80,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let focus_search = args.iter().any(|a| a == "--focus-search");
     let start_mode = arg_value("--mode").and_then(|s| s.parse::<i32>().ok());
     let open_playlist = arg_value("--open-playlist");
+    let open_game = arg_value("--open-game");
 
     // A bare path means "play this". The .desktop file declares MIME types, so
     // a file manager or another app can hand us a track directly, and that has
@@ -201,12 +202,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh_playlists(&db, &views, "");
 
     // Instruments: land on a view directly instead of tapping to reach it.
-    if start_mode.is_some() || open_playlist.is_some() {
-        let mode = start_mode.unwrap_or(3);
+    if start_mode.is_some() || open_playlist.is_some() || open_game.is_some() {
+        let mode = if open_game.is_some() { 3 } else { start_mode.unwrap_or(3) };
         {
             let mut t = tree.borrow_mut();
             t.mode = library::Mode::from_index(mode);
             t.nav.clear();
+            // Inside a game, which is the one level nothing could reach from a
+            // script. Every other view is one `--mode` away, but a game is a
+            // row you have to press, and this desktop's compositor refuses
+            // synthetic clicks: XTEST will not move the pointer and winit
+            // ignores XSendEvent. So the same door the playlist instrument
+            // uses, for the same reason.
+            //
+            // The `juego:` prefix is not a detail the caller should know, so it
+            // is added here rather than asked for.
+            if let Some(name) = &open_game {
+                t.mode = library::Mode::Games;
+                t.nav.push(format!("juego:{name}"));
+                // Says so when there is no such game, the way the playlist
+                // instrument does. Landing on a silently empty level looks
+                // exactly like the bug this exists to rule out.
+                if t.grid_tracks(&db, library::Mode::Games).is_empty() {
+                    eprintln!("no hay ningún juego llamado «{name}»");
+                }
+            }
             if let Some(name) = &open_playlist {
                 if let Some(p) = db
                     .get_playlists()
