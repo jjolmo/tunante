@@ -103,6 +103,7 @@ fun TunanteApp(
     onRenamePlaylist: (Playlist, String) -> Unit,
     onMovePlaylist: (Int, Int) -> Unit,
     onEnqueuePlaylist: (Playlist) -> Unit,
+    onEnqueueTrack: (Track) -> Unit,
     onEnqueue: (Track) -> Unit,
     onRemoveFromPlaylist: (Playlist, Track) -> Unit,
     view: LibraryView,
@@ -161,6 +162,7 @@ fun TunanteApp(
                     onRename = onRenamePlaylist,
                     onMove = onMovePlaylist,
                     onEnqueueAll = onEnqueuePlaylist,
+                    onEnqueueOne = onEnqueueTrack,
                 )
             }
             if (state.hasSource) {

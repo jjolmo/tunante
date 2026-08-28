@@ -30,6 +30,7 @@ fun QueueScreen(
     tracks: List<Track>,
     onClose: () -> Unit,
     onRemove: (Track) -> Unit,
+    onPlay: (Track) -> Unit,
     onMove: (Int, Int) -> Unit,
     onClear: () -> Unit,
 ) {
@@ -87,7 +88,16 @@ fun QueueScreen(
                 ) {
                     Label("${i + 1}", T.textMuted, T.fontSmall)
                     Spacer(Modifier.width(T.gap))
-                    Column(Modifier.weight(1f)) {
+                    // Tapping jumps to it. The rest of the queue keeps its
+                    // order — skipping to the third thing waiting should not
+                    // throw away the first two.
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .heightIn(min = T.touchTarget)
+                            .clickable { onPlay(track) },
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
+                    ) {
                         Label(
                             track.title.ifEmpty { track.path.substringAfterLast('/') },
                             T.textPrimary,

@@ -40,9 +40,6 @@ public final class NativeBridge {
     /** Blocking and long. Call from a thread, never from the main looper. */
     public static native String nativeScan(String root);
 
-    /** Every track under a folder, or the whole library when {@code folder} is empty. */
-    public static native String nativeTracks(String folder);
-
     /**
      * One level of the library tree: the folders directly under {@code parent}
      * and the tracks sitting in it. Empty {@code parent} asks for the roots.
@@ -101,6 +98,9 @@ public final class NativeBridge {
 
     /** Everything waiting, in order. */
     public static native String nativeQueue();
+
+    /** Play something that was waiting, now, taking it out of the queue. */
+    public static native String nativePlayQueued(String path);
 
     /** Take one track out of the waiting list, by path. */
     public static native void nativeDequeue(String path);
@@ -169,5 +169,4 @@ public final class NativeBridge {
 
     public static native void nativeStop();
 
-    public static native boolean nativeIsPlaying();
 }
