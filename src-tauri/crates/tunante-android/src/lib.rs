@@ -453,6 +453,132 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeEnqueue<'a>(
     env.new_string(out).expect("new_string")
 }
 
+/// Every track a library row stands for.
+///
+/// A row's `path` is not always a path. The index views build synthetic keys
+/// the same way tunante-mini does, because in both apps a row can be something
+/// the filesystem has no name for:
+///
+/// * `juego:Nombre`    — a game, which is an album tag and may be spread over
+///                       several directories or share one with another game.
+/// * `consola:NES`     — a console, which is a set of file extensions.
+/// * `NES\u{1}/ruta`   — one directory of one console. The console has to be in
+///                       the key because a folder holding both .spc rips and
+///                       mp3s appears under two of them.
+/// * anything else     — a real path, file or directory.
+///
+/// Resolved in one place so the callers never have to know the encoding, and
+/// so an unrecognised key returns nothing rather than being mistaken for a
+/// directory that does not exist.
+fn row_tracks(db: &Database, row: &str, deep: bool) -> Vec<tunante_core::db::models::Track> {
+    let all = || db.get_all_tracks().unwrap_or_default();
+
+    if let Some(game) = row.strip_prefix("juego:") {
+        let tracks = all();
+        return tunante_core::games::tracks_of(&tracks, game)
+            .into_iter()
+            .cloned()
+            .collect();
+    }
+    if let Some(console) = row.strip_prefix("consola:") {
+        return all()
+            .into_iter()
+            .filter(|t| tunante_core::console::console_of(&t.path) == console)
+            .collect();
+    }
+    if let Some((console, dir)) = row.split_once('\u{1}') {
+        let prefix = format!("{}/", dir.trim_end_matches('/'));
+        return all()
+            .into_iter()
+            .filter(|t| tunante_core::console::console_of(&t.path) == console)
+            .filter(|t| {
+                let file = t.path.split('#').next().unwrap_or(&t.path);
+                file.strip_prefix(prefix.as_str())
+                    .is_some_and(|rest| !rest.contains('/'))
+            })
+            .collect();
+    }
+
+    // A real path. `get_tracks_by_folder` already answers recursively -- it
+    // matches `path LIKE 'folder/%'` -- so the shallow case is the one that
+    // has to do work.
+    let mut tracks = db.get_tracks_by_folder(row).unwrap_or_default();
+    if !deep {
+        let prefix = format!("{}/", row.trim_end_matches('/'));
+        tracks.retain(|t| {
+            // On the real file: a subsong's `#n` suffix does not change which
+            // directory it lives in.
+            let file = t.path.split('#').next().unwrap_or(&t.path);
+            file.strip_prefix(prefix.as_str())
+                .is_some_and(|rest| !rest.contains('/'))
+        });
+    }
+    // Not a folder at all: a file, possibly one holding many subsongs.
+    if tracks.is_empty() {
+        if let Ok(Some(t)) = db.get_track_by_path(row) {
+            tracks.push(t);
+        }
+    }
+    tracks
+}
+
+/// The paths of everything a row holds, for the menu that acts on one.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRowTracks<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    row: JString,
+    deep: jboolean,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let row = jstring_to_string(&mut env, &row)?;
+        let guard = DB.lock().unwrap();
+        let db = guard.as_ref().ok_or("nativeRowTracks before nativeOpenDb")?;
+        let tracks = row_tracks(db, &row, deep != 0);
+        Ok(serde_json::json!({ "ok": true, "tracks": tracks }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
+/// Put a batch at the end of the queue.
+///
+/// Not `nativeEnqueue` in a loop: a folder is hundreds of tracks, and that
+/// would be hundreds of JNI crossings each taking the engine lock on its own.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeEnqueuePaths<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    paths_json: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let raw = jstring_to_string(&mut env, &paths_json)?;
+        let paths: Vec<String> = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        let tracks: Vec<_> = {
+            let guard = DB.lock().unwrap();
+            let db = guard.as_ref().ok_or("nativeEnqueuePaths before nativeOpenDb")?;
+            paths
+                .iter()
+                .map(|p| {
+                    db.get_track_by_path(p)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| bare_track(p))
+                })
+                .collect()
+        };
+        let n = tracks.len();
+        let mut guard = ENGINE.lock().unwrap();
+        let engine = guard.as_mut().ok_or("nativeEnqueuePaths before nativeInit")?;
+        for t in tracks {
+            engine.enqueue(t);
+        }
+        Ok(serde_json::json!({ "ok": true, "queued": n }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
 /// Take a track out of a playlist, named by path.
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRemoveFromPlaylist<'a>(

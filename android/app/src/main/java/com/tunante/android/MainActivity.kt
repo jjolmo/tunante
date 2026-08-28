@@ -104,6 +104,9 @@ class MainActivity : ComponentActivity() {
                     onQueueRemove = { NativeBridge.nativeDequeue(it.path); reloadQueue() },
                     onQueuePlay = { NativeBridge.nativePlayQueued(it.path); reloadQueue() },
                     onQueueMove = { f, t -> NativeBridge.nativeMoveInQueue(f, t); reloadQueue() },
+                    onEnqueueRow = ::enqueueRow,
+                    onAddRowToPlaylist = ::addRowToPlaylist,
+                    onNewPlaylistWithRow = ::newPlaylistWithRow,
                     tab = tab,
                     onTab = ::switchTab,
                     playlists = playlists,
@@ -166,6 +169,20 @@ class MainActivity : ComponentActivity() {
 
     @Deprecated("The replacement, OnBackPressedDispatcher, needs androidx.activity's callback API; this activity has one back action and no fragments.")
     override fun onBackPressed() {
+        // Anything Compose registered gets first refusal.
+        //
+        // Overriding this method at all takes back off the OnBackPressedDispatcher,
+        // and a BackHandler inside the composition registers there. So the sheets
+        // -- the folder menu, the playlist picker -- never saw a back press, and
+        // it went straight to this activity's navigation while a menu covered the
+        // whole screen. Deferring when a callback exists puts them back in line
+        // without giving up the navigation below.
+        if (onBackPressedDispatcher.hasEnabledCallbacks()) {
+            @Suppress("DEPRECATION")
+            super.onBackPressed()
+            return
+        }
+
         // Android has a back button where Plasma Mobile does not, so it gets
         // wired to the same action as the breadcrumb rather than closing the app
         // from whatever depth you happened to be at.
@@ -274,6 +291,51 @@ class MainActivity : ComponentActivity() {
         val paths = org.json.JSONArray().put(track.path)
         Log.i(TAG, "add: " + NativeBridge.nativeAddToPlaylist(playlist.id, paths.toString()))
         reloadPlaylists()
+    }
+
+    /**
+     * The paths a library row stands for.
+     *
+     * Off the main thread by every caller: for a console this reads the whole
+     * track table and filters it.
+     */
+    private fun rowPaths(row: String, deep: Boolean): org.json.JSONArray {
+        val s = JSONObject(NativeBridge.nativeRowTracks(row, deep))
+        val out = org.json.JSONArray()
+        val tracks = s.optJSONArray("tracks") ?: return out
+        for (i in 0 until tracks.length()) {
+            out.put(tracks.getJSONObject(i).optString("path"))
+        }
+        return out
+    }
+
+    /** Long press on a folder, album, game or console: queue the lot. */
+    private fun enqueueRow(row: String, deep: Boolean) {
+        thread(name = "enqueue-row") {
+            val paths = rowPaths(row, deep)
+            if (paths.length() == 0) return@thread
+            Log.i(TAG, "enqueue row: " + NativeBridge.nativeEnqueuePaths(paths.toString()))
+        }
+    }
+
+    private fun addRowToPlaylist(playlist: Playlist, row: String, deep: Boolean) {
+        thread(name = "add-row") {
+            val paths = rowPaths(row, deep)
+            if (paths.length() == 0) return@thread
+            Log.i(TAG, "add row: " + NativeBridge.nativeAddToPlaylist(playlist.id, paths.toString()))
+            runOnUiThread { reloadPlaylists() }
+        }
+    }
+
+    private fun newPlaylistWithRow(name: String, row: String, deep: Boolean) {
+        thread(name = "new-with-row") {
+            val paths = rowPaths(row, deep)
+            if (paths.length() == 0) return@thread
+            val id = JSONObject(NativeBridge.nativeCreatePlaylist(name)).optString("id")
+            if (id.isEmpty()) return@thread
+            NativeBridge.nativeAddToPlaylist(id, paths.toString())
+            runOnUiThread { reloadPlaylists() }
+        }
     }
 
     private fun removeFromPlaylist(playlist: Playlist, track: Track) {

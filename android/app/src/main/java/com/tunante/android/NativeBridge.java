@@ -70,6 +70,22 @@ public final class NativeBridge {
     /** Put a track next in line, without touching what is playing. */
     public static native String nativeEnqueue(String path);
 
+    /**
+     * The paths of everything a library row stands for.
+     *
+     * A row is not always a path: the index tabs build synthetic keys
+     * ({@code juego:Nombre}, {@code consola:NES}, {@code NES\u0001/dir}) for
+     * things the filesystem has no name for. The Rust side is the only place
+     * that knows that encoding.
+     *
+     * {@code deep} only means anything for a real directory: whether to take
+     * the subfolders too.
+     */
+    public static native String nativeRowTracks(String row, boolean deep);
+
+    /** Put a batch at the end of the queue, in one crossing rather than N. */
+    public static native String nativeEnqueuePaths(String pathsJson);
+
     public static native String nativeRemoveFromPlaylist(String id, String path);
 
     /** The folders the library is built from. */
