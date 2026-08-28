@@ -1108,15 +1108,20 @@ app por su certificado, no por su nombre de paquete, y el único camino sería
 desinstalar — perdiendo la biblioteca escaneada. No hay recuperación ni forma de
 rotarla fuera de Google Play.
 
+El certificado es público por definición —lo lleva dentro cada APK publicado—,
+así que escribirlo aquí no cuesta nada:
+
 ```
-~/.android/tunante-release.jks        PKCS12, RSA 4096, 30 años, alias "tunante"
-~/.android/tunante-release.pass       la contraseña, en texto plano, modo 600
 SHA-256  04:ee:b7:3d:e2:ce:10:eb:9c:a3:bb:57:ab:05:7a:c8:
          aa:14:55:3c:4d:ba:28:f3:43:6c:38:5d:d5:5c:52:79
 ```
 
-**Fuera del repositorio a propósito**, y ahí se queda: una clave privada
-commiteada es una clave pública.
+**Dónde vive la clave y su contraseña está en `android/KEY.local.md`**, que está
+en el `.gitignore` y se queda en la máquina que las tiene. La clave nunca ha
+estado en el repositorio —una clave privada commiteada es una clave pública—,
+pero es que la *ruta a un fichero de contraseña* tampoco tiene por qué estar:
+en un repositorio público es decirle a quien llegue al disco qué fichero abrir.
+Poco, pero gratis de evitar.
 
 La CI la recibe en dos secretos, `ANDROID_KEYSTORE_BASE64` y
 `ANDROID_KEYSTORE_PASSWORD`. Sin ellos sigue compilando, pero en `debug`, que se
