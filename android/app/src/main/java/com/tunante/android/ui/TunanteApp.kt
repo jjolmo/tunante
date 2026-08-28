@@ -115,6 +115,8 @@ fun TunanteApp(
     hasAllFiles: Boolean,
     onGrantFiles: () -> Unit,
     onScan: () -> Unit,
+    onDownloadCovers: () -> Unit,
+    coverStatus: String,
     onPickFolders: () -> Unit,
     onQuery: (String) -> Unit,
     onOpenFolder: (String) -> Unit,
@@ -205,6 +207,8 @@ fun TunanteApp(
                     onFade = onFade,
                     onSleep = onSleep,
                     onScan = onScan,
+                    onDownloadCovers = onDownloadCovers,
+                    coverStatus = coverStatus,
                     onPickFolders = onPickFolders,
                 )
                 Dest.Library -> Library(

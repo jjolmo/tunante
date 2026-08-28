@@ -5,6 +5,7 @@
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { trackDnd } from '$lib/stores/trackDnd.svelte';
 	import { consolesStore } from '$lib/stores/consoles.svelte';
+	import { coversStore } from '$lib/stores/covers.svelte';
 	import { filesStore } from '$lib/stores/files.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -30,6 +31,15 @@
 	// Rename state
 	let renamingPlaylistId = $state<string | null>(null);
 	let renameValue = $state('');
+
+	/** Which console the covers screen should open on, set from the context menu. */
+	let pendingCoverConsole = $state<string | null>(null);
+	$effect(() => {
+		if (pendingCoverConsole) {
+			coversStore.requestedConsole = pendingCoverConsole;
+			pendingCoverConsole = null;
+		}
+	});
 
 	// Fetch artwork when the current track changes
 	$effect(() => {
@@ -216,6 +226,33 @@
 		consolesStore.selectConsole(id);
 		invoke('set_setting', { key: 'session_view', value: 'console' }).catch(() => {});
 		invoke('set_setting', { key: 'session_view_id', value: id }).catch(() => {});
+	}
+
+	/**
+	 * Right-clicking a console offers to fetch its covers.
+	 *
+	 * It opens Settings rather than starting immediately: the run writes files
+	 * into folders the user owns and syncs, so it goes through the same
+	 * preview-then-apply screen as everything else. A context menu that silently
+	 * began writing to disk would be the wrong shape for this.
+	 */
+	function handleConsoleContextMenu(e: MouseEvent, id: string, name: string) {
+		e.preventDefault();
+		contextMenu = {
+			x: e.clientX,
+			y: e.clientY,
+			items: [
+				{
+					label: `Find cover art for ${name}…`,
+					action: () => {
+						coversStore.reset();
+						settingsStore.openSettings();
+						settingsStore.activeCategory = 'covers';
+						pendingCoverConsole = id;
+					}
+				}
+			]
+		};
 	}
 
 	function handlePlayConsole(id: string) {
@@ -678,6 +715,7 @@
 						class:active={consolesStore.activeConsoleId === console.id}
 						onclick={() => handleSelectConsole(console.id)}
 						ondblclick={() => handlePlayConsole(console.id)}
+						oncontextmenu={(e) => handleConsoleContextMenu(e, console.id, console.name)}
 					>
 						<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
 							<path d={console.icon} />
