@@ -93,6 +93,28 @@ public final class NativeBridge {
     /** Empty the waiting list, leaving what is playing alone. */
     public static native void nativeClearQueue();
 
+    /** 1 -> 2 -> 3 -> forever. */
+    public static native void nativeCycleLoops();
+
+    /** none -> 4 -> 8 -> 15 seconds. */
+    public static native void nativeCycleFade();
+
+    /** Everything waiting, in order. */
+    public static native String nativeQueue();
+
+    /** Take one track out of the waiting list, by path. */
+    public static native void nativeDequeue(String path);
+
+    public static native void nativeMoveInQueue(int from, int to);
+
+    public static native String nativeRenamePlaylist(String id, String name);
+
+    /** Store the playlists in this order. */
+    public static native String nativeReorderPlaylists(String idsJson);
+
+    /** Put a whole playlist in the waiting list. */
+    public static native String nativeEnqueuePlaylist(String id);
+
     public static native String nativePlaylists();
 
     public static native String nativePlaylistTracks(String id);

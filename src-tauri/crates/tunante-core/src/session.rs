@@ -15,6 +15,8 @@ const KEY_POSITION: &str = "mini.last_position_ms";
 const KEY_VOLUME: &str = "mini.volume";
 const KEY_SHUFFLE: &str = "mini.shuffle";
 const KEY_REPEAT: &str = "mini.repeat";
+const KEY_LOOPS: &str = "mini.loop_count";
+const KEY_FADE: &str = "mini.fade_seconds";
 
 pub struct Session {
     pub track_path: Option<String>,
@@ -22,6 +24,11 @@ pub struct Session {
     pub volume: f32,
     pub shuffle: bool,
     pub repeat: u8,
+    /// How many times a track that loops forever is played through. 0 is
+    /// "forever", which is a real choice for background music.
+    pub loops: u32,
+    /// Seconds of fade at the end of a looped track. 0 is a hard stop.
+    pub fade_seconds: u64,
 }
 
 impl Session {
@@ -36,6 +43,10 @@ impl Session {
             volume: get(KEY_VOLUME).and_then(|s| s.parse().ok()).unwrap_or(1.0),
             shuffle: get(KEY_SHUFFLE).map(|s| s == "1").unwrap_or(false),
             repeat: get(KEY_REPEAT).and_then(|s| s.parse().ok()).unwrap_or(0),
+            // Two loops and an eight-second fade: the usual choice for a
+            // chiptune rip, and what both apps started life hardcoded to.
+            loops: get(KEY_LOOPS).and_then(|s| s.parse().ok()).unwrap_or(2),
+            fade_seconds: get(KEY_FADE).and_then(|s| s.parse().ok()).unwrap_or(8),
         }
     }
 
@@ -51,12 +62,16 @@ impl Session {
         volume: f32,
         shuffle: bool,
         repeat: u8,
+        loops: u32,
+        fade_seconds: u64,
     ) {
         let _ = db.set_setting(KEY_TRACK, track_path.unwrap_or(""));
         let _ = db.set_setting(KEY_POSITION, &position_ms.to_string());
         let _ = db.set_setting(KEY_VOLUME, &volume.to_string());
         let _ = db.set_setting(KEY_SHUFFLE, if shuffle { "1" } else { "0" });
         let _ = db.set_setting(KEY_REPEAT, &repeat.to_string());
+        let _ = db.set_setting(KEY_LOOPS, &loops.to_string());
+        let _ = db.set_setting(KEY_FADE, &fade_seconds.to_string());
     }
 }
 

@@ -209,6 +209,33 @@ impl Player {
     /// The user queue is a layer over the queue, not a replacement for it: the
     /// folder you were listening to is still there underneath when the
     /// enqueued tracks run out.
+    /// How long a track that loops forever lasts.
+    ///
+    /// The whole repertoire this player exists for loops by design and has no
+    /// ending of its own, so these two numbers *are* the duration. They take
+    /// effect on the next track: the one playing was already handed its
+    /// settings when its decoder was spawned.
+    pub fn set_loop_settings(&mut self, loops: u32, fade_ms: u64) {
+        self.loops = loops.max(1);
+        self.fade_ms = fade_ms;
+    }
+
+    pub fn loops(&self) -> u32 {
+        self.loops
+    }
+
+    pub fn fade_ms(&self) -> u64 {
+        self.fade_ms
+    }
+
+    pub fn dequeue(&mut self, track_id: &str) {
+        self.queue.dequeue_track(track_id);
+    }
+
+    pub fn move_in_queue(&mut self, from: usize, to: usize) {
+        self.queue.move_in_user_queue(from, to);
+    }
+
     pub fn enqueue(&mut self, track: Track) {
         self.queue.enqueue_track(track);
     }
@@ -321,6 +348,8 @@ impl Player {
             "volume": self.volume,
             "sleepMinutes": if self.sleep.is_running() { self.sleep.remaining_minutes() } else { 0 },
             "queued": self.queue.get_user_queue().len(),
+            "loops": self.loops,
+            "fadeSeconds": self.fade_ms / 1000,
             "queuedNext": self.queue.get_user_queue().first().map(|t| {
                 if t.title.is_empty() { t.path.rsplit('/').next().unwrap_or("").to_string() }
                 else { t.title.clone() }

@@ -843,6 +843,32 @@ entre una ejecución y la siguiente —borrada, en una tarjeta que no está pues
 o de un formato que el decodificador no maneja— y ninguna de esas cosas debería
 impedir abrir la app.
 
+### Fase 7 — lo que la interfaz todavía no tenía
+
+Salió de preguntarse en serio «¿está todo?» en vez de darlo por hecho. Cuatro
+cosas, en orden de lo que pesa:
+
+**1. Bucles y desvanecido.** Estaban fijos en 2 y 8 s. En un reproductor de
+música de consola eso no es un ajuste menor: casi todo el repertorio hace bucle
+por diseño y no tiene final propio, así que esos dos números *son* la duración
+de la pista. mini los cicla `1 → 2 → 3 → ∞` y `0 → 4 → 8 → 15 s` y los guarda en
+`settings`; las mismas claves y los mismos pasos, para que las dos apps se
+comporten igual y una biblioteca compartida no cambie de sonido al cambiar de
+programa.
+
+**2. Listas: renombrar, reordenar, encolar entera.** El core ya tenía
+`rename_playlist`, `reorder_playlists` y `reorder_playlist_tracks` sin usar.
+
+**3. Una vista de cola de verdad.** Hoy hay cuenta y «vaciar». Falta quitar una
+suelta y reordenar. `PlayQueue` sabe encolar y desencolar por id pero no mover,
+así que eso hay que añadirlo al core — con pruebas, porque mover elementos de
+una lista por índice es donde se cuelan los off-by-one.
+
+**4. Crear una lista desde una pista**, sin ir antes a la pestaña de listas.
+
+Nada de esto necesita puente nuevo salvo llamadas: la frontera Rust/Kotlin ya
+está donde tiene que estar.
+
 **Lo que falta**: nada de la lista original. Queda pulir, no construir.
 
 Dos cosas que en Slint eran problema y aquí salieron gratis, como decía el plan:

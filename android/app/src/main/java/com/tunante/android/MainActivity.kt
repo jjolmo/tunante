@@ -20,6 +20,7 @@ import com.tunante.android.ui.LibraryView
 import com.tunante.android.ui.DirListing
 import com.tunante.android.ui.FolderPicker
 import com.tunante.android.ui.PlayerState
+import com.tunante.android.ui.QueueScreen
 import com.tunante.android.ui.Playlist
 import com.tunante.android.ui.Tab
 import com.tunante.android.ui.Track
@@ -49,6 +50,8 @@ class MainActivity : ComponentActivity() {
     private var picking by mutableStateOf(false)
     private var listing by mutableStateOf(DirListing())
     private var roots by mutableStateOf(emptyList<String>())
+    private var showingQueue by mutableStateOf(false)
+    private var queue by mutableStateOf(emptyList<Track>())
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -76,6 +79,16 @@ class MainActivity : ComponentActivity() {
         setContent {
             TunanteTheme {
                 val state = pollState { readState() }
+                if (showingQueue) {
+                    QueueScreen(
+                        tracks = queue,
+                        onClose = { showingQueue = false },
+                        onRemove = { NativeBridge.nativeDequeue(it.path); reloadQueue() },
+                        onMove = { f, t -> NativeBridge.nativeMoveInQueue(f, t); reloadQueue() },
+                        onClear = { NativeBridge.nativeClearQueue(); reloadQueue() },
+                    )
+                    return@TunanteTheme
+                }
                 if (picking) {
                     FolderPicker(
                         listing = listing,
@@ -99,6 +112,10 @@ class MainActivity : ComponentActivity() {
                     onDeletePlaylist = ::deletePlaylist,
                     onPlayPlaylistIndex = ::playPlaylistAt,
                     onAddToPlaylist = ::addToPlaylist,
+                    onNewPlaylistWith = ::newPlaylistWith,
+                    onRenamePlaylist = ::renamePlaylist,
+                    onMovePlaylist = ::movePlaylist,
+                    onEnqueuePlaylist = ::enqueuePlaylist,
                     onEnqueue = { NativeBridge.nativeEnqueue(it.path) },
                     onRemoveFromPlaylist = ::removeFromPlaylist,
                     view = view,
@@ -119,10 +136,28 @@ class MainActivity : ComponentActivity() {
                     onSleep = { NativeBridge.nativeSetSleepTimer(it) },
                     onClearQueue = { NativeBridge.nativeClearQueue() },
                     onSeek = { NativeBridge.nativeSeek(it) },
+                    onLoops = { NativeBridge.nativeCycleLoops() },
+                    onFade = { NativeBridge.nativeCycleFade() },
+                    onOpenQueue = { reloadQueue(); showingQueue = true },
                 )
             }
         }
 
+        handleTestIntent()
+    }
+
+    /**
+     * An intent arriving at an activity that is already running.
+     *
+     * Without this, being handed a file by a file manager while Tunante is open
+     * does nothing at all — onCreate is where the intent was read, and onCreate
+     * does not run again. It is also why every test hook needed `am start -S`,
+     * which restarts the process and throws away the queue it was meant to be
+     * testing.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
         handleTestIntent()
     }
 
@@ -131,7 +166,9 @@ class MainActivity : ComponentActivity() {
         // Android has a back button where Plasma Mobile does not, so it gets
         // wired to the same action as the breadcrumb rather than closing the app
         // from whatever depth you happened to be at.
-        if (picking) {
+        if (showingQueue) {
+            showingQueue = false
+        } else if (picking) {
             picking = false
         } else if (tab == Tab.Playlists && openPlaylist != null) {
             openPlaylist = null
@@ -174,6 +211,8 @@ class MainActivity : ComponentActivity() {
             shuffle = s.optBoolean("shuffle"),
             repeat = s.optInt("repeat"),
             sleepMinutes = s.optInt("sleepMinutes"),
+            loops = s.optInt("loops", 2),
+            fadeSeconds = s.optInt("fadeSeconds", 8),
             queued = s.optInt("queued"),
             queuedNext = s.optString("queuedNext"),
             queueLen = s.optInt("queueLen"),
@@ -235,6 +274,43 @@ class MainActivity : ComponentActivity() {
         NativeBridge.nativeRemoveFromPlaylist(playlist.id, track.path)
         openPlaylist(playlist)
         reloadPlaylists()
+    }
+
+    private fun reloadQueue() {
+        val s = JSONObject(NativeBridge.nativeQueue())
+        queue = if (s.optBoolean("ok", false)) tracksFrom(s.optJSONArray("tracks")) else emptyList()
+    }
+
+    /** A new playlist with this one track in it, without leaving the library. */
+    private fun newPlaylistWith(name: String, track: Track) {
+        val created = JSONObject(NativeBridge.nativeCreatePlaylist(name))
+        val id = created.optString("id")
+        if (id.isEmpty()) return
+        NativeBridge.nativeAddToPlaylist(id, org.json.JSONArray().put(track.path).toString())
+        reloadPlaylists()
+    }
+
+    private fun renamePlaylist(playlist: Playlist, name: String) {
+        NativeBridge.nativeRenamePlaylist(playlist.id, name)
+        reloadPlaylists()
+        if (openPlaylist?.id == playlist.id) {
+            openPlaylist = playlist.copy(name = name)
+        }
+    }
+
+    /** Reorder by handing back the whole order, which is what the core wants. */
+    private fun movePlaylist(from: Int, to: Int) {
+        if (from !in playlists.indices || to !in playlists.indices) return
+        val next = playlists.toMutableList()
+        next.add(to, next.removeAt(from))
+        NativeBridge.nativeReorderPlaylists(
+            org.json.JSONArray().apply { next.forEach { put(it.id) } }.toString()
+        )
+        playlists = next
+    }
+
+    private fun enqueuePlaylist(playlist: Playlist) {
+        Log.i(TAG, "enqueue playlist: " + NativeBridge.nativeEnqueuePlaylist(playlist.id))
     }
 
     private fun playPlaylistAt(index: Int) {

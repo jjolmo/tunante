@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -59,6 +60,9 @@ fun PlaylistsTab(
     onDelete: (Playlist) -> Unit,
     onPlayIndex: (Int) -> Unit,
     onRemove: (Playlist, Track) -> Unit,
+    onRename: (Playlist, String) -> Unit,
+    onMove: (Int, Int) -> Unit,
+    onEnqueueAll: (Playlist) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         if (open == null) {
@@ -67,7 +71,18 @@ fun PlaylistsTab(
                 EmptyNote("Ninguna lista todavía", "Créala arriba y añade pistas desde la biblioteca.")
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
-                    items(playlists) { p -> PlaylistRow(p, { onOpen(p) }, { onDelete(p) }) }
+                    itemsIndexed(playlists) { i, p ->
+                        PlaylistRow(
+                            playlist = p,
+                            canUp = i > 0,
+                            canDown = i < playlists.lastIndex,
+                            onOpen = { onOpen(p) },
+                            onDelete = { onDelete(p) },
+                            onRename = { name -> onRename(p, name) },
+                            onUp = { onMove(i, i - 1) },
+                            onDown = { onMove(i, i + 1) },
+                        )
+                    }
                 }
             }
         } else {
@@ -83,6 +98,16 @@ fun PlaylistsTab(
                 Label("◂", T.accent, T.fontTitle)
                 Spacer(Modifier.width(T.gap))
                 Label(open.name, T.textPrimary, T.fontBody, maxLines = 1)
+                Spacer(Modifier.weight(1f))
+                if (tracks.isNotEmpty()) {
+                    Box(
+                        Modifier
+                            .heightIn(min = T.touchTarget)
+                            .clickable { onEnqueueAll(open) }
+                            .padding(horizontal = T.gap),
+                        contentAlignment = Alignment.Center,
+                    ) { Label("A la cola", T.accent, T.fontSmall, maxLines = 1) }
+                }
             }
             Rule()
             if (tracks.isEmpty()) {
@@ -146,35 +171,95 @@ private fun NewPlaylist(onCreate: (String) -> Unit) {
 }
 
 @Composable
-private fun PlaylistRow(playlist: Playlist, onOpen: () -> Unit, onDelete: () -> Unit) {
+private fun PlaylistRow(
+    playlist: Playlist,
+    canUp: Boolean,
+    canDown: Boolean,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+    onRename: (String) -> Unit,
+    onUp: () -> Unit,
+    onDown: () -> Unit,
+) {
     var confirming by remember(playlist.id) { mutableStateOf(false) }
+    var renaming by remember(playlist.id) { mutableStateOf<String?>(null) }
+
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = T.touchTarget)
             .background(T.bgPrimary)
-            .clickable(onClick = onOpen)
-            .padding(horizontal = T.gap, vertical = 8.dp),
+            .padding(start = T.gap, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f)) {
-            Label(playlist.name, T.textPrimary, T.fontBody, maxLines = 1)
-            Label("${playlist.trackCount} pistas", T.textSecondary, T.fontSmall)
-        }
-        // Two taps to delete, and the second one says so. There is no undo
-        // behind this, and a playlist is the one thing here the user made.
-        Box(
-            Modifier
-                .heightIn(min = T.touchTarget)
-                .clickable { if (confirming) onDelete() else confirming = true }
-                .padding(horizontal = T.gap),
-            contentAlignment = Alignment.Center,
-        ) {
-            Label(
-                if (confirming) "¿Seguro?" else "✕",
-                if (confirming) T.warningFg else T.textMuted,
-                if (confirming) T.fontSmall else T.fontTitle,
+        val editing = renaming
+        if (editing == null) {
+            Column(
+                Modifier.weight(1f).heightIn(min = T.touchTarget).clickable(onClick = onOpen),
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Label(playlist.name, T.textPrimary, T.fontBody, maxLines = 1)
+                Label("${playlist.trackCount} pistas", T.textSecondary, T.fontSmall)
+            }
+            // Renaming is behind its own control rather than a long press: a
+            // long press on this row already means something in the library and
+            // two different long presses is a quiz.
+            Box(
+                Modifier
+                    .heightIn(min = T.touchTarget)
+                    .clickable { renaming = playlist.name }
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) { Label("Renombrar", T.textMuted, T.fontSmall, maxLines = 1) }
+            Box(Modifier.size(T.touchTarget).clickable(enabled = canUp, onClick = onUp),
+                contentAlignment = Alignment.Center) {
+                Label("↑", if (canUp) T.textPrimary else T.textMuted, T.fontBody)
+            }
+            Box(Modifier.size(T.touchTarget).clickable(enabled = canDown, onClick = onDown),
+                contentAlignment = Alignment.Center) {
+                Label("↓", if (canDown) T.textPrimary else T.textMuted, T.fontBody)
+            }
+            // Two taps to delete, and the second one says so. There is no undo
+            // behind this, and a playlist is the one thing here the user made.
+            Box(
+                Modifier
+                    .heightIn(min = T.touchTarget)
+                    .clickable { if (confirming) onDelete() else confirming = true }
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Label(
+                    if (confirming) "¿Seguro?" else "✕",
+                    if (confirming) T.warningFg else T.textMuted,
+                    if (confirming) T.fontSmall else T.fontTitle,
+                )
+            }
+        } else {
+            BasicTextField(
+                value = editing,
+                onValueChange = { renaming = it },
+                singleLine = true,
+                textStyle = TextStyle(color = T.textPrimary, fontSize = T.fontBody),
+                cursorBrush = SolidColor(T.accent),
+                modifier = Modifier.weight(1f),
             )
+            Box(
+                Modifier
+                    .heightIn(min = T.touchTarget)
+                    .clickable {
+                        if (editing.isNotBlank()) onRename(editing.trim())
+                        renaming = null
+                    }
+                    .padding(horizontal = T.gap),
+                contentAlignment = Alignment.Center,
+            ) { Label("Guardar", T.accent, T.fontSmall) }
+            Box(
+                Modifier
+                    .heightIn(min = T.touchTarget)
+                    .clickable { renaming = null }
+                    .padding(horizontal = T.gap),
+                contentAlignment = Alignment.Center,
+            ) { Label("Cancelar", T.textMuted, T.fontSmall) }
         }
     }
     Rule()
