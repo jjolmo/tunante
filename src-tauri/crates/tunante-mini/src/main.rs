@@ -1864,6 +1864,44 @@ mod tests {
         let _ = std::fs::remove_file(file);
     }
 
+    /// The path the screen walks, which the resolver test above does not cover.
+    ///
+    /// Tapping a game pushes the grid cell's `path` onto `nav`, and from there
+    /// two different things read it back: the breadcrumb and the track list.
+    /// Both strip the prefix, and if either forgot to, entering a game would
+    /// show an empty level or a crumb reading "juego:Xenogears" -- neither of
+    /// which any test here would have noticed. mini has no way to be clicked
+    /// from a script under Wayland, so this stands in for the click.
+    #[test]
+    fn entering_a_game_from_the_grid_shows_its_tracks_and_its_name() {
+        let (file, db) = db_with(&[
+            ("/m/disc1/a.psf", "Xenogears"),
+            ("/m/disc2/b.psf", "Xenogears"),
+            ("/m/otro/c.psf", "Chrono Cross"),
+        ]);
+        let mut tree = library::Tree::new(vec![std::path::PathBuf::from("/m")]);
+        tree.mode = library::Mode::Games;
+
+        // What the grid put on the cell, verbatim.
+        tree.nav.push("juego:Xenogears".to_string());
+
+        assert_eq!(tree.crumb(), "Xenogears");
+        let rows = tree.grid_tracks(&db, library::Mode::Games);
+        let mut paths: Vec<&str> = rows.iter().map(|r| r.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["/m/disc1/a.psf", "/m/disc2/b.psf"]);
+
+        let _ = std::fs::remove_file(file);
+    }
+
+    /// A crumb is a name here, not a path, so it must not be cut at a slash.
+    #[test]
+    fn a_game_name_with_a_slash_survives_the_crumb() {
+        let mut tree = library::Tree::new(vec![std::path::PathBuf::from("/m")]);
+        tree.nav.push("juego:Hack//Sign".to_string());
+        assert_eq!(tree.crumb(), "Hack//Sign");
+    }
+
     /// The regression itself: without the prefix this returned nothing, because
     /// a game name is not a directory and never will be one.
     #[test]
