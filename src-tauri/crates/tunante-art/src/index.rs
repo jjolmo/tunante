@@ -178,12 +178,22 @@ impl Index {
             }
 
             // We have extra words the archive does not: `super metroid disc 1`.
+            //
+            // Only when those extra words are *packaging*. Without that check
+            // this is the most dangerous rule in the file: `final fantasy
+            // tactics a2` starts with `final fantasy `, so it matched
+            // "Final Fantasy (USA)" — a different game, at High confidence,
+            // which a bulk run would have written to disk unattended.
             let reverse: Vec<usize> = self
                 .entries
                 .iter()
                 .enumerate()
                 .filter(|(_, e)| {
-                    e.norm.keys().any(|ek| !ek.is_empty() && k.starts_with(&format!("{ek} ")))
+                    e.norm.keys().any(|ek| {
+                        !ek.is_empty()
+                            && k.starts_with(&format!("{ek} "))
+                            && only_packaging(&k[ek.len() + 1..])
+                    })
                 })
                 .map(|(i, _)| i)
                 .collect();
@@ -273,10 +283,39 @@ impl Index {
     }
 
     /// The one game these entries are all of, or nothing if they are several.
+    ///
+    /// Two titles are not automatically two games: an archive carries the same
+    /// release under its Japanese and its Western name — *Final Fantasy Tactics
+    /// A2 - Fuuketsu no Grimoire* and *… - Grimoire of the Rift* are one game.
+    /// So when the names differ, look again at only the best-ranked region; if
+    /// that leaves one title, it was a translation rather than a shelf.
+    ///
+    /// This does not loosen the guard where it matters. The entries behind a
+    /// bare `final fantasy` are *Final Fantasy II*, *III* and *Mystic Quest*,
+    /// all USA releases, so narrowing by region leaves three titles and the
+    /// matcher still declines.
     fn single_game<'a>(&self, hits: &'a [usize]) -> Option<&'a usize> {
-        let first = &self.entries[hits[0]].norm.key;
-        if hits.iter().all(|&i| &self.entries[i].norm.key == first) {
-            self.pick_region(hits)
+        let key_of = |i: usize| &self.entries[i].norm.key;
+        let first = key_of(hits[0]);
+        if hits.iter().all(|&i| key_of(i) == first) {
+            return self.pick_region(hits);
+        }
+
+        let best = hits
+            .iter()
+            .map(|&i| region_rank(&self.entries[i].norm.groups))
+            .min()?;
+        let preferred: Vec<usize> = hits
+            .iter()
+            .copied()
+            .filter(|&i| region_rank(&self.entries[i].norm.groups) == best)
+            .collect();
+        let first = key_of(preferred[0]).clone();
+        if preferred.iter().all(|&i| *key_of(i) == first) {
+            // `pick_region` needs a slice that outlives the call, and the
+            // filtered set does not, so return the position from `hits`.
+            let want = preferred[0];
+            hits.iter().find(|&&i| i == want)
         } else {
             None
         }
@@ -286,6 +325,25 @@ impl Index {
     fn pick_region<'a>(&self, hits: &'a [usize]) -> Option<&'a usize> {
         hits.iter().min_by_key(|&&i| region_rank(&self.entries[i].norm.groups))
     }
+}
+
+/// Words that describe how a rip was packaged rather than what it is of.
+///
+/// Deliberately excludes anything that could name a different product —
+/// `tactics`, `advance`, `remake`, `zero`. Those turn one game into another.
+const PACKAGING: &[&str] = &[
+    "ost", "osts", "soundtrack", "soundtracks", "original", "score", "bgm", "gamerip", "rip",
+    "complete", "music", "disc", "disk", "cd", "vol", "volume", "pt", "part", "set", "bonus",
+    "extras", "the", "a", "an", "and",
+];
+
+/// Is everything here packaging, rather than more of a title?
+fn only_packaging(rest: &str) -> bool {
+    let words: Vec<&str> = rest.split(' ').filter(|w| !w.is_empty()).collect();
+    !words.is_empty()
+        && words
+            .iter()
+            .all(|w| PACKAGING.contains(w) || w.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// Lower is better. Prefer a release over a prototype, and a region whose box
@@ -535,6 +593,55 @@ mod tests {
     fn the_usa_release_is_preferred_over_the_european_one() {
         let idx = index();
         assert_eq!(matched(&idx, "Demons Crest").map(|m| m.0), Some("Demon's Crest (USA)".into()));
+    }
+
+    /// The worst match this matcher has produced, and the reason the reverse
+    /// subtitle stage is restricted.
+    ///
+    /// `final fantasy tactics a2` starts with `final fantasy `, so before the
+    /// packaging check it resolved to *Final Fantasy* — a different game, at
+    /// High confidence, meaning a bulk run would have written the wrong box art
+    /// into the user's folder without asking. Seen live in the running app.
+    #[test]
+    fn a_longer_title_is_not_the_shorter_game_it_starts_with() {
+        let idx = Index::new(vec![
+            "Final Fantasy (USA)".into(),
+            "Super Metroid (Japan, USA)".into(),
+            "Mega Man (USA)".into(),
+        ]);
+        assert_eq!(matched(&idx, "Final Fantasy Tactics A2"), None);
+        assert_eq!(matched(&idx, "Final Fantasy Tactics"), None);
+        assert_eq!(matched(&idx, "Mega Man Zero 3"), None);
+        assert_eq!(matched(&idx, "Mega Man Battle Network"), None);
+        // ...while the case the rule exists for still works.
+        assert_eq!(
+            matched(&idx, "Super Metroid OST Disc 1").map(|m| m.0),
+            Some("Super Metroid (Japan, USA)".into())
+        );
+    }
+
+    /// One game under two regional titles is one game.
+    #[test]
+    fn a_japanese_and_a_western_title_are_not_two_games() {
+        let idx = Index::new(vec![
+            "Final Fantasy Tactics A2 - Fuuketsu no Grimoire (Japan)".into(),
+            "Final Fantasy Tactics A2 - Grimoire of the Rift (Europe) (En,Fr,De,Es)".into(),
+            "Final Fantasy Tactics A2 - Grimoire of the Rift (USA) (En,Fr,Es)".into(),
+        ]);
+        let (file, c) = matched(&idx, "Final Fantasy Tactics A2").unwrap();
+        assert_eq!(file, "Final Fantasy Tactics A2 - Grimoire of the Rift (USA) (En,Fr,Es)");
+        assert_eq!(c, Confidence::High);
+    }
+
+    /// ...but a shelf of sequels still is a shelf, and they share a region.
+    #[test]
+    fn narrowing_by_region_does_not_unlock_a_shelf_of_sequels() {
+        let idx = Index::new(vec![
+            "Final Fantasy II (USA)".into(),
+            "Final Fantasy III (USA)".into(),
+            "Final Fantasy - Mystic Quest (USA)".into(),
+        ]);
+        assert_eq!(matched(&idx, "Final Fantasy"), None);
     }
 
     #[test]

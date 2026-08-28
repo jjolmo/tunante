@@ -217,6 +217,14 @@ impl Resolver {
         None
     }
 
+    /// Throw away whatever is remembered about this request.
+    ///
+    /// For "that cover is wrong, try again": the cache is doing its job when it
+    /// returns the same answer, and its job is what has to be bypassed.
+    pub fn forget(&self, req: &CoverRequest) {
+        cache::forget(&req.cache_key());
+    }
+
     /// Find, download, validate, cache.
     ///
     /// Returns `Ok(None)` when nothing was found — which is an answer, not an
