@@ -156,8 +156,6 @@ jobs:
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        env:
-          TUNANTE_VERSION: ${{ steps.tag.outputs.tag }}
         working-directory: android
         # Only the phone's ABI. build.sh also knows how to build x86_64, which
         # exists so the interface can be looked at in an emulator — nobody
@@ -165,6 +163,8 @@ jobs:
         # vendored C tree twice would double a job that is mostly C.
         env:
           ABIS: arm64-v8a
+          # The version goes *into* the APK here, not just into its filename.
+          TUNANTE_VERSION: ${{ steps.tag.outputs.tag }}
           TUNANTE_KEYSTORE: ${{ steps.key.outputs.signed == 'true' && format('{0}/tunante.jks', runner.temp) || '' }}
           TUNANTE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
