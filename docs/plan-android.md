@@ -213,6 +213,14 @@ tocar `tunante-codec` entero, porque los cores de C hacen `fopen()` por dentro.
    ~43 MB de RAM de consola emulada, y es lo que aísla las globales de C entre
    pistas. En un móvil con la memoria contada eso vale más, no menos.
 5. **`minSdk` 26.** Es el suelo de cpal (AAudio). No hay margen por abajo.
+6. **La solapa Juegos agrupa por la etiqueta `album`, no por carpeta.** Por
+   carpeta sería un duplicado exacto de Álbumes, y también del segundo nivel de
+   Consolas, que ya llama «juego» a un directorio. Álbumes es lo que dice el
+   disco; Juegos es lo que dicen las etiquetas, y discrepan justo donde el rip
+   se organizó distinto de como se etiquetó. Sin etiqueta se cae al nombre de la
+   carpeta, que en una consola casi siempre acierta, en vez de amontonarlo todo
+   en un «desconocido». Vive en `tunante-core/src/games.rs` porque es lógica
+   pura sobre `Track` y las dos apps deben leer el mismo índice.
 
 ---
 
