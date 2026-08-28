@@ -84,14 +84,23 @@ pub async fn resolve_cover(
     track_path: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<Option<String>, String> {
+    // Default on, and that is deliberate. Writing the cover next to the track is
+    // the whole storage strategy: it is what gets art onto the phone and onto
+    // postmarketOS without either of them fetching anything, and it is what
+    // survives a rescan and a new machine. A cache-only default would make this
+    // feature invisible everywhere but the desktop that downloaded it.
+    //
+    // The safety is elsewhere and does not depend on this being off: an image
+    // already in the folder is never replaced, the write is atomic, only
+    // High-confidence matches are applied, and every bulk run can be undone.
     let store = state
         .db
         .lock()
         .get_setting("store_covers_in_folder")
         .ok()
         .flatten()
-        .as_deref()
-        == Some("true");
+        .map(|v| v == "true")
+        .unwrap_or(true);
     let track = state
         .db
         .lock()
