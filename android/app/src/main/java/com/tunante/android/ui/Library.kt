@@ -47,8 +47,19 @@ data class LibraryView(
     val folders: List<Folder> = emptyList(),
     val tracks: List<Track> = emptyList(),
     val query: String = "",
+    /**
+     * What to write in the breadcrumb, when `here` is not a path.
+     *
+     * The index tabs navigate by name — a console, or a game, which is an album
+     * tag. Cutting one of those at its last `/` is a category error that only
+     * shows itself on the rare name containing one, so it is decided here
+     * rather than guessed at the point of drawing.
+     */
+    val label: String = "",
 ) {
     val searching: Boolean get() = query.isNotEmpty()
+
+    val crumb: String get() = label.ifEmpty { here.substringAfterLast('/') }
 }
 
 /**
@@ -74,7 +85,7 @@ fun Breadcrumb(view: LibraryView, onUp: () -> Unit) {
         Label("◂", T.accent, T.fontTitle)
         Spacer(Modifier.width(T.gap))
         Label(
-            if (view.searching) "Buscando “${view.query}”" else view.here.substringAfterLast('/'),
+            if (view.searching) "Buscando “${view.query}”" else view.crumb,
             T.textPrimary,
             T.fontBody,
             maxLines = 1,
