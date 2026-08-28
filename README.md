@@ -122,6 +122,40 @@ The app is not signed with an Apple Developer certificate. macOS Sequoia+ will s
    ```
 4. Now open Tunante normally — the quarantine flag is removed and macOS won't block it again
 
+## Phone builds
+
+The same library, decoders and player, on two phones. Both live in this
+repository and share `tunante-core`, `tunante-codec` and `tunante-helper` with
+the desktop app — none of which knows what a GUI is.
+
+### Android
+
+```bash
+cd android && ./build.sh          # both ABIs
+ABIS="arm64-v8a" ./build.sh       # phone only, skips the emulator build
+```
+
+Needs `ANDROID_NDK_HOME` and a JDK 17+. The APK is at
+`android/app/build/outputs/apk/`, and signed builds are attached to
+[Releases](https://github.com/jjolmo/tunante/releases).
+
+**Sideload only, and it will stay that way.** The app asks for
+`MANAGE_EXTERNAL_STORAGE`, which Google Play forbids to media players. That is
+not laziness: under the permission Play does allow, `MediaProvider` decides file
+by file from a MIME map that has never heard of `.psf`, `.nsf`, `.spc`, `.gsf`
+or `.2sf`. Those files are not indexed, so they cannot be opened — `readdir()`
+does not even list them. A normal music player never notices. This one does not
+work at all.
+
+### postmarketOS
+
+`tunante-mini`, in Slint, for a phone running mainline Linux. Built like any
+other crate in the workspace:
+
+```bash
+cargo build --manifest-path src-tauri/Cargo.toml -p tunante-mini --release
+```
+
 ## Project Structure
 
 ```

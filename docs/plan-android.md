@@ -1,14 +1,17 @@
 # Tunante en Android — plan de proyecto futuro
 
-> Estado: **Fases 0, 1, 2, 3, 5 y 6 terminadas y verificadas en hardware el
-> 2026-08-27.** La 4, la interfaz, tiene su primera versión funcionando en el
-> móvil: falta rellenarla, no decidirla.
+> Estado: **las siete fases terminadas y verificadas en hardware.** Las de
+> sistema el 2026-08-27; la interfaz, el 2026-08-28.
 >
 > A día de hoy la app abre su base de datos, escanea una carpeta real del
 > almacenamiento compartido, y reproduce de ahí con el decodificador en su
 > propio proceso, el sonido saliendo por AAudio, y **la cola avanzando sola con
 > la app en segundo plano** desde un servicio en primer plano con su
-> MediaSession. Lo único que le falta para ser un reproductor es la interfaz.
+> MediaSession. La interfaz tiene los cuatro destinos de mini y sus cinco vistas
+> de biblioteca. Los trece formatos se han oído en el aparato.
+>
+> Lo único que no se ha ejecutado nunca es el paso de CI que cuelga el APK
+> firmado en una release: sólo corre en `main`, y probarlo es publicar.
 >
 > Escrito el mismo día midiendo el acoplamiento del código que hoy corre en
 > postmarketOS, tras dos decisiones del proyecto: **la interfaz será nativa de
@@ -530,7 +533,7 @@ arranca en `~/Musica` y puede subir hasta `/`.
 **Puerta:** escanear `/storage/emulated/0/Music` encuentra los `.vgz` y los
 `.psf`. Esta es también la prueba que zanja la duda del mapa de MIME.
 
-### Fase 4 — La interfaz 🟡 **primera versión en pie**
+### Fase 4 — La interfaz ✅ **terminada**
 
 Compose con **Kotlin 2.0.21, AGP 8.5.2** y la BOM de Compose 2024.09.03. Lo que
 hay hoy, funcionando en el S23:
@@ -546,8 +549,7 @@ hay hoy, funcionando en el S23:
 - **Banner de permiso**, en ámbar. No es adorno: sin acceso a todos los ficheros
   el escaneo no encuentra literalmente nada, así que sin él la primera
   ejecución es una biblioteca vacía sin explicación.
-- Objetivos táctiles de 48 dp, incluido uno que se estira con su texto — el
-  cuadrado partía «Escanear» en dos líneas y se leía como dos botones.
+- Objetivos táctiles de 48 dp en todo lo que se pulsa.
 
 - **Árbol de carpetas** con miga de pan, derivado de las rutas de las pistas y
   no de `read_dir`: así se sigue navegando aunque la tarjeta no esté puesta.
@@ -826,11 +828,11 @@ Las carpetas elegidas van a `monitored_folders`, que el core ya tenía, y un
 escaneo sin argumento las recorre todas. Verificado en el emulador con música en
 dos sitios: `scanned 11 files ... across 2 roots`.
 
-«Escanear» **reescanea** con un toque y abre el selector con una pulsación
-larga. La primera versión abría el selector siempre, lo que hacía pasar la
-acción frecuente por la pantalla de la acción rara: elegir dónde vive la música
-se hace una vez, reescanear se hace muchas. Sin raíces todavía, el toque corto
-abre el selector igualmente — un escaneo sin raíces no tiene nada que decir.
+«Volver a analizar» y «Añadir una carpeta» son dos filas de **Ajustes**, con
+las palabras de mini. Antes eran un único botón «Escanear» en una barra de
+título, que reescaneaba al tocarlo y abría el selector con una pulsación larga
+— dos acciones distintas escondidas en un control porque no había pantalla de
+ajustes donde ponerlas. Ver «La forma de la app» más abajo.
 
 Dos decisiones más:
 
@@ -1006,6 +1008,44 @@ descubra al segundo intento.
 
 ---
 
+## La forma de la app, y cómo se torció
+
+La interfaz se dio por buena una vez comparando **los 58 callbacks de mini**
+contra los de Android: 44 mapeados, 13 que son fontanería de los propios
+componentes de Slint, 1 omitido a propósito. Se presentó como prueba de que era
+un clon.
+
+**No lo era, y un censo de callbacks no puede verlo.** Todos los callbacks
+estaban cableados y la estructura era otra: mini es *Sonando · Cola ·
+Biblioteca · Ajustes* en una barra inferior, y Android no tenía esa barra.
+
+Todo lo que chirriaba salía de ese mismo agujero, y cada pieza era razonable
+donde se puso:
+
+- «Escanear» vivía en una barra de título **porque no existía Ajustes**.
+- Bucle y fundido eran fichas bajo el transporte, por lo mismo.
+- La cola era una superposición modal, porque no había destino donde meterla.
+- No había pantalla de Sonando en absoluto.
+
+La lección, que vale más que la corrección: **verificar la forma, no sólo el
+cableado.** Un inventario de funciones dice que están todas; no dice dónde.
+
+### Lo que se decidió al arreglarlo
+
+- **Cuatro destinos**, los de mini y en su orden. La biblioteca es uno de
+  cuatro sitios, no la app con tres extras atornillados.
+- **Los iconos se dibujan, no se escriben.** Mini escribe `⤨`, `↻`, `☾` y `🗀`
+  y puede, porque su paquete depende de DejaVu. Android no promete ninguna
+  fuente: la luna salió como caja vacía en un móvil real, y más tarde la
+  carpeta también. Un trazo no tiene fuente de la que faltar. Ver `Icons.kt`.
+- **Bucle, fundido y temporizador viven en Ajustes**, con las palabras de mini.
+  «Apagar» a secas no decía apagar *qué*; «Apagar la música en» sí.
+- **La rotación no recrea la actividad.** Los once campos de estado de pantalla
+  son suyos, y Android los tiraba: girar el móvil te devolvía a la raíz de la
+  biblioteca, que se lee como si la app se hubiera cerrado sola.
+
+---
+
 ## Lo que este plan no hace
 
 - **No toca `tunante-core`.** Está limpio: sin FFI, sin GUI, sin llamadas de
@@ -1029,9 +1069,7 @@ del IME de Slint en Android— **los ha borrado la decisión de interfaz nativa*
 2. ~~**La duplicidad de cpal.**~~ **Comprobada y descartada**: `game-music-emu`
    lo declara en `[dev-dependencies]`, así que el árbol real de la app tiene un
    solo cpal.
-3. ~~**La duplicidad de cpal.**~~ **Comprobada y descartada**: es una dependencia
-   de desarrollo de `game-music-emu` y no entra en el binario.
-4. **`boost.rs`.** `sched_setattr` con uclamp existe en los núcleos de Android
+3. **`boost.rs`.** `sched_setattr` con uclamp existe en los núcleos de Android
    —lo usa el propio sistema para sus hilos de interfaz— pero puede rechazarlo
    SELinux bajo el filtro seccomp de la app. Ya falla con elegancia, así que no
    rompe nada; y con la interfaz en Compose, el hilo que había que acelerar ya
@@ -1052,7 +1090,7 @@ del IME de Slint en Android— **los ha borrado la decisión de interfaz nativa*
 | Salida de audio | ✅ hecho — inicializar `ndk_context` a mano |
 | Biblioteca y rutas | ✅ hecho — mover la ruta de la base de datos |
 | Puente JNI | ✅ hecho — superficie JSON |
-| Interfaz | 🟡 primera versión en pie; falta relleno |
+| Interfaz | ✅ hecho — los cuatro destinos de mini, iconos dibujados |
 | Servicio, MediaSession, foco de audio | ✅ hecho — framework, sin AndroidX |
 | Empaquetado y CI | ✅ hecho — x86_64, sin runner ARM |
 
