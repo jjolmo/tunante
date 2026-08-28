@@ -1,6 +1,8 @@
 package com.tunante.android.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -23,12 +25,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -111,6 +116,7 @@ fun TunanteApp(
     onRepeat: (Int) -> Unit,
     onSleep: (Int) -> Unit,
     onClearQueue: () -> Unit,
+    onSeek: (Long) -> Unit,
 ) {
     // Declared out here, not inside the Column: the picker it drives is drawn
     // on top of the whole screen, which is a sibling of the Column and not a
@@ -146,7 +152,8 @@ fun TunanteApp(
                 )
             }
             if (state.hasSource) {
-                NowPlaying(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSleep, onClearQueue)
+                NowPlaying(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSleep,
+                    onClearQueue, onSeek)
             }
             return@Column
         }
@@ -193,7 +200,8 @@ fun TunanteApp(
         }
 
         if (state.hasSource) {
-            NowPlaying(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSleep, onClearQueue)
+            NowPlaying(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSleep,
+                    onClearQueue, onSeek)
         }
     }
 
@@ -368,11 +376,12 @@ private fun NowPlaying(
     onRepeat: (Int) -> Unit,
     onSleep: (Int) -> Unit,
     onClearQueue: () -> Unit,
+    onSeek: (Long) -> Unit,
 ) {
     Rule()
     Column(Modifier.fillMaxWidth().background(T.bgSecondary)) {
         QueueStrip(state, onClearQueue)
-        Progress(state)
+        Progress(state, onSeek)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = T.gap, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -420,11 +429,19 @@ private fun Modes(
         Modifier.fillMaxWidth().padding(horizontal = T.gap).padding(bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Mode("⤨", state.shuffle) { onShuffle(!state.shuffle) }
+        // Words, not symbols.
+        //
+        // These were glyphs and one of them rendered as an empty box: the moon
+        // for the sleep timer is not in the system font, and Android does not
+        // let an app assume one the way tunante-mini can, where the package
+        // depends on DejaVu. A control nobody can read is worse than a wide one.
+        Mode("Aleatorio", state.shuffle) { onShuffle(!state.shuffle) }
         Mode(
-            // "one" gets its own glyph rather than a badge: at this size a
-            // superscript 1 is a smudge.
-            if (state.repeat == 2) "↺¹" else "↻",
+            when (state.repeat) {
+                1 -> "Repetir todo"
+                2 -> "Repetir una"
+                else -> "Repetir"
+            },
             state.repeat != 0,
         ) { onRepeat((state.repeat + 1) % 3) }
         Spacer(Modifier.weight(1f))
@@ -444,21 +461,25 @@ private fun Modes(
             contentAlignment = Alignment.Center,
         ) {
             Label(
-                if (state.sleepMinutes > 0) "⏾ ${state.sleepMinutes} min" else "⏾",
+                if (state.sleepMinutes > 0) "Apagar en ${state.sleepMinutes} min" else "Apagar",
                 if (state.sleepMinutes > 0) T.accent else T.textMuted,
                 T.fontSmall,
+                maxLines = 1,
             )
         }
     }
 }
 
 @Composable
-private fun Mode(glyph: String, on: Boolean, onClick: () -> Unit) {
+private fun Mode(text: String, on: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.size(T.touchTarget).clickable(onClick = onClick),
+        Modifier
+            .heightIn(min = T.touchTarget)
+            .clickable(onClick = onClick)
+            .padding(end = T.gap),
         contentAlignment = Alignment.Center,
     ) {
-        Label(glyph, if (on) T.accent else T.textMuted, T.fontBody)
+        Label(text, if (on) T.accent else T.textMuted, T.fontSmall, maxLines = 1)
     }
 }
 
@@ -481,11 +502,11 @@ private fun QueueStrip(state: PlayerState, onClear: () -> Unit) {
             .padding(horizontal = T.gap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Label("≡", T.accent, T.fontBody)
+        Label("En cola", T.accent, T.fontSmall, maxLines = 1)
         Spacer(Modifier.width(T.gap))
         Label(
-            if (state.queued == 1) "Siguiente: ${state.queuedNext}"
-            else "Siguiente: ${state.queuedNext}  (+${state.queued - 1})",
+            if (state.queued == 1) state.queuedNext
+            else "${state.queuedNext}  (+${state.queued - 1})",
             T.textSecondary,
             T.fontSmall,
             maxLines = 1,
@@ -509,17 +530,58 @@ private fun QueueStrip(state: PlayerState, onClear: () -> Unit) {
  * makes.
  */
 @Composable
-private fun Progress(state: PlayerState) {
-    val fraction = if (state.durationMs > 0) {
+private fun Progress(state: PlayerState, onSeek: (Long) -> Unit) {
+    // Wider than it looks. Two pixels is right for the line and impossible for a
+    // thumb, so the touch area is a 24 dp band with the line drawn inside it —
+    // the same trick every media player uses and the reason this was unusable
+    // when the bar was only what you could see.
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    var width by remember { mutableFloatStateOf(1f) }
+
+    val live = if (state.durationMs > 0) {
         (state.positionMs.toFloat() / state.durationMs).coerceIn(0f, 1f)
     } else {
         0f
     }
-    Box(Modifier.fillMaxWidth().height(2.dp).background(T.bgTertiary)) {
+    // While a finger is down the bar follows the finger, not the clock: letting
+    // the 500 ms tick fight the drag makes the handle jump backwards.
+    val fraction = dragging ?: live
+
+    fun seekTo(x: Float) {
+        if (state.durationMs <= 0) return
+        onSeek(((x / width).coerceIn(0f, 1f) * state.durationMs).toLong())
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(24.dp)
+            .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(state.durationMs) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragging = (it.x / width).coerceIn(0f, 1f) },
+                    onDragEnd = {
+                        dragging?.let { onSeek((it * state.durationMs).toLong()) }
+                        dragging = null
+                    },
+                    onDragCancel = { dragging = null },
+                ) { change, delta ->
+                    change.consume()
+                    dragging = ((dragging ?: live) + delta / width).coerceIn(0f, 1f)
+                }
+            }
+            .pointerInput(state.durationMs) {
+                // A tap jumps. Separate from the drag because a tap has no
+                // movement for the drag detector to work with.
+                detectTapGestures { seekTo(it.x) }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxWidth().height(2.dp).background(T.bgTertiary))
         Box(
             Modifier
                 .fillMaxWidth(fraction)
-                .height(2.dp)
+                .height(if (dragging != null) 4.dp else 2.dp)
                 .background(T.accent)
         )
     }

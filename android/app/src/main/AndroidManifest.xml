@@ -32,6 +32,8 @@
 
     <application
         android:label="Tunante"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.Material.NoActionBar"><!-- extractNativeLibs lives in
         app/build.gradle.kts as packaging.jniLibs.useLegacyPackaging: AGP warns if
         it is set here as well, and the build file is the one that wins. -->

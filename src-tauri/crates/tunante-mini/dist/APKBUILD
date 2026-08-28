@@ -100,8 +100,14 @@ package() {
 	local dist="crates/tunante-mini/dist"
 	install -Dm644 "$dist/tunante-mini.desktop" \
 		"$pkgdir/usr/share/applications/tunante-mini.desktop"
-	install -Dm644 "$dist/tunante-mini.svg" \
-		"$pkgdir/usr/share/icons/hicolor/scalable/apps/tunante-mini.svg"
+	# The same icon as the desktop app and tunante-android, at the sizes
+	# hicolor asks for. It used to be a scalable SVG of a cartridge drawn just
+	# for this package, which meant Tunante had two faces depending on which
+	# machine you looked at.
+	for px in 48 64 128 256 512; do
+		install -Dm644 "$dist/icons/${px}x${px}/tunante-mini.png" \
+			"$pkgdir/usr/share/icons/hicolor/${px}x${px}/apps/tunante-mini.png"
+	done
 }
 
 # Lo rellena `abuild checksum`, contra el tarball de la release que declara
