@@ -118,6 +118,7 @@ class MainActivity : ComponentActivity() {
                     onRepeat = { NativeBridge.nativeSetRepeat(it) },
                     onSleep = { NativeBridge.nativeSetSleepTimer(it) },
                     onClearQueue = { NativeBridge.nativeClearQueue() },
+                    onSeek = { NativeBridge.nativeSeek(it) },
                 )
             }
         }
