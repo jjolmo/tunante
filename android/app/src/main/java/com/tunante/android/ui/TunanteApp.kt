@@ -318,7 +318,11 @@ private fun TopBar(count: Int, onScan: () -> Unit, onPickFolders: () -> Unit) {
         Column(Modifier.weight(1f).padding(vertical = T.gap)) {
             Label("Tunante", color = T.textPrimary, size = T.fontTitle, weight = FontWeight.Medium)
             Label(
-                if (count == 0) "sin biblioteca" else "$count elementos",
+                when (count) {
+                    0 -> "sin biblioteca"
+                    1 -> "1 elemento"
+                    else -> "$count elementos"
+                },
                 color = T.textSecondary,
                 size = T.fontSmall,
             )

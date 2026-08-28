@@ -375,7 +375,17 @@ class MainActivity : ComponentActivity() {
         when (tab) {
             // The index tabs navigate by name, so the name is also the label.
             Tab.Games -> load(path, path) { NativeBridge.nativeGames(path) }
-            Tab.Consoles -> load(path, path) { NativeBridge.nativeConsoles(path) }
+            // Consoles has three levels. At the top a row is a console and its
+            // name is the key; below that a row is one of its directories, and
+            // the key has to carry both -- a folder holding .spc rips and mp3s
+            // shows up under two consoles, and only the pair says which one
+            // was opened. The label stays the folder's own name.
+            Tab.Consoles -> if (view.here.isEmpty()) {
+                load(path, path) { NativeBridge.nativeConsoles(path) }
+            } else {
+                val key = view.here + CONSOLE_SEP + path
+                load(key, path.substringAfterLast('/')) { NativeBridge.nativeConsoles(key) }
+            }
             // An album row and a tree row are both directories.
             else -> browse(path)
         }
@@ -404,8 +414,14 @@ class MainActivity : ComponentActivity() {
     private fun up() {
         when {
             view.searching -> search("")
-            // In the indexes there is one level to come back from, and it is
-            // the index itself rather than a parent directory.
+            // Consoles is the one index with a middle level, so leaving a game
+            // goes back to its console rather than all the way out.
+            tab == Tab.Consoles && view.here.contains(CONSOLE_SEP) -> {
+                val console = view.here.substringBefore(CONSOLE_SEP)
+                load(console, console) { NativeBridge.nativeConsoles(console) }
+            }
+            // In the other indexes there is one level to come back from, and it
+            // is the index itself rather than a parent directory.
             tab != Tab.Library && view.here.isNotEmpty() -> switchTab(tab)
             view.here.isEmpty() -> Unit
             else -> browse(view.here.substringBeforeLast('/', ""))
@@ -525,5 +541,14 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "tunante"
+
+        /**
+         * Joins a console to one of its directories in a single row key.
+         *
+         * U+0001 because it is the one byte a path cannot contain, so the two
+         * halves always split back apart cleanly. tunante-mini encodes the same
+         * pair the same way.
+         */
+        private const val CONSOLE_SEP = '\u0001'
     }
 }
