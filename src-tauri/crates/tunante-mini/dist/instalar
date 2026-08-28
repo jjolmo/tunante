@@ -47,11 +47,16 @@ $SUDO install -Dm644 "$HERE/tunante-mini.desktop" \
 	"$PREFIX/share/applications/tunante-mini.desktop"
 echo "  $PREFIX/share/applications/tunante-mini.desktop"
 
-if [ -f "$HERE/tunante-mini.svg" ]; then
-	$SUDO install -Dm644 "$HERE/tunante-mini.svg" \
-		"$PREFIX/share/icons/hicolor/scalable/apps/tunante-mini.svg"
-	echo "  $PREFIX/share/icons/hicolor/scalable/apps/tunante-mini.svg"
-fi
+# The same icon as the desktop app and tunante-android. It was a scalable SVG
+# drawn only for this package, which gave Tunante a different face depending on
+# which machine you were looking at.
+for px in 48 64 128 256 512; do
+	src="$HERE/icons/${px}x${px}/tunante-mini.png"
+	[ -f "$src" ] || continue
+	$SUDO install -Dm644 "$src" \
+		"$PREFIX/share/icons/hicolor/${px}x${px}/apps/tunante-mini.png"
+	echo "  $PREFIX/share/icons/hicolor/${px}x${px}/apps/tunante-mini.png"
+done
 
 # Plasma reads the launcher index once, at session start, so a freshly installed
 # app shows up with no icon — or not at all — until this is rebuilt. It has to

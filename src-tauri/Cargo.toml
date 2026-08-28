@@ -1,5 +1,15 @@
 [workspace]
-members = ["crates/tunante-core", "crates/tunante-codec", "crates/tunante-decoder", "crates/tunante-mini"]
+members = [
+    "crates/tunante-core",
+    "crates/tunante-codec",
+    "crates/tunante-decoder",
+    "crates/tunante-helper",
+    "crates/tunante-mini",
+    # Android only. Nothing else in the workspace depends on it, and it builds
+    # for no other target — `cargo check` on a desktop host will refuse to link
+    # it, which is why CI has to name targets rather than say --workspace.
+    "crates/tunante-android",
+]
 
 [profile.release]
 # Debug symbols are a quarter of the shipped binary — 29 MB down to 22 MB for

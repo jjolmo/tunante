@@ -44,14 +44,13 @@
 //! not answerable by clicking from a script — only by starting there.
 
 mod boost;
-mod decoder;
 mod inhibit;
 mod library;
 mod mpris;
 mod output;
 mod picker;
 mod player;
-mod session;
+use tunante_core::session;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -81,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let focus_search = args.iter().any(|a| a == "--focus-search");
     let start_mode = arg_value("--mode").and_then(|s| s.parse::<i32>().ok());
     let open_playlist = arg_value("--open-playlist");
+    let open_game = arg_value("--open-game");
 
     // A bare path means "play this". The .desktop file declares MIME types, so
     // a file manager or another app can hand us a track directly, and that has
@@ -202,12 +202,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh_playlists(&db, &views, "");
 
     // Instruments: land on a view directly instead of tapping to reach it.
-    if start_mode.is_some() || open_playlist.is_some() {
-        let mode = start_mode.unwrap_or(3);
+    if start_mode.is_some() || open_playlist.is_some() || open_game.is_some() {
+        let mode = if open_game.is_some() { 3 } else { start_mode.unwrap_or(3) };
         {
             let mut t = tree.borrow_mut();
             t.mode = library::Mode::from_index(mode);
             t.nav.clear();
+            // Inside a game, which is the one level nothing could reach from a
+            // script. Every other view is one `--mode` away, but a game is a
+            // row you have to press, and this desktop's compositor refuses
+            // synthetic clicks: XTEST will not move the pointer and winit
+            // ignores XSendEvent. So the same door the playlist instrument
+            // uses, for the same reason.
+            //
+            // The `juego:` prefix is not a detail the caller should know, so it
+            // is added here rather than asked for.
+            if let Some(name) = &open_game {
+                t.mode = library::Mode::Games;
+                t.nav.push(format!("juego:{name}"));
+                // Says so when there is no such game, the way the playlist
+                // instrument does. Landing on a silently empty level looks
+                // exactly like the bug this exists to rule out.
+                if t.grid_tracks(&db, library::Mode::Games).is_empty() {
+                    eprintln!("no hay ningún juego llamado «{name}»");
+                }
+            }
             if let Some(name) = &open_playlist {
                 if let Some(p) = db
                     .get_playlists()
@@ -222,7 +241,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        ui.set_library_mode(if open_playlist.is_some() { 3 } else { mode });
+        ui.set_library_mode(if open_playlist.is_some() { 4 } else { mode });
         ui.set_tab(2);
         refresh_library(&ui, &tree, &db, &views);
     }
@@ -395,7 +414,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Not in the library yet — ask the decoder about it directly, so the
         // app can play a file it has never scanned.
         if tracks.is_empty() {
-            if let Ok(values) = decoder::probe(
+            if let Ok(values) = tunante_helper::probe(
                 std::path::Path::new(&path),
                 std::time::Duration::from_secs(20),
                 false,
@@ -1187,6 +1206,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             tunante_core::RepeatMode::One => 2,
                             tunante_core::RepeatMode::Off => 0,
                         },
+                        // These already had their own settings keys, written
+                        // from the cycle handlers. Going through Session too
+                        // means one place writes them and one place reads them
+                        // back, rather than two halves that can disagree.
+                        ui.get_loop_count().max(0) as u32,
+                        ui.get_fade_seconds().max(0) as u64,
                     );
                 }
 
@@ -1265,7 +1290,7 @@ fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
     let art = path
         .and_then(|p| {
             let real = tunante_core::vgm_path::parse_vgm_path(p).0.to_string();
-            decoder::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
+            tunante_helper::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
         })
         .and_then(|uri| decode_artwork(&uri, max_side));
 
@@ -1490,6 +1515,26 @@ fn tracks_of_console(
         .collect()
 }
 
+/// Every track of one game, wherever on disk it turned out to be.
+///
+/// Not `get_tracks_by_folder`: the whole point of the Games tab is that a game
+/// is an album tag, so its tracks can be spread over several directories or
+/// share one with another game.
+fn tracks_of_game(
+    db: &Database,
+    roots: &[PathBuf],
+    game: &str,
+) -> Vec<tunante_core::db::models::Track> {
+    let all: Vec<_> = roots
+        .iter()
+        .flat_map(|r| db.get_tracks_by_folder(&r.to_string_lossy()).unwrap_or_default())
+        .collect();
+    tunante_core::games::tracks_of(&all, game)
+        .into_iter()
+        .cloned()
+        .collect()
+}
+
 /// Put a whole playlist at the end of the queue, without starting anything.
 ///
 /// Deliberately not `enqueue_all`: that one starts playing when the player is
@@ -1552,13 +1597,18 @@ fn tracks_for_path(
     path: &str,
     deep: bool,
 ) -> Vec<tunante_core::db::models::Track> {
-    // The console view builds rows whose `path` is not a path at all:
-    // `consola:NES` for a console, and `NES\u{1}/ruta/al/juego` for one of its
-    // games — the console has to be in the key because a folder holding both
-    // .spc rips and mp3s appears under two of them. Those are resolved here
-    // rather than in the view, so this is the only place that knows the encoding.
+    // The index views build rows whose `path` is not a path at all:
+    // `consola:NES` for a console, `NES\u{1}/ruta/al/juego` for one of its games
+    // — the console has to be in the key because a folder holding both .spc rips
+    // and mp3s appears under two of them — and `juego:Nombre` for a game of the
+    // Games tab, which is an album tag and may not correspond to any directory.
+    // Those are resolved here rather than in the view, so this is the only place
+    // that knows the encoding.
     if let Some(consola) = path.strip_prefix("consola:") {
         return tracks_of_console(db, roots, consola);
+    }
+    if let Some(juego) = path.strip_prefix("juego:") {
+        return tracks_of_game(db, roots, juego);
     }
     if let Some((consola, dir)) = path.split_once('\u{1}') {
         return db
@@ -1766,4 +1816,119 @@ fn generated_rows(n: usize) -> Vec<LibraryRow> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tunante_core::db::models::Track;
+
+    /// mini's first test, and it exists because of a bug that could not fail
+    /// loudly: a row's `path` is not always a path, and everything downstream
+    /// resolves it as one. When the encoding and the resolver disagree the only
+    /// symptom is a long-press that does nothing at all.
+    fn db_with(paths: &[(&str, &str)]) -> (std::path::PathBuf, Database) {
+        // The counter matters: tests run in parallel threads of one process,
+        // so the pid alone gives every test the same file to fight over.
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let mut file = std::env::temp_dir();
+        file.push(format!(
+            "tunante-mini-test-{}-{}.db",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_file(&file);
+        let db = Database::new(&file).expect("open");
+        for (path, album) in paths {
+            // Written out rather than derived from a Default: if a field is
+            // added to Track, this should stop compiling and be looked at.
+            let t = Track {
+                id: (*path).to_string(),
+                path: (*path).to_string(),
+                title: (*path).to_string(),
+                artist: String::new(),
+                album: (*album).to_string(),
+                album_artist: String::new(),
+                track_number: None,
+                disc_number: None,
+                duration_ms: 1000,
+                sample_rate: None,
+                channels: None,
+                bitrate: None,
+                codec: "test".into(),
+                file_size: 0,
+                has_artwork: false,
+                rating: 0,
+                modified_at: 0,
+            };
+            db.insert_track(&t).expect("insert");
+        }
+        (file, db)
+    }
+
+    #[test]
+    fn a_game_row_resolves_to_the_tracks_of_that_game() {
+        let (file, db) = db_with(&[
+            ("/m/FF7 Disco 1/a.psf", "Final Fantasy VII"),
+            ("/m/FF7 Disco 2/b.psf", "Final Fantasy VII"),
+            ("/m/otro/c.psf", "Chrono Trigger"),
+        ]);
+        let roots = vec![std::path::PathBuf::from("/m")];
+
+        // What a long press on a game tile hands over.
+        let got = tracks_for_path(&db, &roots, "juego:Final Fantasy VII", true);
+        let mut paths: Vec<_> = got.iter().map(|t| t.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["/m/FF7 Disco 1/a.psf", "/m/FF7 Disco 2/b.psf"]);
+
+        let _ = std::fs::remove_file(file);
+    }
+
+    /// The path the screen walks, which the resolver test above does not cover.
+    ///
+    /// Tapping a game pushes the grid cell's `path` onto `nav`, and from there
+    /// two different things read it back: the breadcrumb and the track list.
+    /// Both strip the prefix, and if either forgot to, entering a game would
+    /// show an empty level or a crumb reading "juego:Xenogears" -- neither of
+    /// which any test here would have noticed. mini has no way to be clicked
+    /// from a script under Wayland, so this stands in for the click.
+    #[test]
+    fn entering_a_game_from_the_grid_shows_its_tracks_and_its_name() {
+        let (file, db) = db_with(&[
+            ("/m/disc1/a.psf", "Xenogears"),
+            ("/m/disc2/b.psf", "Xenogears"),
+            ("/m/otro/c.psf", "Chrono Cross"),
+        ]);
+        let mut tree = library::Tree::new(vec![std::path::PathBuf::from("/m")]);
+        tree.mode = library::Mode::Games;
+
+        // What the grid put on the cell, verbatim.
+        tree.nav.push("juego:Xenogears".to_string());
+
+        assert_eq!(tree.crumb(), "Xenogears");
+        let rows = tree.grid_tracks(&db, library::Mode::Games);
+        let mut paths: Vec<&str> = rows.iter().map(|r| r.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["/m/disc1/a.psf", "/m/disc2/b.psf"]);
+
+        let _ = std::fs::remove_file(file);
+    }
+
+    /// A crumb is a name here, not a path, so it must not be cut at a slash.
+    #[test]
+    fn a_game_name_with_a_slash_survives_the_crumb() {
+        let mut tree = library::Tree::new(vec![std::path::PathBuf::from("/m")]);
+        tree.nav.push("juego:Hack//Sign".to_string());
+        assert_eq!(tree.crumb(), "Hack//Sign");
+    }
+
+    /// The regression itself: without the prefix this returned nothing, because
+    /// a game name is not a directory and never will be one.
+    #[test]
+    fn a_bare_game_name_is_not_mistaken_for_a_directory() {
+        let (file, db) = db_with(&[("/m/x/a.psf", "Final Fantasy VII")]);
+        let roots = vec![std::path::PathBuf::from("/m")];
+        assert!(tracks_for_path(&db, &roots, "Final Fantasy VII", true).is_empty());
+        let _ = std::fs::remove_file(file);
+    }
 }

@@ -14,6 +14,10 @@ path = "src/main.rs"
 # the audio output and play what the decoder helper pipes back.
 tunante-core = { path = "../tunante-core", default-features = false }
 
+# The client for the tunante-decoder helper: probe, artwork and PCM over a pipe.
+# Shared with tunante-android, which needs exactly the same thing.
+tunante-helper = { path = "../tunante-helper" }
+
 # No symphonia features: this process decodes nothing. Every format, standard
 # ones included, arrives as raw PCM from tunante-decoder, so all rodio does here
 # is mix and talk to ALSA.

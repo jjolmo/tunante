@@ -1,0 +1,21 @@
+[package]
+name = "tunante-helper"
+version = "0.1.0"
+edition = "2021"
+description = "Client for the tunante-decoder helper process: probe, artwork, and PCM over a pipe"
+license = "GPL-2.0-or-later"
+
+[dependencies]
+# Only the `Source` trait and its error type. This crate decodes nothing and
+# opens no audio device — it hands a `Source` back and lets the caller mix it.
+rodio = { version = "0.22", default-features = false }
+# For scan.rs: it writes straight into the library database.
+tunante-core = { path = "../tunante-core", default-features = false }
+walkdir = "2"
+serde_json = "1"
+log = "0.4"
+
+[dev-dependencies]
+# The scan tests open a real database and touch real files: what
+# `prune_missing` asks is whether a path exists, and no fake answers that.
+tunante-core = { path = "../tunante-core", default-features = false }

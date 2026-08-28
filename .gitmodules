@@ -1,6 +1,3 @@
 [submodule "src-tauri/vgmstream"]
 	path = src-tauri/vgmstream
 	url = https://github.com/vgmstream/vgmstream.git
-[submodule "src-tauri/viogsf"]
-	path = src-tauri/viogsf
-	url = https://github.com/kode54/viogsf.git

@@ -1748,7 +1748,7 @@ component LibraryTab inherits Rectangle {
     in-out property <string> search;
     in-out property <int> mode;
     callback mode-changed(int);
-    // Discos y Consolas se dibujan en rejilla; el nivel de pistas, en lista.
+    // Discos, Juegos y Consolas se dibujan en rejilla; el nivel de pistas, en lista.
     in property <[GridLine]> grid-lines;
     in property <bool> grid;
     in property <int> columns: 3;
@@ -1852,9 +1852,18 @@ component LibraryTab inherits Rectangle {
                     clicked => { root.mode = 2; root.mode-changed(2); }
                 }
                 ModeTab {
-                    label: "Listas";
+                    // Por la etiqueta de álbum, no por carpeta: Discos dice lo
+                    // que hay en el disco y Juegos lo que dice el rip. Difieren
+                    // en un juego partido en dos carpetas, y en una carpeta que
+                    // guarda varios juegos.
+                    label: "Juegos";
                     selected: root.mode == 3;
                     clicked => { root.mode = 3; root.mode-changed(3); }
+                }
+                ModeTab {
+                    label: "Listas";
+                    selected: root.mode == 4;
+                    clicked => { root.mode = 4; root.mode-changed(4); }
                 }
             }
         }

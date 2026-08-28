@@ -47,7 +47,7 @@ target_include_directories(viogsf PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# Rename psflib symbols to avoid collision with lazygsf-rs and hepsf-rs
+# Rename psflib symbols to avoid collision with vio2sf-rs and hepsf-rs
 target_compile_definitions(viogsf PRIVATE
     -Dpsf_load=viogsf_psf_load
     -Dpsf_load_cancel=viogsf_psf_load_cancel
