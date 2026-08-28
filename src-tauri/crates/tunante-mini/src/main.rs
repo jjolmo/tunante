@@ -989,13 +989,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .iter()
                     .filter(|t| seen.insert((t.console_id.clone(), t.game.clone())))
                     .map(|t| {
-                        let mut candidates = Vec::new();
-                        if !t.game.trim().is_empty() {
-                            candidates.push(t.game.clone());
-                        }
-                        if !t.album.trim().is_empty() && !t.album.eq_ignore_ascii_case(&t.game) {
-                            candidates.push(t.album.clone());
-                        }
+                        let candidates = tunante_art::resolver::candidates_for(
+                            &t.game, &t.album, &t.path,
+                        );
                         let real = t.path.split('#').next().unwrap_or(&t.path);
                         tunante_art::resolver::CoverRequest {
                             libretro_system: tunante_core::console::by_id(&t.console_id)

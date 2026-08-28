@@ -92,7 +92,7 @@
 				</button>
 			{/if}
 
-			{#if coversStore.running}
+			{#if coversStore.running || coversStore.previewing}
 				<button class="btn" onclick={() => coversStore.cancel()}>Cancel</button>
 			{/if}
 		</div>

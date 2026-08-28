@@ -107,17 +107,25 @@ class CoversStore {
 		this.unlisten = [];
 	}
 
+	/**
+	 * Resolve without downloading, to see what a run would do.
+	 *
+	 * Over a whole library this is hundreds of lookups and takes minutes, so it
+	 * reports progress and can be cancelled — the same as the real run.
+	 */
 	async preview(scope: Scope, target = '') {
 		this.previewing = true;
 		this.error = null;
 		this.plans = [];
 		this.undone = false;
+		this.progress = { done: 0, total: 0, found: 0, written: 0, skipped: 0, current: '' };
 		try {
 			this.plans = await invoke<Plan[]>('preview_cover_downloads', { scope, target });
 		} catch (e) {
 			this.error = typeof e === 'string' ? e : 'Preview failed';
 		} finally {
 			this.previewing = false;
+			this.progress = null;
 		}
 	}
 
