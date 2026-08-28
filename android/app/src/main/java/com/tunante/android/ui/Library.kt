@@ -1,8 +1,10 @@
 package com.tunante.android.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -132,13 +134,17 @@ fun SearchBox(query: String, onQuery: (String) -> Unit) {
 }
 
 @Composable
-fun FolderRow(folder: Folder, onClick: () -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+fun FolderRow(folder: Folder, onClick: () -> Unit, onLongClick: () -> Unit = {}) {
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = T.touchTarget)
             .background(T.bgPrimary)
-            .clickable(onClick = onClick)
+            // Same bargain as a track row: tap opens, hold acts on the whole
+            // thing. Without the hold there was no way at all to queue a folder
+            // -- only its tracks, one at a time, after walking into it.
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = T.gap, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -165,9 +171,11 @@ fun FolderRow(folder: Folder, onClick: () -> Unit) {
  * game had. mini makes the same approximation.
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun FolderGrid(
     folders: List<Folder>,
     coverOf: (Folder) -> String,
+    onLongPress: (Folder) -> Unit = {},
     onOpen: (Folder) -> Unit,
 ) {
     val columns = if (LocalConfiguration.current.orientation ==
@@ -183,7 +191,10 @@ fun FolderGrid(
     ) {
         items(folders, key = { it.path }) { folder ->
             Column(
-                Modifier.clickable { onOpen(folder) },
+                Modifier.combinedClickable(
+                    onClick = { onOpen(folder) },
+                    onLongClick = { onLongPress(folder) },
+                ),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Square, and sized by the column rather than by a fixed dp:

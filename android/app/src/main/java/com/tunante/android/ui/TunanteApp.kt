@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -129,6 +130,9 @@ fun TunanteApp(
     onSeek: (Long) -> Unit,
     onLoops: () -> Unit,
     onFade: () -> Unit,
+    onEnqueueRow: (String, Boolean) -> Unit,
+    onAddRowToPlaylist: (Playlist, String, Boolean) -> Unit,
+    onNewPlaylistWithRow: (String, String, Boolean) -> Unit,
     queue: List<Track>,
     onQueueRemove: (Track) -> Unit,
     onQueuePlay: (Track) -> Unit,
@@ -138,9 +142,47 @@ fun TunanteApp(
     // on top of the whole screen, which is a sibling of the Column and not a
     // child of it.
     var adding by remember { mutableStateOf<Track?>(null) }
+    // The row a long press landed on, and -- once an action is chosen -- the
+    // row key and depth waiting for a playlist to be picked.
+    var menuFor by remember { mutableStateOf<Folder?>(null) }
+    var pendingRow by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+
+    // A sheet covers the screen, so back belongs to it while it is up.
+    androidx.activity.compose.BackHandler(
+        enabled = adding != null || menuFor != null || pendingRow != null
+    ) {
+        pendingRow = null
+        menuFor = null
+        adding = null
+    }
 
     Column(Modifier.fillMaxSize().background(T.bgPrimary)) {
-        Box(Modifier.weight(1f)) {
+        // Sideways changes destination, as it does in mini.
+        //
+        // Horizontal only, and on the container rather than on each screen: a
+        // vertical one would eat the list scrolling, which is the most used
+        // gesture in the app. It does not steal from the rows that swipe to
+        // queue, or from the seek bar, because Compose offers a pointer event
+        // to the deepest node first and this detector only sees what those
+        // leave unconsumed.
+        val slide = with(LocalDensity.current) { 60.dp.toPx() }
+        Box(
+            Modifier
+                .weight(1f)
+                .pointerInput(dest) {
+                    var moved = 0f
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            val order = Dest.entries
+                            val i = order.indexOf(dest)
+                            if (moved < -slide && i < order.lastIndex) onDest(order[i + 1])
+                            if (moved > slide && i > 0) onDest(order[i - 1])
+                            moved = 0f
+                        },
+                        onDragCancel = { moved = 0f },
+                    ) { _, delta -> moved += delta }
+                },
+        ) {
             when (dest) {
                 Dest.Playing ->
                     PlayingScreen(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSeek)
@@ -166,6 +208,7 @@ fun TunanteApp(
                     onRenamePlaylist, onMovePlaylist, onEnqueuePlaylist, onEnqueueTrack,
                     onEnqueue, onRemoveFromPlaylist, view, state, hasAllFiles, onGrantFiles,
                     onQuery, onOpenFolder, onUp, onPlayIndex, { adding = it },
+                    { menuFor = it },
                 )
             }
         }
@@ -179,11 +222,35 @@ fun TunanteApp(
 
     adding?.let { track ->
         PlaylistPicker(
-            track = track,
+            what = track.title.ifEmpty { track.path.substringAfterLast('/') },
             playlists = playlists,
             onPick = { p -> onAddToPlaylist(p, track); adding = null },
             onCreate = { name -> onNewPlaylistWith(name, track); adding = null },
             onDismiss = { adding = null },
+        )
+    }
+
+    menuFor?.let { folder ->
+        val key = rowKey(tab, view.here, folder.path)
+        FolderMenu(
+            name = folder.name,
+            // Only a real directory has subfolders to include or leave out. A
+            // game is an album tag and a console is a set of extensions.
+            isDirectory = tab == Tab.Library || tab == Tab.Albums ||
+                (tab == Tab.Consoles && view.here.isNotEmpty()),
+            onEnqueue = { deep -> onEnqueueRow(key, deep); menuFor = null },
+            onAddToPlaylist = { deep -> pendingRow = key to deep; menuFor = null },
+            onDismiss = { menuFor = null },
+        )
+    }
+
+    pendingRow?.let { (key, deep) ->
+        PlaylistPicker(
+            what = key.substringAfterLast('/').substringAfter(':'),
+            playlists = playlists,
+            onPick = { p -> onAddRowToPlaylist(p, key, deep); pendingRow = null },
+            onCreate = { name -> onNewPlaylistWithRow(name, key, deep); pendingRow = null },
+            onDismiss = { pendingRow = null },
         )
     }
 }
@@ -222,6 +289,7 @@ private fun Library(
     onUp: () -> Unit,
     onPlayIndex: (Int) -> Unit,
     onAdd: (Track) -> Unit,
+    onFolderLongPress: (Folder) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         if (!hasAllFiles) {
@@ -266,14 +334,20 @@ private fun Library(
                 // A level that is only folders is a shelf, and a shelf is worth
                 // showing as covers. A level with tracks in it is a track list,
                 // and covers there would push the titles off the screen.
-                FolderGrid(view.folders, coverOf = { it.cover }) { onOpenFolder(it.path) }
+                FolderGrid(view.folders, coverOf = { it.cover }, onLongPress = onFolderLongPress) {
+                    onOpenFolder(it.path)
+                }
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     // Folders first, then what is loose in this one. The order
                     // matters for the index handed to onPlayIndex: it counts
                     // tracks only, so the queue and the list agree.
                     items(view.folders) { folder ->
-                        FolderRow(folder) { onOpenFolder(folder.path) }
+                        FolderRow(
+                            folder,
+                            onClick = { onOpenFolder(folder.path) },
+                            onLongClick = { onFolderLongPress(folder) },
+                        )
                     }
                     itemsIndexed(view.tracks) { i, track ->
                         SwipeRow("A la cola", { onEnqueue(track) }) {
@@ -320,7 +394,7 @@ private fun Library(
  */
 @Composable
 private fun PlaylistPicker(
-    track: Track,
+    what: String,
     playlists: List<Playlist>,
     onPick: (Playlist) -> Unit,
     onCreate: (String) -> Unit,
@@ -341,10 +415,7 @@ private fun PlaylistPicker(
                 .background(T.bgSecondary)
                 .padding(vertical = T.gap),
         ) {
-            Label(
-                track.title.ifEmpty { track.path.substringAfterLast('/') },
-                T.textPrimary, T.fontBody, maxLines = 1,
-            )
+            Label(what, T.textPrimary, T.fontBody, maxLines = 1)
             Spacer(Modifier.height(T.gap))
             for (p in playlists) {
                 Box(
