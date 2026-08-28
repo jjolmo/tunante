@@ -78,18 +78,14 @@ fn juegos(n: usize) -> String {
     if n == 1 { "1 juego".to_string() } else { format!("{n} juegos") }
 }
 
-/// The console a file belongs to, from its extension.
-///
-/// The extension is the whole story for these formats: a `.spc` is a ripped
-/// SNES sound driver and cannot be anything else. `.vgm` is the exception —
-/// it is a chip log and the header says which chip — so it gets its own row
-/// rather than a guess.
-///
-/// Everything with no console is grouped rather than dropped: the point of this
-/// view is to reach music, and hiding a third of the library because it is an
-/// mp3 would defeat it.
-// Moved to `tunante_core::console`, which tunante-android needs too.
-pub use tunante_core::console::console_of;
+// Every view groups tracks by console the same way, and tunante-android needs
+// it too, so the grouping lives in `tunante_core::console` rather than here.
+// Everything with no console is grouped rather than dropped: the point of this
+// view is to reach music, and hiding a third of the library because it is an
+// mp3 would defeat it.
+pub use tunante_core::console::{
+    display_order as console_order, key_of as console_key, label_es as console_label,
+};
 
 /// The library as a flat list of visible rows.
 ///
@@ -306,7 +302,7 @@ impl Tree {
 
     fn rows_consoles(&self, db: &Database) -> Vec<Row> {
         // console -> album folder -> how many tracks of it
-        let mut by_console: BTreeMap<&'static str, BTreeMap<String, usize>> = BTreeMap::new();
+        let mut by_console: BTreeMap<String, BTreeMap<String, usize>> = BTreeMap::new();
         for root in &self.roots {
             for t in db
                 .get_tracks_by_folder(&root.to_string_lossy())
@@ -315,7 +311,7 @@ impl Tree {
                 let real = vgm_path::parse_vgm_path(&t.path).0;
                 let Some(dir) = Path::new(real).parent() else { continue };
                 *by_console
-                    .entry(console_of(&t.path))
+                    .entry(console_key(&t).to_string())
                     .or_default()
                     .entry(dir.to_string_lossy().to_string())
                     .or_default() += 1;
@@ -323,7 +319,9 @@ impl Tree {
         }
 
         let mut out = Vec::new();
-        for (console, albums) in by_console {
+        let mut consoles: Vec<(String, BTreeMap<String, usize>)> = by_console.into_iter().collect();
+        consoles.sort_by(|a, b| console_order(&a.0).cmp(&console_order(&b.0)));
+        for (console, albums) in consoles {
             // A key that cannot collide with a path, so the same `expanded` set
             // serves all three views without them stepping on each other.
             let key = format!("consola:{console}");
@@ -331,7 +329,7 @@ impl Tree {
             let total: usize = albums.values().sum();
 
             out.push(Row {
-                label: console.to_string(),
+                label: console_label(&console).to_string(),
                 detail: format!("{} · {}", juegos(albums.len()), pistas(total)),
                 depth: 0,
                 is_folder: true,
@@ -364,7 +362,7 @@ impl Tree {
                         .contents(db, &dir, Path::new(&dir))
                         .tracks
                         .into_iter()
-                        .filter(|t| console_of(&t.path) == console)
+                        .filter(|t| console_key(t) == console)
                         .collect();
                     self.push_tracks(tracks, 2, &mut out);
                 }
@@ -599,17 +597,19 @@ impl Tree {
                     .collect(),
             ),
             (Mode::Consoles, 0) => {
-                let mut por_consola: BTreeMap<&'static str, (usize, usize)> = BTreeMap::new();
+                let mut por_consola: BTreeMap<String, (usize, usize)> = BTreeMap::new();
                 for (consola, _dir, n) in self.console_index(db) {
                     let e = por_consola.entry(consola).or_default();
                     e.0 += 1;
                     e.1 += n;
                 }
+                let mut consolas: Vec<(String, (usize, usize))> = por_consola.into_iter().collect();
+                consolas.sort_by(|a, b| console_order(&a.0).cmp(&console_order(&b.0)));
                 Some(
-                    por_consola
+                    consolas
                         .into_iter()
                         .map(|(c, (_juegos_n, pistas_n))| Cell {
-                            title: c.to_string(),
+                            title: console_label(&c).to_string(),
                             // Sólo las pistas: "4 juegos · 489 pistas" no cabe
                             // en una tarjeta de tres columnas y se cortaba en
                             // "489 pista". Cuántos juegos hay se ve al entrar.
@@ -618,7 +618,7 @@ impl Tree {
                             // El aparato se dibuja. La portada del primer juego
                             // era un parche: decía "Sonic" donde pone "NES".
                             art_dir: String::new(),
-                            console: c.to_string(),
+                            console: c.clone(),
                         })
                         .collect(),
                 )
@@ -682,7 +682,7 @@ impl Tree {
         let mut tracks = self.contents(db, dir, Path::new(dir)).tracks;
         if mode == Mode::Consoles {
             let quiero = self.nav[0].trim_start_matches("consola:").to_string();
-            tracks.retain(|t| console_of(&t.path) == quiero);
+            tracks.retain(|t| console_key(t) == quiero);
         }
         let mut out = Vec::new();
         self.push_tracks(tracks, 0, &mut out);
@@ -694,8 +694,8 @@ impl Tree {
     }
 
     /// (consola, carpeta, cuántas pistas de esa consola hay en ella)
-    fn console_index(&self, db: &Database) -> Vec<(&'static str, String, usize)> {
-        let mut acc: BTreeMap<(&'static str, String), usize> = BTreeMap::new();
+    fn console_index(&self, db: &Database) -> Vec<(String, String, usize)> {
+        let mut acc: BTreeMap<(String, String), usize> = BTreeMap::new();
         for root in &self.roots {
             for t in db
                 .get_tracks_by_folder(&root.to_string_lossy())
@@ -703,11 +703,17 @@ impl Tree {
             {
                 let real = vgm_path::parse_vgm_path(&t.path).0;
                 let Some(dir) = Path::new(real).parent() else { continue };
-                *acc.entry((console_of(&t.path), dir.to_string_lossy().to_string()))
-                    .or_default() += 1;
+                *acc.entry((
+                    console_key(&t).to_string(),
+                    dir.to_string_lossy().to_string(),
+                ))
+                .or_default() += 1;
             }
         }
-        acc.into_iter().map(|((c, d), n)| (c, d, n)).collect()
+        let mut out: Vec<(String, String, usize)> =
+            acc.into_iter().map(|((c, d), n)| (c, d, n)).collect();
+        out.sort_by(|a, b| console_order(&a.0).cmp(&console_order(&b.0)).then(a.1.cmp(&b.1)));
+        out
     }
 }
 
@@ -740,6 +746,7 @@ fn nombre_de(ruta: &str) -> String {
 /// de veintiocho sería absurdo. La carátula incrustada en un fichero sigue
 /// siendo cosa del decodificador, y sólo se pide para lo que está sonando.
 
-// Moved to `tunante-helper::art`, which tunante-android needs too.
-pub use tunante_helper::art::folder_image;
+// Moved down to `tunante-art`, which the desktop app needs too and which does
+// not drag in the decoder-process client the way `tunante-helper` would.
+pub use tunante_art::folder::folder_image;
 

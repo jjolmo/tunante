@@ -4,7 +4,7 @@
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { trackDnd } from '$lib/stores/trackDnd.svelte';
-	import { consolesStore, CODEC_TO_CONSOLE, CONSOLE_DEFINITIONS } from '$lib/stores/consoles.svelte';
+	import { consolesStore } from '$lib/stores/consoles.svelte';
 	import { filesStore } from '$lib/stores/files.svelte';
 	import { playerStore } from '$lib/stores/player.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
@@ -48,28 +48,18 @@
 				if (data) {
 					artworkSrc = data;
 				} else if (settingsStore.autoDownloadCoverArt) {
-					// No local artwork — try downloading
+					// No local artwork — go and find some.
+					//
+					// One call. There used to be a fork here choosing between a
+					// "VGM" pipeline and an iTunes one, based on a console name
+					// looked up in a table in this repo — which meant renaming a
+					// label in a .ts file silently disabled box-art lookups for
+					// that console. Rust decides now, from what the classifier
+					// already resolved and stored.
 					try {
-						let downloaded: string | null = null;
-						const consoleId = consolesStore.getTrackConsole(track);
-						if (consoleId && track.album) {
-							// VGM/console track: use Wikipedia game cover scraper
-							const consoleDef = CONSOLE_DEFINITIONS.find((d) => d.id === consoleId);
-							downloaded = await invoke<string | null>('fetch_vgm_cover_art', {
-								gameName: track.album,
-								consoleName: consoleDef?.name || '',
-								trackPath: track.path,
-								storeInFolder: settingsStore.storeCoversInFolder,
-							});
-						} else if (track.album || track.artist) {
-							// Standard track: use iTunes scraper
-							downloaded = await invoke<string | null>('fetch_cover_art', {
-								album: track.album || '',
-								artist: track.artist || '',
-								trackPath: track.path,
-								storeInFolder: settingsStore.storeCoversInFolder,
-							});
-						}
+						const downloaded = await invoke<string | null>('resolve_cover', {
+							trackPath: track.path
+						});
 						// Only update if still on the same track
 						if (lastArtworkTrackPath === track.path) {
 							artworkSrc = downloaded;

@@ -1,0 +1,81 @@
+# Real game-folder names from a 23,000-file collection, for the console with
+# the most of them. Abbreviations and all: this is what the matcher meets.
+ActRaiser
+Axelay
+Bahamut Lagoon
+Breath of Fire
+Breath of Fire II
+Bust-A-Move
+Castlevania - Dracula X
+Chaos Seed
+Chrono Trigger Resurrection OST
+Contra III
+Demons Crest
+EarthBound
+Energy Breaker
+F-Zero
+Front Mission
+Gradius III
+Killer Instinct
+King of the Monsters
+Kirbys Dream Course
+Live A Live
+Lufia & The Fortress of Doom [Estpolis Denki] (1993)(Neverland)(Taito)
+Lufia II - Rise of the Sinistrals [Estpolis Denki II] [Lufia] (1995)(Neverland)(Taito)
+Mega Man 7
+Mega Man X
+Mega Man X2
+Mega Man X3
+Pocky and Rocky
+Romancing Saga
+Romancing Saga 2
+Romancing Saga 3
+Rudra no Hihou
+Shadowrun
+Star Fox
+Star Ocean
+Street Fighter II
+Super Castlevania IV
+Super Ghouls n Ghosts
+Super Puyo Puyo Tsuu
+TMNT 4 - Turtles in Time
+Tetris Attack
+The Lion King
+Treasure of the Rudras
+UN Squadron
+Waterworld
+Zombies Ate My Neighbors
+aladdin
+ct
+dkc
+dkdt
+dkq
+doom
+ewj
+ewj2
+ff4
+ff5
+ff6
+ffmq
+gwed
+human
+iog
+kingmonster
+kirby
+loz3
+mario paint
+mo2
+ogre
+sd2
+sd3
+sm
+smas
+smk
+smr
+smw
+soe
+soul blazer
+ta
+terra
+to
+yi

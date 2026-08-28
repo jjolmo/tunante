@@ -19,7 +19,6 @@ use std::time::Duration;
 
 use rodio::Source;
 
-pub mod art;
 pub mod scan;
 
 static DECODER: OnceLock<PathBuf> = OnceLock::new();

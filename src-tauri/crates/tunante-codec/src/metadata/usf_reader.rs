@@ -76,6 +76,7 @@ pub fn read_usf_metadata(path: &Path) -> Result<Vec<Track>, String> {
         has_artwork: false,
         rating: tags.rating,
         modified_at,
+        ..Default::default()
     }])
 }
 

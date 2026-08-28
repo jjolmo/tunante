@@ -19,6 +19,7 @@ crate-type = ["cdylib"]
 # point of the crate, and it is why the Android app gets it for free.
 tunante-core = { path = "../tunante-core", default-features = false }
 tunante-helper = { path = "../tunante-helper" }
+tunante-art = { path = "../tunante-art" }
 jni = "0.21"
 # Hands cpal the JavaVM and the Context. Without it, cpal's device enumeration
 # panics: the AAudio stream itself is pure C, but naming devices goes through

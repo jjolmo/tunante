@@ -19,6 +19,9 @@
       docs/plan-android.md. It is a distribution policy, not a platform limit:
       sideload and F-Droid grant it identically.
     -->
+    <!-- Downloading cover art. A normal permission: granted at install, no
+         runtime prompt, no Play policy implications. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <!-- Playing with the screen off. Since Android 17 the foreground service is

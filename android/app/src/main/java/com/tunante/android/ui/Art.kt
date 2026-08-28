@@ -56,6 +56,19 @@ private val known = java.util.Collections.synchronizedSet(HashSet<String>())
 private val fetching = Semaphore(3)
 
 /**
+ * Forget every cached answer, after covers have been downloaded.
+ *
+ * Both halves matter, and the negative one matters more. [known] holds the
+ * tracks that asked and had nothing — exactly the tracks a download run has
+ * just given a cover to. Without this the new art stays invisible until the
+ * app is restarted, which reads as the feature not having worked.
+ */
+fun forgetCachedArt() {
+    ArtCache.evictAll()
+    known.clear()
+}
+
+/**
  * Decode a `data:` URI, downsampling to roughly [maxSide] on its longest edge.
  *
  * Two passes on purpose: the first only reads the header, so a huge cover never

@@ -432,11 +432,38 @@ fn real_library_sweep() {
         .and_then(|v| v.parse().ok())
         .unwrap_or(3);
 
-    // Container/library files are loaded *by* a track, never played on their own.
+    // Things that are not a track we claim to decode.
+    //
+    // First row: container/library files, loaded *by* a track and never played
+    // on their own. The rest is the debris a real rip collection accumulates —
+    // and it is not hypothetical: sweeping one 23,000-file library turned up a
+    // whole bundled Windows SPC player (`.exe`, three `.dll`, `.ico`, skins),
+    // "BUY THE ORIGINAL SOUNDTRACK.url" shortcuts in three separate rips,
+    // Sound Forge peak files, and `.sfv` checksums. Every one of them was
+    // reported as a decoder failure, which buried the question the test exists
+    // to answer.
+    //
+    // `.mid` is here for a different reason and is worth stating plainly:
+    // Tunante genuinely does not decode MIDI, so those files failing is a true
+    // answer to a question this test is not asking.
     const NOT_PLAYABLE: &[&str] = &[
         "gsflib", "psflib", "psf2lib", "2sflib", "usflib", "ssflib", "dsflib", "txt", "m3u",
-        "jpg", "jpeg", "png", "cue", "log", "nfo", "pdf", "sf2", "ini",
+        "jpg", "jpeg", "png", "gif", "bmp", "webp", "ico", "cue", "log", "nfo", "pdf", "sf2",
+        "ini", "exe", "dll", "bat", "cmd", "sh", "url", "lnk", "htm", "html", "doc", "docx",
+        "rtf", "zip", "rar", "7z", "gz", "tar", "sfv", "md5", "sfk", "smap", "db", "c", "h",
+        "mid", "midi", "avi", "mp4", "mkv",
+        // A game-specific rename rather than a format: `.khv` files in a
+        // Kingdom Hearts rip are `VAGp` — PlayStation VAG under another name.
+        // We do not advertise the extension, so failing to open it is not a
+        // finding; renaming one to `.vag` is what would make it play.
+        "khv",
     ];
+
+    // `.at3` is deliberately NOT excluded. It is in `AUDIO_EXTENSIONS`, so a
+    // standard RIFF-wrapped ATRAC3 failing here is a real bug and this test
+    // should keep saying so. (The copies in one Kingdom Hearts rip start
+    // `a2 00 03 ae` instead of `RIFF`, i.e. raw ATRAC with no container — those
+    // are the files being wrong, not the decoder.)
 
     // Group by extension and cap, so one huge folder can't crowd out rarer formats.
     let mut by_ext: std::collections::BTreeMap<String, Vec<PathBuf>> = Default::default();

@@ -86,6 +86,7 @@ pub fn read_gsf_metadata(path: &Path) -> Result<Vec<Track>, String> {
         has_artwork: false,
         rating: tags.rating,
         modified_at,
+        ..Default::default()
     }])
 }
 

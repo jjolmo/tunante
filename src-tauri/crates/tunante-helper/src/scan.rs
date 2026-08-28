@@ -245,6 +245,7 @@ mod tests {
             has_artwork: false,
             rating: 0,
             modified_at: 0,
+            ..Default::default()
         })
         .unwrap();
     }

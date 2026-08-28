@@ -955,6 +955,74 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     {
+        // Cover art, reusing the scan's status line and its channel. Same shape
+        // as `on_rescan` above on purpose: one idiom in this app for "long job
+        // with a message under it", not two.
+        let (db, scan_tx) = (db.clone(), scan_tx.clone());
+        let weak = ui.as_weak();
+        ui.on_descargar_caratulas(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let tracks = db.get_all_tracks().unwrap_or_default();
+            if tracks.is_empty() {
+                return;
+            }
+            ui.set_scan_status("Buscando carátulas…".into());
+            let tx = scan_tx.clone();
+            std::thread::spawn(move || {
+                let all: Vec<(String, String)> = tunante_core::console::CONSOLES
+                    .iter()
+                    .filter_map(|c| c.libretro.map(|s| (c.id.to_string(), s.to_string())))
+                    .collect();
+                // One request per game: a hundred tracks of one soundtrack want
+                // one cover between them.
+                let mut seen = std::collections::HashSet::new();
+                let reqs: Vec<tunante_art::resolver::CoverRequest> = tracks
+                    .iter()
+                    .filter(|t| seen.insert((t.console_id.clone(), t.game.clone())))
+                    .map(|t| {
+                        let mut candidates = Vec::new();
+                        if !t.game.trim().is_empty() {
+                            candidates.push(t.game.clone());
+                        }
+                        if !t.album.trim().is_empty() && !t.album.eq_ignore_ascii_case(&t.game) {
+                            candidates.push(t.album.clone());
+                        }
+                        let real = t.path.split('#').next().unwrap_or(&t.path);
+                        tunante_art::resolver::CoverRequest {
+                            libretro_system: tunante_core::console::by_id(&t.console_id)
+                                .and_then(|c| c.libretro)
+                                .map(str::to_string),
+                            other_systems: all
+                                .iter()
+                                .filter(|(o, _)| *o != t.console_id)
+                                .cloned()
+                                .collect(),
+                            console_id: t.console_id.clone(),
+                            candidates,
+                            dir: std::path::Path::new(real).parent().map(|p| p.to_path_buf()),
+                        }
+                    })
+                    .collect();
+
+                let resolver = std::sync::Arc::new(tunante_art::resolver::Resolver::new());
+                let opts = tunante_art::resolver::BulkOptions::default();
+                let plans = resolver.resolve_many(reqs, &opts, |p| {
+                    let _ = tx.send(Some(format!(
+                        "Carátulas {}/{}\n{} encontradas",
+                        p.done, p.total, p.found
+                    )));
+                });
+                let found = plans.iter().filter(|p| p.source != "none").count();
+                let _ = tx.send(Some(format!(
+                    "{found} carátulas de {} juegos",
+                    plans.len()
+                )));
+                std::thread::sleep(std::time::Duration::from_secs(3));
+                let _ = tx.send(None);
+            });
+        });
+    }
+    {
         // Adding a folder later reuses the first-run picker rather than being a
         // second, subtly different browser.
         let (picker, refresh) = (picker.clone(), refresh_picker.clone());
@@ -1511,7 +1579,7 @@ fn tracks_of_console(
     roots
         .iter()
         .flat_map(|r| db.get_tracks_by_folder(&r.to_string_lossy()).unwrap_or_default())
-        .filter(|t| library::console_of(&t.path) == console)
+        .filter(|t| library::console_key(t) == console)
         .collect()
 }
 
@@ -1598,7 +1666,7 @@ fn tracks_for_path(
     deep: bool,
 ) -> Vec<tunante_core::db::models::Track> {
     // The index views build rows whose `path` is not a path at all:
-    // `consola:NES` for a console, `NES\u{1}/ruta/al/juego` for one of its games
+    // `consola:nes` for a console, `nes\u{1}/ruta/al/juego` for one of its games
     // — the console has to be in the key because a folder holding both .spc rips
     // and mp3s appears under two of them — and `juego:Nombre` for a game of the
     // Games tab, which is an album tag and may not correspond to any directory.
@@ -1615,7 +1683,7 @@ fn tracks_for_path(
             .get_tracks_by_folder(dir)
             .unwrap_or_default()
             .into_iter()
-            .filter(|t| library::console_of(&t.path) == consola)
+            .filter(|t| library::console_key(t) == consola)
             .collect();
     }
 
@@ -1860,6 +1928,7 @@ mod tests {
                 has_artwork: false,
                 rating: 0,
                 modified_at: 0,
+                ..Default::default()
             };
             db.insert_track(&t).expect("insert");
         }

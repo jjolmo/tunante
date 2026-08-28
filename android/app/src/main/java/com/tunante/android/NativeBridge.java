@@ -53,6 +53,21 @@ public final class NativeBridge {
      */
     public static native String nativeArtwork(String path);
 
+    /**
+     * Tell the Rust side where its cover cache goes. Mandatory: Rust cannot
+     * discover getCacheDir() on its own, and without this every archive index
+     * and every downloaded cover is silently re-fetched. Call right after
+     * nativeOpenDb.
+     */
+    public static native boolean nativeSetCacheDir(String dir);
+
+    /** Blocking and long. Call from a thread, poll nativeCoverProgress. */
+    public static native String nativeDownloadCovers(boolean replaceExisting);
+
+    public static native String nativeCoverProgress();
+
+    public static native void nativeCancelCovers();
+
     /** Put back what was playing when the app last stopped, paused. */
     public static native String nativeRestoreSession();
 
