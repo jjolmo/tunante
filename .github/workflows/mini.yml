@@ -133,6 +133,32 @@ jobs:
           # The version comes from the tags, like everywhere else.
           fetch-depth: 0
 
+      # The same race android.yml lost the first time its attach step ran.
+      #
+      # release.yml creates the tag in its first job, which can finish after
+      # this job has checked out, so `git describe --tags` returns whichever tag
+      # this clone happens to know -- the previous release's. This workflow has
+      # been getting away with it because its build is slow enough that the tag
+      # has always arrived by the time it looks. That is luck, and an apk
+      # labelled with the wrong version cannot be told from a good one later.
+      - name: Wait for this commit's tag
+        id: tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          for _ in $(seq 1 30); do
+            git fetch -q --tags origin 2>/dev/null || true
+            TAG=$(git tag --points-at HEAD | head -1)
+            [ -n "$TAG" ] && break
+            echo "esperando a que release.yml etiquete este commit…"
+            sleep 20
+          done
+          if [ -n "$TAG" ]; then
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "este commit es $TAG"
+          else
+            echo "no ha aparecido etiqueta para este commit"
+          fi
+
       - name: The recipe is a shell script, so check it parses as one
         # Un segundo, y habría ahorrado diez minutos de runner: un comentario
         # dentro de la cadena de `makedepends` cerró las comillas a media lista
@@ -141,7 +167,7 @@ jobs:
 
       - name: Build the apk
         run: |
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//')
+          VERSION=$(echo "${{ steps.tag.outputs.tag }}" | sed 's/^v//')
           VERSION=${VERSION:-0.1.0}
           echo "empaquetando $VERSION"
 
@@ -253,9 +279,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          TAG="${{ steps.tag.outputs.tag }}"
           if [ -z "$TAG" ]; then
-            echo "no tag to attach to; nothing to do"
+            echo "no tag for this commit; leaving the artifact as the only copy"
             exit 0
           fi
 
