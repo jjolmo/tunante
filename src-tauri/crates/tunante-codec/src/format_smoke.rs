@@ -31,6 +31,13 @@ use crate::usf::UsfSource;
 use crate::vgmstream::VgmstreamSource;
 
 fn fixtures_dir() -> PathBuf {
+    // `CARGO_MANIFEST_DIR` is baked in at compile time, so it names a directory
+    // on whichever machine built the binary. That is right for a native `cargo
+    // test` and useless for a cross-compiled one: the Android build of this
+    // test runs on a phone under `adb`, where no such path exists.
+    if let Ok(dir) = std::env::var("TUNANTE_FIXTURES_DIR") {
+        return PathBuf::from(dir);
+    }
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 

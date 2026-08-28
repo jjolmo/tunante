@@ -73,8 +73,33 @@ static void wrapper_cond_wait(wrapper_cond_t *c, wrapper_mutex_t *m) {
 
 static void *emu_thread_func_posix(void *arg);
 
+/* The stack is asked for explicitly, because the default is too small on two
+ * of the three libcs we ship against.
+ *
+ * sexypsf runs a PSX interpreter on this thread and puts deep frames on it.
+ * glibc's 8 MB default hides that entirely. musl gives 128 KB and bionic about
+ * 1 MB, and both crash — and they crash here rather than in main(), which is
+ * what makes it look like a decoder bug instead of a stack bug.
+ *
+ * On musl the link-time -Wl,-z,stack-size=8388608 is enough, because musl
+ * takes the default thread stack size from PT_GNU_STACK. Bionic does not read
+ * PT_GNU_STACK at all, so on Android that flag is silently ignored and asking
+ * here is the only thing that works. Same number either way. */
+#define EMU_THREAD_STACK_BYTES (8 * 1024 * 1024)
+
 static int wrapper_thread_create(wrapper_thread_t *t) {
-    return pthread_create(t, NULL, emu_thread_func_posix, NULL);
+    pthread_attr_t attr;
+    int rc;
+
+    if (pthread_attr_init(&attr) != 0) {
+        /* Nothing useful to do about it; the default stack is better than no
+         * thread at all, and it is the size we had before this existed. */
+        return pthread_create(t, NULL, emu_thread_func_posix, NULL);
+    }
+    pthread_attr_setstacksize(&attr, EMU_THREAD_STACK_BYTES);
+    rc = pthread_create(t, &attr, emu_thread_func_posix, NULL);
+    pthread_attr_destroy(&attr);
+    return rc;
 }
 static void wrapper_thread_join(wrapper_thread_t t) {
     pthread_join(t, NULL);

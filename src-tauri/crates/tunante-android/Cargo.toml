@@ -1,0 +1,39 @@
+[package]
+name = "tunante-android"
+version = "0.1.0"
+edition = "2021"
+description = "JNI bridge: the Rust side of the Android app"
+license = "GPL-2.0-or-later"
+
+[lib]
+name = "tunante_android"
+# cdylib only: this is loaded by System.loadLibrary, never linked into another
+# Rust crate. An rlib here would also hide link errors, because an rlib is not
+# linked at all — which is how the Android C++ runtime fix nearly went
+# unverified during phase 0.
+crate-type = ["cdylib"]
+
+[dependencies]
+# The decoder client, shared with tunante-mini: probe, artwork, PCM over a pipe.
+# The library database and the play queue. No Tauri, no GUI — that is the whole
+# point of the crate, and it is why the Android app gets it for free.
+tunante-core = { path = "../tunante-core", default-features = false }
+tunante-helper = { path = "../tunante-helper" }
+jni = "0.21"
+# Hands cpal the JavaVM and the Context. Without it, cpal's device enumeration
+# panics: the AAudio stream itself is pure C, but naming devices goes through
+# JNI. On the Slint path `android-activity` did this for us; here nobody does.
+ndk-context = "0.1"
+
+# Only the output half. This process decodes nothing: every format arrives as
+# raw PCM from tunante-decoder, so rodio just mixes and talks to AAudio.
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+
+# Cover art crosses to Java as a data: URI, the same shape the decoder helper
+# already returns for embedded art.
+base64 = "0.22"
+serde_json = "1"
+log = "0.4"
+# Rust logs are invisible on Android otherwise — stdout and stderr go nowhere
+# for an app process, so this is the only way to see anything from the bridge.
+android_logger = "0.14"

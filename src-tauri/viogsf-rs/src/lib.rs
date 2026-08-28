@@ -2,7 +2,7 @@
 //!
 //! viogsf uses the VBA-M (VisualBoyAdvance-M) GBA emulator core for
 //! accurate audio emulation. This avoids the audio crackling issues
-//! found in mGBA-based decoders (lazygsf) with certain games like
+//! found in mGBA-based decoders with certain games like
 //! Metroid Fusion.
 
 use std::ffi::CString;
@@ -17,12 +17,12 @@ extern "C" {
     fn viogsf_destroy(state: *mut c_void);
 }
 
-// Re-use psflib from lazygsf-rs for loading GSF container files
-// (psflib handles minigsf → gsflib chain resolution)
-// For now, we load the ROM data directly using psflib callbacks
+// psflib loads GSF container files; it is vendored in this crate's psflib/ and
+// resolves the minigsf → gsflib chain. The ROM data comes back through the
+// callbacks further down.
 
 extern "C" {
-    // psflib functions (shared with lazygsf-rs, renamed to avoid collision)
+    // psflib functions, renamed to avoid colliding with the other copies
     #[link_name = "viogsf_psf_load"]
     fn psf_load(
         uri: *const libc::c_char,
@@ -56,7 +56,7 @@ type PsfInfoCallback =
     Option<unsafe extern "C" fn(*mut c_void, *const libc::c_char, *const libc::c_char) -> libc::c_int>;
 type PsfStatusCallback = Option<unsafe extern "C" fn(*mut c_void, *const libc::c_char)>;
 
-// File I/O callbacks (same as lazygsf-rs but with library lookup fallbacks)
+// File I/O callbacks, with library lookup fallbacks
 unsafe extern "C" fn psf_fopen(_context: *mut c_void, path: *const libc::c_char) -> *mut c_void {
     let mode = b"rb\0".as_ptr() as *const libc::c_char;
     let handle = libc::fopen(path, mode);
@@ -170,7 +170,7 @@ fn make_psf_callbacks() -> PsfFileCallbacks {
     }
 }
 
-// Tag collection (same structure as lazygsf)
+// Tag collection
 #[derive(Debug, Clone, Default)]
 pub struct GsfTags {
     pub title: String,
@@ -272,7 +272,7 @@ unsafe extern "C" fn tag_info_callback(
     0
 }
 
-/// VBA-M based GSF decoder. More accurate audio than mGBA (lazygsf).
+/// VBA-M based GSF decoder. More accurate audio than an mGBA-based one.
 pub struct VioGsfDecoder {
     state: *mut c_void,
 }

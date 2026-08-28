@@ -234,6 +234,22 @@ impl PlayQueue {
         self.user_queue.retain(|t| t.id != track_id);
     }
 
+    /// Move a waiting track from one position to another.
+    ///
+    /// Both indices are clamped rather than rejected: a drag that ends past the
+    /// end of the list means "put it last", which is what the finger was saying.
+    pub fn move_in_user_queue(&mut self, from: usize, to: usize) {
+        if self.user_queue.is_empty() || from >= self.user_queue.len() {
+            return;
+        }
+        let to = to.min(self.user_queue.len() - 1);
+        if from == to {
+            return;
+        }
+        let track = self.user_queue.remove(from);
+        self.user_queue.insert(to, track);
+    }
+
     pub fn get_user_queue(&self) -> &[Track] {
         &self.user_queue
     }
@@ -285,5 +301,84 @@ impl PlayQueue {
         } else {
             (0, false)
         }
+    }
+}
+
+#[cfg(test)]
+mod user_queue_tests {
+    use super::*;
+    use crate::db::models::Track;
+
+    fn t(id: &str) -> Track {
+        Track {
+            id: id.into(), path: format!("/m/{id}.psf"), title: id.into(),
+            artist: String::new(), album: String::new(), album_artist: String::new(),
+            track_number: None, disc_number: None, duration_ms: 1000,
+            sample_rate: None, channels: None, bitrate: None,
+            codec: "test".into(), file_size: 0, has_artwork: false, rating: 0,
+            modified_at: 0,
+        }
+    }
+
+    fn queue_of(ids: &[&str]) -> PlayQueue {
+        let mut q = PlayQueue::new();
+        for id in ids { q.enqueue_track(t(id)); }
+        q
+    }
+
+    fn ids(q: &PlayQueue) -> Vec<String> {
+        q.get_user_queue().iter().map(|t| t.id.clone()).collect()
+    }
+
+    #[test]
+    fn moving_forward_lands_where_the_finger_stopped() {
+        let mut q = queue_of(&["a", "b", "c", "d"]);
+        q.move_in_user_queue(0, 2);
+        assert_eq!(ids(&q), ["b", "c", "a", "d"]);
+    }
+
+    #[test]
+    fn moving_backward_does_too() {
+        let mut q = queue_of(&["a", "b", "c", "d"]);
+        q.move_in_user_queue(3, 1);
+        assert_eq!(ids(&q), ["a", "d", "b", "c"]);
+    }
+
+    /// A drag that ends past the end means "last", not "nothing".
+    #[test]
+    fn dropping_past_the_end_puts_it_last() {
+        let mut q = queue_of(&["a", "b", "c"]);
+        q.move_in_user_queue(0, 99);
+        assert_eq!(ids(&q), ["b", "c", "a"]);
+    }
+
+    #[test]
+    fn moving_onto_itself_changes_nothing() {
+        let mut q = queue_of(&["a", "b", "c"]);
+        q.move_in_user_queue(1, 1);
+        assert_eq!(ids(&q), ["a", "b", "c"]);
+    }
+
+    /// Out of range on the way in is a stale index from a list that already
+    /// moved, and it must not panic or scramble the queue.
+    #[test]
+    fn a_stale_index_is_ignored() {
+        let mut q = queue_of(&["a", "b"]);
+        q.move_in_user_queue(9, 0);
+        assert_eq!(ids(&q), ["a", "b"]);
+        let mut empty = PlayQueue::new();
+        empty.move_in_user_queue(0, 0);
+        assert!(empty.get_user_queue().is_empty());
+    }
+
+    /// The queue is a layer over the context: taking from it must not disturb
+    /// the folder underneath.
+    #[test]
+    fn reordering_leaves_the_context_alone() {
+        let mut q = queue_of(&["a", "b"]);
+        q.set_tracks(vec![t("x"), t("y")]);
+        q.move_in_user_queue(0, 1);
+        assert_eq!(q.tracks().len(), 2);
+        assert_eq!(ids(&q), ["b", "a"]);
     }
 }

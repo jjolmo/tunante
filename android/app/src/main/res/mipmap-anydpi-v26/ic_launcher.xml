@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The same icon the desktop app and tunante-mini use: one program, one face.
+
+  Adaptive rather than only a bitmap, because from API 26 a launcher masks the
+  legacy icon into whatever shape it likes and pads it with white — which puts
+  a white ring around an icon whose own background is dark.
+
+  The background is bg-primary from the palette (theme.slint / app.css), so the
+  masked shape is the app's own dark rather than an arbitrary colour.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
+    <monochrome android:drawable="@mipmap/ic_launcher_foreground" />
+</adaptive-icon>
