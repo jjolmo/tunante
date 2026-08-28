@@ -264,4 +264,26 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          # A short guide to the assets, above the generated changelog.
+          #
+          # Two of them are called ".apk" and only one installs on a phone:
+          # tunante-android-<v>.apk is the Android app, tunante-mini-<v>-r0.apk
+          # is an Alpine package for postmarketOS. The android.yml comment has
+          # warned about that confusion since it was written; the person it
+          # confuses is the one reading this page, so it belongs here.
+          #
+          # Both phone builds are attached by their own workflows, which are
+          # path filtered, so a given release may carry neither. Said plainly
+          # rather than left to be discovered.
+          body: |
+            | Asset | What it is |
+            |---|---|
+            | `.AppImage` / `.deb` | Linux desktop |
+            | `.dmg` | macOS desktop (unsigned — see the README) |
+            | `.msi` / `-setup.exe` | Windows desktop |
+            | `tunante-android-*.apk` | **Android phone.** Sideload; not on Play |
+            | `tunante-mini-*-r0.apk` | postmarketOS package, *not* an Android app |
+
+            The two phone builds ship only when their own code changed, so a
+            release may not have them. Take the newest release that does.
           files: release/*
