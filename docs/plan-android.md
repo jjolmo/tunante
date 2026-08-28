@@ -354,8 +354,13 @@ bibliotecas mapeadas desde el APK sin desempaquetar — bien para algo que se
 `dlopen`, fatal para algo que se ejecuta, porque no hay fichero que darle a
 `execve`.
 
-Sigue pendiente **la duplicidad de cpal** (0.16 por `game-music-emu`, 0.17 por
-rodio). No ha dado guerra todavía; sigue en la lista de riesgos.
+**La duplicidad de cpal no existía.** `Cargo.lock` lista 0.16 y 0.17, y eso
+apuntaba a dos backends de AAudio y dos consumidores de `ndk_context` —que
+avisa con un `assert` si se inicializa dos veces— en el mismo proceso. Pero
+`game-music-emu` lo declara en `[dev-dependencies]`, o sea sólo para sus propios
+ejemplos y pruebas: `cargo tree -p tunante-android --target aarch64-linux-android
+-e normal` devuelve **un solo cpal, 0.17.1**. El lock fija también las
+dependencias de desarrollo; nunca se compila dentro de la app.
 
 - **`ndk_context` hay que inicializarlo a mano.** En el plan anterior lo hacía
   `android-activity` por nosotros; sin Slint, no hay quien lo haga. cpal lo
@@ -1013,10 +1018,12 @@ del IME de Slint en Android— **los ha borrado la decisión de interfaz nativa*
 
 1. ~~**El coste de escanear.**~~ **Medido y descartado** — 4 ms por fichero,
    igual que un `exec` vacío. Ver Fase 2.
-2. **La duplicidad de cpal**, 0.16 y 0.17 en el mismo binario, con
-   `ndk_context` inicializándose posiblemente dos veces. No ha dado guerra en
-   las fases 0 y 1; sigue sin verificar que sea inocua.
-3. **`boost.rs`.** `sched_setattr` con uclamp existe en los núcleos de Android
+2. ~~**La duplicidad de cpal.**~~ **Comprobada y descartada**: `game-music-emu`
+   lo declara en `[dev-dependencies]`, así que el árbol real de la app tiene un
+   solo cpal.
+3. ~~**La duplicidad de cpal.**~~ **Comprobada y descartada**: es una dependencia
+   de desarrollo de `game-music-emu` y no entra en el binario.
+4. **`boost.rs`.** `sched_setattr` con uclamp existe en los núcleos de Android
    —lo usa el propio sistema para sus hilos de interfaz— pero puede rechazarlo
    SELinux bajo el filtro seccomp de la app. Ya falla con elegancia, así que no
    rompe nada; y con la interfaz en Compose, el hilo que había que acelerar ya
