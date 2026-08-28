@@ -45,6 +45,13 @@ pub enum Mode {
     /// One row per console, from the format of the files. Open it and the games
     /// for that console are inside.
     Consoles,
+    /// One row per game, from the album tag rather than from the directory.
+    ///
+    /// Not the same index as Albums: that one is the disk's opinion and this is
+    /// the ripper's. They disagree for a rip split across `Disc 1` and `Disc 2`,
+    /// for a folder holding several games, and for anything tagged properly and
+    /// filed loose.
+    Games,
     /// The saved playlists. Not an index over the library like the two above:
     /// the only view whose contents and order the user chose by hand.
     Playlists,
@@ -55,7 +62,8 @@ impl Mode {
         match i {
             1 => Mode::Albums,
             2 => Mode::Consoles,
-            3 => Mode::Playlists,
+            3 => Mode::Games,
+            4 => Mode::Playlists,
             _ => Mode::Tree,
         }
     }
@@ -208,6 +216,13 @@ impl Tree {
             }
             Mode::Albums => self.rows_albums(db),
             Mode::Consoles => self.rows_consoles(db),
+            // Games has no arm here on purpose. Every mode but Tree draws as a
+            // grid — `grid_unfiltered` answers for the top level and
+            // `grid_tracks` for the one below — so `rows_for` is only ever
+            // called with Tree. rows_albums and rows_consoles above are already
+            // unreachable for the same reason; adding a third would be adding
+            // to a mistake rather than matching a pattern.
+            Mode::Games => Vec::new(),
             // Las listas no salen del árbol ni de un índice sobre él: las arma
             // `refresh_library` desde la base, en el orden que alguien eligió.
             Mode::Playlists => Vec::new(),
@@ -233,6 +248,37 @@ impl Tree {
             }
         }
         count.into_iter().collect()
+    }
+
+    /// Every game in the library, from `tunante_core::games`.
+    ///
+    /// Shared with tunante-android rather than written twice: the awkward parts
+    /// — an untagged rip falling back to its folder, a subsong suffix that is
+    /// not part of any name, one bad tag not renaming a whole game's composer —
+    /// are tested there.
+    fn games(&self, db: &Database) -> Vec<tunante_core::games::Game> {
+        let mut all = Vec::new();
+        for root in &self.roots {
+            all.extend(
+                db.get_tracks_by_folder(&root.to_string_lossy())
+                    .unwrap_or_default(),
+            );
+        }
+        tunante_core::games::index(&all)
+    }
+
+    fn game_tracks(&self, db: &Database, game: &str) -> Vec<tunante_core::db::models::Track> {
+        let mut all = Vec::new();
+        for root in &self.roots {
+            all.extend(
+                db.get_tracks_by_folder(&root.to_string_lossy())
+                    .unwrap_or_default(),
+            );
+        }
+        tunante_core::games::tracks_of(&all, game)
+            .into_iter()
+            .cloned()
+            .collect()
     }
 
     fn rows_albums(&self, db: &Database) -> Vec<Row> {
@@ -530,6 +576,24 @@ impl Tree {
                     })
                     .collect(),
             ),
+            (Mode::Games, 0) => Some(
+                self.games(db)
+                    .into_iter()
+                    .map(|g| Cell {
+                        title: g.name.clone(),
+                        subtitle: if g.by.is_empty() { pistas(g.count) } else { g.by },
+                        // The cover comes from wherever the first track lives.
+                        // A game split across discs takes disc one's, which is
+                        // the one that has the artwork in practice.
+                        art_dir: Path::new(vgm_path::parse_vgm_path(&g.first_track).0)
+                            .parent()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        console: String::new(),
+                        path: g.name,
+                    })
+                    .collect(),
+            ),
             (Mode::Consoles, 0) => {
                 let mut por_consola: BTreeMap<&'static str, (usize, usize)> = BTreeMap::new();
                 for (consola, _dir, n) in self.console_index(db) {
@@ -594,6 +658,17 @@ impl Tree {
         let Some(dir) = self.nav.last() else { return Vec::new() };
         if mode == Mode::Consoles && self.nav.len() < 2 {
             return Vec::new();
+        }
+        // A game is a name, not a directory, so its tracks cannot come from
+        // read_dir the way every other grid level's do.
+        if mode == Mode::Games {
+            let mut out = Vec::new();
+            self.push_tracks(self.game_tracks(db, dir), 0, &mut out);
+            if !self.filter.trim().is_empty() {
+                let q = plegar(self.filter.trim());
+                out.retain(|r| plegar(&r.label).contains(&q));
+            }
+            return out;
         }
         let mut tracks = self.contents(db, dir, Path::new(dir)).tracks;
         if mode == Mode::Consoles {
