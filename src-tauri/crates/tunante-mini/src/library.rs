@@ -590,7 +590,11 @@ impl Tree {
                             .map(|p| p.to_string_lossy().to_string())
                             .unwrap_or_default(),
                         console: String::new(),
-                        path: g.name,
+                        // Synthetic, like `consola:NES`. A game is a name and
+                        // the rest of the app resolves a row by treating its
+                        // path as one; without a prefix to say otherwise,
+                        // playing or queueing a game silently does nothing.
+                        path: format!("juego:{}", g.name),
                     })
                     .collect(),
             ),
@@ -646,6 +650,10 @@ impl Tree {
             Some(k) => {
                 if let Some(c) = k.strip_prefix("consola:") {
                     c.to_string()
+                } else if let Some(g) = k.strip_prefix("juego:") {
+                    // Whole, not `file_name`: a game tagged "Hack//Sign" is not
+                    // a path and has no last component to take.
+                    g.to_string()
                 } else {
                     nombre_de(k)
                 }
@@ -663,7 +671,8 @@ impl Tree {
         // read_dir the way every other grid level's do.
         if mode == Mode::Games {
             let mut out = Vec::new();
-            self.push_tracks(self.game_tracks(db, dir), 0, &mut out);
+            let game = dir.strip_prefix("juego:").unwrap_or(dir);
+            self.push_tracks(self.game_tracks(db, game), 0, &mut out);
             if !self.filter.trim().is_empty() {
                 let q = plegar(self.filter.trim());
                 out.retain(|r| plegar(&r.label).contains(&q));

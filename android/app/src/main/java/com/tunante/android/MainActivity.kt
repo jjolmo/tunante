@@ -343,13 +343,14 @@ class MainActivity : ComponentActivity() {
      * table to derive its rows, so on a real collection it is a full table read
      * plus the JSON for it — not something to do between two frames.
      */
-    private fun load(here: String = "", call: () -> String) {
+    private fun load(here: String = "", label: String = "", call: () -> String) {
         thread(name = "load") {
             val s = JSONObject(call())
             if (!s.optBoolean("ok", false)) return@thread
             val folders = s.optJSONArray("folders")
             val next = LibraryView(
                 here = here,
+                label = label,
                 folders = (0 until (folders?.length() ?: 0)).map { i ->
                     val f = folders!!.getJSONObject(i)
                     Folder(
@@ -372,8 +373,9 @@ class MainActivity : ComponentActivity() {
     /** Opening a row means something different in each shape. */
     private fun openRow(path: String) {
         when (tab) {
-            Tab.Games -> load(path) { NativeBridge.nativeGames(path) }
-            Tab.Consoles -> load(path) { NativeBridge.nativeConsoles(path) }
+            // The index tabs navigate by name, so the name is also the label.
+            Tab.Games -> load(path, path) { NativeBridge.nativeGames(path) }
+            Tab.Consoles -> load(path, path) { NativeBridge.nativeConsoles(path) }
             // An album row and a tree row are both directories.
             else -> browse(path)
         }

@@ -1495,6 +1495,26 @@ fn tracks_of_console(
         .collect()
 }
 
+/// Every track of one game, wherever on disk it turned out to be.
+///
+/// Not `get_tracks_by_folder`: the whole point of the Games tab is that a game
+/// is an album tag, so its tracks can be spread over several directories or
+/// share one with another game.
+fn tracks_of_game(
+    db: &Database,
+    roots: &[PathBuf],
+    game: &str,
+) -> Vec<tunante_core::db::models::Track> {
+    let all: Vec<_> = roots
+        .iter()
+        .flat_map(|r| db.get_tracks_by_folder(&r.to_string_lossy()).unwrap_or_default())
+        .collect();
+    tunante_core::games::tracks_of(&all, game)
+        .into_iter()
+        .cloned()
+        .collect()
+}
+
 /// Put a whole playlist at the end of the queue, without starting anything.
 ///
 /// Deliberately not `enqueue_all`: that one starts playing when the player is
@@ -1557,13 +1577,18 @@ fn tracks_for_path(
     path: &str,
     deep: bool,
 ) -> Vec<tunante_core::db::models::Track> {
-    // The console view builds rows whose `path` is not a path at all:
-    // `consola:NES` for a console, and `NES\u{1}/ruta/al/juego` for one of its
-    // games — the console has to be in the key because a folder holding both
-    // .spc rips and mp3s appears under two of them. Those are resolved here
-    // rather than in the view, so this is the only place that knows the encoding.
+    // The index views build rows whose `path` is not a path at all:
+    // `consola:NES` for a console, `NES\u{1}/ruta/al/juego` for one of its games
+    // — the console has to be in the key because a folder holding both .spc rips
+    // and mp3s appears under two of them — and `juego:Nombre` for a game of the
+    // Games tab, which is an album tag and may not correspond to any directory.
+    // Those are resolved here rather than in the view, so this is the only place
+    // that knows the encoding.
     if let Some(consola) = path.strip_prefix("consola:") {
         return tracks_of_console(db, roots, consola);
+    }
+    if let Some(juego) = path.strip_prefix("juego:") {
+        return tracks_of_game(db, roots, juego);
     }
     if let Some((consola, dir)) = path.split_once('\u{1}') {
         return db
@@ -1771,4 +1796,81 @@ fn generated_rows(n: usize) -> Vec<LibraryRow> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tunante_core::db::models::Track;
+
+    /// mini's first test, and it exists because of a bug that could not fail
+    /// loudly: a row's `path` is not always a path, and everything downstream
+    /// resolves it as one. When the encoding and the resolver disagree the only
+    /// symptom is a long-press that does nothing at all.
+    fn db_with(paths: &[(&str, &str)]) -> (std::path::PathBuf, Database) {
+        // The counter matters: tests run in parallel threads of one process,
+        // so the pid alone gives every test the same file to fight over.
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let mut file = std::env::temp_dir();
+        file.push(format!(
+            "tunante-mini-test-{}-{}.db",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_file(&file);
+        let db = Database::new(&file).expect("open");
+        for (path, album) in paths {
+            // Written out rather than derived from a Default: if a field is
+            // added to Track, this should stop compiling and be looked at.
+            let t = Track {
+                id: (*path).to_string(),
+                path: (*path).to_string(),
+                title: (*path).to_string(),
+                artist: String::new(),
+                album: (*album).to_string(),
+                album_artist: String::new(),
+                track_number: None,
+                disc_number: None,
+                duration_ms: 1000,
+                sample_rate: None,
+                channels: None,
+                bitrate: None,
+                codec: "test".into(),
+                file_size: 0,
+                has_artwork: false,
+                rating: 0,
+                modified_at: 0,
+            };
+            db.insert_track(&t).expect("insert");
+        }
+        (file, db)
+    }
+
+    #[test]
+    fn a_game_row_resolves_to_the_tracks_of_that_game() {
+        let (file, db) = db_with(&[
+            ("/m/FF7 Disco 1/a.psf", "Final Fantasy VII"),
+            ("/m/FF7 Disco 2/b.psf", "Final Fantasy VII"),
+            ("/m/otro/c.psf", "Chrono Trigger"),
+        ]);
+        let roots = vec![std::path::PathBuf::from("/m")];
+
+        // What a long press on a game tile hands over.
+        let got = tracks_for_path(&db, &roots, "juego:Final Fantasy VII", true);
+        let mut paths: Vec<_> = got.iter().map(|t| t.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["/m/FF7 Disco 1/a.psf", "/m/FF7 Disco 2/b.psf"]);
+
+        let _ = std::fs::remove_file(file);
+    }
+
+    /// The regression itself: without the prefix this returned nothing, because
+    /// a game name is not a directory and never will be one.
+    #[test]
+    fn a_bare_game_name_is_not_mistaken_for_a_directory() {
+        let (file, db) = db_with(&[("/m/x/a.psf", "Final Fantasy VII")]);
+        let roots = vec![std::path::PathBuf::from("/m")];
+        assert!(tracks_for_path(&db, &roots, "Final Fantasy VII", true).is_empty());
+        let _ = std::fs::remove_file(file);
+    }
 }
