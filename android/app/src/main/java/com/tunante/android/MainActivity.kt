@@ -26,6 +26,7 @@ import com.tunante.android.ui.Tab
 import com.tunante.android.ui.Track
 import com.tunante.android.ui.TunanteApp
 import com.tunante.android.ui.TunanteTheme
+import com.tunante.android.ui.forgetCachedArt
 import com.tunante.android.ui.pollState
 import org.json.JSONObject
 import java.io.File
@@ -50,6 +51,14 @@ class MainActivity : ComponentActivity() {
     private var picking by mutableStateOf(false)
     private var listing by mutableStateOf(DirListing())
     private var roots by mutableStateOf(emptyList<String>())
+    /**
+     * A line of text while covers are downloading, or empty.
+     *
+     * Polled rather than pushed: calling back into Java from a Rust worker
+     * needs AttachCurrentThread plus a global class ref, and getting that
+     * subtly wrong aborts the process. A poll every half second costs nothing.
+     */
+    private var coverStatus by mutableStateOf("")
     /**
      * Which of the four the app is showing.
      *
@@ -134,6 +143,8 @@ class MainActivity : ComponentActivity() {
                     hasAllFiles = hasFiles,
                     onGrantFiles = ::requestAllFiles,
                     onScan = ::rescanOrPick,
+                    onDownloadCovers = ::downloadCovers,
+                    coverStatus = coverStatus,
                     onPickFolders = ::openPicker,
                     onQuery = ::search,
                     onOpenFolder = ::openRow,
@@ -517,6 +528,47 @@ class MainActivity : ComponentActivity() {
             val result = NativeBridge.nativeScan(root)
             Log.i(TAG, "scan: $result")
             runOnUiThread { switchTab(tab) }
+        }
+    }
+
+    /**
+     * Fetch cover art for every game that has none.
+     *
+     * Long — minutes over a real library — so it runs on its own thread and
+     * reports through [coverStatus]. Nothing already in a folder is replaced.
+     */
+    private fun downloadCovers() {
+        if (coverStatus.isNotEmpty()) {
+            // Already running: a second tap cancels rather than starting again.
+            NativeBridge.nativeCancelCovers()
+            return
+        }
+        coverStatus = "Buscando carátulas…"
+        thread(name = "covers") {
+            val poller = thread(name = "covers-progress") {
+                while (!Thread.currentThread().isInterrupted) {
+                    val p = JSONObject(NativeBridge.nativeCoverProgress())
+                    if (!p.optBoolean("running", false)) break
+                    val line = "Carátulas ${p.optInt("done")}/${p.optInt("total")} · " +
+                        "${p.optInt("found")} encontradas"
+                    runOnUiThread { coverStatus = line }
+                    try { Thread.sleep(500) } catch (e: InterruptedException) { break }
+                }
+            }
+            val result = JSONObject(NativeBridge.nativeDownloadCovers(false))
+            poller.interrupt()
+            Log.i(TAG, "covers: $result")
+            runOnUiThread {
+                coverStatus = if (result.optBoolean("ok", false)) {
+                    "${result.optInt("found")} carátulas de ${result.optInt("games")} juegos"
+                } else {
+                    "No se pudieron descargar"
+                }
+                // The negative cache holds exactly the tracks this run just gave
+                // covers to; without clearing it the new art stays invisible.
+                forgetCachedArt()
+                switchTab(tab)
+            }
         }
     }
 

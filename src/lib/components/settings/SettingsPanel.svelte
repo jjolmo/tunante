@@ -2,6 +2,7 @@
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import GeneralSettings from './GeneralSettings.svelte';
 	import LibrarySettings from './LibrarySettings.svelte';
+	import CoverArtSettings from './CoverArtSettings.svelte';
 	import DspSettings from './DspSettings.svelte';
 	import ThemeSettings from './ThemeSettings.svelte';
 	import ShortcutsSettings from './ShortcutsSettings.svelte';
@@ -23,6 +24,12 @@
 			id: 'library',
 			label: 'Library',
 			icon: 'M14.5 3H7.71l-.85-.85L6.51 2H1.5l-.5.5v11l.5.5h13l.5-.5v-10L14.5 3zm-.51 8.49V13H2V7h5.29l.85.85.36.15H14v3.49zM2 3h4.29l.85.85.36.15H14v2H8.5l-.85-.85L7.29 5H2V3z'
+		},
+		{
+			id: 'covers',
+			label: 'Cover art',
+			// A framed picture.
+			icon: 'M14.5 2h-13l-.5.5v11l.5.5h13l.5-.5v-11l-.5-.5zM14 13H2V3h12v10zM4 11l2.5-3 1.75 2.1L10.5 7l2.5 4H4z'
 		},
 		{
 			id: 'dsp',
@@ -99,6 +106,8 @@
 					<GeneralSettings />
 				{:else if settingsStore.activeCategory === 'library'}
 					<LibrarySettings />
+				{:else if settingsStore.activeCategory === 'covers'}
+					<CoverArtSettings />
 				{:else if settingsStore.activeCategory === 'dsp'}
 					<DspSettings />
 				{:else if settingsStore.activeCategory === 'theme'}

@@ -34,6 +34,8 @@ fun SettingsScreen(
     onSleep: (Int) -> Unit,
     onScan: () -> Unit,
     onPickFolders: () -> Unit,
+    onDownloadCovers: () -> Unit,
+    coverStatus: String,
 ) {
     Column(Modifier.fillMaxSize().background(T.bgPrimary).verticalScroll(rememberScrollState())) {
         Heading("Música de consola")
@@ -57,6 +59,14 @@ fun SettingsScreen(
         )
         SettingRow("Añadir una carpeta", "＋", onClick = onPickFolders)
         SettingRow("Volver a analizar", "↻", onClick = onScan)
+        // Tapping again while it runs cancels it, which is why the value doubles
+        // as the status line.
+        SettingRow(
+            "Descargar carátulas",
+            if (coverStatus.isEmpty()) "⬇" else coverStatus,
+            highlighted = coverStatus.isNotEmpty(),
+            onClick = onDownloadCovers,
+        )
 
         Rule()
         // Named for what it does rather than for the verb, which on its own —
