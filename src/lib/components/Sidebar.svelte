@@ -33,6 +33,7 @@
 	let renameValue = $state('');
 
 	/** Which console the covers screen should open on, set from the context menu. */
+	let lastArtworkToken = $state(0);
 	let pendingCoverConsole = $state<string | null>(null);
 	$effect(() => {
 		if (pendingCoverConsole) {
@@ -44,6 +45,13 @@
 	// Fetch artwork when the current track changes
 	$effect(() => {
 		const track = playerStore.currentTrack;
+		// Read so a finished cover run re-runs this: the artwork for the playing
+		// track may have appeared on disk a second ago.
+		const token = coversStore.refreshToken;
+		if (token !== lastArtworkToken) {
+			lastArtworkToken = token;
+			lastArtworkTrackPath = null;
+		}
 		if (!track) {
 			artworkSrc = null;
 			lastArtworkTrackPath = null;

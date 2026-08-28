@@ -56,6 +56,15 @@ class CoversStore {
 	 * context menu. The covers screen picks it up on mount and preselects it.
 	 */
 	requestedConsole = $state<string | null>(null);
+	/**
+	 * Bumped when a run finishes, so anything showing artwork re-reads it.
+	 *
+	 * Without this the cover the run just saved for the playing track stays
+	 * invisible until the track changes, which reads as the download not having
+	 * worked. Android has the same hazard and clears its caches for the same
+	 * reason.
+	 */
+	refreshToken = $state(0);
 
 	private unlisten: UnlistenFn[] = [];
 
@@ -88,6 +97,7 @@ class CoversStore {
 				this.plans = e.payload;
 				this.running = false;
 				this.progress = null;
+				this.refreshToken++;
 			})
 		);
 	}

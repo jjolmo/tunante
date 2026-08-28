@@ -214,10 +214,11 @@ pub fn download_covers(
         let plans = resolver().resolve_many(reqs, &opts, |p| {
             let _ = app.emit("cover-progress", p);
         });
-        for p in plans.iter().filter(|p| p.source != "none") {
-            if let Some(path) = &p.existing {
-                let _ = manifest.record(std::path::Path::new(path));
-            }
+        // `written`, never `existing`. The second is the image that was already
+        // in the folder and was deliberately left alone; recording it here would
+        // make Undo delete the user's own artwork.
+        for p in plans.iter().filter_map(|p| p.written.as_ref()) {
+            let _ = manifest.record(std::path::Path::new(p));
         }
         let _ = app.emit("cover-complete", &plans);
         running().store(false, Ordering::SeqCst);
