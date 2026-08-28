@@ -83,7 +83,14 @@ class SettingsStore {
 	autoUpdateOnStart = $state(false);
 	checkUpdatesOnStart = $state(true);
 	autoDownloadCoverArt = $state(false);
-	storeCoversInFolder = $state(false);
+	/**
+	 * Save the cover next to the track, not only in the cache.
+	 *
+	 * On by default: this is how art reaches the phone and postmarketOS without
+	 * either of them downloading anything, and how it survives a rescan. An
+	 * image already in the folder is never replaced.
+	 */
+	storeCoversInFolder = $state(true);
 	fastScan = $state(false);
 	// Max play time for tracks whose real length can't be determined — the ones
 	// that loop forever. Tracks with a real length ignore this entirely.

@@ -224,13 +224,47 @@
 		font-size: 12px;
 		color: var(--color-text-primary);
 	}
+	/*
+	 * `appearance: none` is not optional. A native select on Linux ignores
+	 * `background` entirely and renders in the GTK theme's own colours — a white
+	 * box on a dark page. The arrow has to be drawn by hand once it is gone.
+	 * Same shape as the one in GeneralSettings.
+	 */
 	select {
-		background: var(--color-bg-tertiary);
-		color: var(--color-text-primary);
+		appearance: none;
+		-webkit-appearance: none;
+		padding: 4px 26px 4px 8px;
+		background-color: var(--color-bg-primary);
+		background-image: linear-gradient(45deg, transparent 50%, var(--color-text-secondary) 50%),
+			linear-gradient(135deg, var(--color-text-secondary) 50%, transparent 50%);
+		background-position:
+			calc(100% - 13px) 50%,
+			calc(100% - 8px) 50%;
+		background-size:
+			5px 5px,
+			5px 5px;
+		background-repeat: no-repeat;
 		border: 1px solid var(--color-border);
-		border-radius: 3px;
-		padding: 3px 6px;
+		border-radius: 4px;
+		color: var(--color-text-primary);
 		font-size: 12px;
+		cursor: pointer;
+	}
+
+	select:disabled {
+		opacity: 0.45;
+		cursor: default;
+	}
+
+	/* The dropdown itself is drawn by the OS, so it needs telling too. */
+	select option {
+		background: var(--color-bg-secondary);
+		color: var(--color-text-primary);
+	}
+
+	input[type='checkbox'] {
+		accent-color: var(--color-accent);
+		cursor: pointer;
 	}
 	.btn {
 		background: var(--color-bg-tertiary);
@@ -300,9 +334,22 @@
 		flex-direction: column;
 		gap: 3px;
 	}
-	.plans li,
-	.unclassified li {
+	.plans li {
 		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 11px;
+		padding: 2px 0;
+	}
+
+	/*
+	 * A grid, not a flex row: with flex every line sized its own columns, so the
+	 * dropdowns marched left and right down the list depending on how long each
+	 * folder name happened to be.
+	 */
+	.unclassified li {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 3.5em 11em auto;
 		align-items: center;
 		gap: 8px;
 		font-size: 11px;
@@ -311,11 +358,14 @@
 	.game,
 	.folder {
 		color: var(--color-text-primary);
-		min-width: 140px;
-		max-width: 220px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	.game {
+		min-width: 140px;
+		max-width: 220px;
 	}
 	.arrow,
 	.count,
@@ -330,7 +380,7 @@
 		white-space: nowrap;
 	}
 	.count {
-		min-width: 34px;
 		text-align: right;
+		font-variant-numeric: tabular-nums;
 	}
 </style>
