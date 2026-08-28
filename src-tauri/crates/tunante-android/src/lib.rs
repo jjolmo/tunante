@@ -570,9 +570,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeEnqueuePaths<
         let n = tracks.len();
         let mut guard = ENGINE.lock().unwrap();
         let engine = guard.as_mut().ok_or("nativeEnqueuePaths before nativeInit")?;
-        for t in tracks {
-            engine.enqueue(t);
-        }
+        engine.enqueue_many(tracks);
         Ok(serde_json::json!({ "ok": true, "queued": n }).to_string())
     })()
     .unwrap_or_else(fail);
