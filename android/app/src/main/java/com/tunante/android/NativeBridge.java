@@ -84,6 +84,13 @@ public final class NativeBridge {
     /** One row per folder that directly holds music. */
     public static native String nativeAlbums();
 
+    /**
+     * Empty {@code game} lists them; naming one lists its tracks.
+     *
+     * By the album tag, not by folder — see nativeAlbums for the other answer.
+     */
+    public static native String nativeGames(String game);
+
     /** Empty {@code console} lists the consoles; naming one lists its tracks. */
     public static native String nativeConsoles(String console);
 

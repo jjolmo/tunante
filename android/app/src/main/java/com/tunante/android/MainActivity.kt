@@ -330,6 +330,7 @@ class MainActivity : ComponentActivity() {
         when (next) {
             Tab.Library -> browse("")
             Tab.Albums -> load { NativeBridge.nativeAlbums() }
+            Tab.Games -> load { NativeBridge.nativeGames("") }
             Tab.Consoles -> load { NativeBridge.nativeConsoles("") }
             Tab.Playlists -> reloadPlaylists()
         }
@@ -371,6 +372,7 @@ class MainActivity : ComponentActivity() {
     /** Opening a row means something different in each shape. */
     private fun openRow(path: String) {
         when (tab) {
+            Tab.Games -> load(path) { NativeBridge.nativeGames(path) }
             Tab.Consoles -> load(path) { NativeBridge.nativeConsoles(path) }
             // An album row and a tree row are both directories.
             else -> browse(path)
@@ -402,8 +404,7 @@ class MainActivity : ComponentActivity() {
             view.searching -> search("")
             // In the indexes there is one level to come back from, and it is
             // the index itself rather than a parent directory.
-            tab == Tab.Consoles && view.here.isNotEmpty() -> switchTab(Tab.Consoles)
-            tab == Tab.Albums && view.here.isNotEmpty() -> switchTab(Tab.Albums)
+            tab != Tab.Library && view.here.isNotEmpty() -> switchTab(tab)
             view.here.isEmpty() -> Unit
             else -> browse(view.here.substringBeforeLast('/', ""))
         }

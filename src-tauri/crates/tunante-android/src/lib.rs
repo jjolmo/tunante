@@ -608,6 +608,44 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeAlbums<'a>(
     env.new_string(out).expect("new_string")
 }
 
+/// One row per game, from the album tag.
+///
+/// Empty `game` lists them; naming one lists its tracks. Not the same index as
+/// the albums tab: that one is the disk's opinion (a directory that holds
+/// music) and this is the tags'. They differ for a rip split across discs, for
+/// a folder holding several games, and for anything tagged but filed loose.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeGames<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    game: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let want = jstring_to_string(&mut env, &game)?;
+        let guard = DB.lock().unwrap();
+        let db = guard.as_ref().ok_or("nativeGames before nativeOpenDb")?;
+        let all = db.get_all_tracks().map_err(|e| e.to_string())?;
+
+        if want.is_empty() {
+            let folders: Vec<_> = tunante_core::games::index(&all)
+                .into_iter()
+                .map(|g| {
+                    serde_json::json!({ "path": g.name, "name": g.name, "count": g.count,
+                                        "cover": g.first_track, "by": g.by })
+                })
+                .collect();
+            return Ok(
+                serde_json::json!({ "ok": true, "folders": folders, "tracks": [] }).to_string()
+            );
+        }
+
+        let tracks = tunante_core::games::tracks_of(&all, &want);
+        Ok(serde_json::json!({ "ok": true, "folders": [], "tracks": tracks }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
 /// One row per console, from the format of the files.
 ///
 /// Empty `console` lists the consoles; naming one lists its tracks. The mapping

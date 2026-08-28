@@ -38,6 +38,8 @@ enum class Tab(val label: String) {
      *  name you already know — which is what the next two are for. */
     Library("Árbol"),
     Albums("Álbumes"),
+    /** By the album tag rather than by folder: what the rip says it is from. */
+    Games("Juegos"),
     Consoles("Consolas"),
     Playlists("Listas"),
 }

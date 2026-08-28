@@ -221,7 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        ui.set_library_mode(if open_playlist.is_some() { 3 } else { mode });
+        ui.set_library_mode(if open_playlist.is_some() { 4 } else { mode });
         ui.set_tab(2);
         refresh_library(&ui, &tree, &db, &views);
     }
