@@ -125,6 +125,47 @@ pub async fn resolve_cover(
     }))
 }
 
+/// Fetch this track's cover again, ignoring everything remembered about it.
+///
+/// For "that cover is wrong". Three things have to give way, and missing any
+/// one of them makes the button look broken:
+///
+/// - the cache, which is doing its job by returning the same answer;
+/// - `Overwrite::Never`, since the file to replace is the one we wrote;
+/// - and a `Low`-confidence result is accepted here, because the user asked
+///   for this one specifically rather than letting a bulk run decide.
+#[tauri::command]
+pub async fn refetch_cover(
+    track_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Option<String>, String> {
+    let track = state
+        .db
+        .lock()
+        .get_track_by_path(&track_path)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no such track: {track_path}"))?;
+    let req = request_for(&track, true);
+
+    let found = tauri::async_runtime::spawn_blocking(move || {
+        let r = resolver();
+        r.forget(&req);
+        r.resolve_and_store(&req, Confidence::Low, Overwrite::Replace)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    Ok(found.0.map(|f| {
+        use base64::Engine;
+        format!(
+            "data:{};base64,{}",
+            f.info.format.mime(),
+            base64::engine::general_purpose::STANDARD.encode(&f.bytes)
+        )
+    }))
+}
+
 /// Which tracks a scope covers, one per game.
 fn tracks_for_scope(state: &AppState, scope: &str, target: &str) -> Result<Vec<Track>, String> {
     let db = state.db.lock();

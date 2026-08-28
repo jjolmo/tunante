@@ -141,6 +141,17 @@ fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// Forget one entry — both the image and any remembered failure.
+///
+/// What "re-download this cover" is built on: without it, asking again returns
+/// the same cached answer, which is exactly the answer the user just told us
+/// was wrong.
+pub fn forget(key: &str) {
+    let d = covers_dir();
+    let _ = std::fs::remove_file(d.join(format!("{key}.img")));
+    let _ = std::fs::remove_file(d.join(format!("{key}.miss")));
+}
+
 /// Empty the whole cover cache. Returns how many files went.
 pub fn clear() -> std::io::Result<u32> {
     let mut n = 0;
@@ -179,6 +190,12 @@ pub fn clear_legacy(dir: &Path) -> std::io::Result<u32> {
 mod tests {
     use super::*;
 
+    /// `TUNANTE_CACHE_DIR` is process-wide and `cargo test` runs threads in
+    /// parallel, so any test that points the cache somewhere has to hold this
+    /// first. Two of them racing produced a failure that looked like a bug in
+    /// `get`.
+    static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn the_two_namespaces_do_not_collide() {
         assert_ne!(key(Kind::Game, "celeste", ""), key(Kind::Album, "celeste", ""));
@@ -204,8 +221,29 @@ mod tests {
         assert_eq!(key(Kind::Game, "x", "SNES"), key(Kind::Game, "x", "snes"));
     }
 
+    /// Re-downloading has to beat the cache, including a remembered miss.
+    #[test]
+    fn forgetting_an_entry_clears_both_the_hit_and_the_miss() {
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
+        let tmp = std::env::temp_dir().join(format!("tunante-art-forget-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::env::set_var("TUNANTE_CACHE_DIR", &tmp);
+        if CACHE_DIR.get().is_some() {
+            return; // something pinned the dir explicitly; not our test to run
+        }
+        let d = covers_dir();
+        std::fs::write(d.join("abc.img"), b"x").unwrap();
+        std::fs::write(d.join("abc.miss"), now_secs().to_string()).unwrap();
+        assert!(get("abc").is_some());
+        forget("abc");
+        assert!(get("abc").is_none(), "the image survived");
+        assert!(!is_fresh_miss("abc"), "the miss survived");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     #[test]
     fn an_empty_miss_file_from_an_older_build_is_not_permanent() {
+        let _guard = ENV.lock().unwrap_or_else(|e| e.into_inner());
         let tmp = std::env::temp_dir().join(format!("tunante-art-cache-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::env::set_var("TUNANTE_CACHE_DIR", &tmp);

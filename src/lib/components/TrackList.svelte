@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { libraryStore } from '$lib/stores/library.svelte';
+	import { coversStore } from '$lib/stores/covers.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { trackDnd } from '$lib/stores/trackDnd.svelte';
 	import { consolesStore } from '$lib/stores/consoles.svelte';
@@ -256,6 +257,20 @@
 			items.push({
 				label: 'Open containing folder',
 				action: () => invoke('open_containing_folder', { path: track.path })
+			});
+			// For when the cover is wrong. Forces past the cache, past
+			// "never overwrite", and past the confidence floor a bulk run
+			// applies — the user asked for this one specifically.
+			items.push({
+				label: 'Re-download cover art',
+				action: async () => {
+					try {
+						await invoke('refetch_cover', { trackPath: track.path });
+						coversStore.refreshToken++;
+					} catch (e) {
+						console.error('refetch cover:', e);
+					}
+				}
 			});
 		}
 
