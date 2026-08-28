@@ -1,0 +1,32 @@
+[package]
+name = "tunante-art"
+version = "0.1.0"
+edition = "2021"
+description = "Cover art: finding it on disk, matching it against the Libretro archive, and fetching it"
+license = "GPL-2.0-or-later"
+
+[dependencies]
+# ureq and not reqwest, deliberately. reqwest 0.13 pulls rustls-platform-verifier,
+# which on Android delegates certificate checks to the platform store over JNI and
+# needs an `init_hosted` call before the first handshake — miss it and every HTTPS
+# request fails with what looks like a certificate error. Its default provider,
+# aws-lc-rs, also builds C and CMake per target, which cargo-ndk does not enjoy.
+#
+# ureq with rustls/ring and compiled-in roots needs none of that. Verified: it
+# cross-compiles clean to arm64-v8a and x86_64 and costs ~380 KB stripped per ABI.
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip", "json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+urlencoding = "2"
+# Reads image dimensions from the header alone. A full decoder is not wanted here:
+# this crate is linked into the Android build, and walking JPEG segments by hand
+# to find SOF is exactly the kind of parser that grows a CVE.
+imagesize = "0.13"
+log = "0.4"
+thiserror = "2"
+
+[dev-dependencies]
+# The index parser and the whole matcher are tested against a checked-in copy of
+# the real Libretro listing, with no network at all.
+serde_json = "1"

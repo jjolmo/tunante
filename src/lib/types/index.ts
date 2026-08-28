@@ -15,6 +15,13 @@ export interface Track {
 	file_size: number;
 	has_artwork: boolean;
 	rating: number;
+	/**
+	 * Which machine this came from and which game it belongs to, resolved in
+	 * Rust by `tunante_core::classify` and stamped onto the row by the database.
+	 * Empty string when unknown — an honest blank, not a guess.
+	 */
+	console_id: string;
+	game: string;
 }
 
 export interface Playlist {

@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Track {
     pub id: String,
     pub path: String,
@@ -22,6 +22,23 @@ pub struct Track {
     /// read back, because the field would be missing rather than absent.
     #[serde(skip_serializing, default)]
     pub modified_at: i64,
+
+    /// Which machine this came from, as a [`crate::console::Console::id`], and
+    /// which game it belongs to. Empty when unknown.
+    ///
+    /// **Not columns on `tracks`.** They are derived from the path, the tags and
+    /// the user's corrections by [`crate::classify`], cached in
+    /// `track_classification`, and stamped onto every `Track` the database hands
+    /// out. Storing them on `tracks` would mean teaching the scan's upsert to
+    /// preserve them and re-running a migration every time an alias is added;
+    /// a derived table is invalidated with a `DELETE`.
+    ///
+    /// `default` for the same reason as `modified_at`: a `Track` crosses a pipe
+    /// to the decoder helper, which knows nothing about any of this.
+    #[serde(default)]
+    pub console_id: String,
+    #[serde(default)]
+    pub game: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]

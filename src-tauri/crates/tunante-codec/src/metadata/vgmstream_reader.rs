@@ -164,7 +164,12 @@ pub fn read_vgmstream_metadata(path: &Path, loop_count: f64) -> Result<Vec<Track
             title,
             artist: String::new(),
             album: parent_folder.clone(),
-            album_artist: info.meta_name.clone(),
+            // Blank rather than `info.meta_name`, for the same reason as in
+            // `gme_reader`: that field is the container format ("Nintendo
+            // BRSTM", "RIFF WAVE"), and `games::index` reads this column as a
+            // game's composer. Every vgmstream rip was attributed to its file
+            // format.
+            album_artist: String::new(),
             track_number: None,
             disc_number: None,
             duration_ms,
@@ -180,6 +185,7 @@ pub fn read_vgmstream_metadata(path: &Path, loop_count: f64) -> Result<Vec<Track
             has_artwork: false,
             rating: m3u_ratings.get(&1).copied().unwrap_or(0),
             modified_at,
+            ..Default::default()
         }]);
     }
 
@@ -229,7 +235,12 @@ pub fn read_vgmstream_metadata(path: &Path, loop_count: f64) -> Result<Vec<Track
             title,
             artist: String::new(),
             album: parent_folder.clone(),
-            album_artist: info.meta_name.clone(),
+            // Blank rather than `info.meta_name`, for the same reason as in
+            // `gme_reader`: that field is the container format ("Nintendo
+            // BRSTM", "RIFF WAVE"), and `games::index` reads this column as a
+            // game's composer. Every vgmstream rip was attributed to its file
+            // format.
+            album_artist: String::new(),
             track_number: Some(i),
             disc_number: None,
             duration_ms,
@@ -245,6 +256,7 @@ pub fn read_vgmstream_metadata(path: &Path, loop_count: f64) -> Result<Vec<Track
             has_artwork: false,
             rating: m3u_ratings.get(&i).copied().unwrap_or(0),
             modified_at,
+            ..Default::default()
         });
     }
 

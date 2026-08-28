@@ -17,6 +17,7 @@ tunante-core = { path = "../tunante-core", default-features = false }
 # The client for the tunante-decoder helper: probe, artwork and PCM over a pipe.
 # Shared with tunante-android, which needs exactly the same thing.
 tunante-helper = { path = "../tunante-helper" }
+tunante-art = { path = "../tunante-art" }
 
 # No symphonia features: this process decodes nothing. Every format, standard
 # ones included, arrives as raw PCM from tunante-decoder, so all rodio does here

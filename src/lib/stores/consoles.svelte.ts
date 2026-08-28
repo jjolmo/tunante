@@ -1,272 +1,142 @@
+import { invoke } from '@tauri-apps/api/core';
 import { libraryStore } from '$lib/stores/library.svelte';
-import { settingsStore } from '$lib/stores/settings.svelte';
+import { consoleIcon } from '$lib/data/consoleIcons';
 import type { Track } from '$lib/types';
 
+/**
+ * The console table used to be maintained here as well as in Rust, and the two
+ * disagreed about almost everything: whether SNES was called "SNES" or "Super
+ * Nintendo", whether GameCube/Wii/3DS were one bucket or three, whether Saturn
+ * existed. Worse, `libretro_system_name` on the Rust side keyed off *these
+ * display strings*, so renaming a label in this file silently disabled box-art
+ * lookups for that console.
+ *
+ * There is one table now, in `tunante_core::console`. This fetches it.
+ */
 export interface ConsoleDefinition {
 	id: string;
 	name: string;
+	name_es: string;
 	codecs: string[];
-	icon: string; // SVG path d attribute
+	libretro: string | null;
+	/** SVG path `d`, from `consoleIcons.ts`. Presentation, not data. */
+	icon: string;
 }
 
-// Console definitions with codec mappings and SVG icon paths (16x16 viewBox)
-export const CONSOLE_DEFINITIONS: ConsoleDefinition[] = [
-	{
-		id: 'nes',
-		name: 'NES',
-		codecs: ['NSF', 'NSFE'],
-		// NES controller silhouette
-		icon: 'M2 5h12a1 1 0 011 1v4a1 1 0 01-1 1H2a1 1 0 01-1-1V6a1 1 0 011-1zm2 2v2h2V7H4zm6 0a1 1 0 100 2 1 1 0 000-2zm2.5.5a.5.5 0 100 1 .5.5 0 000-1z'
-	},
-	{
-		id: 'snes',
-		name: 'SNES',
-		codecs: ['SPC'],
-		// SNES controller (rounded with buttons)
-		icon: 'M1 6a2 2 0 012-2h2l1 1h4l1-1h2a2 2 0 012 2v4a2 2 0 01-2 2H3a2 2 0 01-2-2V6zm3 0v1H3v1h1v1h1V8h1V7H5V6H4zm7 0a.5.5 0 100 1 .5.5 0 000-1zm1 1a.5.5 0 100 1 .5.5 0 000-1zm1-1a.5.5 0 100 1 .5.5 0 000-1zm-1-1a.5.5 0 100 1 .5.5 0 000-1z'
-	},
-	{
-		id: 'gameboy',
-		name: 'Game Boy',
-		codecs: ['GBS'],
-		// Game Boy handheld
-		icon: 'M4 1h8a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1zm1 2v4h6V3H5zm1 6v1H5v1h1v1h1v-1h1V10H7V9H6zm4 .5a.75.75 0 100 1.5.75.75 0 000-1.5zm2 0a.75.75 0 100 1.5.75.75 0 000-1.5z'
-	},
-	{
-		id: 'genesis',
-		name: 'Sega Genesis',
-		codecs: ['VGM', 'VGZ', 'GYM'],
-		// Genesis 3-button controller
-		icon: 'M1 7c0-2 1-3 3-3h1l1.5 1h3L11 4h1c2 0 3 1 3 3v2c0 2-1 3-3 3H4c-2 0-3-1-3-3V7zm3 0v1h1V7H4zm1.5-1h1v1h-1V6zm4 1a.75.75 0 100 1.5.75.75 0 000-1.5zm2 0a.75.75 0 100 1.5.75.75 0 000-1.5zm2 0a.75.75 0 100 1.5.75.75 0 000-1.5z'
-	},
-	{
-		id: 'tg16',
-		name: 'TurboGrafx-16',
-		codecs: ['HES'],
-		// TG-16 elongated controller
-		icon: 'M0 7a2 2 0 012-2h12a2 2 0 012 2v2a2 2 0 01-2 2H2a2 2 0 01-2-2V7zm3 0v1H2v1h1v1h1V9h1V8H4V7H3zm7.5.5a1 1 0 100 2 1 1 0 000-2zm3 0a1 1 0 100 2 1 1 0 000-2z'
-	},
-	{
-		id: 'msx',
-		name: 'MSX',
-		codecs: ['KSS'],
-		// Small computer/keyboard
-		icon: 'M2 3h12a1 1 0 011 1v7a1 1 0 01-1 1h-1l-.5 1h-9L3 12H2a1 1 0 01-1-1V4a1 1 0 011-1zm1 2v3h10V5H3zm0 4h1v1H3V9zm2 0h1v1H5V9zm2 0h2v1H7V9zm3 0h1v1h-1V9zm2 0h1v1h-1V9z'
-	},
-	{
-		id: 'spectrum',
-		name: 'ZX Spectrum',
-		codecs: ['AY'],
-		// Spectrum keyboard shape
-		icon: 'M1 4h14a1 1 0 011 1v6a1 1 0 01-1 1H1a1 1 0 01-1-1V5a1 1 0 011-1zm1 2v1h1V6H2zm2 0v1h1V6H4zm2 0v1h1V6H6zm2 0v1h1V6H8zm2 0v1h1V6h-1zm2 0v1h1V6h-1zm-9 2v1h1V8H3zm2 0v1h6V8H5zm7 0v1h1V8h-1z'
-	},
-	{
-		id: 'atari',
-		name: 'Atari',
-		codecs: ['SAP'],
-		// Atari joystick
-		icon: 'M7 2h2v6h2.5a2.5 2.5 0 010 5h-7a2.5 2.5 0 010-5H7V2zm-2.5 7.5a1 1 0 100 2 1 1 0 000-2zm7 0a1 1 0 100 2 1 1 0 000-2z'
-	},
-	{
-		id: 'gba',
-		name: 'GB Advance',
-		codecs: ['GSF', 'MINIGSF'],
-		// GBA wide handheld
-		icon: 'M1 5a2 2 0 012-2h10a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V5zm4 0H4v4h4V5H5zm-2 1v1H2V6h1zm1.5 3h1v1h-1V9zm-1 0v1H3V9h1.5zm8-3a.75.75 0 100 1.5.75.75 0 000-1.5zm-1.5 1.5a.75.75 0 100 1.5.75.75 0 000-1.5z'
-	},
-	{
-		id: 'gamecube',
-		name: 'GameCube',
-		codecs: ['DSP', 'IDSP'],
-		// GC controller
-		icon: 'M2 5.5C2 4.67 2.67 4 3.5 4h2L7 3h2l1.5 1h2c.83 0 1.5.67 1.5 1.5v4c0 .83-.67 1.5-1.5 1.5h-9C2.67 11 2 10.33 2 9.5v-4zM8 5a2 2 0 100 4 2 2 0 000-4zm0 1a1 1 0 110 2 1 1 0 010-2zM4.5 6a.5.5 0 100 1 .5.5 0 000-1zm7 .5a.5.5 0 100 1 .5.5 0 000-1z'
-	},
-	{
-		id: 'wii',
-		name: 'Wii',
-		codecs: ['BRSTM', 'BRWAV', 'RWSD', 'RWAR', 'RWAV'],
-		// Wii Remote
-		icon: 'M5 1h6a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V3a2 2 0 012-2zm2.5 2a1 1 0 100 2 1 1 0 000-2zM6 6h4v3H6V6zm1 5h2v1H7v-1z'
-	},
-	{
-		id: 'n3ds',
-		name: 'Nintendo 3DS',
-		codecs: ['BCSTM', 'BCWAV', 'CSMP', 'CSTM'],
-		// 3DS two screens with 3D bar
-		icon: 'M3 1h10a1 1 0 011 1v5H2V2a1 1 0 011-1zm5 1.5a.5.5 0 100 1 .5.5 0 000-1zM2 8h12v1H2V8zm1 1h10v5a1 1 0 01-1 1H4a1 1 0 01-1-1V9zm1 1v3h8v-3H4z'
-	},
-	{
-		id: 'wiiu',
-		name: 'Wii U',
-		codecs: ['BFSTM', 'BFWAV', 'BFSAR', 'BARS'],
-		// Wii U gamepad
-		icon: 'M1 4h14a1 1 0 011 1v6a1 1 0 01-1 1H1a1 1 0 01-1-1V5a1 1 0 011-1zm2 1.5a.5.5 0 100 1 .5.5 0 000-1zM5 6v4h6V6H5zm8 .5a.5.5 0 100 1 .5.5 0 000-1z'
-	},
-	{
-		id: 'nds',
-		name: 'Nintendo DS',
-		codecs: ['2SF', 'MINI2SF', 'STRM'],
-		// DS two screens stacked
-		icon: 'M3 1h10a1 1 0 011 1v5H2V2a1 1 0 011-1zm-1 7h12v1H2V8zm0 1h12v5a1 1 0 01-1 1H3a1 1 0 01-1-1V9zm2 1v3h8v-3H4z'
-	},
-	{
-		id: 'ps1',
-		name: 'PlayStation',
-		codecs: ['PSF', 'MINIPSF'],
-		// PlayStation controller shape
-		icon: 'M1 6.5C1 5.67 1.67 5 2.5 5h2L6 4h4l1.5 1h2c.83 0 1.5.67 1.5 1.5v3c0 .83-.67 1.5-1.5 1.5h-11C1.67 11 1 10.33 1 9.5v-3zM4 7v1H3v1h1v1h1V9h1V8H5V7H4zm6.5.25l-.75.75.75.75.75-.75-.75-.75zm0 1.5l-.75.75.75.75.75-.75-.75-.75zm-.75.75l-.75-.75-.75.75.75.75.75-.75zm1.5 0l-.75-.75-.75.75.75.75.75-.75z'
-	},
-	{
-		id: 'ps2',
-		name: 'PlayStation 2',
-		codecs: ['PSF2', 'MINIPSF2'],
-		// PS2 console standing
-		icon: 'M5 1h6a1 1 0 011 1v12a1 1 0 01-1 1H5a1 1 0 01-1-1V2a1 1 0 011-1zm.5 1.5v2h5v-2h-5zM7 6h2v1H7V6zm-1 7h4v1H6v-1z'
-	},
-	{
-		id: 'n64',
-		name: 'Nintendo 64',
-		codecs: ['USF', 'MINIUSF'],
-		// N64 three-prong controller
-		icon: 'M2 4a1 1 0 011-1h3l1.5 1h1L10 3h3a1 1 0 011 1v4a1 1 0 01-1 1h-2v2a1 1 0 01-1 1H6a1 1 0 01-1-1V9H3a1 1 0 01-1-1V4zm5 3v4h2V7H7zM4 5v1H3v1h1v1h1V7h1V6H5V5H4zm6 .5a.75.75 0 100 1.5.75.75 0 000-1.5zm2 0a.75.75 0 100 1.5.75.75 0 000-1.5z'
-	},
-	{
-		id: 'saturn',
-		name: 'Sega Saturn',
-		codecs: ['SSF', 'MINISSF'],
-		// Saturn 6-button controller
-		icon: 'M0 7c0-2 1.5-3 3-3h1.5L6 3h4l1.5 1H13c1.5 0 3 1 3 3v2c0 2-1.5 3-3 3H3c-1.5 0-3-1-3-3V7zm3.5 0v1H3v1h.5v1h1V9H5V8h-.5V7h-1zM9 6.5a.6.6 0 100 1.2.6.6 0 000-1.2zm1.5.5a.6.6 0 100 1.2.6.6 0 000-1.2zm1.5-.5a.6.6 0 100 1.2.6.6 0 000-1.2zM9 8.5a.6.6 0 100 1.2.6.6 0 000-1.2zm1.5.5a.6.6 0 100 1.2.6.6 0 000-1.2zm1.5-.5a.6.6 0 100 1.2.6.6 0 000-1.2z'
-	},
-	{
-		id: 'dreamcast',
-		name: 'Sega Dreamcast',
-		codecs: ['DSF', 'MINIDSF'],
-		// Dreamcast controller with VMU
-		icon: 'M2 5a2 2 0 012-2h1l1 1h4l1-1h1a2 2 0 012 2v5a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm4-1v3h4V4H6zm-2 5v1H3V9h1zM5 8v1H4V8h1zm5.5-2a1.5 1.5 0 100 3 1.5 1.5 0 000-3z'
-	}
-];
-
-// Build a reverse lookup: codec → console id
-export const CODEC_TO_CONSOLE = new Map<string, string>();
-for (const def of CONSOLE_DEFINITIONS) {
-	for (const codec of def.codecs) {
-		CODEC_TO_CONSOLE.set(codec, def.id);
-	}
+export interface ClassificationOverride {
+	id: string;
+	scope: 'track' | 'folder';
+	target: string;
+	console_id: string | null;
+	game_name: string | null;
+	created_at: number;
 }
 
-/** Extract the grandparent folder from a file path (parent of the folder containing the file) */
-function getGrandparent(filePath: string): string | null {
-	const normalized = filePath.replace(/\\/g, '/');
-	const lastSlash = normalized.lastIndexOf('/');
-	if (lastSlash < 0) return null;
-	const parent = normalized.substring(0, lastSlash);
-	const secondSlash = parent.lastIndexOf('/');
-	if (secondSlash < 0) return null;
-	return parent.substring(0, secondSlash);
+export interface UnclassifiedFolder {
+	folder: string;
+	track_count: number;
+	sample_path: string;
 }
 
-/**
- * Build a map of grandparent folder → console id for folder-based inference.
- * Only includes unambiguous mappings (all console-format tracks under a grandparent
- * belong to the same console).
- */
-function buildFolderConsoleMap(tracks: Track[]): Map<string, string> {
-	const grandparentConsoles = new Map<string, Set<string>>();
-
-	for (const track of tracks) {
-		const consoleId = CODEC_TO_CONSOLE.get(track.codec);
-		if (!consoleId) continue;
-
-		const grandparent = getGrandparent(track.path);
-		if (!grandparent) continue;
-
-		let consoles = grandparentConsoles.get(grandparent);
-		if (!consoles) {
-			consoles = new Set();
-			grandparentConsoles.set(grandparent, consoles);
-		}
-		consoles.add(consoleId);
-	}
-
-	// Only keep unambiguous mappings (single console per grandparent)
-	const result = new Map<string, string>();
-	for (const [folder, consoles] of grandparentConsoles) {
-		if (consoles.size === 1) {
-			result.set(folder, consoles.values().next().value!);
-		}
-	}
-	return result;
-}
-
-/** Resolve console id for a track: direct codec match, or inferred from folder map */
-function resolveConsole(track: Track, folderMap: Map<string, string> | null): string | null {
-	const direct = CODEC_TO_CONSOLE.get(track.codec);
-	if (direct) return direct;
-	if (!folderMap) return null;
-	const grandparent = getGrandparent(track.path);
-	if (!grandparent) return null;
-	return folderMap.get(grandparent) ?? null;
+interface ConsoleDto {
+	id: string;
+	name: string;
+	name_es: string;
+	codecs: string[];
+	libretro: string | null;
 }
 
 class ConsolesStore {
 	activeConsoleId = $state<string | null>(null);
+	definitions = $state<ConsoleDefinition[]>([]);
+
+	/** Fetch the catalog once at boot. */
+	async loadCatalog(): Promise<void> {
+		if (this.definitions.length > 0) return;
+		const dtos = await invoke<ConsoleDto[]>('get_console_catalog');
+		this.definitions = dtos.map((d) => ({ ...d, icon: consoleIcon(d.id) }));
+	}
 
 	/**
-	 * Get the console id for a track - either directly from codec or inferred from folder.
-	 * For use outside hot loops (e.g., single track lookups in PlayerControls/Sidebar).
+	 * The console a track belongs to.
+	 *
+	 * Read straight off the row. It was resolved once, in Rust, against the
+	 * registered library roots and the user's corrections, and cached — where
+	 * this used to guess from the codec and, failing that, from whether every
+	 * chiptune file sharing a grandparent folder agreed. That guess got 71% of a
+	 * real library and could not see past a `Disc 1` subfolder or classify an
+	 * `.mp3` at all. The stored answer gets 93%.
 	 */
 	getTrackConsole(track: Track): string | null {
-		const direct = CODEC_TO_CONSOLE.get(track.codec);
-		if (direct) return direct;
-		if (!settingsStore.consoleGroupByFolder) return null;
-		const folderMap = buildFolderConsoleMap(libraryStore.tracks);
-		const grandparent = getGrandparent(track.path);
-		if (!grandparent) return null;
-		return folderMap.get(grandparent) ?? null;
+		return track.console_id || null;
 	}
 
 	get consolesWithCounts(): (ConsoleDefinition & { trackCount: number })[] {
-		// Build folder map ONCE, then reuse for all tracks
-		const folderMap = settingsStore.consoleGroupByFolder
-			? buildFolderConsoleMap(libraryStore.tracks)
-			: null;
-
 		const counts = new Map<string, number>();
 		for (const track of libraryStore.tracks) {
-			const consoleId = resolveConsole(track, folderMap);
-			if (consoleId) {
-				counts.set(consoleId, (counts.get(consoleId) || 0) + 1);
+			if (track.console_id) {
+				counts.set(track.console_id, (counts.get(track.console_id) || 0) + 1);
 			}
 		}
-
-		return CONSOLE_DEFINITIONS.filter((def) => (counts.get(def.id) || 0) > 0).map((def) => ({
-			...def,
-			trackCount: counts.get(def.id) || 0
-		}));
+		return this.definitions
+			.filter((def) => (counts.get(def.id) || 0) > 0)
+			.map((def) => ({ ...def, trackCount: counts.get(def.id) || 0 }));
 	}
 
 	get activeConsole(): ConsoleDefinition | null {
 		if (!this.activeConsoleId) return null;
-		return CONSOLE_DEFINITIONS.find((d) => d.id === this.activeConsoleId) || null;
+		return this.definitions.find((d) => d.id === this.activeConsoleId) || null;
 	}
 
 	get consoleTracks(): Track[] {
-		const console = this.activeConsole;
-		if (!console) return [];
-
-		if (settingsStore.consoleGroupByFolder) {
-			const folderMap = buildFolderConsoleMap(libraryStore.tracks);
-			return libraryStore.filteredTracks.filter(
-				(t) => resolveConsole(t, folderMap) === console.id
-			);
-		}
-
-		const codecSet = new Set(console.codecs);
-		return libraryStore.filteredTracks.filter((t) => codecSet.has(t.codec));
+		const id = this.activeConsoleId;
+		if (!id) return [];
+		return libraryStore.filteredTracks.filter((t) => t.console_id === id);
 	}
 
 	selectConsole(id: string | null) {
 		this.activeConsoleId = id;
+	}
+
+	// --- corrections ---
+
+	/**
+	 * Folders whose tracks nothing could classify — the worklist for flagging.
+	 *
+	 * These are the franchise and community folders no rule can get right:
+	 * `Megaten/` spans five machines, `OCRemixes/` spans everything. Guessing
+	 * would be confidently wrong, so they arrive here instead.
+	 */
+	async unclassifiedFolders(): Promise<UnclassifiedFolder[]> {
+		return invoke<UnclassifiedFolder[]>('get_unclassified_folders');
+	}
+
+	async overrides(): Promise<ClassificationOverride[]> {
+		return invoke<ClassificationOverride[]>('get_classification_overrides');
+	}
+
+	/** Flag a folder and everything under it. Pass `null` to leave a half alone. */
+	async flagFolder(
+		folder: string,
+		consoleId: string | null,
+		gameName: string | null = null
+	): Promise<void> {
+		await invoke('set_folder_classification', { folder, consoleId, gameName });
+		await libraryStore.loadTracks();
+	}
+
+	async flagTrack(
+		trackPath: string,
+		consoleId: string | null,
+		gameName: string | null = null
+	): Promise<void> {
+		await invoke('set_track_classification', { trackPath, consoleId, gameName });
+		await libraryStore.loadTracks();
+	}
+
+	async clearFlag(scope: 'track' | 'folder', target: string): Promise<void> {
+		await invoke('clear_classification', { scope, target });
+		await libraryStore.loadTracks();
 	}
 }
 

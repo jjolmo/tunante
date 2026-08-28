@@ -137,6 +137,12 @@
 			while (playerStore.repeat !== repeat) playerStore.cycleRepeat();
 		}
 
+		// The console catalog comes from Rust now, so it has to be here before
+		// anything renders a console row or restores a console view.
+		import('$lib/stores/consoles.svelte').then(({ consolesStore }) =>
+			consolesStore.loadCatalog()
+		);
+
 		// Restore active view
 		const view = gs('session_view');
 		const viewId = gs('session_view_id');

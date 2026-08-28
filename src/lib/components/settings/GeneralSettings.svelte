@@ -224,7 +224,7 @@
 		<div class="setting-text">
 			<span class="setting-label">Auto-download missing cover art</span>
 			<span class="setting-desc"
-				>Search iTunes for album artwork when no local cover is found. Downloaded covers are cached locally.</span
+				>Look for box art when no local cover is found — the Libretro archive first, then iTunes, Steam, Deezer and Nintendo. Downloaded covers are cached locally.</span
 			>
 		</div>
 	</label>
@@ -240,7 +240,7 @@
 		<div class="setting-text">
 			<span class="setting-label">Store covers in folder</span>
 			<span class="setting-desc"
-				>Save downloaded cover art as cover.jpg in the track's folder for future offline access.</span
+				>Also save the cover next to the track, so it is there offline and on your other devices. An image already in the folder is never replaced.</span
 			>
 		</div>
 	</label>

@@ -84,7 +84,6 @@ class SettingsStore {
 	checkUpdatesOnStart = $state(true);
 	autoDownloadCoverArt = $state(false);
 	storeCoversInFolder = $state(false);
-	consoleGroupByFolder = $state(false);
 	fastScan = $state(false);
 	// Max play time for tracks whose real length can't be determined — the ones
 	// that loop forever. Tracks with a real length ignore this entirely.
@@ -181,8 +180,6 @@ class SettingsStore {
 		const storeCover = this._settingsCache.get('store_covers_in_folder');
 		if (storeCover !== undefined) this.storeCoversInFolder = storeCover === 'true';
 
-		const groupByFolder = this._settingsCache.get('console_group_by_folder');
-		if (groupByFolder !== undefined) this.consoleGroupByFolder = groupByFolder === 'true';
 
 		const fastScan = this._settingsCache.get('fast_scan');
 		if (fastScan !== undefined) this.fastScan = fastScan === 'true';
@@ -533,15 +530,6 @@ class SettingsStore {
 			await invoke('set_continue_from_queue', { enabled });
 		} catch (e) {
 			console.error('Failed to save continue from queue setting:', e);
-		}
-	}
-
-	async setConsoleGroupByFolder(enabled: boolean) {
-		this.consoleGroupByFolder = enabled;
-		try {
-			await invoke('set_setting', { key: 'console_group_by_folder', value: String(enabled) });
-		} catch (e) {
-			console.error('Failed to save console group by folder setting:', e);
 		}
 	}
 

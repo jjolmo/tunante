@@ -68,6 +68,10 @@ class MainActivity : ComponentActivity() {
             Log.e(TAG, "native init failed — see the lines above")
         }
         NativeBridge.nativeOpenDb(filesDir.absolutePath)
+        // Rust cannot discover this on its own; without it the cover cache
+        // resolves to a /tmp that does not exist on Android and every archive
+        // index is re-downloaded on every lookup.
+        NativeBridge.nativeSetCacheDir(cacheDir.absolutePath)
 
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED

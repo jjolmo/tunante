@@ -317,6 +317,7 @@ mod user_queue_tests {
             sample_rate: None, channels: None, bitrate: None,
             codec: "test".into(), file_size: 0, has_artwork: false, rating: 0,
             modified_at: 0,
+            ..Default::default()
         }
     }
 

@@ -40,6 +40,11 @@ static ENGINE: Mutex<Option<Player>> = Mutex::new(None);
 /// and holding the player's lock for a minute would freeze playback with it.
 static DB: Mutex<Option<Database>> = Mutex::new(None);
 
+/// The running cover download, for `nativeCoverProgress` to read.
+static COVER_PROGRESS: Mutex<Option<tunante_art::resolver::BulkProgress>> = Mutex::new(None);
+/// Set by `nativeCancelCovers`, read by the progress callback.
+static COVER_CANCEL: Mutex<bool> = Mutex::new(false);
+
 /// Hand an error back to Java as JSON rather than by throwing.
 ///
 /// A JNI exception has to be checked for after every single call, and one that
@@ -483,14 +488,14 @@ fn row_tracks(db: &Database, row: &str, deep: bool) -> Vec<tunante_core::db::mod
     if let Some(console) = row.strip_prefix("consola:") {
         return all()
             .into_iter()
-            .filter(|t| tunante_core::console::console_of(&t.path) == console)
+            .filter(|t| tunante_core::console::key_of(t) == console)
             .collect();
     }
     if let Some((console, dir)) = row.split_once('\u{1}') {
         let prefix = format!("{}/", dir.trim_end_matches('/'));
         return all()
             .into_iter()
-            .filter(|t| tunante_core::console::console_of(&t.path) == console)
+            .filter(|t| tunante_core::console::key_of(t) == console)
             .filter(|t| {
                 let file = t.path.split('#').next().unwrap_or(&t.path);
                 file.strip_prefix(prefix.as_str())
@@ -800,15 +805,24 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeConsoles<'a>(
             let mut by_console: std::collections::BTreeMap<&str, (usize, String)> =
                 Default::default();
             for t in &all {
-                let c = tunante_core::console::console_of(&t.path);
+                let c = tunante_core::console::key_of(t);
                 let e = by_console.entry(c).or_insert((0, t.path.clone()));
                 e.0 += 1;
             }
-            let folders: Vec<_> = by_console
+            // `path` is the stable id the next drill-down comes back with;
+            // `name` is what the user reads. They used to be the same display
+            // string, which meant renaming a console broke navigation into it.
+            let mut folders: Vec<_> = by_console.into_iter().collect();
+            folders.sort_by(|a, b| {
+                tunante_core::console::display_order(a.0)
+                    .cmp(&tunante_core::console::display_order(b.0))
+            });
+            let folders: Vec<_> = folders
                 .into_iter()
-                .map(|(name, (count, cover))| {
-                    serde_json::json!({ "path": name, "name": name, "count": count,
-                                        "cover": cover })
+                .map(|(id, (count, cover))| {
+                    serde_json::json!({ "path": id,
+                                        "name": tunante_core::console::label_es(id),
+                                        "count": count, "cover": cover })
                 })
                 .collect();
             return Ok(
@@ -821,7 +835,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeConsoles<'a>(
             let prefix = format!("{}/", dir.trim_end_matches('/'));
             let tracks: Vec<_> = all
                 .iter()
-                .filter(|t| tunante_core::console::console_of(&t.path) == console)
+                .filter(|t| tunante_core::console::key_of(t) == console)
                 .filter(|t| {
                     // On the real file: a subsong's `#n` suffix does not change
                     // which directory it lives in. Direct children only, so a
@@ -839,7 +853,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeConsoles<'a>(
         // Second level: the games of one console, which are its directories.
         let mut by_dir: std::collections::BTreeMap<String, (usize, String)> = Default::default();
         for t in &all {
-            if tunante_core::console::console_of(&t.path) != want {
+            if tunante_core::console::key_of(t) != want {
                 continue;
             }
             let file = t.path.split('#').next().unwrap_or(&t.path);
@@ -1152,6 +1166,142 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeAddToPlaylist
     env.new_string(out).expect("new_string")
 }
 
+/// Tell `tunante-art` where its cache goes.
+///
+/// **Mandatory on Android, and there is no fallback worth having.** Every other
+/// platform can work the directory out from the environment; Android cannot —
+/// the only way to learn `Context.getCacheDir()` is to be told. Without this
+/// call the resolver falls back to `std::env::temp_dir()`, which on Android is
+/// `/tmp` and does not exist, so every archive index and every downloaded cover
+/// would be silently re-fetched forever.
+///
+/// Call it from `MainActivity` right after `nativeOpenDb`.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeSetCacheDir(
+    mut env: JNIEnv,
+    _class: JClass,
+    dir: JString,
+) -> jboolean {
+    match jstring_to_string(&mut env, &dir) {
+        Ok(d) => {
+            let ok = tunante_art::cache::set_cache_dir(&d);
+            log::info!("cover cache at {d} (first call: {ok})");
+            1
+        }
+        Err(e) => {
+            log::error!("nativeSetCacheDir: {e}");
+            0
+        }
+    }
+}
+
+/// Download covers for everything in the library that has none.
+///
+/// Blocking and long — call it from a thread. Progress is polled through
+/// [`Java_com_tunante_android_NativeBridge_nativeCoverProgress`] rather than
+/// pushed: calling back into Java from a Rust worker needs `AttachCurrentThread`
+/// plus a global class reference, and getting that subtly wrong aborts the
+/// process. The app already has a tick-driven UI, so polling costs nothing.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeDownloadCovers<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    replace_existing: jboolean,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let _ = &mut env;
+        let tracks = {
+            let guard = DB.lock().unwrap();
+            let db = guard.as_ref().ok_or("nativeDownloadCovers before nativeOpenDb")?;
+            db.get_all_tracks().map_err(|e| e.to_string())?
+        };
+
+        let all: Vec<(String, String)> = tunante_core::console::CONSOLES
+            .iter()
+            .filter_map(|c| c.libretro.map(|s| (c.id.to_string(), s.to_string())))
+            .collect();
+
+        // One request per game, not per track.
+        let mut seen = std::collections::HashSet::new();
+        let reqs: Vec<tunante_art::resolver::CoverRequest> = tracks
+            .iter()
+            .filter(|t| seen.insert((t.console_id.clone(), t.game.clone())))
+            .map(|t| {
+                let mut candidates = Vec::new();
+                if !t.game.trim().is_empty() {
+                    candidates.push(t.game.clone());
+                }
+                if !t.album.trim().is_empty() && !t.album.eq_ignore_ascii_case(&t.game) {
+                    candidates.push(t.album.clone());
+                }
+                let real = t.path.split('#').next().unwrap_or(&t.path);
+                tunante_art::resolver::CoverRequest {
+                    libretro_system: tunante_core::console::by_id(&t.console_id)
+                        .and_then(|c| c.libretro)
+                        .map(str::to_string),
+                    other_systems: all
+                        .iter()
+                        .filter(|(o, _)| *o != t.console_id)
+                        .cloned()
+                        .collect(),
+                    console_id: t.console_id.clone(),
+                    candidates,
+                    dir: Path::new(real).parent().map(|p| p.to_path_buf()),
+                }
+            })
+            .collect();
+
+        *COVER_CANCEL.lock().unwrap() = false;
+        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let opts = tunante_art::resolver::BulkOptions {
+            overwrite: if replace_existing != 0 {
+                tunante_art::folder::Overwrite::Replace
+            } else {
+                tunante_art::folder::Overwrite::Never
+            },
+            cancel: std::sync::Arc::clone(&cancel),
+            ..Default::default()
+        };
+
+        let resolver = std::sync::Arc::new(tunante_art::resolver::Resolver::new());
+        let plans = resolver.resolve_many(reqs, &opts, |p| {
+            if *COVER_CANCEL.lock().unwrap() {
+                cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            *COVER_PROGRESS.lock().unwrap() = Some(p.clone());
+        });
+        let found = plans.iter().filter(|p| p.source != "none").count();
+        *COVER_PROGRESS.lock().unwrap() = None;
+        Ok(serde_json::json!({ "ok": true, "games": plans.len(), "found": found }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
+/// A snapshot of the running download, for the UI to poll.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCoverProgress<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+) -> jni::objects::JString<'a> {
+    let out = match COVER_PROGRESS.lock().unwrap().as_ref() {
+        Some(p) => serde_json::json!({ "running": true, "done": p.done, "total": p.total,
+                                       "found": p.found, "written": p.written,
+                                       "current": p.current })
+        .to_string(),
+        None => serde_json::json!({ "running": false }).to_string(),
+    };
+    env.new_string(out).expect("new_string")
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCancelCovers(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    *COVER_CANCEL.lock().unwrap() = true;
+}
+
 /// Cover art for a track, as a `data:` URI, or empty if there is none.
 ///
 /// Two sources, in order: the art embedded in the file's own tags, which costs
@@ -1180,7 +1330,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeArtwork<'a>(
         }
 
         let dir = Path::new(&real).parent().ok_or("no parent directory")?;
-        let Some(image) = tunante_helper::art::folder_image(dir) else {
+        let Some(image) = tunante_art::folder::folder_image(dir) else {
             return Ok(String::new());
         };
         let bytes = std::fs::read(&image).map_err(|e| format!("reading {}: {e}", image.display()))?;
@@ -1351,9 +1501,10 @@ fn bare_track(path: &str) -> tunante_core::db::models::Track {
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.to_string());
-    // Written out rather than `..Default::default()` on purpose: Track has no
-    // Default, and if a field is ever added the compiler says so here instead of
-    // quietly filling it with a zero that means something.
+    // Written out rather than `..Default::default()` on purpose. Track does now
+    // have a Default, but spelling every field means the compiler stops here
+    // when one is added, instead of quietly filling it with a zero that means
+    // something. That is worth more than the two lines it costs.
     tunante_core::db::models::Track {
         id: String::new(),
         path: path.to_string(),
@@ -1372,6 +1523,12 @@ fn bare_track(path: &str) -> tunante_core::db::models::Track {
         has_artwork: false,
         rating: 0,
         modified_at: 0,
+        // Left blank deliberately. These are resolved by `tunante_core::classify`
+        // against the registered roots and the user's corrections, and cached in
+        // the database — none of which is reachable for a file the library has
+        // never seen. The scan fills them in when it does see it.
+        console_id: String::new(),
+        game: String::new(),
     }
 }
 

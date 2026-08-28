@@ -9,6 +9,7 @@
 //! which depends on this crate for the [`db::models::Track`] type and for
 //! [`vgm_path`].
 
+pub mod classify;
 pub mod clock;
 pub mod console;
 pub mod db;

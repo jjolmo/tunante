@@ -386,7 +386,20 @@ fn read_gme_metadata_inner(
             title,
             artist: info.author.clone(),
             album,
-            album_artist: info.system.clone(),
+            // Deliberately blank, not `info.system`.
+            //
+            // GME's `system` is "Nintendo NES", "Super Nintendo" — a function of
+            // the file format, so it says nothing the extension does not already
+            // say, and `tunante_core::console` is now the one place that answers
+            // that question. Putting it here was a fourth console table hiding
+            // in a column meant for something else.
+            //
+            // It was also a plain bug: `games::index` prefers `album_artist` as
+            // a game's attribution, so every GME rip in the library was credited
+            // to the machine it ran on instead of to its composer. Existing rows
+            // heal on the next scan, because `insert_track`'s upsert overwrites
+            // this column.
+            album_artist: String::new(),
             track_number: Some((seq + 1) as i32),
             disc_number: None,
             duration_ms,
@@ -398,6 +411,7 @@ fn read_gme_metadata_inner(
             has_artwork: false,
             rating: m3u_ratings.get(&((i as i32) + 1)).copied().unwrap_or(0),
             modified_at,
+            ..Default::default()
         });
     }
 

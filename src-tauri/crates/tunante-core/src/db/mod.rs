@@ -1,9 +1,15 @@
+mod classification;
 pub mod models;
 mod schema;
 
+pub use classification::{ClassificationOverride, UnclassifiedFolder, CLASSIFIER_VERSION};
+
+use crate::classify::Classifier;
 use models::{MonitoredFolder, PinnedFolder, Playlist, Setting, Track};
 use rusqlite::{params, Connection};
+use std::cell::RefCell;
 use std::path::Path;
+use std::sync::Arc;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -16,6 +22,11 @@ pub enum DbError {
 
 pub struct Database {
     conn: Connection,
+    /// Built on first use from the registered roots and the stored overrides,
+    /// and dropped whenever either changes. `RefCell` rather than a lock
+    /// because `Connection` is already `!Sync`, so a `Database` is only ever
+    /// reachable through a mutex anyway.
+    classifier: RefCell<Option<Arc<Classifier>>>,
 }
 
 /// Escape a path so it can be used as a literal prefix inside a `LIKE` pattern.
@@ -93,7 +104,11 @@ impl Database {
             );
         }
 
-        Ok(Self { conn })
+        let db = Self { conn, classifier: RefCell::new(None) };
+        // Rebuilds the derived console/game table when the rules have changed.
+        // Idempotent, and a no-op on every open but the first after an upgrade.
+        db.ensure_classified()?;
+        Ok(db)
     }
 
     // --- Tracks ---
@@ -155,6 +170,11 @@ impl Database {
             params![actual_id],
         )?;
 
+        // Keep the derived console/game row in step with the track it describes.
+        // Doing it here means the folder watcher stays correct one file at a
+        // time, without anything ever having to rebuild the whole table.
+        self.classify_path(&track.path, &track.album, &track.codec)?;
+
         Ok(actual_id)
     }
 
@@ -164,7 +184,7 @@ impl Database {
              FROM tracks ORDER BY album_artist, album, disc_number, track_number, title",
         )?;
 
-        let tracks = stmt
+        let mut tracks = stmt
             .query_map([], |row| {
                 Ok(Track {
                     id: row.get(0)?,
@@ -184,10 +204,12 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.stamp(&mut tracks)?;
         Ok(tracks)
     }
 
@@ -217,10 +239,12 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.stamp(&mut tracks)?;
         Ok(tracks.pop())
     }
 
@@ -250,10 +274,12 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.stamp(&mut tracks)?;
         Ok(tracks.pop())
     }
 
@@ -272,7 +298,7 @@ impl Database {
              ORDER BY rank",
         )?;
 
-        let tracks = stmt
+        let mut tracks = stmt
             .query_map(params![fts_query], |row| {
                 Ok(Track {
                     id: row.get(0)?,
@@ -292,10 +318,12 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.stamp(&mut tracks)?;
         Ok(tracks)
     }
 
@@ -370,7 +398,7 @@ impl Database {
              ORDER BY pt.position",
         )?;
 
-        let tracks = stmt
+        let mut tracks = stmt
             .query_map(params![playlist_id], |row| {
                 Ok(Track {
                     id: row.get(0)?,
@@ -390,10 +418,12 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.stamp(&mut tracks)?;
         Ok(tracks)
     }
 
@@ -632,11 +662,17 @@ impl Database {
         Ok(folders)
     }
 
+    /// The set of roots is an input to the classifier — the `<root>/<console>/`
+    /// rule cannot fire without knowing where a root begins — so registering or
+    /// forgetting one invalidates every derived row. Not optional: skipping the
+    /// rebuild leaves tracks classified against a root that no longer exists.
     pub fn add_monitored_folder(&self, id: &str, path: &str) -> Result<(), DbError> {
         self.conn.execute(
             "INSERT OR IGNORE INTO monitored_folders (id, path) VALUES (?1, ?2)",
             params![id, path],
         )?;
+        self.invalidate_classifier();
+        self.reclassify_all()?;
         Ok(())
     }
 
@@ -645,6 +681,8 @@ impl Database {
             "DELETE FROM monitored_folders WHERE id = ?1",
             params![id],
         )?;
+        self.invalidate_classifier();
+        self.reclassify_all()?;
         Ok(())
     }
 
@@ -806,7 +844,7 @@ impl Database {
              ORDER BY album_artist, album, disc_number, track_number, title",
         )?;
 
-        let tracks = stmt
+        let mut tracks = stmt
             .query_map([], |row| {
                 Ok(Track {
                     id: row.get(0)?,
@@ -826,10 +864,12 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.stamp(&mut tracks)?;
         Ok(tracks)
     }
 
@@ -851,7 +891,7 @@ impl Database {
         let params_refs: Vec<&dyn rusqlite::types::ToSql> =
             ids.iter().map(|id| id as &dyn rusqlite::types::ToSql).collect();
 
-        let tracks_map: std::collections::HashMap<String, Track> = stmt
+        let mut found: Vec<Track> = stmt
             .query_map(params_refs.as_slice(), |row| {
                 Ok(Track {
                     id: row.get(0)?,
@@ -871,12 +911,14 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
-            .collect::<Result<Vec<_>, _>>()?
-            .into_iter()
-            .map(|t| (t.id.clone(), t))
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
+
+        self.stamp(&mut found)?;
+        let tracks_map: std::collections::HashMap<String, Track> =
+            found.into_iter().map(|t| (t.id.clone(), t)).collect();
 
         // Preserve input order
         Ok(ids.iter().filter_map(|id| tracks_map.get(id).cloned()).collect())
@@ -896,7 +938,7 @@ impl Database {
              ORDER BY disc_number, track_number, title",
         )?;
 
-        let tracks = stmt
+        let mut tracks = stmt
             .query_map(params![format!("{}%", like_prefix(&prefix))], |row| {
                 Ok(Track {
                     id: row.get(0)?,
@@ -916,10 +958,12 @@ impl Database {
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
                     modified_at: 0,
+                    ..Default::default()
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
+        self.stamp(&mut tracks)?;
         Ok(tracks)
     }
 
@@ -1073,7 +1117,7 @@ impl Database {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -1081,10 +1125,10 @@ mod tests {
     ///
     /// On disk and not `:memory:` because the thing most worth testing here is
     /// what a *reopen* does, and an in-memory database is a fresh one every time.
-    struct TempDb(std::path::PathBuf);
+    pub(crate) struct TempDb(std::path::PathBuf);
 
     impl TempDb {
-        fn new(tag: &str) -> Self {
+        pub(crate) fn new(tag: &str) -> Self {
             static N: AtomicU32 = AtomicU32::new(0);
             let mut p = std::env::temp_dir();
             p.push(format!(
@@ -1097,7 +1141,7 @@ mod tests {
             Self(p)
         }
 
-        fn open(&self) -> Database {
+        pub(crate) fn open(&self) -> Database {
             Database::new(&self.0).expect("open")
         }
     }
@@ -1190,6 +1234,7 @@ mod tests {
             has_artwork: false,
             rating: 0,
             modified_at: 0,
+            ..Default::default()
         }
     }
 
