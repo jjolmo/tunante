@@ -45,7 +45,7 @@ fun QueueScreen(
             Column(Modifier.weight(1f)) {
                 Label("En cola", T.textPrimary, T.fontBody, maxLines = 1)
                 Label(
-                    if (tracks.size == 1) "1 pista" else "${tracks.size} pistas",
+                    pistas(tracks.size),
                     T.textSecondary,
                     T.fontSmall,
                 )

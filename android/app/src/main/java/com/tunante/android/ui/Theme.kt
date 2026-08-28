@@ -96,3 +96,12 @@ fun Rule() = Box(
         .height(1.dp)
         .background(T.border)
 )
+
+/**
+ * "1 pista", "4 pistas".
+ *
+ * A helper rather than the same ternary in three files, which is how the
+ * playlist row came to say "1 pistas" while the queue two screens away said
+ * "1 pista". tunante-mini has had `pistas()` from the start.
+ */
+fun pistas(n: Int): String = if (n == 1) "1 pista" else "$n pistas"

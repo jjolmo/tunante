@@ -145,7 +145,12 @@ fun TunanteApp(
     // The row a long press landed on, and -- once an action is chosen -- the
     // row key and depth waiting for a playlist to be picked.
     var menuFor by remember { mutableStateOf<Folder?>(null) }
-    var pendingRow by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    // Key, depth, and the name to show. The name is carried rather than parsed
+    // back out of the key: it was `key.substringAfterLast('/').substringAfter(':')`,
+    // which happens to work and stops working on the first game whose own name
+    // has a colon in it -- and "Final Fantasy Tactics A2: The Sealed Grimoire"
+    // is sitting in the test library.
+    var pendingRow by remember { mutableStateOf<Triple<String, Boolean, String>?>(null) }
 
     // A sheet covers the screen, so back belongs to it while it is up.
     androidx.activity.compose.BackHandler(
@@ -239,14 +244,17 @@ fun TunanteApp(
             isDirectory = tab == Tab.Library || tab == Tab.Albums ||
                 (tab == Tab.Consoles && view.here.isNotEmpty()),
             onEnqueue = { deep -> onEnqueueRow(key, deep); menuFor = null },
-            onAddToPlaylist = { deep -> pendingRow = key to deep; menuFor = null },
+            onAddToPlaylist = { deep ->
+                pendingRow = Triple(key, deep, folder.name)
+                menuFor = null
+            },
             onDismiss = { menuFor = null },
         )
     }
 
-    pendingRow?.let { (key, deep) ->
+    pendingRow?.let { (key, deep, name) ->
         PlaylistPicker(
-            what = key.substringAfterLast('/').substringAfter(':'),
+            what = name,
             playlists = playlists,
             onPick = { p -> onAddRowToPlaylist(p, key, deep); pendingRow = null },
             onCreate = { name -> onNewPlaylistWithRow(name, key, deep); pendingRow = null },

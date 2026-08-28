@@ -206,7 +206,7 @@ private fun PlaylistRow(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Label(playlist.name, T.textPrimary, T.fontBody, maxLines = 1)
-                Label("${playlist.trackCount} pistas", T.textSecondary, T.fontSmall)
+                Label(pistas(playlist.trackCount), T.textSecondary, T.fontSmall)
             }
             // Renaming is behind its own control rather than a long press: a
             // long press on this row already means something in the library and
