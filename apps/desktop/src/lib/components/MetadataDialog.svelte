@@ -71,6 +71,21 @@
 
 	let namesApplied = $state<number | null>(null);
 
+	/// What each subsong is called right now, by index.
+	///
+	/// Shown for the entries the archive does not name, so the row says what
+	/// will still be there rather than that nothing will happen — "left as it
+	/// is" told you the outcome and hid the thing itself.
+	let currentTitles = $derived.by(() => {
+		const out: string[] = [];
+		if (!names?.file) return out;
+		for (const t of libraryStore.tracks) {
+			const m = t.path.match(/^(.*)#(\d+)$/);
+			if (m && m[1] === names.file) out[Number(m[2])] = t.title;
+		}
+		return out;
+	});
+
 	async function fetchNames() {
 		// Straight from 'ask' to 'loading'. Passing through 'off' is what made
 		// the tag table reappear while the request was still out.
@@ -368,7 +383,7 @@
 						<ol class="names-list">
 							{#each names.titles as t, i (i)}
 								<li class:on={i === subsongIndex}>
-									<span class="nm" class:unnamed={!t}>{t || 'left as it is'}</span>
+									<span class="nm" class:unnamed={!t}>{t || currentTitles[i] || ''}</span>
 									{#if names.lengths[i]}<span class="len">{names.lengths[i]}</span>{/if}
 								</li>
 							{/each}
