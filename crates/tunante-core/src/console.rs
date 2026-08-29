@@ -69,6 +69,18 @@ pub struct Console {
     pub weak_codecs: &'static [&'static str],
     /// Directory name in the Libretro thumbnail archive, verbatim.
     pub libretro: Option<&'static str>,
+    /// Zophar's Domain music section, for the formats that pack a whole game
+    /// into one file.
+    ///
+    /// Only the six consoles whose GME format carries several subsongs — GBS,
+    /// NSF/NSFE, HES, KSS, AY, SAP. Everything else is one song per file and
+    /// has nowhere to put a mapping, so asking would be asking for nothing.
+    ///
+    /// Spelled out rather than derived: the slugs follow no pattern
+    /// (`nintendo-nes-nsf`, `gameboy-gbs`, `turbografx-16-hes`, `msx2`,
+    /// `spectrum`, `atari-8bit`), and guessing one produces a 404 that looks
+    /// like "this game is not in the archive".
+    pub zophar: Option<&'static str>,
 }
 
 /// Every machine the library knows how to name.
@@ -81,6 +93,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["nsf", "nsfe"],
         weak_codecs: &[],
         libretro: Some("Nintendo - Nintendo Entertainment System"),
+        zophar: Some("nintendo-nes-nsf"),
     },
     Console {
         id: "snes",
@@ -92,6 +105,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["spc"],
         weak_codecs: &[],
         libretro: Some("Nintendo - Super Nintendo Entertainment System"),
+        zophar: None,
     },
     Console {
         id: "gameboy",
@@ -101,6 +115,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["gbs"],
         weak_codecs: &[],
         libretro: Some("Nintendo - Game Boy"),
+        zophar: Some("gameboy-gbs"),
     },
     Console {
         id: "gbc",
@@ -110,6 +125,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &[],
         libretro: Some("Nintendo - Game Boy Color"),
+        zophar: None,
     },
     Console {
         id: "gba",
@@ -119,6 +135,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["gsf", "minigsf", "gsflib"],
         weak_codecs: &[],
         libretro: Some("Nintendo - Game Boy Advance"),
+        zophar: None,
     },
     Console {
         id: "nds",
@@ -128,6 +145,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["2sf", "mini2sf", "2sflib", "ncsf", "minincsf"],
         weak_codecs: &["strm"],
         libretro: Some("Nintendo - Nintendo DS"),
+        zophar: None,
     },
     Console {
         id: "n3ds",
@@ -137,6 +155,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &["bcstm", "bcwav", "csmp", "cstm"],
         libretro: Some("Nintendo - Nintendo 3DS"),
+        zophar: None,
     },
     Console {
         id: "n64",
@@ -146,6 +165,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["usf", "miniusf"],
         weak_codecs: &[],
         libretro: Some("Nintendo - Nintendo 64"),
+        zophar: None,
     },
     Console {
         id: "gamecube",
@@ -155,6 +175,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &["dsp", "idsp", "hps"],
         libretro: Some("Nintendo - GameCube"),
+        zophar: None,
     },
     Console {
         id: "wii",
@@ -165,6 +186,7 @@ pub static CONSOLES: &[Console] = &[
         // `.ast` and `.ras` measured overwhelmingly under `wii/`, not GameCube.
         weak_codecs: &["brstm", "brwav", "rwsd", "rwar", "rwav", "ast", "ras"],
         libretro: Some("Nintendo - Wii"),
+        zophar: None,
     },
     Console {
         id: "wiiu",
@@ -174,6 +196,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &["bfstm", "bfwav", "bfsar", "bars"],
         libretro: Some("Nintendo - Wii U"),
+        zophar: None,
     },
     Console {
         id: "switch",
@@ -184,6 +207,7 @@ pub static CONSOLES: &[Console] = &[
         weak_codecs: &[],
         // Libretro has no Switch archive, and will not.
         libretro: None,
+        zophar: None,
     },
     Console {
         id: "mastersystem",
@@ -193,6 +217,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &[],
         libretro: Some("Sega - Master System - Mark III"),
+        zophar: None,
     },
     Console {
         id: "genesis",
@@ -202,6 +227,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &["vgm", "vgz", "gym"],
         libretro: Some("Sega - Mega Drive - Genesis"),
+        zophar: None,
     },
     Console {
         id: "gamegear",
@@ -211,6 +237,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &[],
         libretro: Some("Sega - Game Gear"),
+        zophar: None,
     },
     Console {
         id: "saturn",
@@ -220,6 +247,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["ssf", "minissf", "ssflib"],
         weak_codecs: &[],
         libretro: Some("Sega - Saturn"),
+        zophar: None,
     },
     Console {
         id: "dreamcast",
@@ -229,6 +257,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["dsf", "minidsf", "dsflib"],
         weak_codecs: &[],
         libretro: Some("Sega - Dreamcast"),
+        zophar: None,
     },
     Console {
         id: "ps1",
@@ -238,6 +267,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["psf", "minipsf", "psflib"],
         weak_codecs: &["xa", "svag", "vag", "mib", "ads", "sts"],
         libretro: Some("Sony - PlayStation"),
+        zophar: None,
     },
     Console {
         id: "ps2",
@@ -247,6 +277,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["psf2", "minipsf2", "psf2lib"],
         weak_codecs: &[],
         libretro: Some("Sony - PlayStation 2"),
+        zophar: None,
     },
     Console {
         id: "ps3",
@@ -258,6 +289,7 @@ pub static CONSOLES: &[Console] = &[
         // The archive exists but held 67 covers when last counted, so most
         // lookups will fall through to the other sources anyway.
         libretro: Some("Sony - PlayStation 3"),
+        zophar: None,
     },
     Console {
         id: "ps4",
@@ -268,6 +300,7 @@ pub static CONSOLES: &[Console] = &[
         weak_codecs: &[],
         // 20 covers when last counted. Kept for the same reason as PS3.
         libretro: Some("Sony - PlayStation 4"),
+        zophar: None,
     },
     Console {
         id: "psp",
@@ -277,6 +310,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &["at3", "at9"],
         libretro: Some("Sony - PlayStation Portable"),
+        zophar: None,
     },
     Console {
         id: "psvita",
@@ -286,6 +320,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &[],
         libretro: Some("Sony - PlayStation Vita"),
+        zophar: None,
     },
     Console {
         id: "tg16",
@@ -295,6 +330,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["hes"],
         weak_codecs: &[],
         libretro: Some("NEC - PC Engine - TurboGrafx 16"),
+        zophar: Some("turbografx-16-hes"),
     },
     Console {
         id: "msx",
@@ -304,6 +340,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["kss"],
         weak_codecs: &[],
         libretro: Some("Microsoft - MSX"),
+        zophar: Some("msx2"),
     },
     Console {
         id: "spectrum",
@@ -313,6 +350,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["ay"],
         weak_codecs: &[],
         libretro: Some("Sinclair - ZX Spectrum"),
+        zophar: Some("spectrum"),
     },
     Console {
         id: "c64",
@@ -322,6 +360,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["sid"],
         weak_codecs: &[],
         libretro: Some("Commodore - 64"),
+        zophar: None,
     },
     Console {
         id: "atari8",
@@ -333,6 +372,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &["sap"],
         weak_codecs: &[],
         libretro: Some("Atari - 8-bit"),
+        zophar: Some("atari-8bit"),
     },
     Console {
         id: "arcade",
@@ -343,6 +383,7 @@ pub static CONSOLES: &[Console] = &[
         weak_codecs: &[],
         // MAME names cabinets by ROM set, which no soundtrack folder matches.
         libretro: None,
+        zophar: None,
     },
     Console {
         id: "xbox",
@@ -352,6 +393,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &[],
         libretro: Some("Microsoft - Xbox"),
+        zophar: None,
     },
     Console {
         id: "x360",
@@ -361,6 +403,7 @@ pub static CONSOLES: &[Console] = &[
         codecs: &[],
         weak_codecs: &[],
         libretro: Some("Microsoft - Xbox 360"),
+        zophar: None,
     },
     Console {
         id: "pc",
@@ -372,6 +415,7 @@ pub static CONSOLES: &[Console] = &[
         // The DOS archive exists, but a `PC/` folder today holds indie releases
         // that were never in it. Wikidata answers these far better.
         libretro: None,
+        zophar: None,
     },
 ];
 

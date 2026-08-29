@@ -38,6 +38,7 @@ pub mod name;
 pub mod resolver;
 pub mod search;
 pub mod sources;
+pub mod tracklist;
 
 use thiserror::Error;
 
