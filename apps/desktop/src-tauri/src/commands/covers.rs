@@ -560,6 +560,7 @@ pub async fn apply_track_names(
     titles: Vec<String>,
     lengths: Vec<String>,
     only_index: Option<usize>,
+    replace: bool,
     state: State<'_, Arc<AppState>>,
 ) -> Result<usize, String> {
     let path = std::path::PathBuf::from(&file);
@@ -579,11 +580,15 @@ pub async fn apply_track_names(
         })
         .collect();
 
-    if m3u.exists() {
-        return Err(format!(
-            "{} already exists. Move it aside if you want this to replace it.",
-            m3u.display()
-        ));
+    // Never silently. A playlist already there was put there by somebody —
+    // possibly by a previous run of this, possibly by hand thirty years ago —
+    // and replacing it is a decision, not a default.
+    //
+    // The name only, not the path: the full one is three lines of a dialog and
+    // the reader already knows which folder they are in.
+    if m3u.exists() && !replace {
+        let shown = m3u.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        return Err(format!("A playlist called {shown} is already next to this file."));
     }
     // The whole listing, even when one track was asked for. An .m3u with a
     // single line in it would leave every other subsong worse off than before,

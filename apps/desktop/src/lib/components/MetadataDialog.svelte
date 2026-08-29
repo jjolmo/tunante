@@ -48,6 +48,16 @@
 	/// Which of the two the rename will use. A choice between two things is a
 	/// radio, and it is committed by Apply like everything else in this dialog.
 	let namesScope = $state<'track' | 'all'>('all');
+	/// On by default, because it is the half nobody would think to ask for.
+	///
+	/// These formats loop and carry no length, so without one the reader
+	/// emulates each subsong and listens for silence to find out how long it
+	/// is. Taking the published lengths skips that and drives the auto-fade;
+	/// leaving them out is the unusual choice, not the safe one.
+	let namesFixLengths = $state(true);
+	/// Set once the write has been refused for a playlist that is already
+	/// there, so the refusal can offer the only thing left to do.
+	let namesReplace = $state(false);
 
 	type Names = {
 		file: string;
@@ -79,6 +89,7 @@
 		namesMode = 'off';
 		names = null;
 		namesApplied = null;
+		namesReplace = false;
 	}
 
 	/// `onlyIndex` null means the whole file. Either way the .m3u written beside
@@ -91,8 +102,11 @@
 			namesApplied = await invoke<number>('apply_track_names', {
 				file: names.file,
 				titles: names.titles,
-				lengths: names.lengths,
-				onlyIndex
+				// Empty strings rather than a shorter array: the command pairs
+				// them with titles by position.
+				lengths: namesFixLengths ? names.lengths : names.titles.map(() => ''),
+				onlyIndex,
+				replace: namesReplace
 			});
 			await libraryStore.loadTracks();
 			names = null;
@@ -355,6 +369,17 @@
 							to do and pressing one was an irreversible action wearing
 							the clothes of a selection.
 						-->
+						<label class="scope-opt lengths">
+							<input type="checkbox" bind:checked={namesFixLengths} />
+							<span>
+								Fix the lengths too
+								<span class="scope-why"
+									>— these formats loop and carry none, so the player otherwise
+									emulates each track until it goes quiet to find out</span
+								>
+							</span>
+						</label>
+
 						<div class="scope" role="radiogroup" aria-label="How much to rename">
 							{#if subsongIndex !== null}
 								<label class="scope-opt">
@@ -825,6 +850,16 @@
 		font-size: 13px;
 		color: var(--color-text-primary);
 		cursor: pointer;
+	}
+	.lengths {
+		align-items: flex-start;
+		margin-bottom: 10px;
+	}
+	.scope-why {
+		display: block;
+		font-size: 11px;
+		color: var(--color-text-muted);
+		line-height: 1.4;
 	}
 	.scope-opt input {
 		margin: 0;
