@@ -262,7 +262,7 @@ jobs:
             }
           }
           ENDJSON
-          cp update_mac.sh release/
+          cp apps/desktop/update_mac.sh release/
           ls -la release/
 
       - name: Create GitHub Release
