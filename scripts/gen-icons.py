@@ -34,6 +34,7 @@ SOURCE = ROOT / "assets" / "logo.png"
 
 DESKTOP = ROOT / "apps/desktop/src-tauri/icons"
 MINI = ROOT / "apps/mini/dist/icons"
+FAVICON = ROOT / "apps/desktop/static/favicon.svg"
 ANDROID = ROOT / "apps/android/app/src/main/res"
 
 # Android ships one bitmap per density. The launcher bitmap is 48dp and the
@@ -95,6 +96,41 @@ def png(img: Image.Image) -> bytes:
     return buf.getvalue()
 
 
+def svg(img: Image.Image) -> bytes:
+    """The same drawing as vector, for the window's tab icon.
+
+    One `<rect>` per horizontal run of identical pixels rather than one per
+    pixel: same picture, a fraction of the file, and still exact — nothing is
+    approximated, so it stays sharp at any size where a PNG would not.
+
+    `shape-rendering="crispEdges"` matters. Without it a renderer antialiases
+    every rectangle edge and the seams between runs show as faint lines through
+    what should be flat colour.
+    """
+    w, h = img.size
+    px = img.load()
+    out = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" '
+        f'shape-rendering="crispEdges">'
+    ]
+    for y in range(h):
+        x = 0
+        while x < w:
+            r, g, b, a = px[x, y]
+            run = 1
+            while x + run < w and px[x + run, y] == (r, g, b, a):
+                run += 1
+            if a:
+                fill = f"#{r:02x}{g:02x}{b:02x}"
+                op = "" if a == 255 else f' fill-opacity="{a / 255:.3f}"'
+                out.append(
+                    f'<rect x="{x}" y="{y}" width="{run}" height="1" fill="{fill}"{op}/>'
+                )
+            x += run
+    out.append("</svg>\n")
+    return "".join(out).encode()
+
+
 def build(src: Image.Image) -> dict[Path, bytes]:
     """Every output file and its bytes. Nothing is written here."""
     out: dict[Path, bytes] = {}
@@ -122,6 +158,9 @@ def build(src: Image.Image) -> dict[Path, bytes]:
     buf = io.BytesIO()
     scale(src, 1024).save(buf, format="ICNS")
     out[DESKTOP / "icon.icns"] = buf.getvalue()
+
+    # The tab icon of the desktop app's own window.
+    out[FAVICON] = svg(src)
 
     # --- mini ------------------------------------------------------------
     for n in (48, 64, 128, 256, 512):
