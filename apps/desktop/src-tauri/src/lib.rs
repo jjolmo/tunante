@@ -643,6 +643,11 @@ pub fn run() {
             }
         }))
         .setup(|app| {
+            // Before anything else, and cheap: 13 KB compared, written only
+            // if it differs. A logo change otherwise reaches every surface
+            // except the one the user actually clicks to start the app.
+            commands::settings::refresh_desktop_icon();
+
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("tunante.db");

@@ -414,6 +414,39 @@ pub fn get_desktop_entry_path() -> String {
 #[cfg(target_os = "linux")]
 static ICON_PNG: &[u8] = include_bytes!("../../icons/128x128.png");
 
+/// Keep the launcher's icon in step with the one in this binary.
+///
+/// The icon is written once, by `create_desktop_entry`, and then never again —
+/// so a build with a new logo shows the old one in the menu until somebody
+/// happens to press that button a second time. Nobody presses it a second time:
+/// it is a setup step, and it worked.
+///
+/// Only refreshes a file that already exists. Writing one for someone who never
+/// asked for a desktop entry would be installing something they did not want.
+#[cfg(target_os = "linux")]
+pub fn refresh_desktop_icon() {
+    let Some(home) = std::env::var_os("HOME") else { return };
+    let icon = PathBuf::from(home).join(".local/share/icons/tunante.png");
+    if !icon.is_file() {
+        return;
+    }
+    // Compared by content: the file's timestamp says when it was written, not
+    // which drawing it holds, and a reinstall touches it without changing it.
+    match std::fs::read(&icon) {
+        Ok(current) if current == ICON_PNG => {}
+        _ => {
+            if let Err(e) = std::fs::write(&icon, ICON_PNG) {
+                log::warn!("could not refresh {}: {e}", icon.display());
+            } else {
+                log::info!("launcher icon refreshed at {}", icon.display());
+            }
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn refresh_desktop_icon() {}
+
 /// Creates a .desktop entry for Tunante on Linux.
 /// Writes the embedded icon and generates the .desktop file.
 #[tauri::command]
