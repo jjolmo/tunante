@@ -52,7 +52,14 @@ tauri-plugin-process = "2.3.1"
 # Not for the types: the patched crate exposes `set_symbolic_icon`, which is the
 # only way to publish the tray icon by name so KDE, GNOME and Cinnamon can
 # recolour it. `tauri::tray` offers `icon(Image)` and nothing else.
-tray-icon = "0.21"
+#
+# default-features = false is load-bearing. tray-icon's default feature set
+# includes `libxdo`, and Tauri deliberately keeps that behind an opt-in of its
+# own — so adding this dependency with defaults on quietly turned libxdo on for
+# the whole build through feature unification, and both Linux release jobs died
+# at link time with `cannot find -lxdo`. Nothing here needs it: the only thing
+# this dependency is for is one free function.
+tray-icon = { version = "0.21", default-features = false }
 evdev = { version = "0.13.2", optional = true }
 gio = "0.18"
 gtk = "0.18"
