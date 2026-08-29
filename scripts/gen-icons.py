@@ -208,22 +208,33 @@ def mono(source: Path, n: int, white: bool) -> bytes:
     # ImageMagick 7 installs `magick`; the `imagemagick` package on Ubuntu is
     # still 6, whose binary is `convert`. Try both before giving up.
     last = ""
-    for exe in ("magick", "convert"):
+    for exe in ("rsvg-convert", "magick", "convert"):
         try:
-            out = subprocess.run(
-                [exe, "-background", "none", "svg:-", "-resize", f"{n}x{n}", "png:-"],
-                input=flat.encode(), capture_output=True,
+            argv = (
+                [exe, "-w", str(n), "-h", str(n)]
+                if exe == "rsvg-convert"
+                else [exe, "-background", "none", "svg:-", "-resize", f"{n}x{n}", "png:-"]
             )
+            out = subprocess.run(argv, input=flat.encode(), capture_output=True)
         except FileNotFoundError:
             continue
         if out.returncode == 0:
             return out.stdout
         last = out.stderr.decode()[:400]
-    sys.exit(f"no usable ImageMagick (magick/convert). Last error: {last}")
+    sys.exit(f"no usable SVG renderer (rsvg-convert/magick/convert). Last error: {last}")
 
 
-def build(src: Image.Image) -> dict[Path, bytes]:
-    """Every output file and its bytes. Nothing is written here."""
+def build(src: Image.Image, rasterise: bool = True) -> dict[Path, bytes]:
+    """Every output file and its bytes.
+
+    `rasterise=False` leaves out the three tray PNGs, which are the only files
+    here that need an external SVG renderer. `--check` does not compare them —
+    their bytes are not reproducible across renderers, which is what
+    `tray/source.sha256` exists to replace — so making it *build* them meant a
+    read-only check failing because a machine had no ImageMagick. Or, as the
+    runner managed, because it had ImageMagick 6, which delegates SVG to
+    rsvg-convert and had no rsvg-convert either.
+    """
     out: dict[Path, bytes] = {}
 
     # --- desktop (Tauri) -------------------------------------------------
@@ -278,9 +289,10 @@ def build(src: Image.Image) -> dict[Path, bytes]:
         ).encode()
         # macOS reads the alpha channel and ignores the colour, so black is
         # convention rather than requirement. 44px is 22pt at 2x.
-        out[TRAY / "template.png"] = mono(TRAY_SOURCE, 44, white=False)
-        out[TRAY / "mono-black.png"] = mono(TRAY_SOURCE, 32, white=False)
-        out[TRAY / "mono-white.png"] = mono(TRAY_SOURCE, 32, white=True)
+        if rasterise:
+            out[TRAY / "template.png"] = mono(TRAY_SOURCE, 44, white=False)
+            out[TRAY / "mono-black.png"] = mono(TRAY_SOURCE, 32, white=False)
+            out[TRAY / "mono-white.png"] = mono(TRAY_SOURCE, 32, white=True)
 
     # --- mini ------------------------------------------------------------
     for n in (48, 64, 128, 256, 512):
@@ -306,7 +318,7 @@ def main() -> int:
     args = ap.parse_args()
 
     src = load()
-    planned = build(src)
+    planned = build(src, rasterise=not args.check)
 
     # So the pre-commit hook can stage exactly what was written without keeping
     # its own copy of the list. The first version had one, and the moment the
@@ -323,11 +335,9 @@ def main() -> int:
     unstable = {TRAY / "template.png", TRAY / "mono-black.png", TRAY / "mono-white.png"}
 
     stale = []
+    if args.check:
+        stale += [p for p in sorted(unstable) if not p.is_file()]
     for path, data in sorted(planned.items()):
-        if args.check and path in unstable:
-            if not path.is_file():
-                stale.append(path)
-            continue
         old = path.read_bytes() if path.is_file() else None
         # Compared by content, not by mtime: a checkout touches every file, and
         # regenerating on every commit would put noise in the history.
