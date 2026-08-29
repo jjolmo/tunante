@@ -32,7 +32,7 @@
 
 	// Metadata dialog state
 	let metadataDialogTracks = $state<Track[]>([]);
-	let reclassifyTrack = $state<Track | null>(null);
+	let reclassifyTracks = $state<Track[]>([]);
 
 	// Column resize state
 	let resizingCol = $state<string | null>(null);
@@ -265,7 +265,14 @@
 			// applies — the user asked for this one specifically.
 			items.push({
 				label: 'Reclassify as videogame…',
-				action: () => (reclassifyTrack = track)
+				// The whole selection, not the row that was right-clicked. Ten
+				// tracks of one game are the ordinary case, and fixing them one
+				// at a time is not a feature.
+				action: () => {
+					reclassifyTracks = selectedIds.includes(track.id)
+						? libraryStore.tracks.filter((t) => selectedIds.includes(t.id))
+						: [track];
+				}
 			});
 			items.push({
 				label: 'Re-download cover art',
@@ -647,8 +654,8 @@
 	/>
 {/if}
 
-{#if reclassifyTrack}
-	<ReclassifyDialog track={reclassifyTrack} onclose={() => (reclassifyTrack = null)} />
+{#if reclassifyTracks.length > 0}
+	<ReclassifyDialog tracks={reclassifyTracks} onclose={() => (reclassifyTracks = [])} />
 {/if}
 
 {#if metadataDialogTracks.length > 0}

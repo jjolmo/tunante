@@ -1373,6 +1373,7 @@ pub fn run() {
             commands::covers::cancel_cover_download,
             commands::covers::undo_cover_run,
             commands::covers::clear_cover_cache,
+            commands::covers::suggest_game_names,
             commands::playlists::get_playlists,
             commands::playlists::get_playlist_tracks,
             commands::playlists::create_playlist,

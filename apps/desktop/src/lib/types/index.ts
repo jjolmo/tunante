@@ -4,6 +4,15 @@ export interface Track {
 	title: string;
 	artist: string;
 	album: string;
+	/**
+	 * The game named by the file's own header, where the format has such a
+	 * field — `game=` in a PSF tag, GD3 for VGM, ID666 for SPC. Empty for
+	 * anything that does not, which is every MP3 and everything vgmstream reads.
+	 *
+	 * Distinct from `album` on purpose: an album is the name of a release, and a
+	 * soundtrack release is frequently not named after its game.
+	 */
+	header_game: string;
 	album_artist: string;
 	track_number: number | null;
 	disc_number: number | null;

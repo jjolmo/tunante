@@ -3,10 +3,20 @@
 	import { formatDuration, formatFileSize } from '$lib/types';
 	import { invoke } from '@tauri-apps/api/core';
 	import { libraryStore } from '$lib/stores/library.svelte';
+	import ReclassifyDialog from './ReclassifyDialog.svelte';
 
 	let { tracks, onclose }: { tracks: Track[]; onclose: () => void } = $props();
 
 	let isSingle = $derived(tracks.length === 1);
+	let reclassifying = $state(false);
+
+	// What the files themselves say, when they agree. A selection spanning two
+	// games has no single answer, and offering one of them would be a guess
+	// wearing a fact's clothes.
+	let headerGame = $derived.by(() => {
+		const names = new Set(tracks.map((t) => t.header_game).filter(Boolean));
+		return names.size === 1 ? [...names][0] : '';
+	});
 	let firstTrack = $derived(tracks[0]);
 
 	// Editable fields (initialized from track data)
@@ -116,6 +126,10 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#if reclassifying}
+	<ReclassifyDialog {tracks} onclose={() => (reclassifying = false)} />
+{/if}
+
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="metadata-overlay" onclick={(e) => e.stopPropagation()} onmousedown={(e) => e.stopPropagation()}>
@@ -220,6 +234,23 @@
 		</div>
 
 		<div class="metadata-footer">
+			<!--
+				On the left, away from Apply. This one does not edit the file's
+				tags at all — it records what game the tracks belong to, which is
+				a different thing from what is written in them, and putting it
+				beside Apply would suggest otherwise.
+			-->
+			<button
+				class="btn btn-secondary reclassify"
+				onclick={() => (reclassifying = true)}
+				title={headerGame
+					? `The file's header says: ${headerGame}`
+					: 'Say which game these tracks belong to'}
+			>
+				Reclassify as videogame…{#if headerGame}
+					<span class="from-header">{headerGame}</span>{/if}
+			</button>
+			<span class="spacer"></span>
 			<button class="btn btn-secondary" onclick={onclose}>Cancel</button>
 			<button class="btn btn-primary" onclick={handleSave} disabled={isSaving}>
 				{isSaving ? 'Saving...' : 'Apply'}
@@ -344,6 +375,22 @@
 		font-style: italic;
 	}
 
+	.spacer {
+		flex: 1;
+	}
+	.reclassify {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 6px;
+	}
+	.from-header {
+		font-size: 11px;
+		color: var(--color-text-muted);
+		max-width: 180px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 	.metadata-footer {
 		display: flex;
 		justify-content: flex-end;
