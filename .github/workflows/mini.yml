@@ -25,8 +25,20 @@ on:
   # On the tag, not on main. release.yml is manual now, and the tag it pushes
   # is what says a release is happening — so this fires exactly when there is
   # something to attach itself to, and never on an ordinary commit.
-  push:
-    tags: ['v*']
+  # After Release finishes, not on the tag it pushes.
+  #
+  # A tag pushed by a job using GITHUB_TOKEN does not trigger anything: GitHub
+  # refuses to start workflows from events its own token created, to stop a
+  # workflow from looping. Triggering on the tag therefore meant never
+  # triggering at all — the release came out with the desktop builds and
+  # nothing else, silently.
+  #
+  # `workflow_run` is exempt from that rule, and it also fixes the ordering
+  # these jobs used to work around: the release now exists before they look for
+  # it, instead of them polling for one that is still being built.
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
   # On a pull request the filter still makes sense: nothing is published, and a
   # change to the desktop frontend has nothing to say about the Slint player.
   pull_request:
@@ -50,6 +62,8 @@ jobs:
   # The ordinary Linux builds. Anyone who wants a small, GPU-drawn player
   # without a web view can run this on a desktop — it is not phone-only.
   linux:
+    # Nothing to attach to if the release that triggered this one failed.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Linux ${{ matrix.arch }} (glibc)
     strategy:
       fail-fast: false
@@ -122,7 +136,7 @@ jobs:
 
       - name: Wait for this commit's tag
         id: tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         run: |
           for _ in $(seq 1 30); do
             git fetch -q --tags origin 2>/dev/null || true
@@ -136,7 +150,7 @@ jobs:
       # Same reasoning as the .apk below: an artifact needs an authenticated API
       # call and expires, a release asset can just be downloaded.
       - name: Attach it to the release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -155,6 +169,8 @@ jobs:
   # Windows. MPRIS and logind are freedesktop, so the lock-screen controls and
   # the sleep inhibitor are compiled out here; everything else is the same code.
   windows:
+    # Nothing to attach to if the release that triggered this one failed.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Windows x86_64
     runs-on: windows-latest
     steps:
@@ -199,7 +215,7 @@ jobs:
 
       - name: Wait for this commit's tag
         id: tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         shell: bash
         run: |
           for _ in $(seq 1 30); do
@@ -212,7 +228,7 @@ jobs:
           [ -n "$TAG" ] && echo "tag=$TAG" >> "$GITHUB_OUTPUT" || echo "no tag for this commit"
 
       - name: Attach it to the release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -231,6 +247,8 @@ jobs:
 
   # How the phone actually builds it: Alpine's own rust, musl, aarch64.
   alpine:
+    # Nothing to attach to if the release that triggered this one failed.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     # Native aarch64 rather than qemu. The vendored emulator cores are ~1.7 GB
     # of C; under emulation this job would take hours.
     runs-on: ubuntu-24.04-arm
@@ -317,6 +335,8 @@ jobs:
             apps/mini/dist/
 
   package:
+    # Nothing to attach to if the release that triggered this one failed.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     # The recipe, run for real. Until this existed the APKBUILD had never been
     # executed once: it was a file that looked right.
     #
@@ -345,7 +365,7 @@ jobs:
       # labelled with the wrong version cannot be told from a good one later.
       - name: Wait for this commit's tag
         id: tag
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         run: |
           for _ in $(seq 1 30); do
             git fetch -q --tags origin 2>/dev/null || true
@@ -477,7 +497,7 @@ jobs:
       # filtered, so not every release carries an apk — whoever fetches it has
       # to ask for the newest release that *has* one, not the newest release.
       - name: Attach it to the release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

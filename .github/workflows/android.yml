@@ -28,8 +28,20 @@ on:
   # On the tag, not on main. release.yml is manual now, and the tag it pushes
   # is what says a release is happening — so this fires exactly when there is
   # something to attach itself to, and never on an ordinary commit.
-  push:
-    tags: ['v*']
+  # After Release finishes, not on the tag it pushes.
+  #
+  # A tag pushed by a job using GITHUB_TOKEN does not trigger anything: GitHub
+  # refuses to start workflows from events its own token created, to stop a
+  # workflow from looping. Triggering on the tag therefore meant never
+  # triggering at all — the release came out with the desktop builds and
+  # nothing else, silently.
+  #
+  # `workflow_run` is exempt from that rule, and it also fixes the ordering
+  # these jobs used to work around: the release now exists before they look for
+  # it, instead of them polling for one that is still being built.
+  workflow_run:
+    workflows: ['Release']
+    types: [completed]
   # On a pull request the filter still makes sense: nothing is published, and a
   # change to the Svelte frontend has nothing to say about an Android build.
   pull_request:
@@ -55,6 +67,8 @@ env:
 
 jobs:
   build:
+    # Nothing to attach to if the release that triggered this one failed.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     name: APK (arm64-v8a)
 
@@ -141,7 +155,7 @@ jobs:
       # exactly the case that should fall through to the default.
       - name: Wait for this commit's tag
         id: tag
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         run: |
           for _ in $(seq 1 30); do
             git fetch -q --tags origin 2>/dev/null || true
@@ -243,7 +257,7 @@ jobs:
       # an artifact needs an authenticated API call and expires, and the phone
       # has to be able to just fetch a URL.
       - name: Attach it to the release
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
