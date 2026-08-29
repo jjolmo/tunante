@@ -37,6 +37,18 @@
 			tracks.every((t) => MULTI_SUBSONG.includes((t.codec || '').toLowerCase()))
 	);
 
+	/// Where the track-name flow is, as one value.
+	///
+	/// It was four booleans, and they could disagree: clearing `askingNames`
+	/// before the request returned dropped the panel back to the tag table
+	/// mid-flight, and the footer had no way to know which question it was
+	/// asking.
+	type NamesMode = 'off' | 'ask' | 'loading' | 'list' | 'done';
+	let namesMode = $state<NamesMode>('off');
+	/// Which of the two the rename will use. A choice between two things is a
+	/// radio, and it is committed by Apply like everything else in this dialog.
+	let namesScope = $state<'track' | 'all'>('all');
+
 	type Names = {
 		file: string;
 		subsongs: number;
@@ -46,21 +58,27 @@
 	};
 	let names = $state<Names | null>(null);
 
-	let askingNames = $state(false);
-	let fetchingNames = $state(false);
 	let namesApplied = $state<number | null>(null);
 
 	async function fetchNames() {
-		askingNames = false;
-		fetchingNames = true;
+		// Straight from 'ask' to 'loading'. Passing through 'off' is what made
+		// the tag table reappear while the request was still out.
+		namesMode = 'loading';
 		namesApplied = null;
 		try {
 			names = await invoke<Names>('suggest_track_names', { trackPath: firstTrack.path });
 		} catch (e) {
 			names = { file: '', subsongs: 0, titles: [], lengths: [], problem: String(e) };
-		} finally {
-			fetchingNames = false;
 		}
+		namesMode = 'list';
+		// With no subsong index there is nothing to rename on its own.
+		if (subsongIndex === null) namesScope = 'all';
+	}
+
+	function closeNames() {
+		namesMode = 'off';
+		names = null;
+		namesApplied = null;
 	}
 
 	/// `onlyIndex` null means the whole file. Either way the .m3u written beside
@@ -68,7 +86,7 @@
 	/// rest worse off than before.
 	async function applyNames(onlyIndex: number | null) {
 		if (!names || names.titles.length === 0) return;
-		fetchingNames = true;
+		namesMode = 'loading';
 		try {
 			namesApplied = await invoke<number>('apply_track_names', {
 				file: names.file,
@@ -78,10 +96,10 @@
 			});
 			await libraryStore.loadTracks();
 			names = null;
+			namesMode = 'done';
 		} catch (e) {
 			if (names) names = { ...names, problem: String(e) };
-		} finally {
-			fetchingNames = false;
+			namesMode = 'list';
 		}
 	}
 
@@ -189,6 +207,14 @@
 	let isSaving = $state(false);
 
 	async function handleSave() {
+		// While the track-name list is up, Apply is what commits *it*. The tags
+		// are not touched: this dialog is showing a different question, and
+		// applying a form the user cannot currently see would be a surprise.
+		if (namesMode === 'list' && names && !names.problem) {
+			await applyNames(namesScope === 'track' ? subsongIndex : null);
+			return;
+		}
+
 		// A folder-wide reclassification reaches every track under the folder,
 		// which is almost always more than was selected and can be hundreds. Ask
 		// once, with the real numbers, before doing it.
@@ -261,7 +287,7 @@
 			</button>
 		</div>
 
-		{#if askingNames || names || namesApplied !== null}
+		{#if namesMode !== 'off'}
 			<!--
 				A section of its own, with the tags hidden behind it. Grown inside a
 				table cell this put a scrolling list of fifty names into a column two
@@ -273,16 +299,12 @@
 					<span class="names-panel-title">Track names</span>
 					<button
 						class="close-btn"
-						onclick={() => {
-							askingNames = false;
-							names = null;
-							namesApplied = null;
-						}}
+						onclick={closeNames}
 						aria-label="Back to the tags">✕</button
 					>
 				</div>
 				<div class="names-panel-body">
-			{#if askingNames}
+			{#if namesMode === 'ask'}
 				<div class="names">
 					{#if lookupGame}
 						<p class="names-problem">
@@ -296,25 +318,21 @@
 							refused outright unless it has exactly as many entries as
 							this file has tracks.
 						</p>
+						<!-- Cancel lives in the footer. Two of them is two questions. -->
 						<div class="names-actions">
 							<button class="btn btn-primary" onclick={fetchNames}>Look it up</button>
-							<button class="btn btn-secondary" onclick={() => (askingNames = false)}
-								>Cancel</button
-							>
 						</div>
 					{:else}
 						<p class="names-problem">
 							Name the game first — the list is looked up by it. The
 							column beside this one does that.
 						</p>
-						<div class="names-actions">
-							<button class="btn btn-secondary" onclick={() => (askingNames = false)}
-								>Close</button
-							>
-						</div>
+
 					{/if}
 				</div>
-			{:else if names}
+			{:else if namesMode === 'loading'}
+						<p class="names-lede">Asking the archive…</p>
+					{:else if names}
 				<div class="names">
 					{#if names.problem}
 						<p class="names-problem">{names.problem}</p>
@@ -330,22 +348,24 @@
 								</li>
 							{/each}
 						</ol>
-						<div class="names-actions">
+						<!--
+							A choice between two things is a radio, and it is committed
+							by Apply like everything else here. These used to be two
+							buttons that renamed on the spot, so Apply had nothing left
+							to do and pressing one was an irreversible action wearing
+							the clothes of a selection.
+						-->
+						<div class="scope" role="radiogroup" aria-label="How much to rename">
 							{#if subsongIndex !== null}
-								<button
-									class="btn btn-secondary"
-									onclick={() => applyNames(subsongIndex)}
-									disabled={fetchingNames}
-								>Only this track</button>
+								<label class="scope-opt">
+									<input type="radio" bind:group={namesScope} value="track" />
+									<span>Only this track</span>
+								</label>
 							{/if}
-							<button
-								class="btn btn-primary"
-								onclick={() => applyNames(null)}
-								disabled={fetchingNames}
-							>All {names.titles.length}</button>
-							<button class="btn btn-secondary" onclick={() => (names = null)}
-								>Discard</button
-							>
+							<label class="scope-opt">
+								<input type="radio" bind:group={namesScope} value="all" />
+								<span>All {names.titles.length}</span>
+							</label>
 						</div>
 					{/if}
 				</div>
@@ -377,11 +397,11 @@
 								{#if canFetchNames}
 									<button
 										class="btn btn-secondary small"
-										onclick={() => (askingNames = true)}
-										disabled={fetchingNames || askingNames}
-										title="This format holds the whole game in one file. Look the track names up."
+										onclick={() => (namesMode = 'ask')}
+										disabled={namesMode !== 'off'}
+										title="This format holds the whole game in one file, and their names are not in it."
 									>
-										{fetchingNames ? 'Looking…' : 'Get track names'}
+										Fix track names
 									</button>
 								{/if}
 							</div>
@@ -501,6 +521,7 @@
 				a different thing from what is written in them, and putting it
 				beside Apply would suggest otherwise.
 			-->
+			{#if namesMode === 'off'}
 			<button
 				class="btn btn-secondary reclassify"
 				onclick={() => (reclassifying = true)}
@@ -511,11 +532,25 @@
 				Reclassify as videogame…{#if headerGame}
 					<span class="from-header">{headerGame}</span>{/if}
 			</button>
+			{/if}
 			<span class="spacer"></span>
-			<button class="btn btn-secondary" onclick={onclose}>Cancel</button>
-			<button class="btn btn-primary" onclick={handleSave} disabled={isSaving}>
-				{isSaving ? 'Saving...' : 'Apply'}
-			</button>
+			<!--
+				Cancel means "leave this alone" whatever is on screen: it closes
+				the name panel while that is open, and the dialog otherwise.
+			-->
+			<button
+				class="btn btn-secondary"
+				onclick={() => (namesMode === 'off' ? onclose() : closeNames())}>Cancel</button
+			>
+			{#if namesMode !== 'ask' && namesMode !== 'loading'}
+				<button
+					class="btn btn-primary"
+					onclick={handleSave}
+					disabled={isSaving || (namesMode === 'list' && !!names?.problem)}
+				>
+					{isSaving ? 'Saving...' : 'Apply'}
+				</button>
+			{/if}
 			{/if}
 		</div>
 	</div>
@@ -776,6 +811,24 @@
 	.names-list li.on {
 		color: var(--color-text-primary);
 		font-weight: 600;
+	}
+	.scope {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		margin-bottom: 4px;
+	}
+	.scope-opt {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		color: var(--color-text-primary);
+		cursor: pointer;
+	}
+	.scope-opt input {
+		margin: 0;
+		cursor: pointer;
 	}
 	.names-actions {
 		display: flex;
