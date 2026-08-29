@@ -37,7 +37,13 @@
 			tracks.every((t) => MULTI_SUBSONG.includes((t.codec || '').toLowerCase()))
 	);
 
-	type Names = { file: string; subsongs: number; titles: string[]; problem: string | null };
+	type Names = {
+		file: string;
+		subsongs: number;
+		titles: string[];
+		lengths: string[];
+		problem: string | null;
+	};
 	let names = $state<Names | null>(null);
 
 	let askingNames = $state(false);
@@ -51,7 +57,7 @@
 		try {
 			names = await invoke<Names>('suggest_track_names', { trackPath: firstTrack.path });
 		} catch (e) {
-			names = { file: '', subsongs: 0, titles: [], problem: String(e) };
+			names = { file: '', subsongs: 0, titles: [], lengths: [], problem: String(e) };
 		} finally {
 			fetchingNames = false;
 		}
@@ -67,6 +73,7 @@
 			namesApplied = await invoke<number>('apply_track_names', {
 				file: names.file,
 				titles: names.titles,
+				lengths: names.lengths,
 				onlyIndex
 			});
 			await libraryStore.loadTracks();
@@ -317,7 +324,10 @@
 						</p>
 						<ol class="names-list">
 							{#each names.titles as t, i (i)}
-								<li class:on={i === subsongIndex}>{t}</li>
+								<li class:on={i === subsongIndex}>
+									<span class="nm">{t}</span>
+									{#if names.lengths[i]}<span class="len">{names.lengths[i]}</span>{/if}
+								</li>
 							{/each}
 						</ol>
 						<div class="names-actions">
@@ -747,6 +757,21 @@
 		overflow-y: auto;
 		font-size: 12px;
 		color: var(--color-text-secondary);
+	}
+	.names-list li {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+	}
+	.nm {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.len {
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+		font-variant-numeric: tabular-nums;
 	}
 	.names-list li.on {
 		color: var(--color-text-primary);
