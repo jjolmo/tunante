@@ -14,7 +14,6 @@
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import MetadataDialog from './MetadataDialog.svelte';
-	import ReclassifyDialog from './ReclassifyDialog.svelte';
 	import SearchBar from './SearchBar.svelte';
 
 	const ROW_HEIGHT = 26;
@@ -32,7 +31,6 @@
 
 	// Metadata dialog state
 	let metadataDialogTracks = $state<Track[]>([]);
-	let reclassifyTracks = $state<Track[]>([]);
 
 	// Column resize state
 	let resizingCol = $state<string | null>(null);
@@ -255,6 +253,10 @@
 			}
 		});
 
+		// Reclassifying is deliberately not in this menu. It lives in the
+		// metadata dialog, as a column beside the tags — the two answer the same
+		// question about the same selection, and two entry points to one form is
+		// one of them going stale.
 		if (count === 1) {
 			items.push({
 				label: 'Open containing folder',
@@ -263,17 +265,6 @@
 			// For when the cover is wrong. Forces past the cache, past
 			// "never overwrite", and past the confidence floor a bulk run
 			// applies — the user asked for this one specifically.
-			items.push({
-				label: 'Reclassify as videogame…',
-				// The whole selection, not the row that was right-clicked. Ten
-				// tracks of one game are the ordinary case, and fixing them one
-				// at a time is not a feature.
-				action: () => {
-					reclassifyTracks = selectedIds.includes(track.id)
-						? libraryStore.tracks.filter((t) => selectedIds.includes(t.id))
-						: [track];
-				}
-			});
 			items.push({
 				label: 'Re-download cover art',
 				action: async () => {
@@ -652,10 +643,6 @@
 		y={contextMenu.y}
 		onclose={() => (contextMenu = null)}
 	/>
-{/if}
-
-{#if reclassifyTracks.length > 0}
-	<ReclassifyDialog tracks={reclassifyTracks} onclose={() => (reclassifyTracks = [])} />
 {/if}
 
 {#if metadataDialogTracks.length > 0}

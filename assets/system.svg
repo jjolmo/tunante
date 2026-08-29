@@ -5,14 +5,34 @@
    height="100"
    version="1.1"
    id="svg4"
-   sodipodi:docname="music-note-icon.svg"
+   sodipodi:docname="system.svg"
    inkscape:version="1.4.4 (dcaf3e7d9e, 2026-05-05)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg">
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+   xmlns:cc="http://creativecommons.org/ns#"
+   xmlns:dc="http://purl.org/dc/elements/1.1/">
   <defs
      id="defs4">
+    <inkscape:path-effect
+       effect="fillet_chamfer"
+       id="path-effect5"
+       is_visible="true"
+       lpeversion="1"
+       nodesatellites_param="F,0,0,1,0,0,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,1.8397803,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,0,0,1 @ F,0,0,1,0,0,0,1"
+       radius="0"
+       unit="px"
+       method="auto"
+       mode="F"
+       chamfer_steps="1"
+       flexible="false"
+       use_knot_distance="true"
+       apply_no_radius="true"
+       apply_with_radius="true"
+       only_selected="false"
+       hide_knots="false" />
     <inkscape:path-effect
        effect="fillet_chamfer"
        id="path-effect4"
@@ -41,9 +61,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      showguides="false"
-     inkscape:zoom="2.955"
-     inkscape:cx="83.58714"
-     inkscape:cy="13.874788"
+     inkscape:zoom="11.82"
+     inkscape:cx="40.947547"
+     inkscape:cy="38.494078"
      inkscape:window-width="2560"
      inkscape:window-height="1368"
      inkscape:window-x="0"
@@ -63,9 +83,20 @@
     <!-- stem -->
     <path
        id="path2"
-       d="M 50,20.307953 V 60.434906 C 41.088939,52.247193 22.151627,61.748555 25.685547,72.634125 28.576915,81.531342 49.657418,81.325522 56,72.307953 v 0 -39.633672 c 0,6 4,5.633672 7,10.633672 4,7 3,14 -2,19 5,1 12,-4 14,-12 3,-10 -11,-19 -25,-30 z"
-       sodipodi:nodetypes="cccccccccc" />
+       d="m 52.199662,22 v 40.126953 c -8.911061,-8.187713 -24.295074,-0.886012 -20.761154,9.999558 2.479415,7.62957 16.098244,4.786772 21.017444,2.882791 0.944371,-0.365519 2.285305,-1.37918 2.733988,-2.283333 C 55.906331,71.282351 56,69.68528 56,69.68528 L 55.830795,29.628596 c 0,6 4,6.141286 7,11.141286 4,7 3.549916,10.700508 -1.450084,15.700508 5,1 6.500846,0.187817 8.500846,-7.812183 C 72.881557,38.658207 66.199662,33 52.199662,22 Z"
+       sodipodi:nodetypes="ccczcccccc"
+       inkscape:path-effect="#path-effect5"
+       inkscape:original-d="M 52.199662,22 V 62.126953 C 43.288601,53.93924 27.904588,61.240941 31.438508,72.126511 34.329876,81.023728 52.369779,75.679529 54.096447,74.190356 55.823115,72.701183 56,69.68528 56,69.68528 L 55.830795,29.628596 c 0,6 4,6.141286 7,11.141286 4,7 3.549916,10.700508 -1.450084,15.700508 5,1 6.500846,0.187817 8.500846,-7.812183 C 72.881557,38.658207 66.199662,33 52.199662,22 Z" />
     <!-- head -->
     <!-- flag -->
   </g>
+  <metadata
+     id="metadata5">
+    <rdf:RDF>
+      <cc:Work
+         rdf:about="">
+        <dc:title>Music note in a square frame</dc:title>
+      </cc:Work>
+    </rdf:RDF>
+  </metadata>
 </svg>
