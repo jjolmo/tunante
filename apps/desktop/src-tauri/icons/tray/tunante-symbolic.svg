@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="16" height="16">
+  <defs><style id="current-color-scheme" type="text/css">
+    .ColorScheme-Text { color: #000000; }
+  </style></defs>
+  <g class="ColorScheme-Text" fill="currentColor" fill-rule="evenodd"><path
+       d="M6,6 H94 V80 A14,14 0 0 1 80,94 H6 Z              M15,15 H85 V80 A5,5 0 0 1 80,85 H15 Z"
+       id="path1" /><path
+       id="path2"
+       d="M 50,20.307953 V 60.434906 C 41.088939,52.247193 22.151627,61.748555 25.685547,72.634125 28.576915,81.531342 49.657418,81.325522 56,72.307953 v 0 -39.633672 c 0,6 4,5.633672 7,10.633672 4,7 3,14 -2,19 5,1 12,-4 14,-12 3,-10 -11,-19 -25,-30 z"
+       sodipodi:nodetypes="cccccccccc" /></g>
+</svg>

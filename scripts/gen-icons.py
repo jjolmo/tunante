@@ -31,10 +31,13 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "assets" / "logo.png"
+# The tray wants a silhouette, not a picture. See TRAY below.
+TRAY_SOURCE = ROOT / "assets" / "system.svg"
 
 DESKTOP = ROOT / "apps/desktop/src-tauri/icons"
 MINI = ROOT / "apps/mini/dist/icons"
 FAVICON = ROOT / "apps/desktop/static/favicon.svg"
+TRAY = ROOT / "apps/desktop/src-tauri/icons/tray"
 ANDROID = ROOT / "apps/android/app/src/main/res"
 
 # Android ships one bitmap per density. The launcher bitmap is 48dp and the
@@ -131,6 +134,86 @@ def svg(img: Image.Image) -> bytes:
     return "".join(out).encode()
 
 
+def _glyph(source: Path) -> tuple[str, str, str]:
+    """The drawing, its viewBox, and the paint rules that must travel with it.
+
+    `fill-rule` is the one that bites. Inkscape puts it on the wrapping <g>,
+    not on the paths, and a frame drawn as an outer rectangle plus an inner one
+    only has a hole in it under `evenodd`. Extract the paths and leave that
+    behind and the icon becomes a solid black square — which is exactly what
+    the first version of this produced.
+    """
+    import re
+    raw = source.read_text()
+    body = "".join(m.group(0) for m in re.finditer(r"<path\b[^>]*/>", raw))
+    if not body:
+        sys.exit(f"{source}: found no self-closing <path>; cannot build a glyph")
+    body = re.sub(r'\s(?:fill|style)="[^"]*"', "", body)
+    box = re.search(r'viewBox="([^"]+)"', raw)
+    rules = " ".join(
+        f'{name}="{m.group(1)}"'
+        for name in ("fill-rule", "clip-rule")
+        for m in [re.search(rf'{name}="([^"]+)"', raw)]
+        if m
+    )
+    return body, (box.group(1) if box else "0 0 100 100"), rules
+
+
+def symbolic_svg(source: Path) -> bytes:
+    """A monochrome glyph in the form both toolkits recolour.
+
+    Neither desktop invents this: each looks for something specific, and the
+    two requirements do not overlap, so a file has to satisfy both.
+
+    GTK wraps the document and injects `rect,circle,path { fill: <colour> }`
+    before rendering (`gtk_icon_info_load_symbolic`). A CSS rule outranks a
+    presentation attribute, so a plain `fill="#000000"` on the path is
+    overridden and this needs nothing — but the icon must be an SVG whose name
+    ends in `-symbolic`, or GTK never takes that path at all.
+
+    Plasma recolours through its own stylesheet, keyed on the class
+    `ColorScheme-Text` with `fill="currentColor"` underneath it. Without that
+    class Breeze leaves the icon alone, and a black glyph on Plasma's dark
+    panel is an invisible one.
+
+    So: the class for Plasma, `currentColor` for the cascade, and the geometry
+    untouched for GTK. Anything that understands neither still gets a valid
+    black-on-transparent SVG.
+    """
+    body, view, rules = _glyph(source)
+    doc = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="%s" width="16" height="16">\n'
+        '  <defs><style id="current-color-scheme" type="text/css">\n'
+        "    .ColorScheme-Text { color: #000000; }\n"
+        "  </style></defs>\n"
+        '  <g class="ColorScheme-Text" fill="currentColor" %s>%s</g>\n'
+        "</svg>\n"
+    ) % (view, rules, body)
+    return doc.encode()
+
+
+def mono(source: Path, n: int, white: bool) -> bytes:
+    """A flat render of the glyph, for the platforms that cannot recolour.
+
+    Windows has no template mechanism and Linux panels do not touch a pixmap,
+    so somebody has to pick the colour, and it has to be picked twice.
+    """
+    import subprocess
+    colour = "#ffffff" if white else "#000000"
+    body, view, rules = _glyph(source)
+    flat = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}" '
+        f'width="{n}" height="{n}" fill="{colour}" {rules}>{body}</svg>'
+    )
+    out = subprocess.run(
+        ["magick", "-background", "none", "svg:-", "-resize", f"{n}x{n}", "png:-"],
+        input=flat.encode(), capture_output=True,
+    )
+    if out.returncode != 0:
+        sys.exit("magick failed: " + out.stderr.decode()[:400])
+    return out.stdout
+
+
 def build(src: Image.Image) -> dict[Path, bytes]:
     """Every output file and its bytes. Nothing is written here."""
     out: dict[Path, bytes] = {}
@@ -161,6 +244,26 @@ def build(src: Image.Image) -> dict[Path, bytes]:
 
     # The tab icon of the desktop app's own window.
     out[FAVICON] = svg(src)
+
+    # --- tray -------------------------------------------------------------
+    #
+    # Three renderings of one glyph, because the three desktops solve the
+    # light/dark problem in three incompatible ways:
+    #
+    #   macOS   marks the image as a template and inverts it itself, including
+    #           the highlighted state while the menu is open, which an app
+    #           swapping files by hand cannot reproduce.
+    #   Windows has no such mechanism, and the notification area follows a
+    #           *different* setting from the app theme, so both colours ship.
+    #   Linux   recolours only when handed an icon *name* ending in -symbolic
+    #           that resolves to an SVG; a pixmap is drawn as given.
+    if TRAY_SOURCE.is_file():
+        out[TRAY / "tunante-symbolic.svg"] = symbolic_svg(TRAY_SOURCE)
+        # macOS reads the alpha channel and ignores the colour, so black is
+        # convention rather than requirement. 44px is 22pt at 2x.
+        out[TRAY / "template.png"] = mono(TRAY_SOURCE, 44, white=False)
+        out[TRAY / "mono-black.png"] = mono(TRAY_SOURCE, 32, white=False)
+        out[TRAY / "mono-white.png"] = mono(TRAY_SOURCE, 32, white=True)
 
     # --- mini ------------------------------------------------------------
     for n in (48, 64, 128, 256, 512):
