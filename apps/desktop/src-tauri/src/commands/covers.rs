@@ -607,9 +607,24 @@ pub async fn apply_track_names(
     //
     // The name only, not the path: the full one is three lines of a dialog and
     // the reader already knows which folder they are in.
+    // A playlist this wrote is this program's to replace, and every one of them
+    // carries a first line saying so. Refusing to overwrite exists to protect a
+    // file somebody else put there — possibly by hand thirty years ago — not to
+    // protect an earlier run of this from a later one, which is how it read the
+    // first time: "already exists" on a file the user had never seen, written by
+    // a build since fixed.
     if m3u.exists() && !replace {
-        let shown = m3u.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        return Err(format!("A playlist called {shown} is already next to this file."));
+        let ours = std::fs::read_to_string(&m3u)
+            .map(|b| tunante_art::tracklist::is_ours(&b))
+            .unwrap_or(false);
+        if !ours {
+            let shown =
+                m3u.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            return Err(format!(
+                "{shown} is already next to this file and was not written by Tunante. \
+                 Replacing it would throw away whoever's work it is."
+            ));
+        }
     }
     // The whole listing, even when one track was asked for. An .m3u with a
     // single line in it would leave every other subsong worse off than before,
