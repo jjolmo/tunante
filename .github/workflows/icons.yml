@@ -26,9 +26,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      # Pillow cannot rasterise SVG, and the tray glyphs are SVG, so the
-      # generator shells out to ImageMagick. The runner does not ship it.
-      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends imagemagick
+      # Pillow only. `--check` never rasterises: the tray PNGs are proven
+      # current by tray/source.sha256, not by comparing pixels a renderer
+      # produced, so no SVG renderer is needed here at all.
       - run: pip install --disable-pip-version-check Pillow
       # Writes nothing, and names every file that drifted.
       - run: python3 scripts/gen-icons.py --check
