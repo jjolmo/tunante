@@ -5,6 +5,7 @@ import { formatDuration, formatFileSize } from '$lib/types';
 import { normalizeForSearch, trackMatchesSearch } from '$lib/utils/search';
 import { sortTracks } from '$lib/utils/sort';
 import { consolesStore } from '$lib/stores/consoles.svelte';
+import { albumOrGame } from '$lib/utils/albumGame';
 
 /// The console's display name, or its id if the catalogue has not loaded yet.
 function consoleLabel(id: string): string {
@@ -17,6 +18,10 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: 'rating', label: '\u2605', field: 'rating', width: '36px', align: 'center', sortable: true, visible: true, format: (t) => t.rating > 0 ? '\u2605' : '' },
 	{ id: 'artist', label: 'Artist', field: 'artist', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
 	{ id: 'album', label: 'Album', field: 'album', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
+	// One column for two facts that are usually the same string. Which one it
+	// leads with is a setting, because whether the album or the game is the
+	// useful answer depends on what the library is mostly made of.
+	{ id: 'album_game', label: 'Album / Game', field: 'album_game', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: false, format: albumOrGame },
 	// What the library thinks this is, as opposed to what the file's tags say.
 	//
 	// Off by default, but present: without these two columns the classification

@@ -68,6 +68,7 @@ export type SortColumn =
 	| 'file_size'
 	| 'rating'
 	| 'game'
+	| 'album_game'
 	| 'console_id'
 	| 'path';
 export type SortDirection = 'asc' | 'desc';
@@ -127,6 +128,9 @@ export interface PinnedFolder {
 	path: string;
 	added_at: number;
 }
+
+/// Which of the two the combined "Album / Game" column shows first.
+export type AlbumGamePreference = 'album' | 'game';
 
 export type Theme = 'dark' | 'light' | 'system';
 

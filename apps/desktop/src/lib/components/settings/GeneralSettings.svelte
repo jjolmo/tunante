@@ -153,6 +153,27 @@
 		</div>
 	</label>
 
+	<div class="setting-row threshold-row">
+		<div class="setting-text">
+			<span class="setting-label">The "Album / Game" column shows</span>
+			<span class="setting-desc"
+				>That column carries two facts that are usually the same string: the album the
+				ripper wrote in the file, and the game the library worked out it belongs to. This
+				picks which one it leads with; the other fills in when the first is empty.</span
+			>
+		</div>
+		<select
+			value={settingsStore.albumGamePrefers}
+			onchange={(e) =>
+				settingsStore.setAlbumGamePrefers(
+					(e.target as HTMLSelectElement).value as 'album' | 'game'
+				)}
+		>
+			<option value="album">The album tag</option>
+			<option value="game">The game</option>
+		</select>
+	</div>
+
 	<div class="setting-row threshold-row" class:disabled={!settingsStore.showInTray}>
 		<div class="setting-text">
 			<span class="setting-label">Tray icon</span>

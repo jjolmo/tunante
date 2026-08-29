@@ -1,3 +1,4 @@
+import { albumOrGame } from '$lib/utils/albumGame';
 import type { Track, SortColumn, SortDirection } from '$lib/types';
 
 /**
@@ -28,6 +29,12 @@ export const compareText = collator.compare;
  * descending by, say, artist.
  */
 export function compareTracks(a: Track, b: Track, column: SortColumn, dir: 1 | -1): number {
+	// Not a field on Track: it is whichever of two fields the setting prefers,
+	// so it has to be resolved before comparing rather than indexed.
+	if (column === 'album_game') {
+		const cmp = albumOrGame(a).localeCompare(albumOrGame(b), undefined, { sensitivity: 'base' });
+		return cmp !== 0 ? cmp * dir : compareTracks(a, b, 'title', dir);
+	}
 	const va = a[column] ?? '';
 	const vb = b[column] ?? '';
 

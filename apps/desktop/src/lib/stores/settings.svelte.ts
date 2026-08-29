@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { CoverFit, TrayIconStyle, MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
+import type { AlbumGamePreference, CoverFit, TrayIconStyle, MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
 import { libraryStore } from '$lib/stores/library.svelte';
 
 /** Mirrors `DspConfig` in apps/desktop/src-tauri/src/commands/player.rs. */
@@ -76,6 +76,7 @@ class SettingsStore {
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
 	coverFit = $state<CoverFit>('cover');
+	albumGamePrefers = $state<AlbumGamePreference>('album');
 	trayIconStyle = $state<TrayIconStyle>('system');
 	showFaved = $state(true);
 	showPlaylists = $state(true);
@@ -151,6 +152,9 @@ class SettingsStore {
 		if (fit === 'cover' || fit === 'contain' || fit === 'blur' || fit === 'fill' || fit === 'none') {
 			this.coverFit = fit;
 		}
+
+		const ag = this._settingsCache.get('album_game_prefers');
+		if (ag === 'album' || ag === 'game') this.albumGamePrefers = ag;
 
 		const tray = this._settingsCache.get('tray_icon_style');
 		if (tray === 'system' || tray === 'symbolic' || tray === 'logo') {
@@ -441,6 +445,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'cover_fit', value: fit });
 		} catch (e) {
 			console.error('Failed to save cover fit setting:', e);
+		}
+	}
+
+	async setAlbumGamePrefers(pref: AlbumGamePreference) {
+		this.albumGamePrefers = pref;
+		try {
+			await invoke('set_setting', { key: 'album_game_prefers', value: pref });
+		} catch (e) {
+			console.error('Failed to save album/game preference:', e);
 		}
 	}
 
