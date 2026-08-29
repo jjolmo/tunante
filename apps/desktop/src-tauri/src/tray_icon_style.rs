@@ -115,9 +115,10 @@ pub fn icon_bytes(style: TrayStyle) -> (&'static [u8], bool) {
     }
     #[cfg(target_os = "linux")]
     {
-        // Only reached when the symbolic name could not be published — see
-        // `install_symbolic`. White because Linux panels are overwhelmingly
-        // dark, so it is the guess that is wrong least often.
+        // What "Follow the system" draws, and what "Symbolic" falls back to if
+        // the icon could not be written. White because Linux panels are
+        // overwhelmingly dark, so it is the guess that is wrong least often —
+        // and unlike a name, a pixmap always appears.
         (WHITE, false)
     }
     #[cfg(not(any(target_os = "macos", windows, target_os = "linux")))]
@@ -130,7 +131,8 @@ pub fn icon_bytes(style: TrayStyle) -> (&'static [u8], bool) {
 ///
 /// Returns whether the name was published. A `false` here is not an error: the
 /// caller falls back to a pixmap, which is what every other tray icon in the
-/// world does.
+/// world does — and, for anything but [`TrayStyle::Symbolic`], is what happens
+/// deliberately.
 ///
 /// The file is written at runtime rather than installed by the package because
 /// the same binary ships as a .deb, an AppImage and a `cargo run`, and only the
@@ -139,7 +141,20 @@ pub fn icon_bytes(style: TrayStyle) -> (&'static [u8], bool) {
 pub fn install_symbolic(style: TrayStyle) -> bool {
     use std::io::Write;
 
-    if !style.monochrome() {
+    // Only when asked for by name, never as the default.
+    //
+    // Publishing an icon *name* is what lets a panel recolour it, and it is
+    // also a one-way bet: the panel resolves the name or it does not, and this
+    // side cannot tell which happened. A name that fails to resolve is not a
+    // fallback to the pixmap — it is no tray icon at all, and an app that
+    // vanishes from the panel is a worse failure than one whose icon does not
+    // match the theme.
+    //
+    // So "Follow the system" keeps the pixmap on Linux, which always draws, and
+    // "Symbolic" is the choice that opts into the native behaviour and its
+    // risk. macOS and Windows are unaffected: neither has this problem, because
+    // neither is being handed a name.
+    if style != TrayStyle::Symbolic {
         tray_icon::set_symbolic_icon(None);
         return false;
     }
@@ -203,6 +218,16 @@ mod tests {
     fn the_colour_logo_is_never_a_template() {
         let (_, template) = icon_bytes(TrayStyle::Logo);
         assert!(!template);
+    }
+
+    /// The safety this trades for: only the explicit choice can leave the app
+    /// without a tray icon at all, and only on Linux.
+    #[test]
+    fn only_the_symbolic_style_publishes_a_name() {
+        assert!(!install_symbolic(TrayStyle::Logo));
+        assert!(!install_symbolic(TrayStyle::System));
+        // Symbolic may still return false — if the file could not be written —
+        // but it is the only style that ever tries.
     }
 
     #[test]
