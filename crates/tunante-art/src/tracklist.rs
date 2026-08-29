@@ -166,6 +166,29 @@ fn strip_tags(s: &str) -> String {
         .to_string()
 }
 
+/// Is this "name" just the track's own number wearing a word?
+///
+/// The archive lists an unnamed track as `Track 12`, and a partially tagged rip
+/// is common — the Zelda NSF has 22 real names among 37 entries. Writing
+/// `Track 12` over `zelda.nsf - Track 12` improves nothing and makes a
+/// placeholder look like somebody's answer, which is worse than the obvious
+/// filename it replaced.
+///
+/// Only when the number matches its own position. A game with a song genuinely
+/// called "Track 3" at position 9 keeps it.
+pub fn is_placeholder(entry: &Entry) -> bool {
+    let t = entry.title.trim();
+    t.strip_prefix("Track ")
+        .or_else(|| t.strip_prefix("track "))
+        .and_then(|n| n.trim().parse::<u32>().ok())
+        .is_some_and(|n| n == entry.number)
+}
+
+/// How many of these actually name something.
+pub fn named_count(entries: &[Entry]) -> usize {
+    entries.iter().filter(|e| !is_placeholder(e)).count()
+}
+
 /// Does this listing describe this file?
 ///
 /// The only check worth making, and it has to be made. Position is the entire
@@ -218,7 +241,15 @@ pub fn to_m3u(file_name: &str, entries: &[Entry]) -> String {
     for e in entries {
         // A comma inside a title would split the field, so it is escaped the
         // way the reader un-escapes it.
-        let title = e.title.replace(',', "\\,");
+        // A placeholder is written as no title at all, so the reader falls back
+        // to what it would have said anyway rather than to a fake answer. The
+        // line still has to exist: the length is worth keeping, and a missing
+        // line would shift nothing but would lose it.
+        let title = if is_placeholder(e) {
+            String::new()
+        } else {
+            e.title.replace(',', "\\,")
+        };
         s.push_str(&format!("{file_name}::{ty},{},{},{}\n", e.number, title, e.length));
     }
     s
@@ -301,6 +332,33 @@ mod tests {
     #[test]
     fn a_name_with_no_article_yields_one_candidate() {
         assert_eq!(slug_candidates("Castlevania"), vec!["castlevania".to_string()]);
+    }
+
+    /// Verified against the live archive: that Zelda rip is listed with 37
+    /// entries of which 15 are `Track N`.
+    #[test]
+    fn a_numbered_placeholder_is_not_a_name() {
+        assert!(is_placeholder(&Entry { number: 1, title: "Track 1".into(), length: String::new() }));
+        assert!(is_placeholder(&Entry { number: 12, title: " Track 12 ".into(), length: String::new() }));
+        assert!(!is_placeholder(&Entry { number: 1, title: "Overworld".into(), length: String::new() }));
+    }
+
+    /// Position matters: a song really called "Track 3" sitting at nine is a
+    /// name, not a placeholder.
+    #[test]
+    fn a_number_that_is_not_its_own_position_is_a_name() {
+        assert!(!is_placeholder(&Entry { number: 9, title: "Track 3".into(), length: String::new() }));
+    }
+
+    #[test]
+    fn a_placeholder_is_written_as_no_title_but_keeps_its_length() {
+        let e = vec![
+            Entry { number: 1, title: "Track 1".into(), length: "3:00".into() },
+            Entry { number: 2, title: "Overworld".into(), length: "1:30".into() },
+        ];
+        let m = to_m3u("z.nsf", &e);
+        assert!(m.contains("z.nsf::NSF,1,,3:00\n"), "{m}");
+        assert!(m.contains("z.nsf::NSF,2,Overworld,1:30\n"), "{m}");
     }
 
     /// The gate the whole feature rests on. Position *is* the mapping, so a

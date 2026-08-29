@@ -432,6 +432,13 @@ pub struct TrackNames {
     pub subsongs: usize,
     /// The names, in order. Empty when nothing usable was found.
     pub titles: Vec<String>,
+    /// How many of `titles` actually name something.
+    ///
+    /// The archive lists an unnamed track as `Track 12`, and a partly tagged
+    /// rip is ordinary — the Zelda NSF has 22 real names among 37 entries. Those
+    /// are written as no title at all, so the reader falls back to what it
+    /// would have said instead of to a placeholder dressed as an answer.
+    pub named: usize,
     /// Their lengths as published, positionally aligned with `titles`.
     ///
     /// Carried separately rather than folded into the title so the caller can
@@ -474,6 +481,7 @@ pub async fn suggest_track_names(
         subsongs: 0,
         titles: Vec::new(),
         lengths: Vec::new(),
+        named: 0,
         problem: Some(why.to_string()),
     };
 
@@ -507,6 +515,7 @@ pub async fn suggest_track_names(
                 subsongs,
                 titles: Vec::new(),
                 lengths: Vec::new(),
+                named: 0,
                 problem: Some("This file holds a single song.".into()),
             });
         }
@@ -519,6 +528,7 @@ pub async fn suggest_track_names(
                 subsongs,
                 titles: Vec::new(),
                 lengths: Vec::new(),
+                named: 0,
                 problem: Some(format!("No listing for \"{game_for_thread}\" in the archive.")),
             });
         }
@@ -528,6 +538,7 @@ pub async fn suggest_track_names(
                 subsongs,
                 titles: Vec::new(),
                 lengths: Vec::new(),
+                named: 0,
                 problem: Some(format!(
                     "The archive lists {} tracks and this file has {subsongs}. \
                      Position is the whole mapping, so a different count is a different rip \
@@ -539,7 +550,17 @@ pub async fn suggest_track_names(
         Ok(TrackNames {
             file: file_for_thread,
             subsongs,
-            titles: entries.iter().map(|e| e.title.clone()).collect(),
+            named: tunante_art::tracklist::named_count(&entries),
+            titles: entries
+                .iter()
+                .map(|e| {
+                    if tunante_art::tracklist::is_placeholder(e) {
+                        String::new()
+                    } else {
+                        e.title.clone()
+                    }
+                })
+                .collect(),
             lengths: entries.iter().map(|e| e.length.clone()).collect(),
             problem: None,
         })
