@@ -308,14 +308,15 @@ fn read_gme_metadata_inner(
             } else if !info.song.is_empty() {
                 info.song.clone()
             } else {
-                format!("{} - Track {}", file_name, seq + 1)
+                format!("Track {}", seq + 1)
             }
         } else if !info.song.is_empty() {
             info.song.clone()
         } else if track_count == 1 {
+            // One song: the file name is the only name there is.
             file_name.clone()
         } else {
-            format!("{} - Track {}", file_name, i + 1)
+            format!("Track {}", i + 1)
         };
 
         // A track that does not loop ends when its data does, and GME stops

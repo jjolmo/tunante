@@ -219,7 +219,7 @@ pub fn read_vgmstream_metadata(path: &Path, loop_count: f64) -> Result<Vec<Track
         let title = if !info.stream_name.is_empty() {
             info.stream_name.clone()
         } else {
-            format!("{} - Stream {}", file_name, i)
+            format!("Stream {}", i)
         };
 
         // Always use file extension as codec (consistent with other readers),
