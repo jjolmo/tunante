@@ -21,7 +21,9 @@ python3 "$root/scripts/gen-icons.py" || {
 # Staged automatically. The alternative is a commit whose logo and icons
 # disagree, which is the exact state this hook exists to prevent — and which
 # nobody notices until a launcher shows the old face.
-git add -- \
-    "$root/apps/desktop/src-tauri/icons" \
-    "$root/apps/mini/dist/icons" \
-    "$root/apps/android/app/src/main/res"
+#
+# The list comes from the generator, never from here. A hand-written copy went
+# stale the first time an output was added: the favicon was regenerated and then
+# left out of the commit, because this hook had never been told about it.
+python3 "$root/scripts/gen-icons.py" --list \
+    | (cd "$root" && xargs -d '\n' -r git add --)

@@ -181,10 +181,22 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
                     help="report what is stale and write nothing")
+    ap.add_argument("--list", action="store_true",
+                    help="print every path this manages, one per line, and exit")
     args = ap.parse_args()
 
     src = load()
     planned = build(src)
+
+    # So the pre-commit hook can stage exactly what was written without keeping
+    # its own copy of the list. The first version had one, and the moment the
+    # favicon was added here the hook silently stopped staging it — the commit
+    # went out with a regenerated file left behind.
+    if args.list:
+        for path in sorted(planned):
+            print(path.relative_to(ROOT))
+        return 0
+
     stale = []
     for path, data in sorted(planned.items()):
         old = path.read_bytes() if path.is_file() else None
