@@ -206,14 +206,24 @@
 	let consoleAnchor = $state<Anchor | null>(null);
 	let gameAnchor = $state<Anchor | null>(null);
 
+	/// Wide enough to read, and never off the edge.
+	///
+	/// Matching the input's width made every entry wrap over three lines: game
+	/// names are long, and the field is one of two sharing a row in a column.
+	const MIN_DROP_WIDTH = 300;
+
 	function anchorTo(el: HTMLElement | null): Anchor | null {
 		if (!el) return null;
 		const r = el.getBoundingClientRect();
 		const below = window.innerHeight - r.bottom - 8;
+		const width = Math.min(Math.max(r.width, MIN_DROP_WIDTH), window.innerWidth - 16);
+		// Growing rightwards from a field near the right edge would put half the
+		// list off screen, so it slides back instead.
+		const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
 		return {
-			left: r.left,
+			left,
 			top: r.bottom + 2,
-			width: r.width,
+			width,
 			// Never taller than the room under the field. Without this the list
 			// runs off the bottom of the screen and its last entries cannot be
 			// reached at all.
@@ -782,6 +792,10 @@
 		gap: 8px;
 		width: 100%;
 		text-align: left;
+		/* One line each. With the list as narrow as the field every game name
+		   wrapped over three, and a list of three-line rows is not scannable. */
+		white-space: nowrap;
+		overflow: hidden;
 		background: none;
 		border: none;
 		border-radius: 3px;
