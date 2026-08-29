@@ -1506,6 +1506,9 @@ fn bare_track(path: &str) -> tunante_core::db::models::Track {
         title: name,
         artist: String::new(),
         album: String::new(),
+        // No header to have read one from: this is the track for a file the
+        // scanner has not opened.
+        header_game: String::new(),
         album_artist: String::new(),
         track_number: None,
         disc_number: None,

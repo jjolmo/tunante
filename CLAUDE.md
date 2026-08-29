@@ -111,6 +111,17 @@ npm ones run from `apps/desktop/`, where `package.json` lives.
   `tunante-core`/`tunante-codec` are never compiled, and breakage there goes unseen.
   `--exclude tunante-android`: that crate only builds for Android, and a desktop
   host cannot link it.
+- `ANDROID_NDK_HOME=~/Android/Sdk/ndk/27.3.13750724 RUSTUP_TOOLCHAIN=stable \
+  cargo ndk -t arm64-v8a --platform 26 check -p tunante-android` — the crate the
+  line above excludes. **Run it after touching anything shared.** Excluding it
+  from every check means a change to a struct in `tunante-core` compiles
+  everywhere you looked and breaks the one place you did not: adding a field to
+  `Track` got through a clean workspace check, a clean frontend check and 256
+  passing tests, and died in CI. `bare_track` in `apps/android/rust/src/lib.rs`
+  spells every field out on purpose, precisely so the compiler stops there — but
+  only if somebody compiles it. Plain `--target aarch64-linux-android` is not
+  enough; `ring` and `libsqlite3-sys` build C and need the NDK toolchain that
+  `cargo ndk` sets up.
 - `cargo run -p tunante-mini` - Run the Slint player. It is a desktop app too,
   not only a phone one — CI ships glibc x86_64 and aarch64 tarballs beside the
   Alpine/musl .apk.
