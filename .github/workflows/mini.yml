@@ -22,8 +22,11 @@ on:
   # nothing else — and the assets are attached to that release's tag, so
   # "download the latest" quietly meant "the latest that happens to have them".
   # Three extra jobs per release is the price of a release meaning one thing.
+  # On the tag, not on main. release.yml is manual now, and the tag it pushes
+  # is what says a release is happening — so this fires exactly when there is
+  # something to attach itself to, and never on an ordinary commit.
   push:
-    branches: [main, tunante-mini]
+    tags: ['v*']
   # On a pull request the filter still makes sense: nothing is published, and a
   # change to the desktop frontend has nothing to say about the Slint player.
   pull_request:

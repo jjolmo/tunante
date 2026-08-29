@@ -1,18 +1,16 @@
 name: Release
 
+# Only when asked. Publishing on every push meant every commit spent about
+# forty minutes of runner and left a tag behind whether or not anything was
+# worth shipping — and a failed build left the tag anyway, which is where
+# v0.1.278 through v0.1.283 came from.
+#
+#     gh workflow run release.yml
+#
+# The bump and the tag stay inside this workflow, so that one command still
+# does the whole thing: it tags, and the tag push is what starts the phone
+# builds, which then attach themselves to it.
 on:
-  push:
-    branches:
-      - main
-    # A change to prose does not need four runners and a version bump. Only
-    # paths-ignore, never paths: this workflow must fire for everything else,
-    # and a `paths:` allowlist would silently stop releasing whatever nobody
-    # remembered to add to it.
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - 'screenshot.png'
-      - 'LICENSE'
   workflow_dispatch:
 
 permissions:
