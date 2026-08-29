@@ -1,18 +1,28 @@
 #!/bin/sh
 # Keep every icon in step with assets/logo.png.
 #
-# Only when the logo itself is staged. Regenerating on every commit would run a
+# Only when an input is staged. Regenerating on every commit would run a
 # thirty-file image pipeline to tell you nothing changed, and the one time it
 # did change would be lost in the noise.
 set -eu
 
 root=$(git rev-parse --show-toplevel)
 
+# Every input, not just the logo.
+#
+# There are two drawings: assets/logo.png is the app's face and assets/system.svg
+# is the tray glyph, and the first version of this watched only the first — so a
+# change to the tray symbol regenerated nothing at all and the icons went stale
+# silently. scripts/gen-icons.py is here for the same reason: a change to how
+# the icons are produced makes every output stale.
+#
 # --cached, not the working tree: what is being committed is what the icons have
-# to match. A logo edited but not staged is not part of this commit.
-git diff --cached --name-only --diff-filter=ACMR | grep -qx 'assets/logo.png' || exit 0
+# to match. An input edited but not staged is not part of this commit.
+changed=$(git diff --cached --name-only --diff-filter=ACMR \
+    | grep -xE 'assets/logo\.png|assets/system\.svg|scripts/gen-icons\.py' || true)
+[ -n "$changed" ] || exit 0
 
-echo "assets/logo.png changed — regenerating icons"
+echo "regenerating icons — changed: $(echo "$changed" | tr '\n' ' ')"
 python3 "$root/scripts/gen-icons.py" || {
     echo "icon generation failed; commit aborted" >&2
     exit 1
