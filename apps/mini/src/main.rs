@@ -44,6 +44,8 @@
 //! not answerable by clicking from a script — only by starting there.
 
 mod boost;
+// logind, reached over D-Bus, and only `mpris` uses it.
+#[cfg(target_os = "linux")]
 mod inhibit;
 mod library;
 mod mpris;

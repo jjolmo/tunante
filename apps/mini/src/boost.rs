@@ -37,6 +37,7 @@
 //! and then it fails quietly and the app runs as it did before.
 
 /// Half of the 0..1024 scale the kernel uses for utilisation clamps.
+#[cfg(target_os = "linux")]
 const UI_THREAD_CLAMP: u32 = 512;
 
 /// `SCHED_FLAG_KEEP_POLICY | SCHED_FLAG_KEEP_PARAMS | SCHED_FLAG_UTIL_CLAMP_MIN`
@@ -44,8 +45,10 @@ const UI_THREAD_CLAMP: u32 = 512;
 /// The two `KEEP` flags matter: without them this call would also rewrite the
 /// scheduling policy and priority from the zeroed fields below, quietly moving
 /// the thread to `SCHED_OTHER` at nice 0.
+#[cfg(target_os = "linux")]
 const FLAGS: u64 = 0x08 | 0x10 | 0x20;
 
+#[cfg(target_os = "linux")]
 #[repr(C)]
 #[derive(Default)]
 struct SchedAttr {
@@ -70,6 +73,7 @@ struct SchedAttr {
 /// Returns whether the kernel took it, for logging. Failure is not an error:
 /// the app simply runs at whatever clock the governor picks, which is what it
 /// did before this existed.
+#[cfg(target_os = "linux")]
 pub fn ask_for_ui_clock() -> bool {
     let attr = SchedAttr {
         size: std::mem::size_of::<SchedAttr>() as u32,
@@ -93,4 +97,13 @@ pub fn ask_for_ui_clock() -> bool {
         )
     };
     rc == 0
+}
+
+/// Elsewhere there is no `sched_setattr`, so there is nothing to ask for.
+///
+/// Reports false rather than true: the caller logs this, and claiming the
+/// kernel granted a clamp that was never requested would make that log lie.
+#[cfg(not(target_os = "linux"))]
+pub fn ask_for_ui_clock() -> bool {
+    false
 }
