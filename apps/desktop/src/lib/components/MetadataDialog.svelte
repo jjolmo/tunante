@@ -587,19 +587,29 @@
 			<span class="spacer"></span>
 			<!--
 				Cancel means "leave this alone" whatever is on screen: it closes
-				the name panel while that is open, and the dialog otherwise.
+				the name panel while that is open, and the dialog otherwise. It
+				is absent once the rename has happened — there is nothing left to
+				call off, and offering to cancel a finished thing invites the
+				reader to wonder what it would undo.
 			-->
-			<button
-				class="btn btn-secondary"
-				onclick={() => (namesMode === 'off' ? onclose() : closeNames())}>Cancel</button
-			>
+			{#if namesMode !== 'done'}
+				<button
+					class="btn btn-secondary"
+					onclick={() => (namesMode === 'off' ? onclose() : closeNames())}>Cancel</button
+				>
+			{/if}
 			{#if namesMode !== 'ask' && namesMode !== 'loading'}
+				<!--
+					One button, named for what it does here. After the rename it
+					acknowledges and closes — pressing "Apply" on a report would
+					have saved the tag form nobody could see.
+				-->
 				<button
 					class="btn btn-primary"
-					onclick={handleSave}
+					onclick={() => (namesMode === 'done' ? closeNames() : handleSave())}
 					disabled={isSaving || (namesMode === 'list' && !!names?.problem)}
 				>
-					{isSaving ? 'Saving...' : namesMode === 'list' ? 'Fix' : 'Apply'}
+					{#if isSaving}Saving...{:else if namesMode === 'done'}OK{:else if namesMode === 'list'}Fix{:else}Apply{/if}
 				</button>
 			{/if}
 			{/if}
