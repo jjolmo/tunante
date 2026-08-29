@@ -1,0 +1,31 @@
+name: icons
+
+# Every icon in the tree is generated from assets/logo.png. The pre-commit hook
+# keeps them in step, but a hook lives in .git/hooks, which is not versioned and
+# is bypassed entirely when core.hooksPath is set — so it cannot be relied on.
+# This is the part that cannot be skipped.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/logo.png'
+      - 'scripts/gen-icons.py'
+      - 'apps/desktop/src-tauri/icons/**'
+      - 'apps/mini/dist/icons/**'
+      - 'apps/android/app/src/main/res/mipmap-**'
+      - '.github/workflows/icons.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Icons match the logo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --disable-pip-version-check Pillow
+      # Writes nothing, and names every file that drifted.
+      - run: python3 scripts/gen-icons.py --check

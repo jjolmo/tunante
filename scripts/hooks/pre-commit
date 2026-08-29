@@ -1,0 +1,27 @@
+#!/bin/sh
+# Keep every icon in step with assets/logo.png.
+#
+# Only when the logo itself is staged. Regenerating on every commit would run a
+# thirty-file image pipeline to tell you nothing changed, and the one time it
+# did change would be lost in the noise.
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+
+# --cached, not the working tree: what is being committed is what the icons have
+# to match. A logo edited but not staged is not part of this commit.
+git diff --cached --name-only --diff-filter=ACMR | grep -qx 'assets/logo.png' || exit 0
+
+echo "assets/logo.png changed — regenerating icons"
+python3 "$root/scripts/gen-icons.py" || {
+    echo "icon generation failed; commit aborted" >&2
+    exit 1
+}
+
+# Staged automatically. The alternative is a commit whose logo and icons
+# disagree, which is the exact state this hook exists to prevent — and which
+# nobody notices until a launcher shows the old face.
+git add -- \
+    "$root/apps/desktop/src-tauri/icons" \
+    "$root/apps/mini/dist/icons" \
+    "$root/apps/android/app/src/main/res"

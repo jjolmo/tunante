@@ -275,6 +275,11 @@ vendor/lazyusf2-rs/           # USF playback (C, N64 core)
 vendor/opus-decoder-patch/    # Pure Rust Opus decoder (patched)
 ```
 
+`assets/logo.png` is the only drawing in the repository. All 30 icons — Tauri's
+bundle and tray, tunante-mini's hicolor set, Android's launcher and adaptive
+mipmaps — are generated from it by `scripts/gen-icons.py`, checked in CI, and
+never edited by hand.
+
 ## Other Commands
 
 ```bash
