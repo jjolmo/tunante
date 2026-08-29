@@ -2,7 +2,9 @@
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
 	"description": "Default capability for Tunante",
-	"windows": ["main"],
+	"windows": [
+		"main"
+	],
 	"permissions": [
 		"core:default",
 		"dialog:default",
@@ -13,7 +15,6 @@
 		"core:window:allow-show",
 		"core:tray:default",
 		"process:allow-restart",
-		"process:allow-exit",
-		"updater:default"
+		"process:allow-exit"
 	]
 }

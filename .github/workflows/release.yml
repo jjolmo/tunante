@@ -108,15 +108,11 @@ jobs:
       - name: Build
         run: npm run tauri build
         working-directory: apps/desktop
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
       - uses: actions/upload-artifact@v4
         with:
           name: tunante-linux-${{ matrix.arch }}
           path: |
             target/release/bundle/appimage/*.AppImage
-            target/release/bundle/appimage/*.AppImage.sig
             target/release/bundle/deb/*.deb
 
   build-windows:
@@ -153,23 +149,30 @@ jobs:
       - name: Build
         run: npm run tauri build
         working-directory: apps/desktop
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
       - uses: actions/upload-artifact@v4
         with:
           name: tunante-windows
           path: |
             target/release/bundle/msi/*.msi
-            target/release/bundle/msi/*.msi.sig
             target/release/bundle/nsis/*.exe
-            target/release/bundle/nsis/*.exe.sig
 
   build-macos:
     needs: version
     if: needs.version.outputs.should_release == 'true'
-    runs-on: macos-latest
-    name: macOS aarch64
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-latest is Apple Silicon; macos-13 is the last Intel runner.
+          # Building natively on each rather than cross-compiling, because the
+          # vendored emulator cores are C and cmake, and a universal binary
+          # would double the size of every download for the sake of one arch.
+          - arch: aarch64
+            runner: macos-latest
+          - arch: x86_64
+            runner: macos-13
+    runs-on: ${{ matrix.runner }}
+    name: macOS ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -199,16 +202,11 @@ jobs:
         run: npm run tauri build
         working-directory: apps/desktop
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ''
           MACOSX_DEPLOYMENT_TARGET: '11.0'
       - uses: actions/upload-artifact@v4
         with:
-          name: tunante-macos-aarch64
-          path: |
-            target/release/bundle/dmg/*.dmg
-            target/release/bundle/macos/*.app.tar.gz
-            target/release/bundle/macos/*.app.tar.gz.sig
+          name: tunante-macos-${{ matrix.arch }}
+          path: target/release/bundle/dmg/*.dmg
 
   release:
     needs: [version, build-linux, build-windows, build-macos]
@@ -225,52 +223,12 @@ jobs:
         id: tag
         run: echo "tag=${{ needs.version.outputs.tag }}" >> "$GITHUB_OUTPUT"
 
-      - name: Prepare release files and generate latest.json
+      - name: Collect the release files
         run: |
           mkdir -p release
-          find artifacts -type f \( -name "*.AppImage" -o -name "*.deb" -o -name "*.msi" -o -name "*.exe" -o -name "*.dmg" -o -name "*.tar.gz" -o -name "*.sig" \) -exec cp {} release/ \;
-
-          TAG="${{ steps.tag.outputs.tag }}"
-          VERSION="${TAG#v}"
-          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          BASE_URL="https://github.com/jjolmo/tunante/releases/download/$TAG"
-
-          # Read signatures
-          read_sig() { [ -f "$1" ] && cat "$1" || echo ""; }
-
-          APPIMAGE_AMD64=$(ls release/*amd64*.AppImage 2>/dev/null | head -1 || true)
-          APPIMAGE_ARM64=$(ls release/*arm64*.AppImage 2>/dev/null | head -1 || true)
-          MSI=$(ls release/*.msi 2>/dev/null | grep -v '.sig' | head -1 || true)
-          NSIS=$(ls release/*.exe 2>/dev/null | grep -v '.sig' | head -1 || true)
-          MACOS_ARM_TAR=$(ls release/*.app.tar.gz 2>/dev/null | grep -v '.sig' | head -1 || true)
-
-          name_or_none() { [ -n "$1" ] && basename "$1" || echo "none"; }
-
-          cat > release/latest.json << ENDJSON
-          {
-            "version": "$VERSION",
-            "notes": "Release $TAG",
-            "pub_date": "$DATE",
-            "platforms": {
-              "linux-x86_64": {
-                "signature": "$(read_sig "${APPIMAGE_AMD64}.sig")",
-                "url": "$BASE_URL/$(name_or_none "$APPIMAGE_AMD64")"
-              },
-              "linux-aarch64": {
-                "signature": "$(read_sig "${APPIMAGE_ARM64}.sig")",
-                "url": "$BASE_URL/$(name_or_none "$APPIMAGE_ARM64")"
-              },
-              "windows-x86_64": {
-                "signature": "$(read_sig "${MSI}.sig")",
-                "url": "$BASE_URL/$(name_or_none "$MSI")"
-              },
-              "darwin-aarch64": {
-                "signature": "$(read_sig "${MACOS_ARM_TAR}.sig")",
-                "url": "$BASE_URL/$(name_or_none "$MACOS_ARM_TAR")"
-              }
-            }
-          }
-          ENDJSON
+          find artifacts -type f \
+            \( -name "*.AppImage" -o -name "*.deb" -o -name "*.msi" \
+               -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release/ \;
           cp apps/desktop/update_mac.sh release/
           ls -la release/
 

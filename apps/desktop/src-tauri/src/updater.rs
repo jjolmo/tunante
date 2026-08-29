@@ -56,6 +56,21 @@ fn is_newer(current: &str, latest: &str) -> bool {
 }
 
 /// Determine which asset name to look for based on OS and arch.
+///
+/// These are the names Tauri's bundler actually produces, which are not
+/// consistent between formats and are the reason this used to be wrong:
+///
+/// | | x86_64 | ARM |
+/// |---|---|---|
+/// | AppImage | `Tunante_1.2.3_amd64.AppImage` | `Tunante_1.2.3_aarch64.AppImage` |
+/// | deb | `Tunante_1.2.3_amd64.deb` | `Tunante_1.2.3_arm64.deb` |
+/// | dmg | — | `Tunante_1.2.3_aarch64.dmg` |
+///
+/// The Debian package says `arm64` and the AppImage beside it says `aarch64`.
+/// Asking for `arm64` on an ARM machine therefore matched no AppImage at all,
+/// and the loose fallback in `find_asset` then handed the user the **`.deb`** —
+/// which `apply_update` refuses to install, so the update was offered and then
+/// failed. Every asset pattern here is covered by a test against these names.
 fn target_asset_pattern() -> Vec<String> {
     let mut patterns = Vec::new();
 
@@ -64,23 +79,96 @@ fn target_asset_pattern() -> Vec<String> {
         #[cfg(target_arch = "x86_64")]
         patterns.push("amd64".to_string());
         #[cfg(target_arch = "aarch64")]
-        patterns.push("arm64".to_string());
+        patterns.push("aarch64".to_string());
         // Prefer AppImage
         patterns.push("AppImage".to_string());
     }
 
+    // The MSI only. Listing `.exe` as well made the strict pass in `find_asset`
+    // impossible to satisfy — no file is both — so it always fell through to
+    // the loose one and picked the MSI by luck rather than by decision.
     #[cfg(target_os = "windows")]
     {
         patterns.push(".msi".to_string());
-        patterns.push(".exe".to_string());
     }
 
     #[cfg(target_os = "macos")]
     {
+        #[cfg(target_arch = "x86_64")]
+        patterns.push("x64".to_string());
+        #[cfg(target_arch = "aarch64")]
+        patterns.push("aarch64".to_string());
         patterns.push(".dmg".to_string());
     }
 
     patterns
+}
+
+#[cfg(test)]
+mod asset_tests {
+    use super::*;
+
+    /// The real asset list of a release, so the patterns are checked against
+    /// what the bundler emits rather than against what anyone remembers.
+    fn assets() -> Vec<ReleaseAsset> {
+        [
+            "Tunante_0.1.277_aarch64.AppImage",
+            "Tunante_0.1.277_amd64.AppImage",
+            "Tunante_0.1.277_amd64.deb",
+            "Tunante_0.1.277_arm64.deb",
+            "Tunante_0.1.277_aarch64.dmg",
+            "Tunante_0.1.277_x64.dmg",
+            "Tunante_0.1.277_x64-setup.exe",
+            "Tunante_0.1.277_x64_en-US.msi",
+            "tunante-android-0.1.277.apk",
+            "latest.json",
+        ]
+        .iter()
+        .map(|n| ReleaseAsset {
+            name: (*n).to_string(),
+            browser_download_url: format!("https://example/{n}"),
+            size: 1,
+        })
+        .collect()
+    }
+
+    /// Whatever this platform is, the strict pass has to hit — reaching the
+    /// loose fallback is how an ARM machine was offered a Debian package.
+    #[test]
+    fn the_strict_pass_finds_something_for_this_platform() {
+        let all = assets();
+        let patterns = target_asset_pattern();
+        let hit = all.iter().find(|a| {
+            let n = a.name.to_lowercase();
+            patterns.iter().all(|p| n.contains(&p.to_lowercase()))
+        });
+        assert!(hit.is_some(), "no asset matches all of {patterns:?}");
+    }
+
+    #[test]
+    fn the_chosen_asset_is_installable_on_this_platform() {
+        let all = assets();
+        let picked = find_asset(&all).expect("nothing matched").name.clone();
+        if cfg!(target_os = "linux") {
+            assert!(picked.ends_with(".AppImage"), "picked {picked}");
+            assert!(!picked.ends_with(".deb"), "a .deb cannot be self-applied");
+        } else if cfg!(target_os = "windows") {
+            assert!(picked.ends_with(".msi"), "picked {picked}");
+        } else if cfg!(target_os = "macos") {
+            assert!(picked.ends_with(".dmg"), "picked {picked}");
+        }
+    }
+
+    /// The architecture has to be in the name, or a 64-bit machine happily
+    /// downloads the other one's build.
+    #[test]
+    fn the_chosen_asset_is_for_this_architecture() {
+        let picked = find_asset(&assets()).unwrap().name.to_lowercase();
+        let other = if cfg!(target_arch = "x86_64") { ["aarch64", "arm64"] } else { ["amd64", "x64"] };
+        for wrong in other {
+            assert!(!picked.contains(wrong), "picked {picked}, which is {wrong}");
+        }
+    }
 }
 
 /// Find the best matching asset for this platform.
