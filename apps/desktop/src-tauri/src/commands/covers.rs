@@ -320,3 +320,90 @@ pub fn clear_cover_cache(app: tauri::AppHandle) -> Result<u32, String> {
     }
     Ok(n)
 }
+
+/// Game names to offer while someone is correcting a classification.
+///
+/// Three sources, in the order they are worth trusting:
+///
+/// 1. **The Libretro archive for that console.** These are No-Intro names —
+///    canonical, and the exact strings the cover downloader will later try to
+///    match. Picking one here means the artwork step cannot then fail to find
+///    it. Cached after the first fetch, so this is usually local.
+/// 2. **Names already in the library**, so a correction lands on the spelling
+///    the rest of the collection uses instead of a near-duplicate.
+/// 3. **Steam**, for everything the console archives have never heard of —
+///    PC games, and anything released after the archive stopped caring.
+///
+/// Region tags are stripped from the Libretro names: `(USA)` and `(Europe)` are
+/// two files for one game, and offering both as separate choices is offering a
+/// decision that does not exist.
+#[tauri::command]
+pub async fn suggest_game_names(
+    console_id: String,
+    query: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<String>, String> {
+    let q = query.trim().to_lowercase();
+    if q.len() < 2 {
+        return Ok(Vec::new());
+    }
+
+    let library: Vec<String> = {
+        let db = state.db.lock();
+        db.get_all_tracks()
+            .map_err(|e| e.to_string())?
+            .into_iter()
+            .filter_map(|t| (!t.game.is_empty()).then_some(t.game))
+            .collect()
+    };
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut out: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = Default::default();
+        let mut push = |name: String, out: &mut Vec<String>| {
+            let key = name.to_lowercase();
+            if seen.insert(key) {
+                out.push(name);
+            }
+        };
+
+        for g in library {
+            if g.to_lowercase().contains(&q) {
+                push(g, &mut out);
+            }
+        }
+
+        let http = tunante_art::http::UreqHttp::default();
+        if let Some(system) = tunante_core::console::by_id(&console_id).and_then(|c| c.libretro) {
+            if let Ok(index) = tunante_art::archive::index_for(&http, system) {
+                for e in &index.entries {
+                    // The stem before the first region group, which is the game.
+                    let base = e.file.split(" (").next().unwrap_or(&e.file).trim();
+                    if base.to_lowercase().contains(&q) {
+                        push(base.to_string(), &mut out);
+                    }
+                    if out.len() > 40 {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if out.len() < 8 {
+            if let Some(hit) = tunante_art::sources::steam(&http, &query) {
+                push(hit.matched_name, &mut out);
+            }
+        }
+
+        out.sort_by_key(|n| {
+            let l = n.to_lowercase();
+            // Prefixes first, then the rest: typing "chrono" should not bury
+            // "Chrono Trigger" under "Radical Dreamers - Le Trésor…".
+            (if l.starts_with(&q) { 0 } else { 1 }, n.len(), l)
+        });
+        out.truncate(12);
+        Ok(out)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}

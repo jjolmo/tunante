@@ -1,20 +1,36 @@
 <script lang="ts">
 	import { consolesStore, type ConsoleDefinition } from '$lib/stores/consoles.svelte';
 	import { libraryStore } from '$lib/stores/library.svelte';
+	import { invoke } from '@tauri-apps/api/core';
 	import type { Track } from '$lib/types';
 
 	let {
 		track = null,
+		tracks = null,
 		folderPath = null,
 		onclose
-	}: { track?: Track | null; folderPath?: string | null; onclose: () => void } = $props();
+	}: {
+		track?: Track | null;
+		/// A whole selection. `track` is the one-item case and still works.
+		tracks?: Track[] | null;
+		folderPath?: string | null;
+		onclose: () => void;
+	} = $props();
+
+	let chosenTracks = $derived(tracks && tracks.length > 0 ? tracks : track ? [track] : []);
+	let first = $derived(chosenTracks[0] ?? null);
+	// The folders the selection spans. One is the ordinary case; more than one
+	// means "apply to the folder" has to be honest about how many it will touch.
+	let folders = $derived([
+		...new Set(chosenTracks.map((t) => t.path.replace(/[/\\][^/\\]*$/, '')))
+	]);
 
 	// Opened on a track, the folder is the one it sits in. Opened on a folder,
 	// it is that folder. Either way a rip is a folder, so naming the console
 	// once repairs every track in it.
 	// $derived rather than const: reading a prop at the top level captures only
 	// its first value, and Svelte warns about exactly that.
-	let folder = $derived(folderPath ?? (track ? track.path.replace(/[/\\][^/\\]*$/, '') : ''));
+	let folder = $derived(folderPath ?? (first ? first.path.replace(/[/\\][^/\\]*$/, '') : ''));
 	let folderLabel = $derived(folder.split(/[/\\]/).slice(-2).join('/'));
 
 	// A folder has no single track to override, so that choice does not exist.
@@ -26,7 +42,7 @@
 	let inFolder = $derived(
 		libraryStore.tracks.filter((t) => t.path.startsWith(folder + '/') || t.path.startsWith(folder + '\\'))
 	);
-	let guessed = $derived(track ?? inFolder[0] ?? null);
+	let guessed = $derived(first ?? inFolder[0] ?? null);
 
 	// Pre-filled with what the classifier already worked out, so agreeing with
 	// its guess about the game while correcting only the console costs nothing.
@@ -35,13 +51,18 @@
 	let gameQuery = $state('');
 
 	let seeded = false;
+	let seededFromHeader = $state(false);
 	$effect(() => {
 		if (seeded) return;
 		const g = guessed;
 		if (!g && folderPath && inFolder.length === 0) return;
 		seeded = true;
 		consoleId = g?.console_id || null;
-		gameQuery = g?.game || folder.split(/[/\\]/).pop() || '';
+		// The file's own header first. It names the game where `album` names a
+		// release, and it is the reason this dialog can often be confirmed
+		// rather than filled in.
+		gameQuery = g?.header_game || g?.game || folder.split(/[/\\]/).pop() || '';
+		seededFromHeader = !!g?.header_game;
 	});
 
 	let consoleOpen = $state(false);
@@ -87,12 +108,58 @@
 		return [...s].sort((a, b) => a.localeCompare(b));
 	});
 
-	let gameMatches = $derived.by(() => {
+	let localMatches = $derived.by(() => {
 		const q = gameQuery.trim().toLowerCase();
 		if (!q) return [];
 		return knownGames
 			.filter((g) => g.toLowerCase().includes(q) && g.toLowerCase() !== q)
-			.slice(0, 8);
+			.slice(0, 6);
+	});
+
+	// Canonical names, from the console's Libretro archive and from Steam. The
+	// point is not completeness: it is that a name picked here is a name the
+	// cover downloader will later match, so confirming the game and finding its
+	// artwork stop being two separate gambles.
+	let remoteMatches = $state<string[]>([]);
+	let searching = $state(false);
+	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function searchRemote(q: string) {
+		if (searchTimer) clearTimeout(searchTimer);
+		if (q.trim().length < 2) {
+			remoteMatches = [];
+			return;
+		}
+		// Debounced: this reaches the network on the first keystroke of a query
+		// it has not cached, and a request per character is a request per
+		// character.
+		searchTimer = setTimeout(async () => {
+			searching = true;
+			try {
+				remoteMatches = await invoke<string[]>('suggest_game_names', {
+					consoleId: consoleId ?? '',
+					query: q
+				});
+			} catch (e) {
+				console.error('suggest_game_names:', e);
+				remoteMatches = [];
+			} finally {
+				searching = false;
+			}
+		}, 300);
+	}
+
+	let gameMatches = $derived.by(() => {
+		const q = gameQuery.trim().toLowerCase();
+		const seen = new Set<string>();
+		const out: string[] = [];
+		for (const g of [...localMatches, ...remoteMatches]) {
+			const k = g.toLowerCase();
+			if (k === q || seen.has(k)) continue;
+			seen.add(k);
+			out.push(g);
+		}
+		return out.slice(0, 10);
 	});
 
 	async function save() {
@@ -101,11 +168,18 @@
 		error = null;
 		try {
 			const game = gameQuery.trim() || null;
-			// flagFolder/flagTrack already reload the library afterwards.
-			if (scope === 'folder' || !track) {
-				await consolesStore.flagFolder(folder, consoleId, game);
+			// flagFolder/flagTrack each reload the library, so a selection of
+			// forty tracks would reload it forty times. The folder case is
+			// already deduplicated by `folders`.
+			if (scope === 'folder' || chosenTracks.length === 0) {
+				const targets = folderPath ? [folderPath] : folders;
+				for (const f of targets) {
+					await consolesStore.flagFolder(f, consoleId, game);
+				}
 			} else {
-				await consolesStore.flagTrack(track.path, consoleId, game);
+				for (const t of chosenTracks) {
+					await consolesStore.flagTrack(t.path, consoleId, game);
+				}
 			}
 			onclose();
 		} catch (e) {
@@ -143,14 +217,20 @@
 		<div class="body">
 			<p class="what">
 				<span class="what-name">
-					{track ? track.title || track.path.split(/[/\\]/).pop() : folder.split(/[/\\]/).pop()}
+					{#if chosenTracks.length > 1}
+						{chosenTracks.length} tracks
+					{:else if first}
+						{first.title || first.path.split(/[/\\]/).pop()}
+					{:else}
+						{folder.split(/[/\\]/).pop()}
+					{/if}
 				</span>
 				<span class="what-path">
-					{folderLabel}{#if !track}&nbsp;· {inFolder.length} track{inFolder.length === 1 ? '' : 's'}{/if}
+					{folders.length > 1 ? `${folders.length} folders` : folderLabel}{#if chosenTracks.length === 0}&nbsp;· {inFolder.length} track{inFolder.length === 1 ? '' : 's'}{/if}
 				</span>
 			</p>
 
-			{#if track}
+			{#if chosenTracks.length > 0}
 			<div class="field">
 				<span class="lbl" id="rc-scope-label">Apply to</span>
 				<div class="segmented" role="radiogroup" aria-labelledby="rc-scope-label">
@@ -158,12 +238,16 @@
 						class="seg" class:on={scope === 'folder'}
 						role="radio" aria-checked={scope === 'folder'}
 						onclick={() => (scope = 'folder')}
-					>The whole folder</button>
+					>{folders.length === 1
+						? 'The whole folder'
+						: `All ${folders.length} folders`}</button>
 					<button
 						class="seg" class:on={scope === 'track'}
 						role="radio" aria-checked={scope === 'track'}
 						onclick={() => (scope = 'track')}
-					>Only this track</button>
+					>{chosenTracks.length === 1
+						? 'Only this track'
+						: `Only these ${chosenTracks.length} tracks`}</button>
 				</div>
 			</div>
 			<span class="hint">
@@ -223,7 +307,10 @@
 						placeholder="Game name"
 						bind:value={gameQuery}
 						onfocus={() => (gameOpen = true)}
-						oninput={() => (gameOpen = true)}
+						oninput={() => {
+							gameOpen = true;
+							searchRemote(gameQuery);
+						}}
 					/>
 					{#if gameOpen && gameMatches.length > 0}
 						<ul class="drop">
@@ -243,8 +330,16 @@
 				</div>
 			</div>
 			<span class="hint">
-				Guessed from the tags and the folder. The suggestions are names already used
-				elsewhere in your library, so a correction does not create a near-duplicate.
+				{#if seededFromHeader}
+					<strong>From the file's own header</strong> — the game it names, which is not
+					always what its album says.
+				{:else}
+					Guessed from the tags and the folder; this format carries no game field of its
+					own.
+				{/if}
+				Suggestions come from your library and from the console's box-art archive, so a
+				name picked here is one the cover downloader can find.{#if searching}
+					<em> Searching…</em>{/if}
 			</span>
 
 			{#if error}<p class="err">{error}</p>{/if}
