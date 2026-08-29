@@ -300,8 +300,30 @@ impl Classifier {
         };
 
         // Which console, and why.
-        let segment_console: Option<&'static Console> =
-            dirs.first().and_then(|s| console::by_folder_segment(s));
+        //
+        // Every segment between the root and the file is examined, not just the
+        // first. The first version only looked at `dirs[0]`, which assumed the
+        // registered root *is* the folder holding the console folders. A real
+        // library does not oblige: with the root at `…/Musica` and the music at
+        // `…/Musica/OST juegos/Gba/riviera ost/…`, segment 0 is `OST juegos`,
+        // which names no machine, and everything below it fell to Unknown —
+        // hundreds of tracks in folders whose name says `Gba` in plain sight.
+        //
+        // First match from the root wins, not the nearest to the file: an
+        // arrangement folder under `SNES/Chrono Trigger/PS1 arrangement/` is
+        // filed under the machine the rip belongs to, not the one named last.
+        //
+        // Gated on there being a registered root. Outside one, `dirs` is every
+        // component of an absolute path, and scanning all of them starts
+        // matching the filesystem instead of the library: `/home/pc/Downloads/`
+        // would file a track under "PC". Looking only at the first segment used
+        // to hide that by accident.
+        let segment_hit: Option<(usize, &'static Console)> = root.and_then(|_| {
+            dirs.iter()
+                .enumerate()
+                .find_map(|(i, s)| console::by_folder_segment(s).map(|c| (i, c)))
+        });
+        let segment_console: Option<&'static Console> = segment_hit.map(|(_, c)| c);
 
         let (console_id, console_source) = if let Some(id) =
             track_override.and_then(|o| o.console_id.as_deref())
@@ -319,7 +341,8 @@ impl Classifier {
             (None, ConsoleSource::Unknown)
         };
 
-        let (game, game_source) = self.game_of(&path, album, root, &dirs, segment_console.is_some());
+        let (game, game_source) =
+            self.game_of(&path, album, root, &dirs, segment_hit.map(|(i, _)| i));
 
         Classification { console_id, console_source, game, game_source }
     }
@@ -330,7 +353,7 @@ impl Classifier {
         album: &str,
         root: Option<&str>,
         dirs: &[&str],
-        segment_is_console: bool,
+        console_at: Option<usize>,
     ) -> (String, GameSource) {
         if let Some(name) = self
             .track_overrides
@@ -373,10 +396,12 @@ impl Classifier {
             }
         }
 
-        // The console folder names the machine and is never the game. Dropping
-        // it can leave nothing, which means there was no game folder at all.
-        if segment_is_console {
-            candidates = candidates.get(1..).unwrap_or(&[]);
+        // The console folder names the machine and is never the game, and
+        // neither is anything above it — `OST juegos` is a filing cabinet, not a
+        // title. Drop everything up to and including it; being left with nothing
+        // means there was no game folder at all.
+        if let Some(i) = console_at {
+            candidates = candidates.get(i + 1..).unwrap_or(&[]);
         }
 
         if let Some(name) = candidates.last() {
@@ -393,6 +418,70 @@ mod tests {
     use super::*;
 
     const ROOT: &str = "/media/storage/Musica/OST juegos";
+
+    /// The layout that exposed the bug: the registered root sits *above* the
+    /// folder that holds the console folders.
+    const DEEP_ROOT: &str = "/media/storage/Musica";
+
+    #[test]
+    fn the_console_folder_need_not_be_the_first_segment() {
+        let c = Classifier::new(vec![DEEP_ROOT.to_string()], HashMap::new(), HashMap::new());
+        let r = c.classify(
+            "/media/storage/Musica/OST juegos/Gba/riviera ost/101 Overture.mp3",
+            "",
+            "mp3",
+        );
+        assert_eq!(r.console_id, Some("gba"));
+        assert_eq!(r.console_source, ConsoleSource::RootSegment);
+        assert_eq!(r.game, "riviera ost");
+    }
+
+    #[test]
+    fn the_filing_cabinet_above_the_console_is_never_the_game() {
+        let c = Classifier::new(vec![DEEP_ROOT.to_string()], HashMap::new(), HashMap::new());
+        let r = c.classify(
+            "/media/storage/Musica/OST juegos/PSX/Tales of Symphonia/BGM_B000.ADX",
+            "",
+            "adx",
+        );
+        assert_eq!(r.console_id, Some("ps1"));
+        assert_eq!(r.game, "Tales of Symphonia", "must not be `PSX` or `OST juegos`");
+    }
+
+    #[test]
+    fn a_disc_folder_still_resolves_under_a_deep_root() {
+        let c = Classifier::new(vec![DEEP_ROOT.to_string()], HashMap::new(), HashMap::new());
+        let r = c.classify(
+            "/media/storage/Musica/OST juegos/NDS/Rhythm Heaven/Disc 1/01.mp3",
+            "",
+            "mp3",
+        );
+        assert_eq!(r.console_id, Some("nds"));
+        assert_eq!(r.game, "Rhythm Heaven");
+    }
+
+    /// First match from the root, not the nearest to the file: the rip belongs
+    /// to the machine it was ripped from.
+    #[test]
+    fn the_first_console_segment_from_the_root_wins() {
+        let c = Classifier::new(vec![DEEP_ROOT.to_string()], HashMap::new(), HashMap::new());
+        let r = c.classify(
+            "/media/storage/Musica/OST juegos/SNES/Chrono Trigger/PSX arrangement/01.mp3",
+            "",
+            "mp3",
+        );
+        assert_eq!(r.console_id, Some("snes"));
+    }
+
+    /// A file loose in the console folder has no game folder at all, and must
+    /// not be named after the console or after the cabinet above it.
+    #[test]
+    fn a_loose_file_in_a_console_folder_falls_back_to_the_file_name() {
+        let c = Classifier::new(vec![DEEP_ROOT.to_string()], HashMap::new(), HashMap::new());
+        let r = c.classify("/media/storage/Musica/OST juegos/Gba/some tune.mp3", "", "mp3");
+        assert_eq!(r.console_id, Some("gba"));
+        assert_eq!(r.game, "some tune");
+    }
 
     fn plain() -> Classifier {
         Classifier::new(vec![ROOT.to_string()], HashMap::new(), HashMap::new())

@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - main
+    # A change to prose does not need four runners and a version bump. Only
+    # paths-ignore, never paths: this workflow must fire for everything else,
+    # and a `paths:` allowlist would silently stop releasing whatever nobody
+    # remembered to add to it.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'screenshot.png'
+      - 'LICENSE'
   workflow_dispatch:
 
 permissions:

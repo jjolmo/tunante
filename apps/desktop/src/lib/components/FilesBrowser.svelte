@@ -7,11 +7,13 @@
 	import { settingsStore } from '$lib/stores/settings.svelte';
 	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
+	import ReclassifyDialog from './ReclassifyDialog.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 
 	let expandSaveTimer: ReturnType<typeof setTimeout> | null = null;
 	let initialized = $state(false);
 	let contextMenu = $state<{ items: ContextMenuItem[]; x: number; y: number } | null>(null);
+	let reclassifyFolder = $state<string | null>(null);
 
 	// Breadcrumb slide animation
 	let slideDirection = $state<'forward' | 'back' | null>(null);
@@ -128,6 +130,10 @@
 				{
 					label: 'Create as playlist',
 					action: () => handleCreatePlaylistFromFolder(node),
+				},
+				{
+					label: 'Reclassify as console…',
+					action: () => (reclassifyFolder = node.fullPath),
 				},
 				{
 					label: 'Pin to Folders',
@@ -305,6 +311,10 @@
 		{/key}
 	{/if}
 </div>
+
+{#if reclassifyFolder}
+	<ReclassifyDialog folderPath={reclassifyFolder} onclose={() => (reclassifyFolder = null)} />
+{/if}
 
 {#if contextMenu}
 	<ContextMenu

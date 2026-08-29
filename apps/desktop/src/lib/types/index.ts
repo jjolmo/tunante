@@ -118,3 +118,10 @@ export interface PinnedFolder {
 }
 
 export type Theme = 'dark' | 'light' | 'system';
+
+/// How a cover is fitted into the square it is drawn in.
+///
+/// Game box art is not square and is not one shape either: a SNES box is
+/// almost square, a PS1 jewel case is portrait, a Mega Drive box is wide. One
+/// rule cannot flatter all of them, which is why this is a setting.
+export type CoverFit = 'cover' | 'contain' | 'blur' | 'fill' | 'none';

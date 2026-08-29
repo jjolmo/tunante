@@ -25,7 +25,9 @@ apps/
       src/audio/        #     Playback engine (rodio) + output device selection
       src/commands/     #     Tauri IPC commands (player, library, playlists)
       src/watcher/      #     Folder watching (notify)
-  mini/                 # Phone app for postmarketOS (Slint)
+  mini/                 # The small player (Slint). Not phone-only: backend-winit
+                        # covers Wayland and X11, so the same binary runs on a
+                        # phone and on a desktop. Alpine/musl is one build of it.
   android/              # Gradle, Kotlin, Compose
     rust/               #   JNI bridge: the Rust half of the same app (cdylib)
 crates/                 # Shared by every app
@@ -87,7 +89,9 @@ npm ones run from `apps/desktop/`, where `package.json` lives.
   `tunante-core`/`tunante-codec` are never compiled, and breakage there goes unseen.
   `--exclude tunante-android`: that crate only builds for Android, and a desktop
   host cannot link it.
-- `cargo run -p tunante-mini` - Run the phone app on the desktop
+- `cargo run -p tunante-mini` - Run the Slint player. It is a desktop app too,
+  not only a phone one — CI ships glibc x86_64 and aarch64 tarballs beside the
+  Alpine/musl .apk.
 - `cd apps/android && ./build.sh` - Build the Android APK. Compiles the Rust for
   both ABIs with cargo-ndk, stages the `.so` files into `jniLibs`, then runs Gradle.
   `ABIS="arm64-v8a" ./build.sh` skips the emulator build when only a phone matters.

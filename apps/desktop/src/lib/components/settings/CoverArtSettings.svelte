@@ -3,6 +3,17 @@
 	import { coversStore, isTrusted, type Scope } from '$lib/stores/covers.svelte';
 	import { consolesStore, type UnclassifiedFolder } from '$lib/stores/consoles.svelte';
 	import { libraryStore } from '$lib/stores/library.svelte';
+	import { settingsStore } from '$lib/stores/settings.svelte';
+	import type { CoverFit } from '$lib/types';
+
+	// Ordered by how often they are the right answer, not alphabetically.
+	const FITS: { value: CoverFit; label: string; hint: string }[] = [
+		{ value: 'cover', label: 'Fill the square', hint: 'Crops the edges. Nothing is letterboxed.' },
+		{ value: 'contain', label: 'Show the whole cover', hint: 'Never cropped, bars on the short side.' },
+		{ value: 'blur', label: 'Whole cover on a blurred backdrop', hint: 'Never cropped, and the bars are the cover itself.' },
+		{ value: 'none', label: 'Original size, centred', hint: 'No scaling at all — keeps pixel art sharp.' },
+		{ value: 'fill', label: 'Stretch to fit', hint: 'Ignores the aspect ratio. It will look wrong.' }
+	];
 
 	let scope = $state<Scope>('library');
 	let target = $state('');
@@ -54,6 +65,28 @@
 
 <div class="settings-section">
 	<h3>Cover art</h3>
+
+	<!--
+		Box art is not square and is not one shape either: a SNES box is nearly
+		square, a PS1 jewel case is portrait, a Mega Drive box is wide. Cropping
+		flatters some and beheads others, so this is a choice rather than a
+		default someone has to live with.
+	-->
+	<div class="setting-block">
+		<div class="row">
+			<label class="lbl" for="cover-fit">Fit covers by</label>
+			<select
+				id="cover-fit"
+				value={settingsStore.coverFit}
+				onchange={(e) => settingsStore.setCoverFit(e.currentTarget.value as CoverFit)}
+			>
+				{#each FITS as f (f.value)}
+					<option value={f.value}>{f.label}</option>
+				{/each}
+			</select>
+		</div>
+		<span class="hint">{FITS.find((f) => f.value === settingsStore.coverFit)?.hint}</span>
+	</div>
 
 	<!--
 		Preview first, always. This writes files into folders the user owns and
