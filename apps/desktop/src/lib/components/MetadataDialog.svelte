@@ -373,7 +373,7 @@
 										if (namesReplace && names) names = { ...names, problem: null };
 									}}
 								/>
-								<span>Replace the playlist that is already there</span>
+								<span>Replace it anyway</span>
 							</label>
 						{/if}
 					{:else}
