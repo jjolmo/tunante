@@ -69,3 +69,64 @@ html.light {
 	--color-scrollbar: #c1c1c1;
 	--color-scrollbar-hover: #a8a8a8;
 }
+
+/*
+ * Every <select> in the app, styled once.
+ *
+ * This lived in each component that happened to have one, and so did the bug:
+ * eight selects across four files, four of them styled, and every new field
+ * came out looking like the operating system's rather than the app's. Whoever
+ * adds the ninth should not have to know that.
+ *
+ * `appearance: none` is the load-bearing line. A native select on Linux draws
+ * itself with the GTK theme and ignores `background-color` entirely — the
+ * control renders light-on-light or grey-on-grey depending on the desktop, and
+ * looks disabled while working perfectly. The arrow has to be drawn by hand
+ * afterwards, because turning the appearance off takes the platform's arrow
+ * with it.
+ */
+select {
+	appearance: none;
+	-webkit-appearance: none;
+	padding: 4px 28px 4px 8px;
+	background-color: var(--color-bg-primary);
+	/* Two triangles meeting at a point: a chevron, without an SVG to ship. */
+	background-image: linear-gradient(45deg, transparent 50%, var(--color-text-primary) 50%),
+		linear-gradient(135deg, var(--color-text-primary) 50%, transparent 50%);
+	background-position:
+		calc(100% - 14px) 50%,
+		calc(100% - 9px) 50%;
+	background-size:
+		5px 5px,
+		5px 5px;
+	background-repeat: no-repeat;
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	color: var(--color-text-primary);
+	font-size: 13px;
+	font-family: inherit;
+	cursor: pointer;
+}
+
+select:hover {
+	border-color: var(--color-text-secondary);
+}
+
+/* The default focus ring is the browser's accent — a violet that belongs to
+ * nothing else on screen. */
+select:focus-visible {
+	outline: none;
+	border-color: var(--color-text-primary);
+}
+
+select:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
+/* The open list is drawn by the platform, and inherits nothing from the closed
+ * control. Without this it is the system's colours inside the app's window. */
+select option {
+	background-color: var(--color-bg-secondary);
+	color: var(--color-text-primary);
+}

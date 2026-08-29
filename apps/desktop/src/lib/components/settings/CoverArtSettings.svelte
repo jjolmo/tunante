@@ -2,6 +2,9 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { coversStore } from '$lib/stores/covers.svelte';
 	import { settingsStore } from '$lib/stores/settings.svelte';
+	import { playerStore } from '$lib/stores/player.svelte';
+	import { libraryStore } from '$lib/stores/library.svelte';
+	import { invoke } from '@tauri-apps/api/core';
 	import type { CoverFit } from '$lib/types';
 
 	// Ordered by how often they are the right answer, not alphabetically.
@@ -14,6 +17,35 @@
 	];
 
 	let undoneCount = $state<number | null>(null);
+
+	/// A real cover, so the preview shows what the setting does to *your*
+	/// artwork rather than to a swatch.
+	///
+	/// The playing track first; failing that the first track in the library
+	/// that has any. A square image makes `cover` and `contain` identical, so a
+	/// preview drawn on one would show four of the five modes as the same
+	/// picture — box art is rarely square, and a real one is the only sample
+	/// that demonstrates the difference honestly.
+	let previewSrc = $state<string | null>(null);
+	$effect(() => {
+		const track =
+			playerStore.currentTrack ?? libraryStore.tracks.find((t) => t.has_artwork) ?? null;
+		if (!track) {
+			previewSrc = null;
+			return;
+		}
+		let cancelled = false;
+		invoke<string | null>('get_artwork', { trackPath: track.path })
+			.then((d) => {
+				if (!cancelled) previewSrc = d;
+			})
+			.catch(() => {
+				if (!cancelled) previewSrc = null;
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	onMount(() => coversStore.listen());
 	onDestroy(() => coversStore.stopListening());
@@ -113,7 +145,32 @@
 				{/each}
 			</select>
 		</div>
-		<span class="hint">{FITS.find((f) => f.value === settingsStore.coverFit)?.hint}</span>
+		<!--
+			The setting applied to a real cover, right here. The difference
+			between these five is a thing you look at, not a thing you read, and
+			the only other place it shows is the sidebar — which this panel is
+			currently covering.
+		-->
+		<div class="row preview-row">
+			<span class="lbl"></span>
+			<div class="preview">
+				{#if previewSrc}
+					{#if settingsStore.coverFit === 'blur'}
+						<div
+							class="preview-backdrop"
+							style="background-image: url({previewSrc})"
+							aria-hidden="true"
+						></div>
+					{/if}
+					<img src={previewSrc} alt="" class="preview-img fit-{settingsStore.coverFit}" />
+				{:else}
+					<span class="preview-none">no artwork yet</span>
+				{/if}
+			</div>
+			<span class="hint inline">
+				{FITS.find((f) => f.value === settingsStore.coverFit)?.hint}
+			</span>
+		</div>
 	</div>
 
 </div>
@@ -150,11 +207,6 @@
 		color: var(--color-text-primary);
 	}
 
-	select:disabled {
-		opacity: 0.45;
-		cursor: default;
-	}
-
 	.btn {
 		background: var(--color-bg-tertiary);
 		color: var(--color-text-primary);
@@ -185,31 +237,38 @@
 		font-size: 13px;
 		padding: 7px 14px;
 	}
+
 	.progress-block {
 		gap: 8px;
 	}
+
 	.bar {
 		height: 6px;
 		border-radius: 3px;
 		background-color: var(--color-bg-primary);
 		overflow: hidden;
 	}
+
 	.fill {
 		height: 100%;
 		background-color: var(--color-text-secondary);
 		transition: width 200ms ease;
 	}
+
 	.between {
 		justify-content: space-between;
 	}
+
 	.counts {
 		font-size: 12px;
 		color: var(--color-text-secondary);
 	}
+
 	.eta {
 		font-size: 12px;
 		color: var(--color-text-muted);
 	}
+
 	/* One line, always. The name of whatever is being looked up changes several
 	   times a second, and a block that reflows with it drags the Stop button
 	   around under the pointer. */
@@ -220,7 +279,53 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+
 	.hint.inline {
 		margin: 0;
+	}
+	.preview-row {
+		align-items: flex-start;
+	}
+	/* The same square the sidebar draws in, at a size that still shows the
+	   difference between cropping and letterboxing. */
+	.preview {
+		position: relative;
+		width: 96px;
+		height: 96px;
+		flex-shrink: 0;
+		overflow: hidden;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		background-color: var(--color-bg-tertiary);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.preview-img {
+		width: 100%;
+		height: 100%;
+		position: relative;
+	}
+	.preview-img.fit-cover { object-fit: cover; }
+	.preview-img.fit-contain { object-fit: contain; }
+	.preview-img.fit-blur { object-fit: contain; }
+	.preview-img.fit-fill { object-fit: fill; }
+	.preview-img.fit-none { object-fit: none; }
+	.preview-backdrop {
+		position: absolute;
+		inset: 0;
+		background-size: cover;
+		background-position: center;
+		transform: scale(1.4);
+		filter: blur(12px) saturate(1.4);
+		opacity: 0.55;
+	}
+	.preview-none {
+		font-size: 10px;
+		color: var(--color-text-muted);
+	}
+	.hint.inline {
+		margin: 0;
+		flex: 1;
 	}
 </style>
