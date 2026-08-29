@@ -408,27 +408,6 @@
 		margin-right: 4px;
 	}
 
-	.mouse-select {
-		background-color: var(--color-bg-secondary);
-		border: 1px solid var(--color-border);
-		border-radius: 3px;
-		color: var(--color-text-primary);
-		font-size: 12px;
-		padding: 4px 8px;
-		cursor: pointer;
-		-webkit-appearance: none;
-		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath fill='%23999' d='M0 2l4 4 4-4z'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: right 6px center;
-		padding-right: 20px;
-	}
-
-	.mouse-select option {
-		background-color: var(--color-bg-secondary);
-		color: var(--color-text-primary);
-	}
-
 	.mouse-plus {
 		color: var(--color-text-muted);
 		font-size: 12px;
