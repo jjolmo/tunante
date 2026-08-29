@@ -432,6 +432,13 @@ pub struct TrackNames {
     pub subsongs: usize,
     /// The names, in order. Empty when nothing usable was found.
     pub titles: Vec<String>,
+    /// Their lengths as published, positionally aligned with `titles`.
+    ///
+    /// Carried separately rather than folded into the title so the caller can
+    /// show them apart, and so the apply path keeps them: these formats loop,
+    /// nothing in the file says how long a track is, and without a published
+    /// length the reader emulates each subsong and watches for silence.
+    pub lengths: Vec<String>,
     /// Why there is nothing, in words a person can act on.
     pub problem: Option<String>,
 }
@@ -466,6 +473,7 @@ pub async fn suggest_track_names(
         file: file.clone(),
         subsongs: 0,
         titles: Vec::new(),
+        lengths: Vec::new(),
         problem: Some(why.to_string()),
     };
 
@@ -498,6 +506,7 @@ pub async fn suggest_track_names(
                 file: file_for_thread,
                 subsongs,
                 titles: Vec::new(),
+                lengths: Vec::new(),
                 problem: Some("This file holds a single song.".into()),
             });
         }
@@ -509,6 +518,7 @@ pub async fn suggest_track_names(
                 file: file_for_thread,
                 subsongs,
                 titles: Vec::new(),
+                lengths: Vec::new(),
                 problem: Some(format!("No listing for \"{game_for_thread}\" in the archive.")),
             });
         }
@@ -517,6 +527,7 @@ pub async fn suggest_track_names(
                 file: file_for_thread,
                 subsongs,
                 titles: Vec::new(),
+                lengths: Vec::new(),
                 problem: Some(format!(
                     "The archive lists {} tracks and this file has {subsongs}. \
                      Position is the whole mapping, so a different count is a different rip \
@@ -528,7 +539,8 @@ pub async fn suggest_track_names(
         Ok(TrackNames {
             file: file_for_thread,
             subsongs,
-            titles: entries.into_iter().map(|e| e.title).collect(),
+            titles: entries.iter().map(|e| e.title.clone()).collect(),
+            lengths: entries.iter().map(|e| e.length.clone()).collect(),
             problem: None,
         })
     })
@@ -546,6 +558,7 @@ pub async fn suggest_track_names(
 pub async fn apply_track_names(
     file: String,
     titles: Vec<String>,
+    lengths: Vec<String>,
     only_index: Option<usize>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<usize, String> {
@@ -559,7 +572,11 @@ pub async fn apply_track_names(
     let entries: Vec<tunante_art::tracklist::Entry> = titles
         .iter()
         .enumerate()
-        .map(|(i, t)| tunante_art::tracklist::Entry { number: i as u32 + 1, title: t.clone() })
+        .map(|(i, t)| tunante_art::tracklist::Entry {
+            number: i as u32 + 1,
+            title: t.clone(),
+            length: lengths.get(i).cloned().unwrap_or_default(),
+        })
         .collect();
 
     if m3u.exists() {

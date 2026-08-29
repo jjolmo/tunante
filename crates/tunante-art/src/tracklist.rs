@@ -24,6 +24,18 @@ pub struct Entry {
     /// counts agree.
     pub number: u32,
     pub title: String,
+    /// As printed — `3:00`, `0:07` — or empty when the row has none.
+    ///
+    /// Worth taking, and not only for the display. These formats loop forever,
+    /// so nothing in the file says how long a track is: without a length the
+    /// reader emulates the track and watches for silence to find out, which is
+    /// slow and happens once per subsong. A published length skips that
+    /// entirely and drives the auto-fade.
+    ///
+    /// A great many of these read `3:00`, which is the archive's convention for
+    /// "this loops" rather than a measurement. That is the same thing a player
+    /// needs to know, and the same convention every hand-written GME m3u uses.
+    pub length: String,
 }
 
 /// The listing page for one game.
@@ -103,18 +115,34 @@ pub fn parse(body: &str) -> Vec<Entry> {
     let mut rest = body;
     while let Some(i) = rest.find("class=\"name\"") {
         rest = &rest[i..];
-        let Some(open) = rest.find('>') else { break };
-        let Some(close) = rest[open..].find("</td>") else { break };
-        let cell = &rest[open + 1..open + close];
-        rest = &rest[open + close..];
-
-        let title = strip_tags(cell);
+        let Some(title) = take_cell(&mut rest) else { break };
         if title.is_empty() {
             continue;
         }
-        out.push(Entry { number: out.len() as u32 + 1, title });
+        // The length cell of the same row, which follows the name. Taken by
+        // walking forward from here rather than by collecting all the lengths
+        // and zipping: a row missing one would shift every pairing after it,
+        // and a length on the wrong track is worse than no length.
+        let mut after = rest;
+        let length = match after.find("class=\"length\"") {
+            Some(j) if !after[..j].contains("class=\"name\"") => {
+                after = &after[j..];
+                take_cell(&mut after).unwrap_or_default()
+            }
+            _ => String::new(),
+        };
+        out.push(Entry { number: out.len() as u32 + 1, title, length });
     }
     out
+}
+
+/// Consume `<td …>text</td>` from the front, returning its text.
+fn take_cell(rest: &mut &str) -> Option<String> {
+    let open = rest.find('>')?;
+    let close = rest[open..].find("</td>")?;
+    let text = strip_tags(&rest[open + 1..open + close]);
+    *rest = &rest[open + close..];
+    Some(text)
 }
 
 fn strip_tags(s: &str) -> String {
@@ -191,7 +219,7 @@ pub fn to_m3u(file_name: &str, entries: &[Entry]) -> String {
         // A comma inside a title would split the field, so it is escaped the
         // way the reader un-escapes it.
         let title = e.title.replace(',', "\\,");
-        s.push_str(&format!("{file_name}::{ty},{},{},\n", e.number, title));
+        s.push_str(&format!("{file_name}::{ty},{},{},{}\n", e.number, title, e.length));
     }
     s
 }
@@ -215,6 +243,18 @@ mod tests {
 
     /// Sound effects count. The file holds them as subsongs like anything else,
     /// so dropping them would shift every name after the first one.
+    /// The lengths come out paired with their own titles, which is the part
+    /// that can silently go wrong: a length on the wrong track is worse than
+    /// no length at all.
+    #[test]
+    fn each_title_keeps_its_own_length() {
+        let e = parse(CASTLEVANIA);
+        assert_eq!(e[0].title, "Introduction (Castle Gate)");
+        assert_eq!(e[0].length, "0:07", "the short one is first");
+        assert_eq!(e[1].length, "3:00");
+        assert!(e.iter().all(|x| !x.length.is_empty()), "every row has one");
+    }
+
     #[test]
     fn sound_effects_are_entries_too() {
         let e = parse(CASTLEVANIA);
@@ -277,11 +317,11 @@ mod tests {
     #[test]
     fn the_m3u_is_the_shape_the_readers_here_parse() {
         let e = vec![
-            Entry { number: 1, title: "Title".into() },
-            Entry { number: 2, title: "World Map".into() },
+            Entry { number: 1, title: "Title".into(), length: "1:23".into() },
+            Entry { number: 2, title: "World Map".into(), length: String::new() },
         ];
         let m = to_m3u("pokemon.gbs", &e);
-        assert!(m.contains("pokemon.gbs::GBS,1,Title,\n"), "{m}");
+        assert!(m.contains("pokemon.gbs::GBS,1,Title,1:23\n"), "{m}");
         assert!(m.contains("pokemon.gbs::GBS,2,World Map,\n"), "{m}");
     }
 
@@ -289,7 +329,7 @@ mod tests {
     /// game music is full of them.
     #[test]
     fn a_comma_in_a_title_is_escaped() {
-        let e = vec![Entry { number: 1, title: "Hello, World".into() }];
+        let e = vec![Entry { number: 1, title: "Hello, World".into(), length: String::new() }];
         assert!(to_m3u("x.nsf", &e).contains("x.nsf::NSF,1,Hello\\, World,\n"));
     }
 }
