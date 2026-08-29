@@ -325,7 +325,7 @@
 			<span class="spacer"></span>
 			<button class="btn btn-secondary" onclick={onclose}>Cancel</button>
 			<button class="btn btn-primary" onclick={handleSave} disabled={isSaving}>
-				{isSaving ? 'Saving...' : reclassifying ? 'Apply both' : 'Apply'}
+				{isSaving ? 'Saving...' : 'Apply'}
 			</button>
 			{/if}
 		</div>
