@@ -101,6 +101,13 @@
 		if (subsongIndex === null) namesScope = 'all';
 	}
 
+	/// The archive answered, and the answer is that there is nothing to do.
+	/// `namesReplace` can clear the refusal (an existing playlist the user
+	/// chooses to overwrite), so this is not simply "problem is set".
+	let namesDeadEnd = $derived(
+		namesMode === 'list' && !!names?.problem && names.titles.length === 0
+	);
+
 	function closeNames() {
 		namesMode = 'off';
 		names = null;
@@ -378,7 +385,10 @@
 						{/if}
 					{:else}
 						<p class="names-head">
-							{names.titles.length} names for this file, in order.
+							{names.named} of {names.titles.length} tracks are named in the archive, in order.
+							{#if names.named < names.titles.length}
+								The rest keep the name they have now.
+							{/if}
 						</p>
 						<ol class="names-list">
 							{#each names.titles as t, i (i)}
@@ -592,25 +602,34 @@
 				call off, and offering to cancel a finished thing invites the
 				reader to wonder what it would undo.
 			-->
-			{#if namesMode !== 'done'}
-				<button
-					class="btn btn-secondary"
-					onclick={() => (namesMode === 'off' ? onclose() : closeNames())}>Cancel</button
-				>
-			{/if}
-			{#if namesMode !== 'ask' && namesMode !== 'loading'}
+			{#if namesDeadEnd}
 				<!--
-					One button, named for what it does here. After the rename it
-					acknowledges and closes — pressing "Apply" on a report would
-					have saved the tag form nobody could see.
+					The archive came back with nothing usable. A disabled primary
+					sitting next to Cancel still reads as an action being withheld,
+					so there is one button and it dismisses.
 				-->
-				<button
-					class="btn btn-primary"
-					onclick={() => (namesMode === 'done' ? closeNames() : handleSave())}
-					disabled={isSaving || (namesMode === 'list' && !!names?.problem)}
-				>
-					{#if isSaving}Saving...{:else if namesMode === 'done'}OK{:else if namesMode === 'list'}Fix{:else}Apply{/if}
-				</button>
+				<button class="btn btn-primary" onclick={closeNames}>OK</button>
+			{:else}
+				{#if namesMode !== 'done'}
+					<button
+						class="btn btn-secondary"
+						onclick={() => (namesMode === 'off' ? onclose() : closeNames())}>Cancel</button
+					>
+				{/if}
+				{#if namesMode !== 'ask' && namesMode !== 'loading'}
+					<!--
+						One button, named for what it does here. After the rename it
+						acknowledges and closes — pressing "Apply" on a report would
+						have saved the tag form nobody could see.
+					-->
+					<button
+						class="btn btn-primary"
+						onclick={() => (namesMode === 'done' ? closeNames() : handleSave())}
+						disabled={isSaving}
+					>
+						{#if isSaving}Saving...{:else if namesMode === 'done'}OK{:else if namesMode === 'list'}Fix{:else}Apply{/if}
+					</button>
+				{/if}
 			{/if}
 			{/if}
 		</div>

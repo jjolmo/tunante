@@ -547,10 +547,30 @@ pub async fn suggest_track_names(
                 )),
             });
         }
+        // A listing can match on count and still carry nothing worth writing:
+        // the archive fills an untagged rip with `Track N` and `SFX N`. Zelda 1
+        // is the whole 37 like that. Offering to "fix" those names writes junk
+        // over a filename that was already better, so say so and refuse instead.
+        let named = tunante_art::tracklist::named_count(&entries);
+        if named == 0 {
+            return Ok(TrackNames {
+                file: file_for_thread,
+                subsongs,
+                titles: Vec::new(),
+                lengths: Vec::new(),
+                named: 0,
+                problem: Some(format!(
+                    "The archive lists {} tracks for \"{game_for_thread}\" but has named \
+                     none of them — every entry is a bare \"Track N\" or \"SFX N\". \
+                     There is nothing here to rename.",
+                    entries.len()
+                )),
+            });
+        }
         Ok(TrackNames {
             file: file_for_thread,
             subsongs,
-            named: tunante_art::tracklist::named_count(&entries),
+            named,
             titles: entries
                 .iter()
                 .map(|e| {

@@ -168,20 +168,27 @@ fn strip_tags(s: &str) -> String {
 
 /// Is this "name" just the track's own number wearing a word?
 ///
-/// The archive lists an unnamed track as `Track 12`, and a partially tagged rip
-/// is common — the Zelda NSF has 22 real names among 37 entries. Writing
-/// `Track 12` over `zelda.nsf - Track 12` improves nothing and makes a
-/// placeholder look like somebody's answer, which is worse than the obvious
-/// filename it replaced.
-///
-/// Only when the number matches its own position. A game with a song genuinely
-/// called "Track 3" at position 9 keeps it.
+/// The archive lists an unnamed track as `Track 12` and an unnamed sound effect
+/// as `SFX 3`, and a rip with no tags at all is common: the Zelda 1 NSF is
+/// listed with 37 entries — 15 `Track N` and 22 `SFX N` — and not one real
+/// title, while Zelda 2 on the same system has 18 among 45. Writing `SFX 3`
+/// over `zelda.nsf - Track 18` improves nothing, makes a placeholder look like
+/// somebody's answer, and scatters those tracks under S the moment the list is
+/// sorted by title.
 pub fn is_placeholder(entry: &Entry) -> bool {
+    // The archive fills untagged rips with two generic labels: "Track 7" for
+    // music and "SFX 3" for sound effects. Both are position restated as a
+    // name, and writing either one is strictly worse than the file name the
+    // reader already falls back to — it also scatters the tracks under S when
+    // the list is sorted by title. The number is not required to match the
+    // row's own position: an offset rip is still an untagged rip.
     let t = entry.title.trim();
-    t.strip_prefix("Track ")
+    let rest = t
+        .strip_prefix("Track ")
         .or_else(|| t.strip_prefix("track "))
-        .and_then(|n| n.trim().parse::<u32>().ok())
-        .is_some_and(|n| n == entry.number)
+        .or_else(|| t.strip_prefix("SFX "))
+        .or_else(|| t.strip_prefix("sfx "));
+    rest.is_some_and(|n| !n.trim().is_empty() && n.trim().bytes().all(|b| b.is_ascii_digit()))
 }
 
 /// How many of these actually name something.
@@ -348,19 +355,22 @@ mod tests {
     }
 
     /// Verified against the live archive: that Zelda rip is listed with 37
-    /// entries of which 15 are `Track N`.
+    /// entries, 15 `Track N` and 22 `SFX N`, and not one real title.
     #[test]
     fn a_numbered_placeholder_is_not_a_name() {
         assert!(is_placeholder(&Entry { number: 1, title: "Track 1".into(), length: String::new() }));
         assert!(is_placeholder(&Entry { number: 12, title: " Track 12 ".into(), length: String::new() }));
+        assert!(is_placeholder(&Entry { number: 16, title: "SFX 1".into(), length: String::new() }));
+        assert!(is_placeholder(&Entry { number: 37, title: "SFX 22".into(), length: String::new() }));
         assert!(!is_placeholder(&Entry { number: 1, title: "Overworld".into(), length: String::new() }));
+        assert!(!is_placeholder(&Entry { number: 2, title: "SFX Test Room".into(), length: String::new() }));
     }
 
-    /// Position matters: a song really called "Track 3" sitting at nine is a
-    /// name, not a placeholder.
+    /// An offset rip is still an untagged rip: "Track 3" sitting at nine is
+    /// the archive restating a position it got wrong, not a song title.
     #[test]
-    fn a_number_that_is_not_its_own_position_is_a_name() {
-        assert!(!is_placeholder(&Entry { number: 9, title: "Track 3".into(), length: String::new() }));
+    fn a_number_that_is_not_its_own_position_is_still_a_placeholder() {
+        assert!(is_placeholder(&Entry { number: 9, title: "Track 3".into(), length: String::new() }));
     }
 
     #[test]
