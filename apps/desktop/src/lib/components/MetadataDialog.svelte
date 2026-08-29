@@ -309,14 +309,6 @@
 				as neither a list nor a form.
 			-->
 			<div class="names-panel">
-				<div class="names-panel-head">
-					<span class="names-panel-title">Track names</span>
-					<button
-						class="close-btn"
-						onclick={closeNames}
-						aria-label="Back to the tags">✕</button
-					>
-				</div>
 				<div class="names-panel-body">
 			{#if namesMode === 'ask'}
 				<div class="names">
@@ -595,17 +587,20 @@
 	.metadata-dialog.wide {
 		width: 1010px;
 	}
+
 	.columns {
 		display: flex;
 		min-height: 0;
 		flex: 1;
 	}
+
 	.col-tags {
 		flex: 1;
 		min-width: 0;
 		display: flex;
 		flex-direction: column;
 	}
+
 	.col-reclassify {
 		width: 460px;
 		flex-shrink: 0;
@@ -614,6 +609,7 @@
 		flex-direction: column;
 		min-height: 0;
 	}
+
 	.col-head {
 		display: flex;
 		align-items: center;
@@ -622,11 +618,13 @@
 		border-bottom: 1px solid var(--color-border);
 		background-color: var(--color-bg-secondary);
 	}
+
 	.col-title {
 		font-size: 13px;
 		font-weight: 600;
 		color: var(--color-text-primary);
 	}
+
 	.metadata-dialog {
 		width: 550px;
 		/* Animated so the column arriving reads as this dialog growing, rather
@@ -738,11 +736,13 @@
 	.spacer {
 		flex: 1;
 	}
+
 	.reclassify {
 		display: inline-flex;
 		align-items: baseline;
 		gap: 6px;
 	}
+
 	.from-header {
 		font-size: 11px;
 		color: var(--color-text-muted);
@@ -751,6 +751,7 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+
 	.confirm-text {
 		flex: 1;
 		font-size: 12px;
@@ -758,56 +759,52 @@
 		line-height: 1.4;
 		text-align: left;
 	}
+
 	.title-row {
 		display: flex;
 		gap: 8px;
 		align-items: center;
 	}
+
 	.btn.small {
 		font-size: 11px;
 		padding: 3px 8px;
 		white-space: nowrap;
 		flex-shrink: 0;
 	}
+
 	.names-panel {
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
 		flex: 1;
 	}
-	.names-panel-head {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 10px 16px;
-		border-bottom: 1px solid var(--color-border);
-	}
-	.names-panel-title {
-		font-size: 13px;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
+
 	.names-panel-body {
 		padding: 14px 16px;
 		overflow-y: auto;
 	}
+
 	/* No border and no inset: this used to be a box inside a table cell, and
 	   the panel around it is the box now. */
 	.names {
 		margin: 0;
 	}
+
 	.names-head {
 		margin: 0 0 10px;
 		font-size: 13px;
 		color: var(--color-text-secondary);
 		line-height: 1.5;
 	}
+
 	.names-problem {
 		margin: 0 0 10px;
 		font-size: 13px;
 		color: var(--color-text-secondary);
 		line-height: 1.45;
 	}
+
 	/* Scrolls rather than growing: some of these run to fifty entries, and a
 	   dialog that resizes to fit one is a dialog that jumps. */
 	.names-list {
@@ -818,31 +815,37 @@
 		font-size: 12px;
 		color: var(--color-text-secondary);
 	}
+
 	.names-list li {
 		display: flex;
 		justify-content: space-between;
 		gap: 12px;
 	}
+
 	.nm {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+
 	.len {
 		color: var(--color-text-muted);
 		flex-shrink: 0;
 		font-variant-numeric: tabular-nums;
 	}
+
 	.names-list li.on {
 		color: var(--color-text-primary);
 		font-weight: 600;
 	}
+
 	.scope {
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
 		margin-bottom: 4px;
 	}
+
 	.scope-opt {
 		display: flex;
 		align-items: center;
@@ -851,24 +854,29 @@
 		color: var(--color-text-primary);
 		cursor: pointer;
 	}
+
 	.lengths {
 		align-items: flex-start;
 		margin-bottom: 10px;
 	}
+
 	.scope-why {
 		display: block;
 		font-size: 11px;
 		color: var(--color-text-muted);
 		line-height: 1.4;
 	}
+
 	.scope-opt input {
 		margin: 0;
 		cursor: pointer;
 	}
+
 	.names-actions {
 		display: flex;
 		gap: 6px;
 	}
+
 	.metadata-footer {
 		display: flex;
 		justify-content: flex-end;
