@@ -13,9 +13,23 @@
 	// halves: the tags and what game they belong to are two answers to the same
 	// dialog, and two Save buttons stacked made the reader work out which one
 	// owned which.
-	let reclassifyPanel = $state<{ save: () => Promise<boolean>; canSave: () => boolean } | null>(
-		null
-	);
+	let reclassifyPanel = $state<{
+		save: () => Promise<boolean>;
+		canSave: () => boolean;
+		pending: () => { scope: 'folder' | 'track'; folders: number; tracks: number };
+	} | null>(null);
+
+	// The confirmation for a folder-wide change, in this footer rather than in
+	// another window. A dialog that answers a question by opening a dialog is
+	// the thing this column exists to avoid.
+	let confirming = $state<{ folders: number; tracks: number } | null>(null);
+
+	// Closing the column withdraws the question with it. Otherwise the footer
+	// keeps asking to confirm a change that is no longer on the table, and
+	// "Yes, apply" would save only the tags while claiming otherwise.
+	$effect(() => {
+		if (!reclassifying) confirming = null;
+	});
 
 	// What the files themselves say, when they agree. A selection spanning two
 	// games has no single answer, and offering one of them would be a guess
@@ -99,6 +113,17 @@
 	let isSaving = $state(false);
 
 	async function handleSave() {
+		// A folder-wide reclassification reaches every track under the folder,
+		// which is almost always more than was selected and can be hundreds. Ask
+		// once, with the real numbers, before doing it.
+		if (reclassifying && !confirming && reclassifyPanel?.canSave()) {
+			const p = reclassifyPanel.pending();
+			if (p.scope === 'folder') {
+				confirming = { folders: p.folders, tracks: p.tracks };
+				return;
+			}
+		}
+		confirming = null;
 		isSaving = true;
 		try {
 			const fields: Record<string, string | number | null> = {};
@@ -269,6 +294,18 @@
 		</div>
 
 		<div class="metadata-footer">
+			{#if confirming}
+				<span class="confirm-text">
+					This will reclassify <strong>{confirming.tracks}</strong>
+					track{confirming.tracks === 1 ? '' : 's'} across
+					<strong>{confirming.folders}</strong>
+					folder{confirming.folders === 1 ? '' : 's'}, not just the selection.
+				</span>
+				<button class="btn btn-secondary" onclick={() => (confirming = null)}>Back</button>
+				<button class="btn btn-primary" onclick={handleSave} disabled={isSaving}>
+					{isSaving ? 'Saving...' : 'Yes, apply'}
+				</button>
+			{:else}
 			<!--
 				On the left, away from Apply. This one does not edit the file's
 				tags at all — it records what game the tracks belong to, which is
@@ -290,6 +327,7 @@
 			<button class="btn btn-primary" onclick={handleSave} disabled={isSaving}>
 				{isSaving ? 'Saving...' : reclassifying ? 'Apply both' : 'Apply'}
 			</button>
+			{/if}
 		</div>
 	</div>
 </div>
@@ -463,6 +501,13 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.confirm-text {
+		flex: 1;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		line-height: 1.4;
+		text-align: left;
 	}
 	.metadata-footer {
 		display: flex;

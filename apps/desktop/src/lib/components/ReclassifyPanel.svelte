@@ -357,6 +357,23 @@
 		return !!consoleId && !saving;
 	}
 
+	/// What Apply is about to touch, for a frame that wants to confirm first.
+	///
+	/// The folder scope is the dangerous one: it reaches every track under the
+	/// folders, which is almost always more than was selected and can be
+	/// hundreds. `tracks` counts what would actually change, not what was
+	/// clicked.
+	export function pending(): { scope: 'folder' | 'track'; folders: number; tracks: number } {
+		if (scope === 'track') {
+			return { scope: 'track', folders: 0, tracks: chosenTracks.length };
+		}
+		const targets = folderPath ? [folderPath] : folders;
+		const under = libraryStore.tracks.filter((t) =>
+			targets.some((f) => t.path.startsWith(f + '/') || t.path.startsWith(f + '\\'))
+		).length;
+		return { scope: 'folder', folders: targets.length, tracks: under };
+	}
+
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			if (consoleOpen || gameOpen) {
