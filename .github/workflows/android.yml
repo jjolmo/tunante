@@ -76,6 +76,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+          # The commit the release was built from, not the tip of main.
+          #
+          # A workflow_run checkout defaults to the default branch's HEAD, and
+          # main moves. It moved between the release starting and these jobs
+          # running, so `git tag --points-at HEAD` found nothing and every
+          # artifact was left unattached — a green run that shipped nothing.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           # The version comes from the tags, as everywhere else here.
           fetch-depth: 0
 
