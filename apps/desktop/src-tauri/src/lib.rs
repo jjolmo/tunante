@@ -826,12 +826,9 @@ pub fn run() {
             let symbolic_by_name = tray_icon_style::install_symbolic(tray_style);
             let (png_bytes, as_template) = tray_icon_style::icon_bytes(tray_style);
             let tray_icon = {
-                let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
-                let mut reader = decoder.read_info().expect("Failed to decode tray icon PNG");
-                let mut buf = vec![0u8; reader.output_buffer_size()];
-                let info = reader.next_frame(&mut buf).expect("Failed to read tray icon frame");
-                buf.truncate(info.buffer_size());
-                tauri::image::Image::new_owned(buf, info.width, info.height)
+                let (rgba, w, h) = tray_icon_style::decode_rgba(png_bytes)
+                    .expect("Failed to decode tray icon PNG");
+                tauri::image::Image::new_owned(rgba, w, h)
             };
 
             // The pixmap is set regardless. On Linux the patched tray-icon
@@ -1309,15 +1306,10 @@ pub fn run() {
                         tray_icon_style::TrayStyle::parse(raw.as_deref())
                     };
                     let (png_bytes, _) = tray_icon_style::icon_bytes(style);
-                    let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
-                    if let Ok(mut reader) = decoder.read_info() {
-                        let mut buf = vec![0u8; reader.output_buffer_size()];
-                        if let Ok(info) = reader.next_frame(&mut buf) {
-                            buf.truncate(info.buffer_size());
-                            let icon = tauri::image::Image::new_owned(buf, info.width, info.height);
-                            if let Some(tray) = window.app_handle().tray_by_id("main-tray") {
-                                let _ = tray.set_icon(Some(icon));
-                            }
+                    if let Some((rgba, w, h)) = tray_icon_style::decode_rgba(png_bytes) {
+                        let icon = tauri::image::Image::new_owned(rgba, w, h);
+                        if let Some(tray) = window.app_handle().tray_by_id("main-tray") {
+                            let _ = tray.set_icon(Some(icon));
                         }
                     }
                 }

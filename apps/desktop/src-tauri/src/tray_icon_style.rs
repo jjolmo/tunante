@@ -194,6 +194,55 @@ pub fn install_symbolic(_style: TrayStyle) -> bool {
     false
 }
 
+/// Decode a PNG to the RGBA the tray expects, whatever the file happens to be.
+///
+/// The tray takes raw RGBA and checks the length, so a PNG that is not already
+/// RGBA does not render wrong — it panics the setup hook with
+/// `wrong data size, expected 4096 got 2048`, and the app never opens.
+///
+/// That is not hypothetical. The tray icons used to be RGBA because they were
+/// exported from a colour drawing; the monochrome ones are rasterised from a
+/// single-colour SVG, and every renderer writes those as grey+alpha — two bytes
+/// a pixel instead of four. Forcing the generator to emit RGBA would fix this
+/// file and leave the next one to find the same trap, so the conversion belongs
+/// here.
+pub fn decode_rgba(png_bytes: &[u8]) -> Option<(Vec<u8>, u32, u32)> {
+    let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
+    let mut reader = decoder.read_info().ok()?;
+    let mut buf = vec![0u8; reader.output_buffer_size()];
+    let info = reader.next_frame(&mut buf).ok()?;
+    buf.truncate(info.buffer_size());
+
+    let px = (info.width as usize) * (info.height as usize);
+    let rgba = match info.color_type {
+        png::ColorType::Rgba => buf,
+        png::ColorType::Rgb => {
+            let mut out = Vec::with_capacity(px * 4);
+            for c in buf.chunks_exact(3) {
+                out.extend_from_slice(&[c[0], c[1], c[2], 255]);
+            }
+            out
+        }
+        png::ColorType::GrayscaleAlpha => {
+            let mut out = Vec::with_capacity(px * 4);
+            for c in buf.chunks_exact(2) {
+                out.extend_from_slice(&[c[0], c[0], c[0], c[1]]);
+            }
+            out
+        }
+        png::ColorType::Grayscale => {
+            let mut out = Vec::with_capacity(px * 4);
+            for g in buf {
+                out.extend_from_slice(&[g, g, g, 255]);
+            }
+            out
+        }
+        // Indexed, which `next_frame` already expands unless asked otherwise.
+        png::ColorType::Indexed => return None,
+    };
+    (rgba.len() == px * 4).then_some((rgba, info.width, info.height))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,6 +277,23 @@ mod tests {
         assert!(!install_symbolic(TrayStyle::System));
         // Symbolic may still return false — if the file could not be written —
         // but it is the only style that ever tries.
+    }
+
+    /// The crash this exists to stop: the tray takes raw RGBA and checks the
+    /// length, so a grey+alpha PNG panics the setup hook and the app never
+    /// opens. Every style has to decode to four bytes a pixel.
+    #[test]
+    fn every_style_decodes_to_rgba() {
+        for style in [TrayStyle::System, TrayStyle::Symbolic, TrayStyle::Logo] {
+            let (bytes, _) = icon_bytes(style);
+            let (rgba, w, h) = decode_rgba(bytes).unwrap_or_else(|| panic!("{style:?} did not decode"));
+            assert_eq!(
+                rgba.len(),
+                (w as usize) * (h as usize) * 4,
+                "{style:?} is {} bytes for {w}x{h}",
+                rgba.len()
+            );
+        }
     }
 
     #[test]
