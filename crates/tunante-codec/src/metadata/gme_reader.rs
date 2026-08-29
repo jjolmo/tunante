@@ -386,6 +386,7 @@ fn read_gme_metadata_inner(
             title,
             artist: info.author.clone(),
             album,
+            header_game: game.clone(),
             // Deliberately blank, not `info.system`.
             //
             // GME's `system` is "Nintendo NES", "Super Nintendo" — a function of

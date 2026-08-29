@@ -5,6 +5,10 @@ pub struct Track {
     pub title: String,
     pub artist: String,
     pub album: String,
+    /// The game named by the file's own header, when the format has such a
+    /// field. Distinct from `album` on purpose — see the schema.
+    #[serde(default)]
+    pub header_game: String,
     pub album_artist: String,
     pub track_number: Option<i32>,
     pub disc_number: Option<i32>,

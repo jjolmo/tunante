@@ -57,9 +57,17 @@ pub enum ConsoleSource {
 pub enum GameSource {
     TrackOverride,
     FolderOverride,
-    /// The `album` tag. For rips this is the ripper's own answer, and it is the
-    /// best one available: SPC ID666 headers carry the game title, so a folder
-    /// abbreviated to `ct/` still yields "Chrono Trigger".
+    /// The game named by the file's own header — `game=` in a PSF `[TAG]`, the
+    /// game name in a VGM's GD3, the game title in an SPC's ID666.
+    ///
+    /// Ranked above the album because it answers the question being asked. An
+    /// album is the name of a *release*, and a soundtrack release is often not
+    /// named after its game: "Final Fantasy Tactics A2: The Sealed Grimoire" is
+    /// a record, not a cartridge, and searching an archive of box art for it
+    /// finds nothing.
+    HeaderGame,
+    /// The `album` tag. Still the ripper's own answer where the format carries
+    /// no game field of its own — every MP3 rip, and everything vgmstream reads.
     AlbumTag,
     /// A folder between the root and the file.
     Folder,
@@ -85,6 +93,7 @@ impl GameSource {
         match self {
             GameSource::TrackOverride => "track_override",
             GameSource::FolderOverride => "folder_override",
+            GameSource::HeaderGame => "header_game",
             GameSource::AlbumTag => "album_tag",
             GameSource::Folder => "folder",
             GameSource::FileName => "file_name",
@@ -286,7 +295,25 @@ impl Classifier {
     ///
     /// `album` is the track's album tag and `codec` its extension or the
     /// database's `codec` column; either spelling works.
+    /// Decide what a track is, without a header game to go on.
+    ///
+    /// Equivalent to [`Self::classify_full`] with an empty header game, which is
+    /// the truth for every format that has no such field.
     pub fn classify(&self, path: &str, album: &str, codec: &str) -> Classification {
+        self.classify_full(path, album, "", codec)
+    }
+
+    /// Decide what a track is.
+    ///
+    /// `header_game` is the game the file's own header names, where the format
+    /// has a field for it, and it wins over `album` — see [`GameSource`].
+    pub fn classify_full(
+        &self,
+        path: &str,
+        album: &str,
+        header_game: &str,
+        codec: &str,
+    ) -> Classification {
         let path = normalize_path(path);
         let track_override = self.track_overrides.get(&path);
         let folder_override = self.folder_override_for(&path);
@@ -342,7 +369,7 @@ impl Classifier {
         };
 
         let (game, game_source) =
-            self.game_of(&path, album, root, &dirs, segment_hit.map(|(i, _)| i));
+            self.game_of(&path, album, header_game, root, &dirs, segment_hit.map(|(i, _)| i));
 
         Classification { console_id, console_source, game, game_source }
     }
@@ -351,6 +378,7 @@ impl Classifier {
         &self,
         path: &str,
         album: &str,
+        header_game: &str,
         root: Option<&str>,
         dirs: &[&str],
         console_at: Option<usize>,
@@ -369,6 +397,12 @@ impl Classifier {
             .filter(|n| !n.trim().is_empty())
         {
             return (name.trim().to_string(), GameSource::FolderOverride);
+        }
+        // The header's own field first: it names the game, where the album
+        // names a release. Both are the ripper's answer; only one is an answer
+        // to this question.
+        if !header_game.trim().is_empty() {
+            return (sanitize_or_raw(header_game), GameSource::HeaderGame);
         }
         // The ripper's own answer, and the reason abbreviated folders still work.
         if !album.trim().is_empty() {
@@ -485,6 +519,46 @@ mod tests {
 
     fn plain() -> Classifier {
         Classifier::new(vec![ROOT.to_string()], HashMap::new(), HashMap::new())
+    }
+
+    /// The case this whole field exists for.
+    ///
+    /// The album is the soundtrack release; the header says which game it is
+    /// from. Before the split, the album won and the cover search went looking
+    /// for a record.
+    #[test]
+    fn the_header_game_beats_a_soundtrack_album_title() {
+        let c = plain();
+        let got = c.classify_full(
+            &format!("{ROOT}/GBA/FFTA2/01.gsf"),
+            "Final Fantasy Tactics A2: The Sealed Grimoire",
+            "Final Fantasy Tactics A2",
+            "GSF",
+        );
+        assert_eq!(got.game, "Final Fantasy Tactics A2");
+        assert_eq!(got.game_source, GameSource::HeaderGame);
+    }
+
+    /// Formats without such a field must behave exactly as before.
+    #[test]
+    fn an_empty_header_game_leaves_the_album_in_charge() {
+        let c = plain();
+        let got = c.classify_full(&format!("{ROOT}/PC/Foo/01.mp3"), "Bastion", "", "MP3");
+        assert_eq!(got.game, "Bastion");
+        assert_eq!(got.game_source, GameSource::AlbumTag);
+    }
+
+    /// An override is the user's word and outranks anything read from a file.
+    #[test]
+    fn an_override_still_beats_the_header() {
+        let mut folders = HashMap::new();
+        folders.insert(
+            format!("{ROOT}/GBA"),
+            Override { console_id: None, game_name: Some("Mine".into()) },
+        );
+        let c = Classifier::new(vec![ROOT.to_string()], HashMap::new(), folders);
+        let got = c.classify_full(&format!("{ROOT}/GBA/x/01.gsf"), "", "Theirs", "GSF");
+        assert_eq!(got.game, "Mine");
     }
 
     fn classify(path: &str, album: &str, codec: &str) -> Classification {
