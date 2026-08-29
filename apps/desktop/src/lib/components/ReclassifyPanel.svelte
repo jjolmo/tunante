@@ -84,7 +84,6 @@
 	});
 
 	let seeded = false;
-	let seededFromHeader = $state(false);
 	$effect(() => {
 		if (seeded) return;
 		const g = guessed;
@@ -104,7 +103,6 @@
 		// drawn from, so the box always shows one of the options rather than a
 		// value with no chip to match it.
 		gameQuery = best?.label ?? '';
-		seededFromHeader = best?.from === "the file's header";
 	});
 
 	let consoleOpen = $state(false);
@@ -532,34 +530,43 @@
 			</div>
 
 			{#if candidates.length > 0}
-				<div class="candidates">
-					{#each candidates as c (c.label)}
-						<button
-							class="chip"
-							class:on={c.label === gameQuery}
-							onclick={() => (gameQuery = c.label)}
-							title={`From ${c.from}`}
-						>
-							<span class="chip-name">{c.label}</span>
-							<span class="chip-from">{c.from}</span>
-						</button>
-					{/each}
+				<!--
+					A labelled field like the ones above, not a loose row of boxes.
+					These are choices, and the first version read as disabled
+					labels: two lines of muted text in a grey rectangle looks like
+					something being shown to you, not something to press.
+				-->
+				<div class="field options">
+					<span class="lbl" id="rc-from-label">Take it from</span>
+					<div class="option-list" role="radiogroup" aria-labelledby="rc-from-label">
+						{#each candidates as c (c.label)}
+							{@const chosenOne = c.label === gameQuery}
+							<button
+								class="option"
+								class:on={chosenOne}
+								role="radio"
+								aria-checked={chosenOne}
+								onclick={() => (gameQuery = c.label)}
+							>
+								<span class="tick" aria-hidden="true">{chosenOne ? '●' : '○'}</span>
+								<span class="option-name">{c.label}</span>
+								<span class="option-from">{c.from}</span>
+							</button>
+						{/each}
+					</div>
 				</div>
 			{/if}
 
 			{#if searchError}<span class="hint warn">{searchError}</span>{/if}
 			<span class="hint">
-				{#if seededFromHeader}
-					<strong>From the file's own header</strong> — the game it names, which is not
-					always what its album says.
-				{:else}
-					Guessed from the tags and the folder; this format carries no game field of its
-					own.
-				{/if}
-				Suggestions come from your library and from the console's box-art archive, so a
-				name picked here is one the cover downloader can find.
-				<strong>This does not edit the file's tags</strong> — the Album stays as the
-				ripper wrote it. Turn on the Game column to see the result.{#if searching}
+				<!--
+					Only what the options above cannot say for themselves. Each one
+					is already labelled with where it came from, so repeating that
+					here was a paragraph explaining a list that explains itself.
+				-->
+				<strong>This does not change the file's tags.</strong> The Album stays as the
+				ripper wrote it; this records which game the tracks are, which is what finds
+				their cover art. Turn on the Game column to see it.{#if searching}
 					<em> Searching…</em>{/if}
 			</span>
 
@@ -684,56 +691,68 @@
 		flex-shrink: 0;
 		white-space: nowrap;
 	}
-	/* Left-aligned with the fields above, not with the label column: these are
-	   answers to the question the field asks. */
-	.candidates {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		margin: 6px 0 0 76px;
+	.options {
+		align-items: flex-start;
 	}
-	.chip {
+	.option-list {
 		display: flex;
 		flex-direction: column;
-		align-items: flex-start;
-		gap: 1px;
-		max-width: 200px;
+		gap: 3px;
+		flex: 1;
+		min-width: 0;
+	}
+	/* One row per choice, reading left to right: state, name, where it came
+	   from. A row is a thing you click; a floating rectangle is not obviously
+	   one. */
+	.option {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		width: 100%;
 		text-align: left;
-		background-color: var(--color-bg-primary);
-		border: 1px solid var(--color-border);
+		background: none;
+		border: 1px solid transparent;
 		border-radius: 4px;
-		padding: 3px 8px;
+		padding: 4px 8px;
 		cursor: pointer;
+		color: var(--color-text-primary);
 	}
-	.chip:hover {
+	.option:hover {
 		background-color: var(--color-bg-tertiary);
+		border-color: var(--color-border);
 	}
-	.chip.on {
+	.option:focus-visible {
+		outline: none;
 		border-color: var(--color-text-secondary);
 	}
-	.chip-name {
-		font-size: 12px;
+	.option.on {
+		background-color: var(--color-bg-tertiary);
+		border-color: var(--color-text-secondary);
+	}
+	.tick {
+		font-size: 10px;
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+	}
+	.option.on .tick {
 		color: var(--color-text-primary);
-		max-width: 184px;
+	}
+	.option-name {
+		font-size: 12px;
+		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.chip-from {
+	/* The provenance, pushed right and kept quiet: it explains the choice, it
+	   is not the choice. */
+	.option-from {
 		font-size: 10px;
 		color: var(--color-text-muted);
+		flex-shrink: 0;
 	}
 
-	.type-ahead input {
-		width: 100%;
-		box-sizing: border-box;
-		background-color: var(--color-bg-primary);
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		color: var(--color-text-primary);
-		font-size: 12px;
-		padding: 5px 8px;
-	}
 
 	.type-ahead input:focus {
 		outline: none;
