@@ -264,7 +264,7 @@
 			// "never overwrite", and past the confidence floor a bulk run
 			// applies — the user asked for this one specifically.
 			items.push({
-				label: 'Reclassify as console…',
+				label: 'Reclassify as videogame…',
 				action: () => (reclassifyTrack = track)
 			});
 			items.push({

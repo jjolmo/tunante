@@ -16,7 +16,20 @@ CREATE TABLE IF NOT EXISTS tracks (
     file_size INTEGER NOT NULL DEFAULT 0,
     modified_at INTEGER NOT NULL DEFAULT 0,
     added_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    has_artwork INTEGER NOT NULL DEFAULT 0
+    has_artwork INTEGER NOT NULL DEFAULT 0,
+    -- The game named by the file's own header, kept apart from `album`.
+    --
+    -- Console formats carry it as a field of its own: `game=` in a PSF `[TAG]`,
+    -- the game name in a VGM's GD3, the game title in an SPC's ID666. Every
+    -- reader here used to write it straight into `album`, which destroyed the
+    -- distinction — and `album` is not the same thing. A soundtrack release has
+    -- an album title that is often not the game's name at all, which is how
+    -- "Final Fantasy Tactics A2: The Sealed Grimoire" ended up being searched
+    -- for as if it were a game.
+    --
+    -- Empty for anything whose format has no such field: vgmstream streams,
+    -- and ordinary MP3 or FLAC.
+    header_game TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_tracks_path ON tracks(path);

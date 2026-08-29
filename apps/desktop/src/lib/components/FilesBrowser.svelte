@@ -132,7 +132,7 @@
 					action: () => handleCreatePlaylistFromFolder(node),
 				},
 				{
-					label: 'Reclassify as console…',
+					label: 'Reclassify as videogame…',
 					action: () => (reclassifyFolder = node.fullPath),
 				},
 				{

@@ -22,6 +22,7 @@ pub fn read_usf_metadata(path: &Path) -> Result<Vec<Track>, String> {
         parse_title_and_track_number(&file_name)
     };
 
+    let header_game = tags.game.clone();
     let album = if !tags.game.is_empty() {
         tags.game.clone()
     } else {
@@ -64,6 +65,7 @@ pub fn read_usf_metadata(path: &Path) -> Result<Vec<Track>, String> {
         title,
         artist: tags.artist,
         album,
+        header_game,
         album_artist: String::new(),
         track_number,
         disc_number: None,

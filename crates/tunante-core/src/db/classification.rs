@@ -25,7 +25,9 @@ use std::sync::Arc;
 //    below the registered root. Libraries whose root sits above the console
 //    folders were classified as Unknown wholesale, so every row has to be
 //    stamped again for the fix to reach an existing database.
-pub const CLASSIFIER_VERSION: u32 = 2;
+// 3: the game named by the file's own header is a field of its own and outranks
+//    the album, which names a release rather than a game.
+pub const CLASSIFIER_VERSION: u32 = 3;
 
 const VERSION_KEY: &str = "classifier_version";
 
@@ -202,8 +204,19 @@ impl Database {
     /// Called from `insert_track`, so the watcher keeps the derived table
     /// correct one file at a time without ever rebuilding the library.
     pub fn classify_path(&self, path: &str, album: &str, codec: &str) -> Result<(), DbError> {
+        self.classify_path_full(path, album, "", codec)
+    }
+
+    /// As [`Self::classify_path`], with the game the file's header names.
+    pub fn classify_path_full(
+        &self,
+        path: &str,
+        album: &str,
+        header_game: &str,
+        codec: &str,
+    ) -> Result<(), DbError> {
         let classifier = self.classifier()?;
-        let c = classifier.classify(path, album, codec);
+        let c = classifier.classify_full(path, album, header_game, codec);
         self.write_classification(path, &c)
     }
 
@@ -212,14 +225,14 @@ impl Database {
     pub fn reclassify_under(&self, prefix: &str) -> Result<usize, DbError> {
         let prefix = crate::classify::normalize_path(prefix);
         let pattern = format!("{}/%", like_prefix(&prefix));
-        let rows: Vec<(String, String, String)> = self
+        let rows: Vec<(String, String, String, String)> = self
             .conn
             .prepare(
-                "SELECT path, album, codec FROM tracks
+                "SELECT path, album, header_game, codec FROM tracks
                  WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'",
             )?
             .query_map(params![prefix, pattern], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         self.classify_rows(&rows)
@@ -227,21 +240,21 @@ impl Database {
 
     /// Rebuild the whole derived table.
     pub fn reclassify_all(&self) -> Result<usize, DbError> {
-        let rows: Vec<(String, String, String)> = self
+        let rows: Vec<(String, String, String, String)> = self
             .conn
-            .prepare("SELECT path, album, codec FROM tracks")?
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .prepare("SELECT path, album, header_game, codec FROM tracks")?
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))?
             .collect::<Result<Vec<_>, _>>()?;
         self.conn.execute("DELETE FROM track_classification", [])?;
         self.classify_rows(&rows)
     }
 
-    fn classify_rows(&self, rows: &[(String, String, String)]) -> Result<usize, DbError> {
+    fn classify_rows(&self, rows: &[(String, String, String, String)]) -> Result<usize, DbError> {
         let classifier = self.classifier()?;
         self.conn.execute_batch("BEGIN")?;
         let result = (|| -> Result<usize, DbError> {
-            for (path, album, codec) in rows {
-                let c = classifier.classify(path, album, codec);
+            for (path, album, header_game, codec) in rows {
+                let c = classifier.classify_full(path, album, header_game, codec);
                 self.write_classification(path, &c)?;
             }
             Ok(rows.len())

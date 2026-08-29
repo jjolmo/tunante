@@ -58,6 +58,12 @@ impl Database {
             "ALTER TABLE tracks ADD COLUMN rating INTEGER NOT NULL DEFAULT 0;",
         );
 
+        // Migration: the game named by the file's own header, which used to be
+        // squashed into `album` at read time.
+        let _ = conn.execute_batch(
+            "ALTER TABLE tracks ADD COLUMN header_game TEXT NOT NULL DEFAULT '';",
+        );
+
         // Migration: add position column to playlists for manual ordering.
         //
         // Whether this succeeds is the one durable record of which build got here
@@ -117,13 +123,14 @@ impl Database {
     /// (which may differ from track.id if the path already existed).
     pub fn insert_track(&self, track: &Track) -> Result<String, DbError> {
         self.conn.execute(
-            "INSERT INTO tracks (id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, modified_at, has_artwork, rating)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)
+            "INSERT INTO tracks (id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, modified_at, has_artwork, rating, header_game)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)
              ON CONFLICT(path) DO UPDATE SET
                title = excluded.title,
                artist = excluded.artist,
                album = excluded.album,
                album_artist = excluded.album_artist,
+               header_game = excluded.header_game,
                track_number = excluded.track_number,
                disc_number = excluded.disc_number,
                duration_ms = excluded.duration_ms,
@@ -153,6 +160,7 @@ impl Database {
                 track.modified_at,
                 track.has_artwork,
                 track.rating,
+                &track.header_game,
             ],
         )?;
 
@@ -180,7 +188,7 @@ impl Database {
 
     pub fn get_all_tracks(&self) -> Result<Vec<Track>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating, header_game
              FROM tracks ORDER BY album_artist, album, disc_number, track_number, title",
         )?;
 
@@ -203,6 +211,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })
@@ -215,7 +224,7 @@ impl Database {
 
     pub fn get_track_by_id(&self, id: &str) -> Result<Option<Track>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating, header_game
              FROM tracks WHERE id = ?1",
         )?;
 
@@ -238,6 +247,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })
@@ -250,7 +260,7 @@ impl Database {
 
     pub fn get_track_by_path(&self, path: &str) -> Result<Option<Track>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating, header_game
              FROM tracks WHERE path = ?1",
         )?;
 
@@ -273,6 +283,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })
@@ -291,7 +302,7 @@ impl Database {
             .join(" ");
 
         let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.path, t.title, t.artist, t.album, t.album_artist, t.track_number, t.disc_number, t.duration_ms, t.sample_rate, t.channels, t.bitrate, t.codec, t.file_size, t.has_artwork, t.rating
+            "SELECT t.id, t.path, t.title, t.artist, t.album, t.album_artist, t.track_number, t.disc_number, t.duration_ms, t.sample_rate, t.channels, t.bitrate, t.codec, t.file_size, t.has_artwork, t.rating, t.header_game
              FROM tracks t
              JOIN tracks_fts ON tracks_fts.rowid = t.rowid
              WHERE tracks_fts MATCH ?1
@@ -317,6 +328,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })
@@ -391,7 +403,7 @@ impl Database {
 
     pub fn get_playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT t.id, t.path, t.title, t.artist, t.album, t.album_artist, t.track_number, t.disc_number, t.duration_ms, t.sample_rate, t.channels, t.bitrate, t.codec, t.file_size, t.has_artwork, t.rating
+            "SELECT t.id, t.path, t.title, t.artist, t.album, t.album_artist, t.track_number, t.disc_number, t.duration_ms, t.sample_rate, t.channels, t.bitrate, t.codec, t.file_size, t.has_artwork, t.rating, t.header_game
              FROM tracks t
              JOIN playlist_tracks pt ON pt.track_id = t.id
              WHERE pt.playlist_id = ?1
@@ -417,6 +429,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })
@@ -839,7 +852,7 @@ impl Database {
 
     pub fn get_faved_tracks(&self) -> Result<Vec<Track>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating, header_game
              FROM tracks WHERE rating > 0
              ORDER BY album_artist, album, disc_number, track_number, title",
         )?;
@@ -863,6 +876,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })
@@ -882,7 +896,7 @@ impl Database {
         // Build placeholders: (?1, ?2, ?3, ...)
         let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{}", i)).collect();
         let sql = format!(
-            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating, header_game
              FROM tracks WHERE id IN ({})",
             placeholders.join(", ")
         );
@@ -910,6 +924,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })
@@ -933,7 +948,7 @@ impl Database {
             format!("{}/", folder)
         };
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating
+            "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating, header_game
              FROM tracks WHERE path LIKE ?1 ESCAPE '\\'
              ORDER BY disc_number, track_number, title",
         )?;
@@ -957,6 +972,7 @@ impl Database {
                     file_size: row.get(13)?,
                     has_artwork: row.get(14)?,
                     rating: row.get(15)?,
+                    header_game: row.get(15 + 1).unwrap_or_default(),
                     modified_at: 0,
                     ..Default::default()
                 })

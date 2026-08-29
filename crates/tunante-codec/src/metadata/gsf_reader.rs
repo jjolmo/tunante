@@ -30,7 +30,14 @@ pub fn read_gsf_metadata(path: &Path) -> Result<Vec<Track>, String> {
         parse_title_and_track_number(&file_name)
     };
 
+    // The header names the game in a field of its own, and it is kept in one:
+    // `album` still gets it when there is nothing better, because that is what
+    // every consumer already reads, but the distinction survives now. A
+    // soundtrack's album title is often not the game's name — which is how
+    // "Final Fantasy Tactics A2: The Sealed Grimoire" came to be searched for
+    // as though it were a game.
     // Album: use game name, or parent directory
+    let header_game = tags.game.clone();
     let album = if !tags.game.is_empty() {
         tags.game.clone()
     } else {
@@ -74,6 +81,7 @@ pub fn read_gsf_metadata(path: &Path) -> Result<Vec<Track>, String> {
         title,
         artist: tags.artist,
         album,
+        header_game,
         album_artist: String::new(),
         track_number,
         disc_number: None,
