@@ -17,15 +17,22 @@ name: tunante-mini
 # different question with a different failure mode.
 
 on:
+  # No path filter on main, deliberately. release.yml fires on every push
+  # there, so filtering here produced releases carrying the desktop builds and
+  # nothing else — and the assets are attached to that release's tag, so
+  # "download the latest" quietly meant "the latest that happens to have them".
+  # Three extra jobs per release is the price of a release meaning one thing.
   push:
     branches: [main, tunante-mini]
+  # On a pull request the filter still makes sense: nothing is published, and a
+  # change to the desktop frontend has nothing to say about the Slint player.
+  pull_request:
     paths:
       - 'apps/mini/**'
       - 'crates/**'
       - 'vendor/*-rs/**'
       - 'vendor/*-patch/**'
       - '.github/workflows/mini.yml'
-  pull_request:
   workflow_dispatch:
 
 # To attach the apk to the release. Read-only is the default for everything
