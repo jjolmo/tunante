@@ -25,8 +25,11 @@ on:
   #
   # It costs about nine minutes of runner per release. The desktop side already
   # builds three platforms.
+  # On the tag, not on main. release.yml is manual now, and the tag it pushes
+  # is what says a release is happening — so this fires exactly when there is
+  # something to attach itself to, and never on an ordinary commit.
   push:
-    branches: [main]
+    tags: ['v*']
   # On a pull request the filter still makes sense: nothing is published, and a
   # change to the Svelte frontend has nothing to say about an Android build.
   pull_request:
