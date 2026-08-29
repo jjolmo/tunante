@@ -14,18 +14,52 @@ Built with [Tauri v2](https://tauri.app/) (Rust backend) and [SvelteKit 2](https
 
 - **Standard audio**: MP3, FLAC, OGG Vorbis, WAV, AAC, AIFF, WMA, M4A, Opus, APE, WavPack
 - **Chiptune / GME**: NSF, NSFE, SPC, GBS, VGM/VGZ, HES, KSS, AY, SAP, GYM — with auto-fade for looping tracks
-- **PSF family**: GSF (GBA), PSF (PS1), PSF2 (PS2), 2SF (NDS) — plus mini variants
-- **Game audio containers**: ADX, HCA, DSP, FSB, WEM, BCSTM, BFSTM, BRSTM, NUS3BANK, and 700+ formats via vgmstream
+- **PSF family**: PSF (PS1), PSF2 (PS2), GSF (GBA), 2SF (NDS), NCSF (NDS), USF (N64), SSF (Saturn), DSF (Dreamcast), QSF (Capcom QSound) — each with its `mini` variant, played by the original emulator cores
+- **Game audio containers**: ADX, HCA, DSP, FSB, WEM, BCSTM, BFSTM, BRSTM, NUS3BANK, AT3/AT9, XMA, SCD, and 700+ formats via vgmstream
+
+### Game music, treated as game music
+
+- **Box art downloader**: Finds the real cover for a game and writes it next to
+  the music. Matches against the [libretro-thumbnails](https://github.com/libretro-thumbnails)
+  `Named_Boxarts` index — the same canonical No-Intro name list emulator frontends
+  use — and falls back to iTunes, Steam, Deezer, Nintendo and Wikipedia for
+  soundtracks no console archive carries.
+- **Matching that refuses rather than guesses**: normalisation folds accents,
+  articles and roman/arabic numerals, then six ranked match stages with an
+  ambiguity guard. When the runner-up is within a hair of the winner it declines,
+  because a wrong cover written into a synced folder is worse than no cover.
+  `Mega Man X` stays X and does not become `Mega Man 10`.
+- **Bulk download with a dry run**: Preview what would be written for a folder,
+  console or playlist before anything touches disk, with progress, cancel, and an
+  **undo** that removes exactly the files that run created — never one of yours.
+  Existing folder art is never overwritten unless you ask.
+- **Console detection**: Every track gets a console from its format and its place
+  in the library. `.spc` *is* SNES wherever it sits; `.vgm` names no machine, so
+  the folder wins. 32 consoles in one table shared by all three apps.
+- **Game detection**: The game name comes from the ID666/tag album when it has
+  one — which rescues abbreviated rips like `ct/` or `ff6/` — and from the folder
+  when the tag names the soundtrack rather than the game.
+- **Fix what it got wrong**: Per-track and per-folder overrides that survive a
+  rescan, plus a "music we could not place" list so the unclassified folders are
+  visible instead of silently mislabelled.
+- **Auto-fade for looping tracks** and a configurable loop count for formats that
+  never end on their own.
+
+### Player and library
+
 - **Library management**: Folder scanning, file watcher, full-text search, customizable columns (resize, reorder, show/hide)
-- **Playlists**: Create, rename, delete, drag-and-drop tracks to add
+- **Playlists**: Create, rename, delete, drag-and-drop tracks to add, build one from a folder
 - **Console browser**: Filter tracks by game console (NES, SNES, Genesis, Game Boy, PS1, PS2, GBA, NDS...)
 - **Ratings / Favorites**: Star toggle with metadata persistence (writes back to file tags)
 - **Queue system**: Enqueue tracks, middle-click to add, context-aware auto-advance
 - **Shuffle & Repeat**: Shuffle, repeat all, repeat one — synced with backend queue
-- **Album artwork**: Embedded art display in sidebar
+- **DSP chain**: Equaliser, gain, limiter, stereo width, balance and mono fold-down
+- **Output device selection**: Pick the sound card, not whatever the system picked
+- **Global shortcuts**: Media keys and custom bindings that work while the window is hidden
 - **System tray**: Minimize to tray, left-click show/hide toggle (Linux KDE/GNOME supported)
 - **Metadata editor**: View and edit track metadata (title, artist, album, etc.)
-- **Dark theme**: foobar2000-inspired dark color palette
+- **Themes**: foobar2000-inspired dark palette, a light one, or follow the system
+- **Built-in updater**: Checks releases and applies signed updates in place
 
 ## Supported Formats
 
@@ -33,8 +67,8 @@ Built with [Tauri v2](https://tauri.app/) (Rust backend) and [SvelteKit 2](https
 |----------|---------|
 | Standard audio | MP3, FLAC, OGG, WAV, AAC, AIFF, WMA, M4A, Opus, APE, WavPack |
 | GME chiptune | NSF, NSFE, SPC, GBS, VGM, VGZ, HES, KSS, AY, SAP, GYM |
-| PSF family | GSF, miniGSF, PSF, miniPSF, PSF2, miniPSF2, 2SF, mini2SF |
-| Game audio (vgmstream) | ADX, HCA, DSP, FSB, WEM, BNK, BCSTM, BFSTM, BRSTM, NUS3BANK, and [700+ more](https://github.com/vgmstream/vgmstream) |
+| PSF family | PSF, PSF2, GSF, 2SF, NCSF, USF, SSF, DSF, QSF — and every `mini` variant |
+| Game audio (vgmstream) | ADX, HCA, DSP, FSB, WEM, BNK, BCSTM, BFSTM, BRSTM, NUS3BANK, AT3, AT9, XMA, SCD, GENH, TXTH/TXTP, and [700+ more](https://github.com/vgmstream/vgmstream) |
 
 ## Prerequisites
 
@@ -78,7 +112,8 @@ brew install cmake
 git clone --recurse-submodules https://github.com/jjolmo/tunante.git
 cd tunante
 
-# Install frontend dependencies
+# Install frontend dependencies — npm lives in apps/desktop/
+cd apps/desktop
 npm install
 
 # Start development mode
@@ -122,16 +157,52 @@ The app is not signed with an Apple Developer certificate. macOS Sequoia+ will s
    ```
 4. Now open Tunante normally — the quarantine flag is removed and macOS won't block it again
 
-## Phone builds
+## The other two Tunantes
 
-The same library, decoders and player, on two phones. Both live in this
-repository and share `tunante-core`, `tunante-codec` and `tunante-helper` with
-the desktop app — none of which knows what a GUI is.
+Tunante is three applications, not one with two ports. They share the parts that
+have nothing to do with a screen — `tunante-core` (database, play queue, console
+and game classification, DSP), `tunante-codec` (every decoder and metadata
+reader) and `tunante-art` (cover matching and download) — and **none of those may
+depend on Tauri or on any GUI toolkit**. Above that line each app is written for
+the machine it runs on, because a phone is not a small desktop.
 
-### Android
+Both phone apps decode **out of process**: the emulator cores run in a separate
+`tunante-decoder` binary that takes a file and returns PCM over a pipe. On a
+phone that matters twice over — a malformed rip that kills a decoder cannot take
+the player down with it, and the memory an emulator core allocates goes away with
+the process instead of staying resident.
+
+Because covers are written into the game's own folder, art downloaded on the
+desktop simply shows up on both phones once the folder syncs. Neither app has to
+download anything for it to be there — though both can.
+
+### tunante-mini — postmarketOS
+
+A phone app in [Slint](https://slint.dev/), for a phone running mainline Linux
+rather than Android. No web view, no JavaScript engine: it renders straight to
+the GPU, which is what makes it usable on hardware that predates the phone in
+your pocket. Packaged for Alpine with an `APKBUILD`, and CI builds the real
+package on every change.
+
+Its interface is built for a thumb — large targets, no hover, no right click.
+Several pieces that now live in the shared crates started life here
+(`decoder.rs`, `scan_folder`, `folder_image`, `session.rs`); the moment the
+Android app needed the same thing, they moved down rather than being copied.
 
 ```bash
-cd android && ./build.sh          # both ABIs
+cargo run -p tunante-mini              # runs on the desktop too, for development
+cargo build -p tunante-mini --release
+```
+
+### tunante-android
+
+A native Android app: Kotlin and Jetpack Compose for the interface, with the
+whole Rust half compiled into a `cdylib` and reached over JNI. Playback,
+database, decoding and classification are the same code the desktop runs; only
+the screen is different.
+
+```bash
+cd apps/android && ./build.sh     # both ABIs
 ABIS="arm64-v8a" ./build.sh       # phone only, skips the emulator build
 ```
 
@@ -146,15 +217,6 @@ by file from a MIME map that has never heard of `.psf`, `.nsf`, `.spc`, `.gsf`
 or `.2sf`. Those files are not indexed, so they cannot be opened — `readdir()`
 does not even list them. A normal music player never notices. This one does not
 work at all.
-
-### postmarketOS
-
-`tunante-mini`, in Slint, for a phone running mainline Linux. Built like any
-other crate in the workspace:
-
-```bash
-cargo build -p tunante-mini --release
-```
 
 ## Project Structure
 
