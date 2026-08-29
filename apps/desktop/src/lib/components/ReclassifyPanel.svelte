@@ -57,6 +57,25 @@
 	let consoleId = $state<string | null>(null);
 	let gameQuery = $state('');
 
+	/// Every name worth offering, and its provenance. The seed picks the first
+	/// of these; showing the rest means a wrong guess is one click from right,
+	/// instead of something to retype.
+	let candidates = $derived.by(() => {
+		const g = guessed;
+		const out: { label: string; from: string }[] = [];
+		const add = (label: string | undefined, from: string) => {
+			const v = (label ?? '').trim();
+			if (v && !out.some((c) => c.label.toLowerCase() === v.toLowerCase())) {
+				out.push({ label: v, from });
+			}
+		};
+		add(g?.header_game, "the file's header");
+		add(g?.game, 'its current classification');
+		add(folder.split(/[/\\]/).pop(), 'the folder');
+		add(g?.album, 'the album tag');
+		return out;
+	});
+
 	let seeded = false;
 	let seededFromHeader = $state(false);
 	$effect(() => {
@@ -130,6 +149,36 @@
 	let remoteMatches = $state<string[]>([]);
 	let searching = $state(false);
 	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+	/// Ask the archives, without waiting for someone to type.
+	///
+	/// The type-ahead only reaches the network once there is a query, which is
+	/// useless when the field is empty and the whole question is "what is this?"
+	/// This searches with the best name available — whatever is in the box, or
+	/// the folder's name, which is usually what the ripper called the game.
+	async function fetchOnline() {
+		const q = (gameQuery.trim() || folder.split(/[/\\]/).pop() || '').trim();
+		if (!q) return;
+		searching = true;
+		gameOpen = true;
+		try {
+			remoteMatches = await invoke<string[]>('suggest_game_names', {
+				consoleId: consoleId ?? '',
+				query: q
+			});
+			if (remoteMatches.length === 0) {
+				searchError = `Nothing found for "${q}".`;
+			} else {
+				searchError = null;
+			}
+		} catch (e) {
+			searchError = String(e);
+		} finally {
+			searching = false;
+		}
+	}
+
+	let searchError = $state<string | null>(null);
 
 	function searchRemote(q: string) {
 		if (searchTimer) clearTimeout(searchTimer);
@@ -322,7 +371,33 @@
 						</ul>
 					{/if}
 				</div>
+				<button
+					class="btn fetch"
+					onclick={fetchOnline}
+					disabled={searching}
+					title="Search the console's box-art archive and Steam"
+				>
+					{searching ? 'Searching…' : 'Search online'}
+				</button>
 			</div>
+
+			{#if candidates.length > 0}
+				<div class="candidates">
+					{#each candidates as c (c.label)}
+						<button
+							class="chip"
+							class:on={c.label === gameQuery}
+							onclick={() => (gameQuery = c.label)}
+							title={`From ${c.from}`}
+						>
+							<span class="chip-name">{c.label}</span>
+							<span class="chip-from">{c.from}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+
+			{#if searchError}<span class="hint warn">{searchError}</span>{/if}
 			<span class="hint">
 				{#if seededFromHeader}
 					<strong>From the file's own header</strong> — the game it names, which is not
@@ -450,6 +525,49 @@
 		position: relative;
 		flex: 1;
 		min-width: 0;
+	}
+	.fetch {
+		flex-shrink: 0;
+		white-space: nowrap;
+	}
+	/* Left-aligned with the fields above, not with the label column: these are
+	   answers to the question the field asks. */
+	.candidates {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin: 6px 0 0 76px;
+	}
+	.chip {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 1px;
+		max-width: 200px;
+		text-align: left;
+		background-color: var(--color-bg-primary);
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		padding: 3px 8px;
+		cursor: pointer;
+	}
+	.chip:hover {
+		background-color: var(--color-bg-tertiary);
+	}
+	.chip.on {
+		border-color: var(--color-text-secondary);
+	}
+	.chip-name {
+		font-size: 12px;
+		color: var(--color-text-primary);
+		max-width: 184px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.chip-from {
+		font-size: 10px;
+		color: var(--color-text-muted);
 	}
 
 	.type-ahead input {
