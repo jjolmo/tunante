@@ -13,3 +13,10 @@ mod platform;
 mod platform;
 
 pub(crate) use self::platform::*;
+
+// Tunante patch: this one has to leave the crate. `pub(crate) use *` above
+// keeps everything internal, which is right for the platform types but makes
+// `set_symbolic_icon` unreachable from an application — and an application is
+// the only thing that knows which icon it wants.
+#[cfg(target_os = "linux")]
+pub use self::platform::set_symbolic_icon;

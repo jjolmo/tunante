@@ -124,4 +124,12 @@ export type Theme = 'dark' | 'light' | 'system';
 /// Game box art is not square and is not one shape either: a SNES box is
 /// almost square, a PS1 jewel case is portrait, a Mega Drive box is wide. One
 /// rule cannot flatter all of them, which is why this is a setting.
+/// Which face the system tray wears.
+///
+/// `system` is not "the same as symbolic": it means letting each platform do
+/// what it does natively, which on macOS is a template image the OS inverts
+/// itself — including while the menu is open, a state no manual swap can
+/// reproduce.
+export type TrayIconStyle = 'system' | 'symbolic' | 'logo';
+
 export type CoverFit = 'cover' | 'contain' | 'blur' | 'fill' | 'none';

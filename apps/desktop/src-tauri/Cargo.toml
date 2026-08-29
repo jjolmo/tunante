@@ -49,6 +49,10 @@ open = "5.3.3"
 tauri-plugin-process = "2.3.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+# Not for the types: the patched crate exposes `set_symbolic_icon`, which is the
+# only way to publish the tray icon by name so KDE, GNOME and Cinnamon can
+# recolour it. `tauri::tray` offers `icon(Image)` and nothing else.
+tray-icon = "0.21"
 evdev = { version = "0.13.2", optional = true }
 gio = "0.18"
 gtk = "0.18"

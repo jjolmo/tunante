@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { CoverFit, MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
+import type { CoverFit, TrayIconStyle, MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
 import { libraryStore } from '$lib/stores/library.svelte';
 
 /** Mirrors `DspConfig` in apps/desktop/src-tauri/src/commands/player.rs. */
@@ -76,6 +76,7 @@ class SettingsStore {
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
 	coverFit = $state<CoverFit>('cover');
+	trayIconStyle = $state<TrayIconStyle>('system');
 	showFaved = $state(true);
 	showPlaylists = $state(true);
 	showConsoles = $state(true);
@@ -149,6 +150,11 @@ class SettingsStore {
 		const fit = this._settingsCache.get('cover_fit');
 		if (fit === 'cover' || fit === 'contain' || fit === 'blur' || fit === 'fill' || fit === 'none') {
 			this.coverFit = fit;
+		}
+
+		const tray = this._settingsCache.get('tray_icon_style');
+		if (tray === 'system' || tray === 'symbolic' || tray === 'logo') {
+			this.trayIconStyle = tray;
 		}
 
 		const titlebar = this._settingsCache.get('show_track_in_titlebar');
@@ -435,6 +441,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'cover_fit', value: fit });
 		} catch (e) {
 			console.error('Failed to save cover fit setting:', e);
+		}
+	}
+
+	async setTrayIconStyle(style: TrayIconStyle) {
+		this.trayIconStyle = style;
+		try {
+			await invoke('set_setting', { key: 'tray_icon_style', value: style });
+		} catch (e) {
+			console.error('Failed to save tray icon style:', e);
 		}
 	}
 
