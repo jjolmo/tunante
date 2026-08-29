@@ -55,7 +55,6 @@ class CoversStore {
 	 * A console the user asked about from elsewhere in the app — the sidebar's
 	 * context menu. The covers screen picks it up on mount and preselects it.
 	 */
-	requestedConsole = $state<string | null>(null);
 	/**
 	 * Bumped when a run finishes, so anything showing artwork re-reads it.
 	 *
@@ -65,6 +64,25 @@ class CoversStore {
 	 * reason.
 	 */
 	refreshToken = $state(0);
+
+	/// When the current run began, for the estimate. Wall clock, because that
+	/// is what the estimate is of.
+	startedAt = $state<number | null>(null);
+
+	/// Seconds left, or null while there is nothing to extrapolate from.
+	///
+	/// Measured rather than assumed: the rate depends on how many covers are
+	/// already present (skipped in milliseconds) and on which hosts answer, and
+	/// those vary enough across a library that a fixed per-item cost would be
+	/// wrong by hours. The first few items are ignored because the archive
+	/// index downloads during them, which is not the steady rate.
+	get etaSeconds(): number | null {
+		const p = this.progress;
+		if (!p || !this.startedAt || p.total === 0 || p.done < 5) return null;
+		const elapsed = (Date.now() - this.startedAt) / 1000;
+		const perItem = elapsed / p.done;
+		return Math.max(0, Math.round((p.total - p.done) * perItem));
+	}
 
 	private unlisten: UnlistenFn[] = [];
 
@@ -130,6 +148,7 @@ class CoversStore {
 	}
 
 	async apply(scope: Scope, target = '', replaceExisting = false) {
+		this.startedAt = Date.now();
 		this.running = true;
 		this.error = null;
 		this.undone = false;
