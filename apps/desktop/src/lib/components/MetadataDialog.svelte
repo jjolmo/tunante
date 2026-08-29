@@ -9,6 +9,13 @@
 
 	let isSingle = $derived(tracks.length === 1);
 	let reclassifying = $state(false);
+	// Bound so Apply can drive the column's half of the save. One button, both
+	// halves: the tags and what game they belong to are two answers to the same
+	// dialog, and two Save buttons stacked made the reader work out which one
+	// owned which.
+	let reclassifyPanel = $state<{ save: () => Promise<boolean>; canSave: () => boolean } | null>(
+		null
+	);
 
 	// What the files themselves say, when they agree. A selection spanning two
 	// games has no single answer, and offering one of them would be a guess
@@ -109,6 +116,14 @@
 
 			const trackIds = tracks.map((t) => t.id);
 			await invoke('update_track_metadata', { trackIds, fields });
+
+			// The classification, if that column is open and has an answer. It
+			// writes an override rather than a tag, so it cannot go through
+			// `update_track_metadata` — but from here it is one Apply.
+			if (reclassifying && reclassifyPanel?.canSave()) {
+				await reclassifyPanel.save();
+			}
+
 			await libraryStore.loadTracks();
 			onclose();
 		} catch (e) {
@@ -243,7 +258,12 @@
 						aria-label="Close the reclassify column">✕</button
 					>
 				</div>
-				<ReclassifyPanel {tracks} onclose={() => (reclassifying = false)} />
+				<ReclassifyPanel
+					bind:this={reclassifyPanel}
+					{tracks}
+					embedded
+					onclose={() => (reclassifying = false)}
+				/>
 			</div>
 		{/if}
 		</div>
@@ -268,7 +288,7 @@
 			<span class="spacer"></span>
 			<button class="btn btn-secondary" onclick={onclose}>Cancel</button>
 			<button class="btn btn-primary" onclick={handleSave} disabled={isSaving}>
-				{isSaving ? 'Saving...' : 'Apply'}
+				{isSaving ? 'Saving...' : reclassifying ? 'Apply both' : 'Apply'}
 			</button>
 		</div>
 	</div>
