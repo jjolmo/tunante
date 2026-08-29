@@ -4,6 +4,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import ReclassifyPanel from './ReclassifyPanel.svelte';
+	import { consolesStore } from '$lib/stores/consoles.svelte';
 
 	let { tracks, onclose }: { tracks: Track[]; onclose: () => void } = $props();
 
@@ -38,10 +39,13 @@
 
 	type Names = { file: string; subsongs: number; titles: string[]; problem: string | null };
 	let names = $state<Names | null>(null);
+
+	let askingNames = $state(false);
 	let fetchingNames = $state(false);
 	let namesApplied = $state<number | null>(null);
 
 	async function fetchNames() {
+		askingNames = false;
 		fetchingNames = true;
 		namesApplied = null;
 		try {
@@ -95,6 +99,15 @@
 		return names.size === 1 ? [...names][0] : '';
 	});
 	let firstTrack = $derived(tracks[0]);
+
+	/// Shown before the lookup, not after. The useful thing to confirm is not
+	/// "are you sure" — nothing is written yet — but *what it is about to look
+	/// up*: the game name comes from the classification, and if that is wrong
+	/// this is the moment it is visible and one click from fixed.
+	let lookupGame = $derived(firstTrack?.game?.trim() ?? '');
+	let lookupConsole = $derived(
+		consolesStore.definitions.find((c) => c.id === firstTrack?.console_id)?.name ?? ''
+	);
 
 	// Editable fields (initialized from track data)
 	let title = $state('');
@@ -263,8 +276,8 @@
 								{#if canFetchNames}
 									<button
 										class="btn btn-secondary small"
-										onclick={fetchNames}
-										disabled={fetchingNames}
+										onclick={() => (askingNames = true)}
+										disabled={fetchingNames || askingNames}
 										title="This format holds the whole game in one file. Look the track names up."
 									>
 										{fetchingNames ? 'Looking…' : 'Get track names'}
@@ -272,7 +285,39 @@
 								{/if}
 							</div>
 
-							{#if names}
+							{#if askingNames}
+								<div class="names">
+									{#if lookupGame}
+										<p class="names-problem">
+											This file holds the whole game as numbered tracks, and their
+											names are not in it. Tunante will ask
+											<strong>zophar.net</strong> for the track list of
+											<strong>{lookupGame}</strong>{#if lookupConsole}
+												({lookupConsole}){/if}.
+											<br /><br />
+											Nothing is written yet — the list is shown first, and it is
+											refused outright unless it has exactly as many entries as
+											this file has tracks.
+										</p>
+										<div class="names-actions">
+											<button class="btn btn-primary" onclick={fetchNames}>Look it up</button>
+											<button class="btn btn-secondary" onclick={() => (askingNames = false)}
+												>Cancel</button
+											>
+										</div>
+									{:else}
+										<p class="names-problem">
+											Name the game first — the list is looked up by it. The
+											column beside this one does that.
+										</p>
+										<div class="names-actions">
+											<button class="btn btn-secondary" onclick={() => (askingNames = false)}
+												>Close</button
+											>
+										</div>
+									{/if}
+								</div>
+							{:else if names}
 								<div class="names">
 									{#if names.problem}
 										<p class="names-problem">{names.problem}</p>
