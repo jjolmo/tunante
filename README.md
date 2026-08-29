@@ -198,14 +198,18 @@ cargo run -p tunante-mini              # from the repository root
 cargo build -p tunante-mini --release  # target/release/tunante-mini
 ```
 
-CI builds it three ways on every change and attaches all three to
+CI builds it four ways on every change and attaches all four to
 [Releases](https://github.com/jjolmo/tunante/releases):
 
 | Build | For |
 |-------|-----|
 | `tunante-mini-x86_64-linux-gnu.tar.gz` | An ordinary desktop or laptop |
 | `tunante-mini-aarch64-linux-gnu.tar.gz` | ARM boards, ARM laptops, an ARM desktop |
+| `tunante-mini-x86_64-windows.zip` | Windows |
 | `tunante-mini-*.apk` (Alpine, musl, aarch64) | postmarketOS and any Alpine phone |
+
+MPRIS and the sleep inhibitor are freedesktop specifications, so on Windows the
+lock-screen controls are compiled out and everything else is the same code.
 
 Each tarball carries both `tunante-mini` and `tunante-decoder`, and they must
 stay side by side: the player looks for the decoder as a sibling of itself, and

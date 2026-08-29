@@ -68,8 +68,15 @@ fn decoder_command() -> Command {
 ///
 /// An explicit [`set_decoder_path`] wins, then `TUNANTE_DECODER`, then a sibling
 /// of this executable — which covers both `cargo run` and an installed package,
-/// since the two binaries ship together — and finally bare `tunante-decoder` for
-/// whatever `PATH` offers.
+/// since the two binaries ship together — and finally the bare name for whatever
+/// `PATH` offers.
+///
+/// The name carries [`std::env::consts::EXE_SUFFIX`], which is empty everywhere
+/// this has ever run and `.exe` on Windows. Without it the sibling lookup — the
+/// case that matters, because the two binaries are installed together — never
+/// matches on Windows, and the fallback leaves `Command` searching a `PATH` that
+/// does not contain the install directory. The symptom is not an error about a
+/// missing helper: it is a player that scans nothing and plays nothing.
 pub fn decoder_path() -> PathBuf {
     if let Some(p) = DECODER.get() {
         return p.clone();
@@ -77,15 +84,37 @@ pub fn decoder_path() -> PathBuf {
     if let Ok(p) = std::env::var("TUNANTE_DECODER") {
         return PathBuf::from(p);
     }
+    let name = format!("tunante-decoder{}", std::env::consts::EXE_SUFFIX);
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let sibling = dir.join("tunante-decoder");
+            let sibling = dir.join(&name);
             if sibling.is_file() {
                 return sibling;
             }
         }
     }
-    PathBuf::from("tunante-decoder")
+    PathBuf::from(name)
+}
+
+#[cfg(test)]
+mod decoder_path_tests {
+    use super::*;
+
+    /// Not a tautology: the point is that the name is *built* from the platform
+    /// suffix rather than written out, so a Windows build looks for the file
+    /// Windows actually produces.
+    #[test]
+    fn the_fallback_name_carries_the_platform_executable_suffix() {
+        let _guard = std::env::var("TUNANTE_DECODER").ok();
+        std::env::remove_var("TUNANTE_DECODER");
+        let expected = format!("tunante-decoder{}", std::env::consts::EXE_SUFFIX);
+        let p = decoder_path();
+        let got = p.file_name().unwrap().to_string_lossy().into_owned();
+        assert_eq!(got, expected);
+        if let Some(v) = _guard {
+            std::env::set_var("TUNANTE_DECODER", v);
+        }
+    }
 }
 
 /// Read every track a file contains, by asking the helper.

@@ -19,6 +19,7 @@
 
 use std::sync::mpsc::{Receiver, Sender};
 
+#[cfg(target_os = "linux")]
 use mpris_server::{
     LoopStatus, Metadata, PlaybackStatus, Player, Time, TrackId,
 };
@@ -54,6 +55,7 @@ pub struct Update {
     pub repeat: RepeatMode,
 }
 
+#[cfg(target_os = "linux")]
 fn to_loop_status(mode: RepeatMode) -> LoopStatus {
     match mode {
         RepeatMode::Off => LoopStatus::None,
@@ -62,6 +64,7 @@ fn to_loop_status(mode: RepeatMode) -> LoopStatus {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn from_loop_status(status: LoopStatus) -> RepeatMode {
     match status {
         LoopStatus::None => RepeatMode::Off,
@@ -79,6 +82,7 @@ fn from_loop_status(status: LoopStatus) -> RepeatMode {
 ///
 /// Failure is not fatal and is not propagated: no session bus means no lock
 /// screen controls, which is a worse app, not a broken one.
+#[cfg(target_os = "linux")]
 pub fn spawn() -> (Sender<Update>, Receiver<Command>) {
     let (update_tx, update_rx) = std::sync::mpsc::channel::<Update>();
     let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<Command>();
@@ -98,6 +102,7 @@ pub fn spawn() -> (Sender<Update>, Receiver<Command>) {
     (update_tx, cmd_rx)
 }
 
+#[cfg(target_os = "linux")]
 fn run(
     rx: Receiver<Update>,
     cmd_tx: Sender<Command>,
@@ -193,6 +198,7 @@ fn run(
 /// Every setter here is a D-Bus property emission. Sending all of them twice a
 /// second — which is what the UI's progress timer would cause — wakes every
 /// listener on the bus for nothing, and on a phone that is battery.
+#[cfg(target_os = "linux")]
 async fn publish(player: &Player, u: &Update, last: Option<&Update>) {
     let track_changed = last.is_none_or(|l| {
         l.title != u.title || l.artist != u.artist || l.duration_ms != u.duration_ms
@@ -245,4 +251,22 @@ async fn publish(player: &Player, u: &Update, last: Option<&Update>) {
     // Position is not a property change under MPRIS — clients poll it — so this
     // is a local store, not a bus message.
     player.set_position(Time::from_millis(u.position_ms as i64));
+}
+
+/// No D-Bus, no MPRIS. The channels are still real so the event loop in
+/// `main.rs` needs no `cfg` of its own: it sends updates that go nowhere and
+/// polls for commands that never arrive.
+///
+/// Both dead ends are leaked rather than dropped, and that is the point. A
+/// dropped receiver makes every `send` return `Err`, and a dropped sender makes
+/// `try_recv` report `Disconnected` — either would turn "this platform has no
+/// session bus" into a stream of errors, once per frame, that nothing can act
+/// on. One pointer each, for the life of the process.
+#[cfg(not(target_os = "linux"))]
+pub fn spawn() -> (Sender<Update>, Receiver<Command>) {
+    let (update_tx, update_rx) = std::sync::mpsc::channel::<Update>();
+    let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<Command>();
+    Box::leak(Box::new(update_rx));
+    Box::leak(Box::new(cmd_tx));
+    (update_tx, cmd_rx)
 }
