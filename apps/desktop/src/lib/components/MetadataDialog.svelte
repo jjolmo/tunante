@@ -254,6 +254,97 @@
 			</button>
 		</div>
 
+		{#if askingNames || names || namesApplied !== null}
+			<!--
+				A section of its own, with the tags hidden behind it. Grown inside a
+				table cell this put a scrolling list of fifty names into a column two
+				inches wide, beside the very field it was about to overwrite, and read
+				as neither a list nor a form.
+			-->
+			<div class="names-panel">
+				<div class="names-panel-head">
+					<span class="names-panel-title">Track names</span>
+					<button
+						class="close-btn"
+						onclick={() => {
+							askingNames = false;
+							names = null;
+							namesApplied = null;
+						}}
+						aria-label="Back to the tags">✕</button
+					>
+				</div>
+				<div class="names-panel-body">
+			{#if askingNames}
+				<div class="names">
+					{#if lookupGame}
+						<p class="names-problem">
+							This file holds the whole game as numbered tracks, and their
+							names are not in it. Tunante will ask
+							<strong>zophar.net</strong> for the track list of
+							<strong>{lookupGame}</strong>{#if lookupConsole}
+								({lookupConsole}){/if}.
+							<br /><br />
+							Nothing is written yet — the list is shown first, and it is
+							refused outright unless it has exactly as many entries as
+							this file has tracks.
+						</p>
+						<div class="names-actions">
+							<button class="btn btn-primary" onclick={fetchNames}>Look it up</button>
+							<button class="btn btn-secondary" onclick={() => (askingNames = false)}
+								>Cancel</button
+							>
+						</div>
+					{:else}
+						<p class="names-problem">
+							Name the game first — the list is looked up by it. The
+							column beside this one does that.
+						</p>
+						<div class="names-actions">
+							<button class="btn btn-secondary" onclick={() => (askingNames = false)}
+								>Close</button
+							>
+						</div>
+					{/if}
+				</div>
+			{:else if names}
+				<div class="names">
+					{#if names.problem}
+						<p class="names-problem">{names.problem}</p>
+					{:else}
+						<p class="names-head">
+							{names.titles.length} names for this file, in order.
+						</p>
+						<ol class="names-list">
+							{#each names.titles as t, i (i)}
+								<li class:on={i === subsongIndex}>{t}</li>
+							{/each}
+						</ol>
+						<div class="names-actions">
+							{#if subsongIndex !== null}
+								<button
+									class="btn btn-secondary"
+									onclick={() => applyNames(subsongIndex)}
+									disabled={fetchingNames}
+								>Only this track</button>
+							{/if}
+							<button
+								class="btn btn-primary"
+								onclick={() => applyNames(null)}
+								disabled={fetchingNames}
+							>All {names.titles.length}</button>
+							<button class="btn btn-secondary" onclick={() => (names = null)}
+								>Discard</button
+							>
+						</div>
+					{/if}
+				</div>
+			{:else if namesApplied !== null}
+				<p class="names-head">Renamed {namesApplied} track{namesApplied === 1 ? '' : 's'}.</p>
+			{/if}
+				</div>
+			</div>
+		{:else}
 		<div class="metadata-body">
 			<table class="metadata-table">
 				<tbody>
@@ -285,73 +376,6 @@
 								{/if}
 							</div>
 
-							{#if askingNames}
-								<div class="names">
-									{#if lookupGame}
-										<p class="names-problem">
-											This file holds the whole game as numbered tracks, and their
-											names are not in it. Tunante will ask
-											<strong>zophar.net</strong> for the track list of
-											<strong>{lookupGame}</strong>{#if lookupConsole}
-												({lookupConsole}){/if}.
-											<br /><br />
-											Nothing is written yet — the list is shown first, and it is
-											refused outright unless it has exactly as many entries as
-											this file has tracks.
-										</p>
-										<div class="names-actions">
-											<button class="btn btn-primary" onclick={fetchNames}>Look it up</button>
-											<button class="btn btn-secondary" onclick={() => (askingNames = false)}
-												>Cancel</button
-											>
-										</div>
-									{:else}
-										<p class="names-problem">
-											Name the game first — the list is looked up by it. The
-											column beside this one does that.
-										</p>
-										<div class="names-actions">
-											<button class="btn btn-secondary" onclick={() => (askingNames = false)}
-												>Close</button
-											>
-										</div>
-									{/if}
-								</div>
-							{:else if names}
-								<div class="names">
-									{#if names.problem}
-										<p class="names-problem">{names.problem}</p>
-									{:else}
-										<p class="names-head">
-											{names.titles.length} names for this file, in order.
-										</p>
-										<ol class="names-list">
-											{#each names.titles as t, i (i)}
-												<li class:on={i === subsongIndex}>{t}</li>
-											{/each}
-										</ol>
-										<div class="names-actions">
-											{#if subsongIndex !== null}
-												<button
-													class="btn btn-secondary"
-													onclick={() => applyNames(subsongIndex)}
-													disabled={fetchingNames}
-												>Only this track</button>
-											{/if}
-											<button
-												class="btn btn-primary"
-												onclick={() => applyNames(null)}
-												disabled={fetchingNames}
-											>All {names.titles.length}</button>
-											<button class="btn btn-secondary" onclick={() => (names = null)}
-												>Discard</button
-											>
-										</div>
-									{/if}
-								</div>
-							{:else if namesApplied !== null}
-								<p class="names-head">Renamed {namesApplied} track{namesApplied === 1 ? '' : 's'}.</p>
-							{/if}
 						</td>
 					</tr>
 					<tr>
@@ -424,6 +448,7 @@
 				</tbody>
 			</table>
 		</div>
+		{/if}
 
 		</div>
 
@@ -674,30 +699,51 @@
 		white-space: nowrap;
 		flex-shrink: 0;
 	}
+	.names-panel {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		flex: 1;
+	}
+	.names-panel-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 16px;
+		border-bottom: 1px solid var(--color-border);
+	}
+	.names-panel-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+	.names-panel-body {
+		padding: 14px 16px;
+		overflow-y: auto;
+	}
+	/* No border and no inset: this used to be a box inside a table cell, and
+	   the panel around it is the box now. */
 	.names {
-		margin-top: 8px;
-		border: 1px solid var(--color-border);
-		border-radius: 4px;
-		background-color: var(--color-bg-secondary);
-		padding: 8px 10px;
+		margin: 0;
 	}
 	.names-head {
-		margin: 0 0 6px;
-		font-size: 11px;
-		color: var(--color-text-muted);
+		margin: 0 0 10px;
+		font-size: 13px;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
 	}
 	.names-problem {
-		margin: 0;
-		font-size: 12px;
+		margin: 0 0 10px;
+		font-size: 13px;
 		color: var(--color-text-secondary);
 		line-height: 1.45;
 	}
 	/* Scrolls rather than growing: some of these run to fifty entries, and a
 	   dialog that resizes to fit one is a dialog that jumps. */
 	.names-list {
-		margin: 0 0 8px;
-		padding-left: 24px;
-		max-height: 150px;
+		margin: 0 0 12px;
+		padding-left: 26px;
+		max-height: 260px;
 		overflow-y: auto;
 		font-size: 12px;
 		color: var(--color-text-secondary);

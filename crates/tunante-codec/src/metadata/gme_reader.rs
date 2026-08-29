@@ -418,3 +418,38 @@ fn read_gme_metadata_inner(
 
     Ok(tracks)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Write;
+
+    fn parse_line(line: &str) -> Option<(i32, String)> {
+        let dir = std::env::temp_dir().join(format!("m3u-{}", line.len()));
+        std::fs::create_dir_all(&dir).ok()?;
+        let f = dir.join("t.m3u");
+        let mut fh = std::fs::File::create(&f).ok()?;
+        writeln!(fh, "{line}").ok()?;
+        drop(fh);
+        let d = parse_gme_m3u(&f)?;
+        let (k, v) = d.entries.iter().next()?;
+        Some((*k, v.title.clone()))
+    }
+
+    /// What Tunante writes has to come back out of the parser Tunante reads
+    /// with. The first version did not: it left the type field empty, and the
+    /// title landed a column over.
+    #[test]
+    fn a_written_line_round_trips_through_the_parser() {
+        assert_eq!(parse_line("Metroid.nsf::NSF,1,Intro,"), Some((1, "Intro".into())));
+    }
+
+    /// The shape that was actually shipped, kept as a test so the bug is named
+    /// rather than remembered.
+    #[test]
+    fn an_empty_type_field_does_not_yield_the_title() {
+        let got = parse_line("Metroid.nsf::,1,,Intro");
+        assert_ne!(got, Some((1, "Intro".into())), "this is what went wrong");
+    }
+
+    use super::*;
+}
