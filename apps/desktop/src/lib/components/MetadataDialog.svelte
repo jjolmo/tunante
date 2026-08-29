@@ -63,6 +63,7 @@
 		file: string;
 		subsongs: number;
 		titles: string[];
+		named: number;
 		lengths: string[];
 		problem: string | null;
 	};
@@ -78,7 +79,7 @@
 		try {
 			names = await invoke<Names>('suggest_track_names', { trackPath: firstTrack.path });
 		} catch (e) {
-			names = { file: '', subsongs: 0, titles: [], lengths: [], problem: String(e) };
+			names = { file: '', subsongs: 0, titles: [], named: 0, lengths: [], problem: String(e) };
 		}
 		namesMode = 'list';
 		// With no subsong index there is nothing to rename on its own.
@@ -342,6 +343,24 @@
 				<div class="names">
 					{#if names.problem}
 						<p class="names-problem">{names.problem}</p>
+						{#if !namesReplace && names.titles.length > 0}
+							<!--
+								A refusal with nothing to do about it is a dead end, and
+								this one left Apply as the only button and no way to make
+								it work. The decision it is asking for belongs here.
+							-->
+							<label class="scope-opt">
+								<input
+									type="checkbox"
+									checked={namesReplace}
+									onchange={(e) => {
+										namesReplace = e.currentTarget.checked;
+										if (namesReplace && names) names = { ...names, problem: null };
+									}}
+								/>
+								<span>Replace the playlist that is already there</span>
+							</label>
+						{/if}
 					{:else}
 						<p class="names-head">
 							{names.titles.length} names for this file, in order.
@@ -349,7 +368,7 @@
 						<ol class="names-list">
 							{#each names.titles as t, i (i)}
 								<li class:on={i === subsongIndex}>
-									<span class="nm">{t}</span>
+									<span class="nm" class:unnamed={!t}>{t || 'left as it is'}</span>
 									{#if names.lengths[i]}<span class="len">{names.lengths[i]}</span>{/if}
 								</li>
 							{/each}
@@ -565,7 +584,7 @@
 					onclick={handleSave}
 					disabled={isSaving || (namesMode === 'list' && !!names?.problem)}
 				>
-					{isSaving ? 'Saving...' : 'Apply'}
+					{isSaving ? 'Saving...' : namesMode === 'list' ? 'Fix' : 'Apply'}
 				</button>
 			{/if}
 			{/if}
@@ -828,6 +847,10 @@
 		white-space: nowrap;
 	}
 
+	.unnamed {
+		color: var(--color-text-muted);
+		font-style: italic;
+	}
 	.len {
 		color: var(--color-text-muted);
 		flex-shrink: 0;
