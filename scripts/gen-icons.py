@@ -205,13 +205,21 @@ def mono(source: Path, n: int, white: bool) -> bytes:
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}" '
         f'width="{n}" height="{n}" fill="{colour}" {rules}>{body}</svg>'
     )
-    out = subprocess.run(
-        ["magick", "-background", "none", "svg:-", "-resize", f"{n}x{n}", "png:-"],
-        input=flat.encode(), capture_output=True,
-    )
-    if out.returncode != 0:
-        sys.exit("magick failed: " + out.stderr.decode()[:400])
-    return out.stdout
+    # ImageMagick 7 installs `magick`; the `imagemagick` package on Ubuntu is
+    # still 6, whose binary is `convert`. Try both before giving up.
+    last = ""
+    for exe in ("magick", "convert"):
+        try:
+            out = subprocess.run(
+                [exe, "-background", "none", "svg:-", "-resize", f"{n}x{n}", "png:-"],
+                input=flat.encode(), capture_output=True,
+            )
+        except FileNotFoundError:
+            continue
+        if out.returncode == 0:
+            return out.stdout
+        last = out.stderr.decode()[:400]
+    sys.exit(f"no usable ImageMagick (magick/convert). Last error: {last}")
 
 
 def build(src: Image.Image) -> dict[Path, bytes]:
@@ -259,6 +267,15 @@ def build(src: Image.Image) -> dict[Path, bytes]:
     #           that resolves to an SVG; a pixmap is drawn as given.
     if TRAY_SOURCE.is_file():
         out[TRAY / "tunante-symbolic.svg"] = symbolic_svg(TRAY_SOURCE)
+        # A stamp of the source, because the three PNGs below cannot be
+        # compared byte for byte. They come out of ImageMagick, and two
+        # machines with different versions of it render the same SVG to
+        # different bytes — so `--check` on the pixels fails on a difference
+        # that means nothing. What it has to catch is a glyph edited without
+        # regenerating, and that is exactly what this records.
+        out[TRAY / "source.sha256"] = (
+            hashlib.sha256(TRAY_SOURCE.read_bytes()).hexdigest() + "\n"
+        ).encode()
         # macOS reads the alpha channel and ignores the colour, so black is
         # convention rather than requirement. 44px is 22pt at 2x.
         out[TRAY / "template.png"] = mono(TRAY_SOURCE, 44, white=False)
@@ -300,8 +317,17 @@ def main() -> int:
             print(path.relative_to(ROOT))
         return 0
 
+    # Produced by an external rasteriser, so their bytes are not reproducible
+    # across machines. `source.sha256`, generated beside them, is what proves
+    # they are current.
+    unstable = {TRAY / "template.png", TRAY / "mono-black.png", TRAY / "mono-white.png"}
+
     stale = []
     for path, data in sorted(planned.items()):
+        if args.check and path in unstable:
+            if not path.is_file():
+                stale.append(path)
+            continue
         old = path.read_bytes() if path.is_file() else None
         # Compared by content, not by mtime: a checkout touches every file, and
         # regenerating on every commit would put noise in the history.
