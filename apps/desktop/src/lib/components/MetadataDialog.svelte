@@ -3,7 +3,7 @@
 	import { formatDuration, formatFileSize } from '$lib/types';
 	import { invoke } from '@tauri-apps/api/core';
 	import { libraryStore } from '$lib/stores/library.svelte';
-	import ReclassifyDialog from './ReclassifyDialog.svelte';
+	import ReclassifyPanel from './ReclassifyPanel.svelte';
 
 	let { tracks, onclose }: { tracks: Track[]; onclose: () => void } = $props();
 
@@ -126,14 +126,12 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if reclassifying}
-	<ReclassifyDialog {tracks} onclose={() => (reclassifying = false)} />
-{/if}
-
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="metadata-overlay" onclick={(e) => e.stopPropagation()} onmousedown={(e) => e.stopPropagation()}>
-	<div class="metadata-dialog">
+	<div class="metadata-dialog" class:wide={reclassifying}>
+		<div class="columns">
+		<div class="col-tags">
 		<div class="metadata-header">
 			<span class="metadata-title">
 				{isSingle ? 'Track Properties' : `Properties (${tracks.length} tracks)`}
@@ -233,6 +231,23 @@
 			</table>
 		</div>
 
+		</div>
+
+		{#if reclassifying}
+			<div class="col-reclassify">
+				<div class="col-head">
+					<span class="col-title">Which videogame</span>
+					<button
+						class="close-btn"
+						onclick={() => (reclassifying = false)}
+						aria-label="Close the reclassify column">✕</button
+					>
+				</div>
+				<ReclassifyPanel {tracks} onclose={() => (reclassifying = false)} />
+			</div>
+		{/if}
+		</div>
+
 		<div class="metadata-footer">
 			<!--
 				On the left, away from Apply. This one does not edit the file's
@@ -270,8 +285,46 @@
 		justify-content: center;
 	}
 
+	.metadata-dialog.wide {
+		width: 1010px;
+	}
+	.columns {
+		display: flex;
+		min-height: 0;
+		flex: 1;
+	}
+	.col-tags {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+	}
+	.col-reclassify {
+		width: 460px;
+		flex-shrink: 0;
+		border-left: 1px solid var(--color-border);
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+	.col-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--color-border);
+		background-color: var(--color-bg-secondary);
+	}
+	.col-title {
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
 	.metadata-dialog {
 		width: 550px;
+		/* Animated so the column arriving reads as this dialog growing, rather
+		   than as a different dialog appearing on top of it. */
+		transition: width 140ms ease;
 		max-width: 90vw;
 		max-height: 80vh;
 		background-color: var(--color-bg-primary);
