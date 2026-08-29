@@ -274,6 +274,67 @@ pub fn wikipedia(http: &dyn Http, query: &str) -> Option<Hit> {
 }
 
 /// Every non-archive source, in the order the measurements justify.
+/// Game names a person might mean, for a box they are about to fill in.
+///
+/// Deliberately *not* the functions above. Those exist to choose artwork that
+/// gets written to somebody's library, so they demand the names match and
+/// return nothing rather than something plausible — `nintendo()` will not
+/// answer "The Legend of Zelda: Link's Awakening" to a folder called
+/// `Zelda Link's awakening remake`, and it is right not to.
+///
+/// Here a human reads the list and picks, so the useful answer is every title
+/// the search engine thought was close. The strictness moves from the query to
+/// the person.
+///
+/// Wikipedia is not asked. It answers with an article title, and an article
+/// title is a sentence often enough that offering one as a game name would be
+/// offering a wrong answer that looks right.
+pub fn suggest_names(http: &dyn Http, query: &str) -> Vec<String> {
+    let Some(key) = usable(query) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |t: &str, out: &mut Vec<String>| {
+        let t = t.trim();
+        if !t.is_empty() && !out.iter().any(|x: &String| x.eq_ignore_ascii_case(t)) {
+            out.push(t.to_string());
+        }
+    };
+
+    // Nintendo's own catalogue, which is the only online source that knows what
+    // a Switch or a DS game is called.
+    let url = format!(
+        "https://searching.nintendo-europe.com/en/select?q={}&fq=type:GAME&wt=json&rows=8",
+        urlencoding::encode(&key)
+    );
+    if let Some(data) = json(http, &url) {
+        if let Some(docs) = data.get("response").and_then(|r| r.get("docs")).and_then(|d| d.as_array()) {
+            for d in docs {
+                if let Some(t) = d.get("title").and_then(|v| v.as_str()) {
+                    push(t, &mut out);
+                }
+            }
+        }
+    }
+
+    // Steam, for PC and for anything Nintendo never sold.
+    let url = format!(
+        "https://steamcommunity.com/actions/SearchApps/{}",
+        urlencoding::encode(&key)
+    );
+    if let Some(data) = json(http, &url) {
+        if let Some(apps) = data.as_array() {
+            for a in apps.iter().take(8) {
+                if let Some(t) = a.get("name").and_then(|v| v.as_str()) {
+                    push(t, &mut out);
+                }
+            }
+        }
+    }
+
+    out
+}
+
 pub const CHAIN: &[(&str, fn(&dyn Http, &str) -> Option<Hit>)] = &[
     ("itunes", itunes),
     ("steam", steam),
@@ -402,6 +463,49 @@ mod tests {
         );
         let hit = wikipedia(&http, "Bastion").unwrap();
         assert_eq!(hit.confidence, Confidence::Low);
+    }
+
+    /// The distinction this function exists for: a name a person can pick is
+    /// not the same as a name a downloader may act on, and the strict matcher
+    /// rejects exactly what a suggestion list needs.
+    #[test]
+    fn suggestions_are_loose_where_the_cover_matcher_is_strict() {
+        const QUERY: &str = "Zelda Link's awakening remake";
+        // Built the way the code builds it — the query is normalised first, and
+        // hard-coding the encoding here would only test my spelling of it.
+        let key = usable(QUERY).expect("query is long enough");
+        let enc = urlencoding::encode(&key).to_string();
+        let body = r#"{"response":{"docs":[
+            {"title":"The Legend of Zelda: Link's Awakening","image_url_sq_s":"//x/a.jpg"},
+            {"title":"Zelda II: The Adventure of Link","image_url_sq_s":"//x/b.jpg"}]}}"#;
+
+        let http = FakeHttp::new()
+            .with(
+                &format!("https://searching.nintendo-europe.com/en/select?q={enc}&fq=type:GAME&wt=json&rows=8"),
+                200,
+                body,
+            )
+            .with(
+                &format!("https://steamcommunity.com/actions/SearchApps/{enc}"),
+                200,
+                "[]",
+            );
+
+        let names = suggest_names(&http, QUERY);
+        assert!(
+            names.contains(&"The Legend of Zelda: Link's Awakening".to_string()),
+            "{names:?}"
+        );
+
+        // The same catalogue through the cover matcher answers nothing, on
+        // purpose: that one writes a file, and no title here equals what was
+        // asked for.
+        let strict = FakeHttp::new().with(
+            &format!("https://searching.nintendo-europe.com/en/select?q={enc}&fq=type:GAME&wt=json&rows=6"),
+            200,
+            body,
+        );
+        assert!(nintendo(&strict, QUERY).is_none());
     }
 
     /// A wordmark is not a cover, and Wikidata/Wikipedia are full of them.

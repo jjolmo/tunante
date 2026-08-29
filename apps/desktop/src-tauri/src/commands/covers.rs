@@ -389,9 +389,24 @@ pub async fn suggest_game_names(
             }
         }
 
+        // `suggest_names`, not the cover-matching sources.
+        //
+        // Those demand the name match, because what they choose gets written
+        // into somebody's library — `nintendo()` will not answer "The Legend of
+        // Zelda: Link's Awakening" to a folder called `Zelda Link's awakening
+        // remake`, and it is right not to. Here a person reads the list and
+        // picks, so the strictness belongs to them and the useful answer is
+        // every title the catalogue thought was close.
+        //
+        // It also covers the gap the archives leave: Switch and PC have no
+        // Libretro thumbnails at all, so for those this is the only source
+        // there is.
         if out.len() < 8 {
-            if let Some(hit) = tunante_art::sources::steam(&http, &query) {
-                push(hit.matched_name, &mut out);
+            for name in tunante_art::sources::suggest_names(&http, &query) {
+                push(name, &mut out);
+                if out.len() >= 12 {
+                    break;
+                }
             }
         }
 
