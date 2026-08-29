@@ -16,12 +16,18 @@
 		track = null,
 		tracks = null,
 		folderPath = null,
+		embedded = false,
 		onclose
 	}: {
 		track?: Track | null;
 		/// A whole selection. `track` is the one-item case and still works.
 		tracks?: Track[] | null;
 		folderPath?: string | null;
+		/// Framed by something that already has a footer of its own, so this one
+		/// brings none. Two Cancel/Save pairs stacked is two questions where
+		/// there is one, and the reader has to work out which button owns which
+		/// half of the dialog.
+		embedded?: boolean;
 		onclose: () => void;
 	} = $props();
 
@@ -295,8 +301,11 @@
 		return out.slice(0, 10);
 	});
 
-	async function save() {
-		if (!consoleId) return;
+	/// Exported for an embedding frame to call from its own Apply.
+	/// Returns false when there was nothing to save or the save failed, so the
+	/// caller can decide whether to close.
+	export async function save(): Promise<boolean> {
+		if (!consoleId) return false;
 		saving = true;
 		error = null;
 		try {
@@ -333,11 +342,19 @@
 				}
 			}
 			coversStore.refreshToken++;
-			onclose();
+			if (!embedded) onclose();
+			saving = false;
+			return true;
 		} catch (e) {
 			error = String(e);
 			saving = false;
+			return false;
 		}
+	}
+
+	/// Whether Apply has anything to do here. The frame asks before saving.
+	export function canSave(): boolean {
+		return !!consoleId && !saving;
 	}
 
 	function onKeydown(e: KeyboardEvent) {
@@ -532,12 +549,14 @@
 			{#if error}<p class="err">{error}</p>{/if}
 		</div>
 
+		{#if !embedded}
 		<div class="footer">
 			<button class="btn" onclick={onclose}>Cancel</button>
 			<button class="btn primary" disabled={!consoleId || saving} onclick={save}>
 				{saving ? 'Saving…' : 'Save'}
 			</button>
 		</div>
+		{/if}
 </div>
 
 <style>
