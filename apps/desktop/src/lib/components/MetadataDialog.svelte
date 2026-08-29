@@ -24,6 +24,62 @@
 	// the thing this column exists to avoid.
 	let confirming = $state<{ folders: number; tracks: number } | null>(null);
 
+	/// The formats that pack a whole game into one file, addressed by index.
+	///
+	/// Everything else is one song per file and already carries its own title,
+	/// so offering to look one up would be offering nothing. NSFE is here even
+	/// though its `tlbl` chunk names its tracks — a rip can leave that empty,
+	/// and the listing is then still worth asking for.
+	const MULTI_SUBSONG = ['gbs', 'nsf', 'nsfe', 'hes', 'kss', 'ay', 'sap'];
+	let canFetchNames = $derived(
+		tracks.length > 0 &&
+			tracks.every((t) => MULTI_SUBSONG.includes((t.codec || '').toLowerCase()))
+	);
+
+	type Names = { file: string; subsongs: number; titles: string[]; problem: string | null };
+	let names = $state<Names | null>(null);
+	let fetchingNames = $state(false);
+	let namesApplied = $state<number | null>(null);
+
+	async function fetchNames() {
+		fetchingNames = true;
+		namesApplied = null;
+		try {
+			names = await invoke<Names>('suggest_track_names', { trackPath: firstTrack.path });
+		} catch (e) {
+			names = { file: '', subsongs: 0, titles: [], problem: String(e) };
+		} finally {
+			fetchingNames = false;
+		}
+	}
+
+	/// `onlyIndex` null means the whole file. Either way the .m3u written beside
+	/// it describes every subsong — a playlist with one line would leave the
+	/// rest worse off than before.
+	async function applyNames(onlyIndex: number | null) {
+		if (!names || names.titles.length === 0) return;
+		fetchingNames = true;
+		try {
+			namesApplied = await invoke<number>('apply_track_names', {
+				file: names.file,
+				titles: names.titles,
+				onlyIndex
+			});
+			await libraryStore.loadTracks();
+			names = null;
+		} catch (e) {
+			if (names) names = { ...names, problem: String(e) };
+		} finally {
+			fetchingNames = false;
+		}
+	}
+
+	/// Which subsong the open dialog is showing, for the "only this one" case.
+	let subsongIndex = $derived.by(() => {
+		const m = firstTrack?.path.match(/#(\d+)$/);
+		return m ? Number(m[1]) : null;
+	});
+
 	// Closing the column withdraws the question with it. Otherwise the footer
 	// keeps asking to confirm a change that is no longer on the table, and
 	// "Yes, apply" would save only the tags while claiming otherwise.
@@ -191,13 +247,66 @@
 					<tr>
 						<td class="meta-label">Title</td>
 						<td>
-							<input
-								type="text"
-								class="meta-input"
-								bind:value={title}
-								oninput={() => markTouched('title')}
-								placeholder={titleDiffers ? '(Multiple values)' : ''}
-							/>
+							<!--
+								The lookup lives on this row because Title is the only
+								field it writes, and this is the row you are looking at
+								when a track is called "pokemon.gbs - Track 17".
+							-->
+							<div class="title-row">
+								<input
+									type="text"
+									class="meta-input"
+									bind:value={title}
+									oninput={() => markTouched('title')}
+									placeholder={titleDiffers ? '(Multiple values)' : ''}
+								/>
+								{#if canFetchNames}
+									<button
+										class="btn btn-secondary small"
+										onclick={fetchNames}
+										disabled={fetchingNames}
+										title="This format holds the whole game in one file. Look the track names up."
+									>
+										{fetchingNames ? 'Looking…' : 'Get track names'}
+									</button>
+								{/if}
+							</div>
+
+							{#if names}
+								<div class="names">
+									{#if names.problem}
+										<p class="names-problem">{names.problem}</p>
+									{:else}
+										<p class="names-head">
+											{names.titles.length} names for this file, in order.
+										</p>
+										<ol class="names-list">
+											{#each names.titles as t, i (i)}
+												<li class:on={i === subsongIndex}>{t}</li>
+											{/each}
+										</ol>
+										<div class="names-actions">
+											{#if subsongIndex !== null}
+												<button
+													class="btn btn-secondary"
+													onclick={() => applyNames(subsongIndex)}
+													disabled={fetchingNames}
+												>Only this track</button>
+											{/if}
+											<button
+												class="btn btn-primary"
+												onclick={() => applyNames(null)}
+												disabled={fetchingNames}
+											>All {names.titles.length}</button>
+											<button class="btn btn-secondary" onclick={() => (names = null)}
+												>Discard</button
+											>
+										</div>
+									{/if}
+								</div>
+							{:else if namesApplied !== null}
+								<p class="names-head">Renamed {namesApplied} track{namesApplied === 1 ? '' : 's'}.</p>
+							{/if}
 						</td>
 					</tr>
 					<tr>
@@ -508,6 +617,53 @@
 		color: var(--color-text-secondary);
 		line-height: 1.4;
 		text-align: left;
+	}
+	.title-row {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+	}
+	.btn.small {
+		font-size: 11px;
+		padding: 3px 8px;
+		white-space: nowrap;
+		flex-shrink: 0;
+	}
+	.names {
+		margin-top: 8px;
+		border: 1px solid var(--color-border);
+		border-radius: 4px;
+		background-color: var(--color-bg-secondary);
+		padding: 8px 10px;
+	}
+	.names-head {
+		margin: 0 0 6px;
+		font-size: 11px;
+		color: var(--color-text-muted);
+	}
+	.names-problem {
+		margin: 0;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+		line-height: 1.45;
+	}
+	/* Scrolls rather than growing: some of these run to fifty entries, and a
+	   dialog that resizes to fit one is a dialog that jumps. */
+	.names-list {
+		margin: 0 0 8px;
+		padding-left: 24px;
+		max-height: 150px;
+		overflow-y: auto;
+		font-size: 12px;
+		color: var(--color-text-secondary);
+	}
+	.names-list li.on {
+		color: var(--color-text-primary);
+		font-weight: 600;
+	}
+	.names-actions {
+		display: flex;
+		gap: 6px;
 	}
 	.metadata-footer {
 		display: flex;
