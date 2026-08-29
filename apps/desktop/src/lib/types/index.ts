@@ -67,6 +67,8 @@ export type SortColumn =
 	| 'bitrate'
 	| 'file_size'
 	| 'rating'
+	| 'game'
+	| 'console_id'
 	| 'path';
 export type SortDirection = 'asc' | 'desc';
 

@@ -9,6 +9,7 @@
 	import { consolesStore, type ConsoleDefinition } from '$lib/stores/consoles.svelte';
 	import { libraryStore } from '$lib/stores/library.svelte';
 	import { invoke } from '@tauri-apps/api/core';
+	import { coversStore } from '$lib/stores/covers.svelte';
 	import type { Track } from '$lib/types';
 
 	let {
@@ -313,6 +314,25 @@
 					await consolesStore.flagTrack(t.path, consoleId, game);
 				}
 			}
+
+			// The point of naming the game is the artwork, so fetch it now.
+			//
+			// Without this the whole action is invisible: it writes a
+			// classification, which nothing on screen showed until the Game
+			// column existed, and which only pays off the next time somebody
+			// runs a cover sweep. An action whose result you cannot see is
+			// indistinguishable from one that did not happen.
+			const sample = (scope === 'folder' ? [chosenTracks[0]] : chosenTracks)
+				.filter(Boolean)
+				.slice(0, 20);
+			for (const t of sample) {
+				try {
+					await invoke('refetch_cover', { trackPath: t.path });
+				} catch (e) {
+					console.error('refetch after reclassify:', e);
+				}
+			}
+			coversStore.refreshToken++;
 			onclose();
 		} catch (e) {
 			error = String(e);
@@ -503,7 +523,9 @@
 					own.
 				{/if}
 				Suggestions come from your library and from the console's box-art archive, so a
-				name picked here is one the cover downloader can find.{#if searching}
+				name picked here is one the cover downloader can find.
+				<strong>This does not edit the file's tags</strong> — the Album stays as the
+				ripper wrote it. Turn on the Game column to see the result.{#if searching}
 					<em> Searching…</em>{/if}
 			</span>
 

@@ -4,12 +4,26 @@ import type { Track, SortConfig, ScanProgress, ColumnDef } from '$lib/types';
 import { formatDuration, formatFileSize } from '$lib/types';
 import { normalizeForSearch, trackMatchesSearch } from '$lib/utils/search';
 import { sortTracks } from '$lib/utils/sort';
+import { consolesStore } from '$lib/stores/consoles.svelte';
+
+/// The console's display name, or its id if the catalogue has not loaded yet.
+function consoleLabel(id: string): string {
+	if (!id) return '';
+	return consolesStore.definitions.find((c) => c.id === id)?.name ?? id;
+}
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
 	{ id: 'title', label: 'Title', field: 'title', flex: 3, minWidth: '150px', align: 'left', sortable: true, visible: true },
 	{ id: 'rating', label: '\u2605', field: 'rating', width: '36px', align: 'center', sortable: true, visible: true, format: (t) => t.rating > 0 ? '\u2605' : '' },
 	{ id: 'artist', label: 'Artist', field: 'artist', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
 	{ id: 'album', label: 'Album', field: 'album', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: true },
+	// What the library thinks this is, as opposed to what the file's tags say.
+	//
+	// Off by default, but present: without these two columns the classification
+	// was a value the app computed for 29,530 tracks, used to find cover art,
+	// and showed nowhere — so correcting it looked like it had done nothing.
+	{ id: 'game', label: 'Game', field: 'game', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: false },
+	{ id: 'console', label: 'Console', field: 'console_id', width: '110px', align: 'left', sortable: true, visible: false, format: (t) => consoleLabel(t.console_id) },
 	{ id: 'album_artist', label: 'Album Artist', field: 'album_artist', flex: 2, minWidth: '100px', align: 'left', sortable: true, visible: false },
 	{ id: 'duration', label: 'Duration', field: 'duration_ms', width: '70px', align: 'right', sortable: true, visible: true, format: (t) => formatDuration(t.duration_ms) },
 	{ id: 'codec', label: 'Codec', field: 'codec', width: '60px', align: 'center', sortable: true, visible: true },
