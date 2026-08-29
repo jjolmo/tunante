@@ -161,14 +161,23 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macos-latest is Apple Silicon; macos-13 is the last Intel runner.
-          # Building natively on each rather than cross-compiling, because the
-          # vendored emulator cores are C and cmake, and a universal binary
-          # would double the size of every download for the sake of one arch.
+          # macos-latest is Apple Silicon. For Intel the label is
+          # `macos-15-intel`, and getting this wrong is invisible rather than
+          # loud: `macos-13` was retired on 4 December 2025, and a job asking
+          # for a label that does not exist does not fail — it queues, forever.
+          # That is exactly what this job did every time until someone went
+          # looking for why it had never once finished.
+          #
+          # GitHub drops x86_64 macOS entirely when the macOS 15 image retires
+          # in autumn 2027, so this line has a known expiry date.
+          #
+          # Native on each rather than cross-compiling or a universal binary:
+          # the vendored emulator cores are C and cmake, and a universal build
+          # would double the size of every download for one architecture.
           - arch: aarch64
             runner: macos-latest
           - arch: x86_64
-            runner: macos-13
+            runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     name: macOS ${{ matrix.arch }}
     steps:

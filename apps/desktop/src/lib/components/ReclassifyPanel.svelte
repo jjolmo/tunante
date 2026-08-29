@@ -81,14 +81,23 @@
 	$effect(() => {
 		if (seeded) return;
 		const g = guessed;
-		if (!g && folderPath && inFolder.length === 0) return;
+		const best = candidates[0];
+		// Nothing to seed *from* yet, so nothing is seeded and this runs again.
+		//
+		// The previous guard only covered the folder case, which meant that if
+		// this effect ever ran before the track was resolved it set `seeded` on
+		// the way past and the field stayed empty for good — with no way to ask
+		// for a value, because a type-ahead needs something typed before it can
+		// look anything up.
+		if (!g && !best) return;
 		seeded = true;
 		consoleId = g?.console_id || null;
-		// The file's own header first. It names the game where `album` names a
-		// release, and it is the reason this dialog can often be confirmed
-		// rather than filled in.
-		gameQuery = g?.header_game || g?.game || folder.split(/[/\\]/).pop() || '';
-		seededFromHeader = !!g?.header_game;
+		// Whatever the candidate list ranks first, which is the file's own
+		// header when it has one. Taken from the same list the chips below are
+		// drawn from, so the box always shows one of the options rather than a
+		// value with no chip to match it.
+		gameQuery = best?.label ?? '';
+		seededFromHeader = best?.from === "the file's header";
 	});
 
 	let consoleOpen = $state(false);
