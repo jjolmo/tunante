@@ -322,9 +322,9 @@ O sea, las dos cosas que esta fase existía para responder: **el `execve` desde
 estricto de W^X, y **cpal llega a AAudio** y el flujo sale enrutado a un
 dispositivo real.
 
-Lo que hay montado: `crates/tunante-android` (cdylib JNI) y `android/` (proyecto
+Lo que hay montado: `apps/android/rust` (cdylib JNI) y `apps/android/` (proyecto
 Gradle, AGP 8.5.2, Gradle 8.7, Java, `minSdk` 26 / `targetSdk` 34). Se construye
-con `android/build.sh`, que hace el cargo-ndk, coloca las `.so` en `jniLibs` y
+con `apps/android/build.sh`, que hace el cargo-ndk, coloca las `.so` en `jniLibs` y
 llama a Gradle. Los fixtures viajan dentro del APK como assets, así que esta
 fase no debe nada al almacenamiento — eso es la Fase 3.
 

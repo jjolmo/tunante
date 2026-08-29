@@ -94,11 +94,11 @@ git submodule update --init --recursive
 ## Build
 
 ```bash
-# Production build
-npm run tauri build
+# Production build — npm lives in apps/desktop/
+cd apps/desktop && npm run tauri build
 ```
 
-The built application will be in `src-tauri/target/release/bundle/`:
+The built application will be in `target/release/bundle/` at the repository root:
 - **Linux**: `.deb` and `.AppImage`
 - **macOS**: `.dmg`
 - **Windows**: `.msi` and `.exe`
@@ -136,7 +136,7 @@ ABIS="arm64-v8a" ./build.sh       # phone only, skips the emulator build
 ```
 
 Needs `ANDROID_NDK_HOME` and a JDK 17+. The APK is at
-`android/app/build/outputs/apk/`, and signed builds are attached to
+`apps/android/app/build/outputs/apk/`, and signed builds are attached to
 [Releases](https://github.com/jjolmo/tunante/releases).
 
 **Sideload only, and it will stay that way.** The app asks for
@@ -153,43 +153,53 @@ work at all.
 other crate in the workspace:
 
 ```bash
-cargo build --manifest-path src-tauri/Cargo.toml -p tunante-mini --release
+cargo build -p tunante-mini --release
 ```
 
 ## Project Structure
 
+Three apps under `apps/`, what they share under `crates/`, third-party C under
+`vendor/`. The Cargo workspace root is the repository root.
+
 ```
-src/                          # Frontend (SvelteKit + Svelte 5)
-  lib/components/             # UI components (TrackList, Sidebar, PlayerBar...)
-  lib/stores/                 # Shared state (.svelte.ts with runes)
-  lib/types/                  # TypeScript type definitions
-  routes/                     # SvelteKit pages
+apps/desktop/                 # Tauri v2 + SvelteKit — the desktop app
+  src/                        #   Frontend: components, stores (runes), types, routes
+  package.json                #   npm runs from here
+  src-tauri/src/              #   Backend (Rust)
+    audio/                    #     Audio engine, play queue, output devices
+    commands/                 #     Tauri IPC commands (player, library, playlists)
+    watcher/                  #     Folder watching
+apps/mini/                    # Phone app for postmarketOS (Slint)
+apps/android/                 # Android app (Gradle, Kotlin, Compose)
+  rust/                       #   Its JNI half (cdylib)
 
-src-tauri/src/                # Backend (Rust)
-  audio/                      # Audio engine, play queue, format decoders
-  commands/                   # Tauri IPC commands (player, library, playlists)
-  db/                         # SQLite database layer
-  metadata/                   # Audio file metadata readers
+crates/tunante-core/          # SQLite layer, play queue, session, DSP
+crates/tunante-codec/         # Decoders and metadata readers
+crates/tunante-decoder/       # Out-of-process decoder binary
+crates/tunante-helper/        # Client for it: probe, artwork, library scan
+crates/tunante-art/           # Cover art: matching, download, storage
 
-src-tauri/game-music-emu-patch/  # Patched game-music-emu (C++ chiptune emulation)
-src-tauri/vgmstream/             # vgmstream submodule (C, game audio decoding)
-src-tauri/vgmstream-rs/          # Rust bindings for vgmstream
-src-tauri/hepsf-rs/              # PSF/PSF2 playback (C, Highly Experimental + sexypsf)
-src-tauri/vio2sf-rs/             # 2SF playback (C, vio2sf + DeSmuME core)
-src-tauri/opus-decoder-patch/    # Pure Rust Opus decoder (patched)
+vendor/game-music-emu-patch/  # Patched game-music-emu (C++ chiptune emulation)
+vendor/vgmstream/             # vgmstream submodule (C, game audio decoding)
+vendor/vgmstream-rs/          # Rust bindings for vgmstream
+vendor/hepsf-rs/              # PSF/PSF2 playback (C, Highly Experimental + sexypsf)
+vendor/vio2sf-rs/             # 2SF playback (C, vio2sf + DeSmuME core)
+vendor/viogsf-rs/, viogsf/    # GSF playback (C, VBA-M)
+vendor/lazyusf2-rs/           # USF playback (C, N64 core)
+vendor/opus-decoder-patch/    # Pure Rust Opus decoder (patched)
 ```
 
 ## Other Commands
 
 ```bash
-# Check Rust code
-cargo check --manifest-path src-tauri/Cargo.toml
+# Check Rust code (from the repository root)
+cargo check --workspace --all-targets --exclude tunante-android
 
 # Check Svelte/TypeScript
-npm run check
+cd apps/desktop && npm run check
 
 # Frontend dev server only (no Tauri)
-npm run dev
+cd apps/desktop && npm run dev
 ```
 
 ## Tech Stack

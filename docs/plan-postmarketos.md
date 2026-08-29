@@ -174,6 +174,12 @@ Las fases 1 y 2 se pueden adelantar sin acceso al dispositivo. La 0 no.
 | Qué | Dónde |
 |---|---|
 | Núcleo portable | `src-tauri/src/audio/`, `src-tauri/src/metadata/`, `src-tauri/src/db/` |
+
+> Las rutas de esta tabla son las de agosto de 2026, antes de que el árbol se
+> reorganizara en `apps/` + `crates/` + `vendor/`. El núcleo portable acabó en
+> `crates/tunante-core` y `crates/tunante-codec`; la capa de Tauri, en
+> `apps/desktop/src-tauri/`.
+
 | Capa acoplada a Tauri | `src-tauri/src/commands/`, `src-tauri/src/lib.rs` |
 | Frontend | `src/lib/components/`, `src/lib/stores/` |
 | Matriz de compilación | `.github/workflows/release.yml` |

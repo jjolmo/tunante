@@ -1,0 +1,44 @@
+[workspace]
+resolver = "2"
+members = [
+    "apps/desktop/src-tauri",
+    "apps/mini",
+    "crates/tunante-core",
+    "crates/tunante-codec",
+    "crates/tunante-decoder",
+    "crates/tunante-helper",
+    "crates/tunante-art",
+    # Android only. Nothing else in the workspace depends on it, and it builds
+    # for no other target — `cargo check` on a desktop host will refuse to link
+    # it, which is why CI has to name targets rather than say --workspace.
+    "apps/android/rust",
+]
+
+[profile.release]
+# Debug symbols are a quarter of the shipped binary — 29 MB down to 22 MB for
+# tunante-mini — and nothing on a phone reads them. A backtrace from the field
+# would need the unstripped build anyway, which is what `cargo build` leaves in
+# target/ before packaging.
+#
+# Not touching opt-level or lto on purpose: the emulator cores are the hot path,
+# and lto would make an on-device rebuild take far longer for no audible gain.
+#
+# Worth knowing before profiling on the phone: `perf` reads the symbol table of
+# the binary at the path it recorded, so a stripped install produces a report
+# with no function names — and a flat one, which reads like a profile with no
+# hot spot rather than like a missing symbol table. Install a build made with
+#
+#     cargo build --release --config 'profile.release.strip="none"'
+#
+# That is how femtovg's per-frame Bézier tessellation and parley's per-frame
+# line breaking turned up at all.
+strip = "symbols"
+
+# Patch tray-icon and libappindicator to support left-click toggle on Linux.
+# On Linux, libayatana-appindicator normally shows the context menu on ALL
+# clicks. Our patched tray-icon calls app_indicator_set_secondary_activate_target()
+# to make the SNI `Activate` D-Bus method (left-click on KDE) trigger the
+# first menu item ("Show / Hide") instead of showing the menu.
+[patch.crates-io]
+tray-icon = { path = "vendor/tray-icon-patch" }
+libappindicator = { path = "vendor/libappindicator-patch" }

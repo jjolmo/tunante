@@ -40,7 +40,7 @@ with `EBUSY` reads like the codec is still held by something that did not let
 go on the way down.
 
 **What this repo does about it:** `tunante-mini` holds a logind sleep inhibitor
-while it is playing (`src-tauri/crates/tunante-mini/src/inhibit.rs`), so the app
+while it is playing (`apps/mini/src/inhibit.rs`), so the app
 no longer causes the suspend that triggers this. That is a way of not stepping
 on the rake, not a repair.
 
