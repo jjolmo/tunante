@@ -21,7 +21,11 @@ use std::sync::Arc;
 /// Rebuilding is idempotent and destroys nothing a user typed, so unlike the
 /// playlist-position seeding next door there is no need to distinguish "never
 /// run" from "run by an older build".
-pub const CLASSIFIER_VERSION: u32 = 1;
+// 2: the console may be named by any path segment, not only the first one
+//    below the registered root. Libraries whose root sits above the console
+//    folders were classified as Unknown wholesale, so every row has to be
+//    stamped again for the fix to reach an existing database.
+pub const CLASSIFIER_VERSION: u32 = 2;
 
 const VERSION_KEY: &str = "classifier_version";
 
@@ -580,7 +584,12 @@ mod tests {
         }
         let db = tmp.open();
         assert_eq!(db.get_all_tracks().unwrap()[0].console_id, "ps1");
-        assert_eq!(db.get_setting(VERSION_KEY).unwrap().as_deref(), Some("1"));
+        // Against the constant, not a literal: a hard-coded "1" turns every
+        // rule change into a failing test that says nothing about the rule.
+        assert_eq!(
+            db.get_setting(VERSION_KEY).unwrap().as_deref(),
+            Some(CLASSIFIER_VERSION.to_string().as_str())
+        );
     }
 
     /// `stamp` chunks its parameters to stay under SQLite's limit, and the

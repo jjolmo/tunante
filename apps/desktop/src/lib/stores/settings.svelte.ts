@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
+import type { CoverFit, MonitoredFolder, PinnedFolder, Setting, Theme } from '$lib/types';
 import { libraryStore } from '$lib/stores/library.svelte';
 
 /** Mirrors `DspConfig` in apps/desktop/src-tauri/src/commands/player.rs. */
@@ -75,6 +75,7 @@ class SettingsStore {
 	showInTray = $state(false);
 	closeToTray = $state(false);
 	showCoverArt = $state(true);
+	coverFit = $state<CoverFit>('cover');
 	showFaved = $state(true);
 	showPlaylists = $state(true);
 	showConsoles = $state(true);
@@ -144,6 +145,11 @@ class SettingsStore {
 			this.theme = theme;
 		}
 		this.applyTheme(this.theme);
+
+		const fit = this._settingsCache.get('cover_fit');
+		if (fit === 'cover' || fit === 'contain' || fit === 'blur' || fit === 'fill' || fit === 'none') {
+			this.coverFit = fit;
+		}
 
 		const titlebar = this._settingsCache.get('show_track_in_titlebar');
 		if (titlebar !== undefined) this.showTrackInTitlebar = titlebar === 'true';
@@ -420,6 +426,15 @@ class SettingsStore {
 			await invoke('set_setting', { key: 'close_to_tray', value: String(enabled) });
 		} catch (e) {
 			console.error('Failed to save close to tray setting:', e);
+		}
+	}
+
+	async setCoverFit(fit: CoverFit) {
+		this.coverFit = fit;
+		try {
+			await invoke('set_setting', { key: 'cover_fit', value: fit });
+		} catch (e) {
+			console.error('Failed to save cover fit setting:', e);
 		}
 	}
 

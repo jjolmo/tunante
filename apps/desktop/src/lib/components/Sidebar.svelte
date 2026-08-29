@@ -745,7 +745,20 @@
 			{#if playerStore.currentTrack}
 				<div class="artwork-container">
 					{#if artworkSrc}
-						<img src={artworkSrc} alt="Album art" class="artwork-image" />
+						<!-- The blurred backdrop is decorative: it is the same image the
+						     <img> below already announces, so it must not be read again. -->
+						{#if settingsStore.coverFit === 'blur'}
+							<div
+								class="artwork-backdrop"
+								style="background-image: url({artworkSrc})"
+								aria-hidden="true"
+							></div>
+						{/if}
+						<img
+							src={artworkSrc}
+							alt="Album art"
+							class="artwork-image fit-{settingsStore.coverFit}"
+						/>
 					{:else}
 						<div class="artwork-placeholder">
 							<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
@@ -981,12 +994,58 @@
 		justify-content: center;
 		overflow: hidden;
 		border-top: 1px solid var(--color-border);
+		/* The blurred backdrop is absolutely positioned against this box. */
+		position: relative;
 	}
 
 	.artwork-image {
 		width: 100%;
 		height: 100%;
+		position: relative;
 		object-fit: cover;
+	}
+
+	/* Fill the square and crop whatever hangs over. Nothing is letterboxed and
+	   the panel never shows a seam, at the price of losing the edges of a
+	   portrait box. */
+	.artwork-image.fit-cover {
+		object-fit: cover;
+	}
+
+	/* The whole cover, never cropped, letterboxed against the panel colour. */
+	.artwork-image.fit-contain {
+		object-fit: contain;
+	}
+
+	/* Contain, but the empty space is filled with a blown-up blur of the cover
+	   itself instead of flat colour. */
+	.artwork-image.fit-blur {
+		object-fit: contain;
+	}
+
+	/* Stretch to the square, aspect ratio be damned. Ugly on purpose and
+	   occasionally what someone wants. */
+	.artwork-image.fit-fill {
+		object-fit: fill;
+	}
+
+	/* Pixel for pixel, centred. A 256px SNES boxart stays 256px instead of being
+	   smeared across the panel — which is the point for pixel art. */
+	.artwork-image.fit-none {
+		object-fit: none;
+	}
+
+	.artwork-backdrop {
+		position: absolute;
+		inset: 0;
+		background-size: cover;
+		background-position: center;
+		/* Scaled up before blurring: a blur samples outside the element, so
+		   without the overscan the edges fade to transparent and the panel
+		   colour shows through as a halo. */
+		transform: scale(1.4);
+		filter: blur(18px) saturate(1.4);
+		opacity: 0.55;
 	}
 
 	.artwork-placeholder {

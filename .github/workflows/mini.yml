@@ -1,7 +1,14 @@
-name: tunante-mini (Alpine aarch64)
+name: tunante-mini
 
-# Builds the phone app the way the phone actually builds it: Alpine, musl,
-# aarch64, with Alpine's own rust.
+# tunante-mini is not a postmarketOS app that happens to compile elsewhere. It
+# is the third Tunante, and nothing in its source knows what a distribution is —
+# `backend-winit` covers Wayland and X11, so the same binary runs on a phone and
+# on a desktop.
+#
+# So this builds it three ways:
+#   * glibc x86_64 and aarch64, the ordinary Linux binaries most people want
+#   * Alpine/musl aarch64, which is how the phone actually builds it
+# and packages the last one as an Alpine .apk.
 #
 # Separate from release.yml on purpose. That workflow builds the desktop app for
 # glibc targets and auto-bumps a tag on every push; this one only has to answer
@@ -29,7 +36,113 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  # The ordinary Linux builds. Anyone who wants a small, GPU-drawn player
+  # without a web view can run this on a desktop — it is not phone-only.
+  linux:
+    name: Linux ${{ matrix.arch }} (glibc)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          key: mini-${{ matrix.arch }}
+          cache-on-failure: true
+
+      # fontconfig for Slint's text, ALSA for rodio, cmake and a C toolchain for
+      # the vendored emulator cores. No GL or Wayland packages: winit and femtovg
+      # dlopen those at runtime, so a build host does not need them and a machine
+      # without them fails with a message rather than at link time.
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config cmake \
+            libfontconfig1-dev libasound2-dev zlib1g-dev
+
+      - name: Build
+        run: cargo build --release -p tunante-mini -p tunante-decoder
+
+      # The same bar as the Alpine job: every emulator backend decodes a real
+      # fixture to something that is not silence.
+      - name: Music format smoke test
+        run: cargo test --release -p tunante-codec -p tunante-decoder -- --nocapture
+
+      - name: What was actually built
+        run: |
+          for b in tunante-mini tunante-decoder; do
+            f="target/release/$b"
+            echo "== $b  ($(stat -c%s "$f") bytes)"
+            file "$f"
+            # Dynamically linked on purpose: ALSA dlopens its PCM modules and
+            # Slint needs dlopen for the GL driver, so a fully static binary
+            # would build here and fail on the user's machine.
+            ldd "$f" | head -12
+          done
+
+      - name: Tarball
+        id: pack
+        run: |
+          NAME="tunante-mini-${{ matrix.arch }}-linux-gnu"
+          mkdir -p "dist/$NAME"
+          cp target/release/tunante-mini target/release/tunante-decoder "dist/$NAME/"
+          cp apps/mini/dist/tunante-mini.desktop "dist/$NAME/" 2>/dev/null || true
+          cp -r apps/mini/dist/icons "dist/$NAME/" 2>/dev/null || true
+          cp README.md LICENSE "dist/$NAME/" 2>/dev/null || true
+          tar -C dist -czf "$NAME.tar.gz" "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          ls -l "$NAME.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.name }}
+          path: ${{ steps.pack.outputs.name }}.tar.gz
+
+      - name: Wait for this commit's tag
+        id: tag
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          for _ in $(seq 1 30); do
+            git fetch -q --tags origin 2>/dev/null || true
+            TAG=$(git tag --points-at HEAD | head -1)
+            [ -n "$TAG" ] && break
+            echo "waiting for release.yml to tag this commit…"
+            sleep 20
+          done
+          [ -n "$TAG" ] && echo "tag=$TAG" >> "$GITHUB_OUTPUT" || echo "no tag for this commit"
+
+      # Same reasoning as the .apk below: an artifact needs an authenticated API
+      # call and expires, a release asset can just be downloaded.
+      - name: Attach it to the release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          [ -n "$TAG" ] || { echo "no tag; leaving the artifact as the only copy"; exit 0; }
+          for _ in $(seq 1 30); do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            echo "waiting for release $TAG…"
+            sleep 20
+          done
+          gh release view "$TAG" >/dev/null 2>&1 || {
+            echo "release $TAG never appeared; leaving the artifact as the only copy"; exit 0; }
+          gh release upload "$TAG" "${{ steps.pack.outputs.name }}.tar.gz" --clobber
+          echo "attached to $TAG"
+
+  # How the phone actually builds it: Alpine's own rust, musl, aarch64.
+  alpine:
     # Native aarch64 rather than qemu. The vendored emulator cores are ~1.7 GB
     # of C; under emulation this job would take hours.
     runs-on: ubuntu-24.04-arm
@@ -125,7 +238,7 @@ jobs:
     # already browned the phone out three times.
     runs-on: ubuntu-24.04-arm
     name: Alpine package (aarch64)
-    needs: build
+    needs: alpine
 
     steps:
       - uses: actions/checkout@v4

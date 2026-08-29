@@ -176,23 +176,43 @@ Because covers are written into the game's own folder, art downloaded on the
 desktop simply shows up on both phones once the folder syncs. Neither app has to
 download anything for it to be there — though both can.
 
-### tunante-mini — postmarketOS
+### tunante-mini — the small one
 
-A phone app in [Slint](https://slint.dev/), for a phone running mainline Linux
-rather than Android. No web view, no JavaScript engine: it renders straight to
-the GPU, which is what makes it usable on hardware that predates the phone in
-your pocket. Packaged for Alpine with an `APKBUILD`, and CI builds the real
-package on every change.
+A second full player in [Slint](https://slint.dev/). **Not phone-only**: nothing
+in its source knows what a distribution or a form factor is, `backend-winit`
+covers both Wayland and X11, and the same binary runs on a phone and on a
+desktop. It began as the postmarketOS build and stayed useful everywhere.
 
-Its interface is built for a thumb — large targets, no hover, no right click.
+No web view and no JavaScript engine — it draws straight to the GPU through
+GLES2, which is what makes it usable on hardware that predates the phone in your
+pocket, and what makes it start in a fraction of the desktop app's time on
+hardware that does not. Its interface is built for a thumb: large targets, no
+hover, no right click.
+
 Several pieces that now live in the shared crates started life here
 (`decoder.rs`, `scan_folder`, `folder_image`, `session.rs`); the moment the
 Android app needed the same thing, they moved down rather than being copied.
 
 ```bash
-cargo run -p tunante-mini              # runs on the desktop too, for development
-cargo build -p tunante-mini --release
+cargo run -p tunante-mini              # from the repository root
+cargo build -p tunante-mini --release  # target/release/tunante-mini
 ```
+
+CI builds it three ways on every change and attaches all three to
+[Releases](https://github.com/jjolmo/tunante/releases):
+
+| Build | For |
+|-------|-----|
+| `tunante-mini-x86_64-linux-gnu.tar.gz` | An ordinary desktop or laptop |
+| `tunante-mini-aarch64-linux-gnu.tar.gz` | ARM boards, ARM laptops, an ARM desktop |
+| `tunante-mini-*.apk` (Alpine, musl, aarch64) | postmarketOS and any Alpine phone |
+
+Each tarball carries both `tunante-mini` and `tunante-decoder`, and they must
+stay side by side: the player looks for the decoder as a sibling of itself, and
+splitting them breaks playback with a message that does not explain why.
+
+It needs fontconfig, ALSA and a working GL driver at runtime — all dlopened, so
+a machine that lacks one says so rather than failing to start.
 
 ### tunante-android
 

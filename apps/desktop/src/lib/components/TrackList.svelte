@@ -14,6 +14,7 @@
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
 	import MetadataDialog from './MetadataDialog.svelte';
+	import ReclassifyDialog from './ReclassifyDialog.svelte';
 	import SearchBar from './SearchBar.svelte';
 
 	const ROW_HEIGHT = 26;
@@ -31,6 +32,7 @@
 
 	// Metadata dialog state
 	let metadataDialogTracks = $state<Track[]>([]);
+	let reclassifyTrack = $state<Track | null>(null);
 
 	// Column resize state
 	let resizingCol = $state<string | null>(null);
@@ -261,6 +263,10 @@
 			// For when the cover is wrong. Forces past the cache, past
 			// "never overwrite", and past the confidence floor a bulk run
 			// applies — the user asked for this one specifically.
+			items.push({
+				label: 'Reclassify as console…',
+				action: () => (reclassifyTrack = track)
+			});
 			items.push({
 				label: 'Re-download cover art',
 				action: async () => {
@@ -639,6 +645,10 @@
 		y={contextMenu.y}
 		onclose={() => (contextMenu = null)}
 	/>
+{/if}
+
+{#if reclassifyTrack}
+	<ReclassifyDialog track={reclassifyTrack} onclose={() => (reclassifyTrack = null)} />
 {/if}
 
 {#if metadataDialogTracks.length > 0}
