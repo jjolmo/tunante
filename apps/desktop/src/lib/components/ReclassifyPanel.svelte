@@ -170,6 +170,7 @@
 		if (!q) return;
 		searching = true;
 		gameOpen = true;
+		gameAnchor = anchorTo(gameInput);
 		try {
 			remoteMatches = await invoke<string[]>('suggest_game_names', {
 				consoleId: consoleId ?? '',
@@ -188,6 +189,72 @@
 	}
 
 	let searchError = $state<string | null>(null);
+
+	/// Where a dropdown should be drawn, in viewport coordinates.
+	///
+	/// `position: absolute` is not enough here and no z-index rescues it: the
+	/// form scrolls, and a scroll container clips its positioned descendants
+	/// whatever their stacking order. The dialog around it clips again with
+	/// `overflow: hidden`. So the lists are `position: fixed` and measured from
+	/// the input they belong to, which takes them out of both boxes.
+	type Anchor = { left: number; top: number; width: number; maxHeight: number };
+	let consoleAnchor = $state<Anchor | null>(null);
+	let gameAnchor = $state<Anchor | null>(null);
+
+	function anchorTo(el: HTMLElement | null): Anchor | null {
+		if (!el) return null;
+		const r = el.getBoundingClientRect();
+		const below = window.innerHeight - r.bottom - 8;
+		return {
+			left: r.left,
+			top: r.bottom + 2,
+			width: r.width,
+			// Never taller than the room under the field. Without this the list
+			// runs off the bottom of the screen and its last entries cannot be
+			// reached at all.
+			maxHeight: Math.max(120, Math.min(260, below))
+		};
+	}
+
+	let consoleInput = $state<HTMLInputElement | null>(null);
+	let gameInput = $state<HTMLInputElement | null>(null);
+	let consoleList = $state<HTMLElement | null>(null);
+	let gameList = $state<HTMLElement | null>(null);
+
+	// Now that the lists float above everything, something has to dismiss them.
+	// While they were clipped by the form they were merely awkward; a fixed
+	// element left open sits over whatever the user does next.
+	$effect(() => {
+		if (!consoleOpen && !gameOpen) return;
+		const away = (e: MouseEvent) => {
+			const t = e.target as Node;
+			const inside = (a: HTMLElement | null, b: HTMLElement | null) =>
+				(a && a.contains(t)) || (b && b.contains(t));
+			if (consoleOpen && !inside(consoleInput, consoleList)) consoleOpen = false;
+			if (gameOpen && !inside(gameInput, gameList)) gameOpen = false;
+		};
+		// Capture, so a click on something that stops propagation still closes
+		// them — the dialog around this stops mousedown on purpose.
+		document.addEventListener('mousedown', away, true);
+		return () => document.removeEventListener('mousedown', away, true);
+	});
+
+	// Re-measured while either list is open: the dialog can be moved, the window
+	// resized, and the form scrolled underneath it.
+	$effect(() => {
+		if (!consoleOpen && !gameOpen) return;
+		const remeasure = () => {
+			if (consoleOpen) consoleAnchor = anchorTo(consoleInput);
+			if (gameOpen) gameAnchor = anchorTo(gameInput);
+		};
+		remeasure();
+		window.addEventListener('resize', remeasure);
+		window.addEventListener('scroll', remeasure, true);
+		return () => {
+			window.removeEventListener('resize', remeasure);
+			window.removeEventListener('scroll', remeasure, true);
+		};
+	});
 
 	function searchRemote(q: string) {
 		if (searchTimer) clearTimeout(searchTimer);
@@ -315,13 +382,24 @@
 						id="rc-console"
 						type="text"
 						autocomplete="off"
+						bind:this={consoleInput}
 						placeholder={chosen ? chosen.name : 'Type a console…'}
 						bind:value={consoleQuery}
-						onfocus={() => (consoleOpen = true)}
-						oninput={() => (consoleOpen = true)}
+						onfocus={() => {
+							consoleOpen = true;
+							consoleAnchor = anchorTo(consoleInput);
+						}}
+						oninput={() => {
+							consoleOpen = true;
+							consoleAnchor = anchorTo(consoleInput);
+						}}
 					/>
-					{#if consoleOpen && consoleMatches.length > 0}
-						<ul class="drop">
+					{#if consoleOpen && consoleMatches.length > 0 && consoleAnchor}
+						<ul
+							bind:this={consoleList}
+							class="drop"
+							style="left:{consoleAnchor.left}px; top:{consoleAnchor.top}px; width:{consoleAnchor.width}px; max-height:{consoleAnchor.maxHeight}px"
+						>
 							{#each consoleMatches as c (c.id)}
 								<li>
 									<button
@@ -356,16 +434,25 @@
 						id="rc-game"
 						type="text"
 						autocomplete="off"
+						bind:this={gameInput}
 						placeholder="Game name"
 						bind:value={gameQuery}
-						onfocus={() => (gameOpen = true)}
+						onfocus={() => {
+							gameOpen = true;
+							gameAnchor = anchorTo(gameInput);
+						}}
 						oninput={() => {
 							gameOpen = true;
+							gameAnchor = anchorTo(gameInput);
 							searchRemote(gameQuery);
 						}}
 					/>
-					{#if gameOpen && gameMatches.length > 0}
-						<ul class="drop">
+					{#if gameOpen && gameMatches.length > 0 && gameAnchor}
+						<ul
+							bind:this={gameList}
+							class="drop"
+							style="left:{gameAnchor.left}px; top:{gameAnchor.top}px; width:{gameAnchor.width}px; max-height:{gameAnchor.maxHeight}px"
+						>
 							{#each gameMatches as g (g)}
 								<li>
 									<button
@@ -595,16 +682,16 @@
 		border-color: var(--color-text-secondary);
 	}
 
+	/* Fixed, and positioned from the input's measured rectangle. See `anchorTo`:
+	   absolute positioning is clipped by the scrolling form around it and again
+	   by the dialog's `overflow: hidden`, and no z-index escapes a clip. The
+	   z-index still has to clear the dialog itself, which sits at 200. */
 	.drop {
-		position: absolute;
-		top: calc(100% + 2px);
-		left: 0;
-		right: 0;
-		z-index: 10;
+		position: fixed;
+		z-index: 300;
 		margin: 0;
 		padding: 2px;
 		list-style: none;
-		max-height: 210px;
 		overflow-y: auto;
 		background-color: var(--color-bg-secondary);
 		border: 1px solid var(--color-border);
