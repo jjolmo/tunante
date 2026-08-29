@@ -1,0 +1,33 @@
+[package]
+name = "tunante-codec"
+version = "0.1.0"
+edition = "2021"
+description = "Every audio decoder and metadata reader Tunante supports, including the vendored emulator cores"
+license = "GPL-2.0-or-later"
+
+[dependencies]
+tunante-core = { path = "../tunante-core" }
+
+rodio = { version = "0.22", features = ["symphonia-mp3", "symphonia-flac", "symphonia-isomp4", "symphonia-aac", "symphonia-ogg", "symphonia-vorbis", "symphonia-wav", "symphonia-pcm"] }
+lofty = "0.21"
+uuid = { version = "1", features = ["v4"] }
+log = "0.4"
+thiserror = "2"
+base64 = "0.22"
+ogg = "0.9"
+
+# The vendored C/C++ emulator cores. Every one of these bundles its own copy of
+# psflib and relies on the `-D psf_load=<prefix>_psf_load` renaming in its
+# build.rs to avoid symbol collisions when they are all linked together.
+opus-decoder = { path = "../../vendor/opus-decoder-patch" }
+game-music-emu = { path = "../../vendor/game-music-emu-patch", default-features = false, features = ["ay", "gbs", "gym", "hes", "kss", "nsf", "nsfe", "sap", "spc", "vgm"] }
+vgmstream-rs = { path = "../../vendor/vgmstream-rs" }
+viogsf-rs = { path = "../../vendor/viogsf-rs" }
+vio2sf-rs = { path = "../../vendor/vio2sf-rs" }
+hepsf-rs = { path = "../../vendor/hepsf-rs" }
+lazyusf2-rs = { path = "../../vendor/lazyusf2-rs" }
+
+[dev-dependencies]
+# Only the `real_library_sweep` smoke test needs it, to walk TUNANTE_MUSIC_DIR.
+walkdir = "2"
+game-music-emu = { path = "../../vendor/game-music-emu-patch", default-features = false, features = ["vgm", "spc", "nsf"] }

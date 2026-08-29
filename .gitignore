@@ -6,7 +6,7 @@ dist/
 # launcher entry, the icon and the install script for the phone app. The rule
 # above is meant for SvelteKit's build output, and it had been quietly
 # swallowing all four ever since they were written.
-!src-tauri/crates/tunante-mini/dist/
+!apps/mini/dist/
 target/
 *.swp
 *.swo
@@ -15,10 +15,10 @@ target/
 .env.*
 !.env.example
 .dev-libs/
-src-tauri/.cargo/
+.cargo/
 run-dev.sh
 .claude/
 
 # The signing key lives outside the tree; this only says where.
-android/KEY.local.md
+apps/android/KEY.local.md
 *.local.md

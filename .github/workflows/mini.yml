@@ -12,9 +12,10 @@ on:
   push:
     branches: [main, tunante-mini]
     paths:
-      - 'src-tauri/crates/**'
-      - 'src-tauri/*-rs/**'
-      - 'src-tauri/*-patch/**'
+      - 'apps/mini/**'
+      - 'crates/**'
+      - 'vendor/*-rs/**'
+      - 'vendor/*-patch/**'
       - '.github/workflows/mini.yml'
   pull_request:
   workflow_dispatch:
@@ -66,7 +67,7 @@ jobs:
           RUSTFLAGS: -C link-arg=-Wl,-z,stack-size=8388608
         run: |
           docker run --rm -i \
-            -v "$PWD":/src -w /src/src-tauri \
+            -v "$PWD":/src -w /src \
             -e CARGO_TERM_COLOR \
             -e RUSTFLAGS \
             -e "HOST_UID=$(id -u)" \
@@ -110,9 +111,9 @@ jobs:
         with:
           name: tunante-mini-aarch64-musl
           path: |
-            src-tauri/target/release/tunante-mini
-            src-tauri/target/release/tunante-decoder
-            src-tauri/crates/tunante-mini/dist/
+            target/release/tunante-mini
+            target/release/tunante-decoder
+            apps/mini/dist/
 
   package:
     # The recipe, run for real. Until this existed the APKBUILD had never been
@@ -163,7 +164,7 @@ jobs:
         # Un segundo, y habría ahorrado diez minutos de runner: un comentario
         # dentro de la cadena de `makedepends` cerró las comillas a media lista
         # y el resto de la receta se ejecutó como órdenes sueltas.
-        run: sh -n src-tauri/crates/tunante-mini/dist/APKBUILD
+        run: sh -n apps/mini/dist/APKBUILD
 
       - name: Build the apk
         run: |
@@ -193,7 +194,7 @@ jobs:
           mkdir -p /home/empaqueta/recipe /var/cache/distfiles
           chgrp abuild /var/cache/distfiles && chmod g+w /var/cache/distfiles
 
-          cp /repo/src-tauri/crates/tunante-mini/dist/APKBUILD /home/empaqueta/recipe/
+          cp /repo/apps/mini/dist/APKBUILD /home/empaqueta/recipe/
           # Stamp the version, exactly as release.yml does for the tree.
           sed -i "s/^pkgver=.*/pkgver=$VERSION/" /home/empaqueta/recipe/APKBUILD
           chown -R empaqueta:empaqueta /home/empaqueta

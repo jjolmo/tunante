@@ -31,11 +31,11 @@ on:
   # change to the Svelte frontend has nothing to say about an Android build.
   pull_request:
     paths:
-      - 'src-tauri/crates/**'
-      - 'src-tauri/*-rs/**'
-      - 'src-tauri/*-patch/**'
-      - 'src-tauri/viogsf/**'
-      - 'android/**'
+      - 'crates/**'
+      - 'vendor/*-rs/**'
+      - 'vendor/*-patch/**'
+      - 'vendor/viogsf/**'
+      - 'apps/android/**'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -85,8 +85,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin/cargo-ndk
-            src-tauri/target
-          key: android-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+            target
+          key: android-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: android-${{ runner.os }}-
 
       - name: cargo-ndk
@@ -100,10 +100,10 @@ jobs:
       - name: The JNI bridge matches on both sides
         run: |
           grep -oE 'native[A-Z][A-Za-z]+\(' \
-            android/app/src/main/java/com/tunante/android/NativeBridge.java \
+            apps/android/app/src/main/java/com/tunante/android/NativeBridge.java \
             | tr -d '(' | sort -u > /tmp/java.txt
           grep -oE 'NativeBridge_native[A-Za-z]+' \
-            src-tauri/crates/tunante-android/src/lib.rs \
+            apps/android/rust/src/lib.rs \
             | sed 's/.*NativeBridge_//' | sort -u > /tmp/rust.txt
 
           echo "declared in Java: $(wc -l < /tmp/java.txt), exported from Rust: $(wc -l < /tmp/rust.txt)"
@@ -168,7 +168,7 @@ jobs:
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        working-directory: android
+        working-directory: apps/android
         # Only the phone's ABI. build.sh also knows how to build x86_64, which
         # exists so the interface can be looked at in an emulator — nobody
         # installs this from a release onto an emulator, and building the whole
@@ -193,15 +193,16 @@ jobs:
         id: apk
         run: |
           if [ "${{ steps.key.outputs.signed }}" = "true" ]; then
-            echo "path=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
+            echo "path=apps/android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
           else
-            echo "path=android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
+            echo "path=apps/android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
           fi
 
       - name: What is actually inside it
-        working-directory: android
+        working-directory: apps/android
         run: |
-          APK=../${{ steps.apk.outputs.path }}
+          # ../.. — working-directory is apps/android and the path is repo-relative.
+          APK=../../${{ steps.apk.outputs.path }}
           echo "== $APK ($(stat -c%s "$APK") bytes)"
           unzip -l "$APK" | grep -E 'lib/arm64-v8a|assets/' | sed 's/^/   /'
 
