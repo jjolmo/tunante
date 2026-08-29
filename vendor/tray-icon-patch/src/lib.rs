@@ -140,6 +140,13 @@ pub use self::error::*;
 pub use self::icon::{BadIcon, Icon};
 pub use self::tray_icon_id::TrayIconId;
 
+/// Tunante patch: publish the Linux tray icon by name so panels can recolour it.
+///
+/// See `platform_impl::gtk::set_symbolic_icon` for why this exists and why it
+/// is a free function rather than a builder option.
+#[cfg(target_os = "linux")]
+pub use self::platform_impl::set_symbolic_icon;
+
 /// Re-export of [muda](::muda) crate and used for tray context menu.
 pub mod menu {
     pub use muda::*;

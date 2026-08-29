@@ -11,6 +11,7 @@
 
 mod icon;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use crate::icon::Icon;
 pub(crate) use icon::PlatformIcon;
@@ -67,6 +68,38 @@ fn connect_scroll_signal(indicator: &AppIndicator, id: TrayIconId) {
     }
 }
 
+/// Tunante patch: publish the tray icon by *name* instead of as a pixmap.
+///
+/// This is the only way to get a recolourable tray icon on Linux, and neither
+/// layer above exposes it. StatusNotifierItem defines `IconName` alongside
+/// `IconPixmap`, and hosts prefer the name: it lets the panel pick a size, and
+/// — the part that matters here — recolour a monochrome glyph to whatever the
+/// panel's foreground is. Plasma 6 explicitly prefers names ending `-symbolic`,
+/// GTK recolours `-symbolic` SVGs through `gtk_icon_info_load_symbolic`, and
+/// Cinnamon/XFCE/MATE follow the same convention through XApp. Handed a pixmap,
+/// every one of them draws exactly what it was given — so a black glyph is
+/// invisible on the dark panel that most of them ship by default.
+///
+/// A global rather than a field on `TrayIconAttributes` because of who owns
+/// what: `tauri::tray` builds and holds the `TrayIcon`, and its whole surface
+/// is `icon(Image)` and `icon_as_template(bool)`. There is no seam to thread a
+/// name through, short of patching Tauri as well. Setting this before the tray
+/// is built is reachable from an application; adding a field is not.
+///
+/// Set it to `None` to go back to publishing the pixmap.
+static SYMBOLIC: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
+
+/// Name the icon and the directory to resolve it in.
+///
+/// `name` must be the icon's *stem* — `tunante-symbolic`, not a filename and
+/// not a path — and `theme_dir` must contain `<name>.svg`. An absolute path
+/// works as a name too, which is what this crate did before, but a path is
+/// never recoloured: the toolkit has to resolve it as a themed icon to know it
+/// may restyle it.
+pub fn set_symbolic_icon(name: Option<(String, PathBuf)>) {
+    *SYMBOLIC.lock().unwrap() = name;
+}
+
 pub struct TrayIcon {
     id: TrayIconId,
     indicator: AppIndicator,
@@ -83,12 +116,16 @@ impl TrayIcon {
 
         let (parent_path, icon_path) = temp_icon_path(attrs.temp_dir_path.as_ref(), &id, 0)?;
 
-        if let Some(icon) = attrs.icon {
-            icon.inner.write_to_png(&icon_path)?;
+        if let Some((name, dir)) = SYMBOLIC.lock().unwrap().clone() {
+            indicator.set_icon_theme_path(&dir.to_string_lossy());
+            indicator.set_icon_full(&name, "icon");
+        } else {
+            if let Some(icon) = attrs.icon {
+                icon.inner.write_to_png(&icon_path)?;
+            }
+            indicator.set_icon_theme_path(&parent_path.to_string_lossy());
+            indicator.set_icon_full(&icon_path.to_string_lossy(), "icon");
         }
-
-        indicator.set_icon_theme_path(&parent_path.to_string_lossy());
-        indicator.set_icon_full(&icon_path.to_string_lossy(), "icon");
 
         if let Some(menu) = &attrs.menu {
             indicator.set_menu(&mut menu.gtk_context_menu());
@@ -122,14 +159,18 @@ impl TrayIcon {
         let (parent_path, icon_path) =
             temp_icon_path(self.temp_dir_path.as_ref(), &self.id, self.counter)?;
 
-        if let Some(icon) = icon {
-            icon.inner.write_to_png(&icon_path)?;
+        if let Some((name, dir)) = SYMBOLIC.lock().unwrap().clone() {
+            self.indicator.set_icon_theme_path(&dir.to_string_lossy());
+            self.indicator.set_icon_full(&name, "tray icon");
+        } else {
+            if let Some(icon) = icon {
+                icon.inner.write_to_png(&icon_path)?;
+            }
+            self.indicator
+                .set_icon_theme_path(&parent_path.to_string_lossy());
+            self.indicator
+                .set_icon_full(&icon_path.to_string_lossy(), "tray icon");
         }
-
-        self.indicator
-            .set_icon_theme_path(&parent_path.to_string_lossy());
-        self.indicator
-            .set_icon_full(&icon_path.to_string_lossy(), "tray icon");
         self.path = icon_path;
 
         Ok(())

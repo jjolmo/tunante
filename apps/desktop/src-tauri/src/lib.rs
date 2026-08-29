@@ -20,6 +20,7 @@ pub mod debug_log;
 /// keeps resolving throughout this crate.
 pub use tunante_codec::metadata;
 pub mod shortcuts;
+pub mod tray_icon_style;
 pub mod updater;
 pub mod watcher;
 
@@ -813,18 +814,18 @@ pub fn run() {
                     .unwrap_or(false)
             };
 
-            // Choose tray icon based on OS theme (white for dark, black for light)
+            // Which face the tray wears. See `tray_icon_style` for why this is
+            // not one rule: macOS inverts a template itself, Windows follows a
+            // registry key that is *not* the app theme, and Linux recolours only
+            // an icon published by name.
+            let tray_style = {
+                let db = state.db.lock();
+                let raw = db.get_setting("tray_icon_style").ok().flatten();
+                tray_icon_style::TrayStyle::parse(raw.as_deref())
+            };
+            let symbolic_by_name = tray_icon_style::install_symbolic(tray_style);
+            let (png_bytes, as_template) = tray_icon_style::icon_bytes(tray_style);
             let tray_icon = {
-                let is_light = app.get_webview_window("main")
-                    .and_then(|w| w.theme().ok())
-                    .map(|t| t == tauri::Theme::Light)
-                    .unwrap_or(false);
-
-                let png_bytes: &[u8] = if is_light {
-                    include_bytes!("../icons/tray-icon-big-black-fixed.png")
-                } else {
-                    include_bytes!("../icons/tray-icon-big-fixed.png")
-                };
                 let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
                 let mut reader = decoder.read_info().expect("Failed to decode tray icon PNG");
                 let mut buf = vec![0u8; reader.output_buffer_size()];
@@ -833,8 +834,13 @@ pub fn run() {
                 tauri::image::Image::new_owned(buf, info.width, info.height)
             };
 
+            // The pixmap is set regardless. On Linux the patched tray-icon
+            // ignores it when a symbolic name was published, and if that failed
+            // this is what the panel draws.
+            let _ = symbolic_by_name;
             let tray_builder = TrayIconBuilder::with_id("main-tray")
                 .icon(tray_icon)
+                .icon_as_template(as_template)
                 .tooltip("Tunante")
                 .menu(&tray_menu);
 
@@ -1288,13 +1294,21 @@ pub fn run() {
                     }
                 }
                 tauri::WindowEvent::ThemeChanged(theme) => {
-                    // Update tray icon when OS theme changes
-                    let is_light = *theme == tauri::Theme::Light;
-                    let png_bytes: &[u8] = if is_light {
-                        include_bytes!("../icons/tray-icon-big-black-fixed.png")
-                    } else {
-                        include_bytes!("../icons/tray-icon-big-fixed.png")
+                    // Update the tray icon when the OS theme changes.
+                    //
+                    // The window theme is only a *hint* here, and on two of the
+                    // three platforms it is the wrong signal — see
+                    // `tray_icon_style`. It is kept as the trigger because it is
+                    // the only change notification Tauri delivers; what to draw
+                    // is decided from scratch, not from `theme`.
+                    let _ = theme;
+                    let style = {
+                        let app_state = window.state::<Arc<AppState>>();
+                        let db = app_state.db.lock();
+                        let raw = db.get_setting("tray_icon_style").ok().flatten();
+                        tray_icon_style::TrayStyle::parse(raw.as_deref())
                     };
+                    let (png_bytes, _) = tray_icon_style::icon_bytes(style);
                     let decoder = png::Decoder::new(std::io::Cursor::new(png_bytes));
                     if let Ok(mut reader) = decoder.read_info() {
                         let mut buf = vec![0u8; reader.output_buffer_size()];

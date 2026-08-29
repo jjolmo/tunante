@@ -155,6 +155,29 @@
 
 	<div class="setting-row threshold-row" class:disabled={!settingsStore.showInTray}>
 		<div class="setting-text">
+			<span class="setting-label">Tray icon</span>
+			<span class="setting-desc"
+				>The monochrome glyph sits in a panel the way the system's own icons do, and each
+				platform adapts it to a light or dark panel differently. The colour logo never
+				adapts, which is sometimes exactly what you want. Takes effect on restart.</span
+			>
+		</div>
+		<select
+			disabled={!settingsStore.showInTray}
+			value={settingsStore.trayIconStyle}
+			onchange={(e) =>
+				settingsStore.setTrayIconStyle(
+					(e.target as HTMLSelectElement).value as 'system' | 'symbolic' | 'logo'
+				)}
+		>
+			<option value="system">Follow the system</option>
+			<option value="symbolic">Symbolic</option>
+			<option value="logo">Colour logo</option>
+		</select>
+	</div>
+
+	<div class="setting-row threshold-row" class:disabled={!settingsStore.showInTray}>
+		<div class="setting-text">
 			<span class="setting-label">Tray middle-click action</span>
 			<span class="setting-desc"
 				>Action to perform when clicking the tray icon with the middle mouse button.</span
