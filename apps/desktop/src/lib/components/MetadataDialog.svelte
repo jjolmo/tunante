@@ -843,7 +843,9 @@
 	   dialog that resizes to fit one is a dialog that jumps. */
 	.names-list {
 		margin: 0 0 12px;
-		padding-left: 26px;
+		/* Right padding as well as left: the list scrolls, and without it the
+		   lengths sit against the scrollbar. */
+		padding: 0 10px 0 26px;
 		max-height: 260px;
 		overflow-y: auto;
 		font-size: 12px;
