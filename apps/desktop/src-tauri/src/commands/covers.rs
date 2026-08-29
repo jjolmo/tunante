@@ -422,3 +422,175 @@ pub async fn suggest_game_names(
     .await
     .map_err(|e| e.to_string())?
 }
+
+/// A proposed set of track names for a multi-subsong file.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TrackNames {
+    /// The file every one of these belongs to.
+    pub file: String,
+    /// How many subsongs it actually holds.
+    pub subsongs: usize,
+    /// The names, in order. Empty when nothing usable was found.
+    pub titles: Vec<String>,
+    /// Why there is nothing, in words a person can act on.
+    pub problem: Option<String>,
+}
+
+/// Look up the track names for the file a track lives in.
+///
+/// Only for the formats that pack a whole game into one file — GBS, NSF, HES,
+/// KSS, AY, SAP. Everything else is one song per file and has its title
+/// already; asking would be asking for nothing.
+///
+/// Fetches and counts, and refuses on any mismatch. It never writes: the caller
+/// shows the list and decides, because position is the entire mapping and a
+/// listing of the wrong length would rename every track to the wrong song.
+#[tauri::command]
+pub async fn suggest_track_names(
+    track_path: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<TrackNames, String> {
+    let (file, _) = tunante_core::vgm_path::parse_vgm_path(&track_path);
+    let file = file.to_string();
+
+    let (console_id, game) = {
+        let db = state.db.lock();
+        let t = db
+            .get_track_by_path(&track_path)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| "track not in the library".to_string())?;
+        (t.console_id.clone(), t.game.clone())
+    };
+
+    let none = |why: &str| TrackNames {
+        file: file.clone(),
+        subsongs: 0,
+        titles: Vec::new(),
+        problem: Some(why.to_string()),
+    };
+
+    let Some(system) = tunante_core::console::by_id(&console_id).and_then(|c| c.zophar) else {
+        return Ok(none(
+            "This console's format holds one song per file, so there is no listing to fetch.",
+        ));
+    };
+    if game.trim().is_empty() {
+        return Ok(none("Name the game first — the listing is looked up by it."));
+    }
+
+    // How many songs the file really has, counted from the library rather than
+    // by opening it again: the scan already expanded every subsong into a row,
+    // and re-reading a GBS to count them costs an emulator boot.
+    let subsongs = {
+        let db = state.db.lock();
+        db.get_all_tracks()
+            .map_err(|e| e.to_string())?
+            .iter()
+            .filter(|t| tunante_core::vgm_path::parse_vgm_path(&t.path).0 == file)
+            .count()
+    };
+
+    let file_for_thread = file.clone();
+    let game_for_thread = game.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if subsongs <= 1 {
+            return Ok(TrackNames {
+                file: file_for_thread,
+                subsongs,
+                titles: Vec::new(),
+                problem: Some("This file holds a single song.".into()),
+            });
+        }
+
+        let http = tunante_art::http::UreqHttp::default();
+        let entries = tunante_art::tracklist::fetch(&http, system, &game_for_thread);
+        if entries.is_empty() {
+            return Ok(TrackNames {
+                file: file_for_thread,
+                subsongs,
+                titles: Vec::new(),
+                problem: Some(format!("No listing for \"{game_for_thread}\" in the archive.")),
+            });
+        }
+        if !tunante_art::tracklist::matches_subsongs(&entries, subsongs) {
+            return Ok(TrackNames {
+                file: file_for_thread,
+                subsongs,
+                titles: Vec::new(),
+                problem: Some(format!(
+                    "The archive lists {} tracks and this file has {subsongs}. \
+                     Position is the whole mapping, so a different count is a different rip \
+                     and applying it would name every track wrongly.",
+                    entries.len()
+                )),
+            });
+        }
+        Ok(TrackNames {
+            file: file_for_thread,
+            subsongs,
+            titles: entries.into_iter().map(|e| e.title).collect(),
+            problem: None,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Write the names as an `.m3u` beside the file, and restamp the library.
+///
+/// An `.m3u` rather than rows in a table: every player of these formats reads
+/// one, this one included, so the names outlive Tunante and the reader needs no
+/// new path. Never overwrites an existing playlist — one already there was put
+/// there by somebody.
+#[tauri::command]
+pub async fn apply_track_names(
+    file: String,
+    titles: Vec<String>,
+    only_index: Option<usize>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<usize, String> {
+    let path = std::path::PathBuf::from(&file);
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .ok_or_else(|| "not a file".to_string())?;
+    let m3u = path.with_extension("m3u");
+
+    let entries: Vec<tunante_art::tracklist::Entry> = titles
+        .iter()
+        .enumerate()
+        .map(|(i, t)| tunante_art::tracklist::Entry { number: i as u32 + 1, title: t.clone() })
+        .collect();
+
+    if m3u.exists() {
+        return Err(format!(
+            "{} already exists. Move it aside if you want this to replace it.",
+            m3u.display()
+        ));
+    }
+    // The whole listing, even when one track was asked for. An .m3u with a
+    // single line in it would leave every other subsong worse off than before,
+    // and the file describes the rip, not the selection.
+    let body = tunante_art::tracklist::to_m3u(&name, &entries);
+    std::fs::write(&m3u, body).map_err(|e| format!("could not write {}: {e}", m3u.display()))?;
+
+    // Then read the file again through the ordinary path, which now finds the
+    // playlist beside it. No second implementation of "what is this track
+    // called" — the readers already prefer an .m3u title over everything else.
+    let opts = crate::commands::library::scan_opts(&state);
+    let read = tunante_codec::metadata::read_metadata_all_with_opts(&path, opts)
+        .map_err(|e| format!("could not re-read {}: {e}", path.display()))?;
+
+    let db = state.db.lock();
+    let mut n = 0usize;
+    for track in read {
+        let idx = tunante_core::vgm_path::parse_vgm_path(&track.path).1;
+        if only_index.is_some() && idx != only_index {
+            continue;
+        }
+        if db.insert_track(&track).is_ok() {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
