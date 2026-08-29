@@ -32,15 +32,7 @@
 	let renamingPlaylistId = $state<string | null>(null);
 	let renameValue = $state('');
 
-	/** Which console the covers screen should open on, set from the context menu. */
 	let lastArtworkToken = $state(0);
-	let pendingCoverConsole = $state<string | null>(null);
-	$effect(() => {
-		if (pendingCoverConsole) {
-			coversStore.requestedConsole = pendingCoverConsole;
-			pendingCoverConsole = null;
-		}
-	});
 
 	// Fetch artwork when the current track changes
 	$effect(() => {
@@ -249,14 +241,16 @@
 		contextMenu = {
 			x: e.clientX,
 			y: e.clientY,
+			// Straight to the one button, without a console to aim it at. The
+			// covers screen used to take a scope and now does the whole library
+			// in one go, so pointing it at a console would be pointing at
+			// something that is not there.
 			items: [
 				{
-					label: `Find cover art for ${name}…`,
+					label: 'Cover art…',
 					action: () => {
-						coversStore.reset();
 						settingsStore.openSettings();
 						settingsStore.activeCategory = 'covers';
-						pendingCoverConsole = id;
 					}
 				}
 			]
