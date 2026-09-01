@@ -119,6 +119,10 @@ export component AppWindow inherits Window {
     callback add-folder();
     callback cycle-loops();
     callback cycle-fade();
+    in property <string> output-label: "sistema";
+    in property <string> ui-mode-label: "auto";
+    callback cycle-output();
+    callback cycle-ui-mode();
 
     // The desktop shell's track table. Sort and filter live in Rust.
     in property <[TableRow]> table-rows;
@@ -334,6 +338,10 @@ export component AppWindow inherits Window {
         add-folder => { root.add-folder(); }
         cycle-loops => { root.cycle-loops(); }
         cycle-fade => { root.cycle-fade(); }
+        output-label: root.output-label;
+        ui-mode-label: root.ui-mode-label;
+        cycle-output => { root.cycle-output(); }
+        cycle-ui-mode => { root.cycle-ui-mode(); }
     }
 
     if !root.setup-mode && root.scan-status == "" && !root.desktop: VerticalLayout {
@@ -428,6 +436,10 @@ export component AppWindow inherits Window {
                         add-folder => { root.add-folder(); }
                         cycle-loops => { root.cycle-loops(); }
                         cycle-fade => { root.cycle-fade(); }
+                        output-label: root.output-label;
+                        ui-mode-label: root.ui-mode-label;
+                        cycle-output => { root.cycle-output(); }
+                        cycle-ui-mode => { root.cycle-ui-mode(); }
                     }
 
                     if root.tab == 2: LibraryTab {

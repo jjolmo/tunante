@@ -61,9 +61,15 @@
 > protegía — un solo cliente ALSA por sesión, sin click entre pistas — se
 > conserva: el engine mantiene el `MixerDeviceSink` y solo reconecta el
 > `Player` de rodio. rodio dejó de ser dependencia directa de mini. Verificado
-> con un PSF sonando por el engine en la shell desktop. Queda de 3a: el
-> selector de salida y el panel DSP/EQ en Ajustes (`engine_mut()` ya está
-> expuesto para ellos), ratings en UI, y filtro de cortas/continue-from-queue.
+> con un PSF sonando por el engine en la shell desktop. Y de propina el mismo
+> día: **«Salida de audio» en Ajustes** (fila que cicla sistema → cada
+> dispositivo, persistida en `audio_output_device` — la misma clave que usa el
+> desktop — y re-aplicada al arrancar con fallback al default si el aparato ya
+> no está) y **«Modo de interfaz»** (auto/mini/escritorio, persistido en
+> `mini.ui_mode` — el override manual que el plan pedía; los flags CLI ganan
+> sin persistir). Más el instrumento `--tab N`, por la misma razón que existe
+> `--mode`. Queda de 3a: el panel DSP/EQ en Ajustes (`engine_mut()` espera),
+> ratings en UI, y filtro de cortas/continue-from-queue.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

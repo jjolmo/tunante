@@ -120,20 +120,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ui = AppWindow::new()?;
 
     // The presentation override: auto picks by window width (>= 900px means
-    // the desktop shell), and these force one or the other. The flag serves
-    // development and scripts; the settings screen will write the same
-    // property when it grows the control.
+    // the desktop shell), the setting remembers a forced choice, and the
+    // flags win over both for development and scripts. All of it before the
+    // window maps: AppWindow's preferred size keys off `ui-mode`, so a
+    // remembered desktop mode opens desktop-sized.
+    let saved_ui_mode = db
+        .get_setting("mini.ui_mode")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i32>().ok())
+        .filter(|m| (0..=2).contains(m))
+        .unwrap_or(0);
+    ui.set_ui_mode(saved_ui_mode);
     if args.iter().any(|a| a == "--desktop") {
-        // Before the window maps: AppWindow's preferred size keys off this, so
-        // the window opens desktop-sized instead of phone-shaped.
         ui.set_ui_mode(2);
     } else if args.iter().any(|a| a == "--mini") {
         ui.set_ui_mode(1);
     }
+    ui.set_ui_mode_label(SharedString::from(ui_mode_label(ui.get_ui_mode())));
 
     if focus_search {
         ui.set_autofocus_search(true);
         ui.set_tab(2);
+    }
+
+    // Same reason --mode exists: this compositor refuses synthetic clicks, so
+    // "does the settings screen draw right?" is only answerable by starting on
+    // it. 0 Sonando · 1 Cola · 2 Biblioteca · 3 Ajustes.
+    if let Some(tab) = arg_value("--tab").and_then(|s| s.parse::<i32>().ok()) {
+        ui.set_tab(tab.clamp(0, 3));
     }
 
     // --- First run: choose the folders --------------------------------------
@@ -356,6 +371,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let player = Rc::new(RefCell::new(player::Player::new().ok()));
     if player.borrow().is_none() {
         eprintln!("aviso: no hay salida de audio; la interfaz funciona, el sonido no");
+    }
+
+    // Re-apply the remembered output device. Best-effort on purpose: if the
+    // device is gone the engine already falls back to the system default, and
+    // the label still shows what was asked for so the user can see why.
+    {
+        let stored = db
+            .get_setting("audio_output_device")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "system".to_string());
+        if stored != "system" {
+            let sel = tunante_audio::OutputSelection::from_setting(&stored);
+            if let Some(p) = player.borrow_mut().as_mut() {
+                if let Err(e) = p.engine_mut().set_output_selection(sel) {
+                    eprintln!("no se pudo abrir la salida guardada ({stored}): {e}");
+                }
+            }
+        }
+        ui.set_output_label(SharedString::from(output_label(&stored)));
     }
 
     let queue_model = Rc::new(VecModel::from(Vec::<QueueRow>::new()));
@@ -1167,6 +1202,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    {
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        ui.on_cycle_output(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // system, then every device, round and round. The list is asked
+            // for on each press rather than cached: plugging headphones in is
+            // exactly the moment this row gets used.
+            let mut ring = vec!["system".to_string()];
+            ring.extend(tunante_audio::list_output_devices());
+            let current = db
+                .get_setting("audio_output_device")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "system".to_string());
+            let idx = ring.iter().position(|d| *d == current).unwrap_or(0);
+            let next = ring[(idx + 1) % ring.len()].clone();
+
+            let sel = tunante_audio::OutputSelection::from_setting(&next);
+            let _ = db.set_setting("audio_output_device", &sel.to_setting());
+            if let Some(p) = player.borrow_mut().as_mut() {
+                if let Err(e) = p.engine_mut().set_output_selection(sel) {
+                    eprintln!("no se pudo cambiar la salida: {e}");
+                }
+            }
+            ui.set_output_label(SharedString::from(output_label(&next)));
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_ui_mode(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = (ui.get_ui_mode() + 1) % 3;
+            ui.set_ui_mode(next);
+            let _ = db.set_setting("mini.ui_mode", &next.to_string());
+            ui.set_ui_mode_label(SharedString::from(ui_mode_label(next)));
+        });
+    }
+
     // --- Search --------------------------------------------------------------
     {
         let (db, rows_model, tree, views) =
@@ -1883,6 +1956,28 @@ fn to_ui_rows(rows: &[library::Row]) -> Vec<LibraryRow> {
             path: SharedString::from(r.path.as_str()),
         })
         .collect()
+}
+
+fn ui_mode_label(mode: i32) -> &'static str {
+    match mode {
+        1 => "mini",
+        2 => "escritorio",
+        _ => "auto",
+    }
+}
+
+/// What the output row shows. Device names are ALSA/Pulse strings that can
+/// run to a hundred characters; the row elides, but a hard cap keeps the
+/// label from eating the whole width first.
+fn output_label(stored: &str) -> String {
+    if stored == "system" {
+        return "sistema".to_string();
+    }
+    let mut label: String = stored.chars().take(34).collect();
+    if label.len() < stored.len() {
+        label.push('…');
+    }
+    label
 }
 
 /// The desktop table's world: the whole library once, then whatever the

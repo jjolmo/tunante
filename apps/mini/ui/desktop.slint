@@ -155,6 +155,10 @@ export component DesktopShell inherits Rectangle {
     callback add-folder();
     callback cycle-loops();
     callback cycle-fade();
+    in property <string> output-label;
+    in property <string> ui-mode-label;
+    callback cycle-output();
+    callback cycle-ui-mode();
 
     // The one piece of state the shell owns: which pane the centre shows.
     // 0 = the track table · 1 = the phone's library views · 2 = settings.
@@ -310,6 +314,10 @@ export component DesktopShell inherits Rectangle {
                     add-folder => { root.add-folder(); }
                     cycle-loops => { root.cycle-loops(); }
                     cycle-fade => { root.cycle-fade(); }
+                    output-label: root.output-label;
+                    ui-mode-label: root.ui-mode-label;
+                    cycle-output => { root.cycle-output(); }
+                    cycle-ui-mode => { root.cycle-ui-mode(); }
                 }
             }
 
