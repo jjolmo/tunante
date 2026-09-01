@@ -52,6 +52,7 @@ mod mpris;
 mod output;
 mod picker;
 mod player;
+mod single;
 mod tray;
 use tunante_core::session;
 
@@ -94,6 +95,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find(|a| !a.starts_with('-'))
         .map(PathBuf::from)
         .filter(|p| p.is_file());
+
+    // One instance. A second launch delivers its intent to the first — the
+    // file it was handed, or just "come to the front" — and exits.
+    let instance = match single::claim(&match &open_target {
+        Some(p) => format!("play {}\n", p.display()),
+        None => "raise\n".to_string(),
+    }) {
+        single::Start::Primary(i) => i,
+        single::Start::Secondary => {
+            eprintln!("ya hay un Tunante abierto; le paso el encargo");
+            return Ok(());
+        }
+    };
 
     let dbfile = db_path()?;
     let db = Database::new(&dbfile)?;
@@ -498,40 +512,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Handed a file on the command line: play it, and queue its folder around
-    // it, which is what anyone opening one track of an album expects.
+    // it, which is what anyone opening one track of an album expects. The
+    // same door a second launch's `play` message comes through.
     if let Some(path) = &open_target {
-        let path = path.to_string_lossy().to_string();
-        let folder = std::path::Path::new(&path)
-            .parent()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_default();
-
-        let mut tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
-        // Not in the library yet — ask the decoder about it directly, so the
-        // app can play a file it has never scanned.
-        if tracks.is_empty() {
-            if let Ok(values) = tunante_helper::probe(
-                std::path::Path::new(&path),
-                std::time::Duration::from_secs(20),
-                false,
-            ) {
-                tracks = values
-                    .into_iter()
-                    .filter_map(|v| serde_json::from_value(v).ok())
-                    .collect();
-            }
-        }
-
-        let start = tracks.iter().position(|t| t.path == path).unwrap_or(0);
-        if let Some(p) = player.borrow_mut().as_mut() {
-            p.set_tracks(tracks.clone());
-            match p.play_index(start) {
-                Ok(()) => push_now_playing(&ui, p),
-                Err(e) => eprintln!("no se pudo reproducir: {e}"),
-            }
-        }
-        queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
-        ui.set_setup_mode(false);
+        play_from_path(&ui, &db, &player, &queue_model, &path.to_string_lossy());
     }
 
     // --- Library: open a folder, or play a track -----------------------------
@@ -693,6 +677,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 t.rating = new;
             }
             rebuild_table(&mut st, &model);
+        });
+    }
+    {
+        let (st, player_t) = (table_state.clone(), player.clone());
+        ui.on_table_enqueued(move |index| {
+            let track = {
+                let st = st.borrow();
+                st.tracks.get(index as usize).cloned()
+            };
+            let Some(track) = track else { return };
+            if let Some(p) = player_t.borrow_mut().as_mut() {
+                p.enqueue(track);
+            }
+        });
+    }
+    {
+        let st = table_state.clone();
+        ui.on_table_open_folder(move |index| {
+            let path = {
+                let st = st.borrow();
+                st.tracks.get(index as usize).map(|t| t.path.clone())
+            };
+            let Some(path) = path else { return };
+            let (real, _) = tunante_core::vgm_path::parse_vgm_path(&path);
+            if let Some(folder) = std::path::Path::new(real).parent() {
+                // xdg-open respects the default file manager; spawn-and-forget
+                // because a file manager that fails says so on its own.
+                let _ = std::process::Command::new("xdg-open").arg(folder).spawn();
+            }
         });
     }
     {
@@ -1530,6 +1543,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.set_tab(2);
                 }
 
+                // A second launch knocked: bring the window up, and if it
+                // carried a file, play it. Before the player borrow below —
+                // play_from_path takes the Rc and borrows it itself.
+                if let Some(msg) = instance.poll() {
+                    let _ = ui.window().show();
+                    if let Some(path) = msg.trim().strip_prefix("play ") {
+                        play_from_path(&ui, &db, &player, &queue_model, path);
+                    }
+                }
+
                 let mut guard = player.borrow_mut();
                 let Some(p) = guard.as_mut() else { return };
 
@@ -2290,6 +2313,48 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
             .collect::<Vec<_>>(),
     );
     st.tracks = tracks;
+}
+
+/// Play a file by path, with its folder as the queue context — or, when the
+/// library has never seen it, whatever the decoder says the file contains.
+fn play_from_path(
+    ui: &AppWindow,
+    db: &Database,
+    player: &Rc<RefCell<Option<player::Player>>>,
+    queue_model: &VecModel<QueueRow>,
+    path: &str,
+) {
+    let folder = std::path::Path::new(path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    let mut tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
+    // Not in the library yet — ask the decoder about it directly, so the
+    // app can play a file it has never scanned.
+    if tracks.is_empty() {
+        if let Ok(values) = tunante_helper::probe(
+            std::path::Path::new(path),
+            std::time::Duration::from_secs(20),
+            false,
+        ) {
+            tracks = values
+                .into_iter()
+                .filter_map(|v| serde_json::from_value(v).ok())
+                .collect();
+        }
+    }
+
+    let start = tracks.iter().position(|t| t.path == path).unwrap_or(0);
+    if let Some(p) = player.borrow_mut().as_mut() {
+        p.set_tracks(tracks.clone());
+        match p.play_index(start) {
+            Ok(()) => push_now_playing(ui, p),
+            Err(e) => eprintln!("no se pudo reproducir: {e}"),
+        }
+    }
+    queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
+    ui.set_setup_mode(false);
 }
 
 fn to_queue_rows(
