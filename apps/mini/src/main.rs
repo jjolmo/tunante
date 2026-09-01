@@ -119,6 +119,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ui = AppWindow::new()?;
 
+    // The presentation override: auto picks by window width (>= 900px means
+    // the desktop shell), and these force one or the other. The flag serves
+    // development and scripts; the settings screen will write the same
+    // property when it grows the control.
+    if args.iter().any(|a| a == "--desktop") {
+        // Before the window maps: AppWindow's preferred size keys off this, so
+        // the window opens desktop-sized instead of phone-shaped.
+        ui.set_ui_mode(2);
+    } else if args.iter().any(|a| a == "--mini") {
+        ui.set_ui_mode(1);
+    }
+
     if focus_search {
         ui.set_autofocus_search(true);
         ui.set_tab(2);

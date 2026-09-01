@@ -1,0 +1,430 @@
+// The desktop shell: sidebar | library | queue, over one transport bar.
+//
+// Fase 2 of docs/plan-desktop-slint.md. Deliberately built from the same
+// screens the phone uses — LibraryTab, QueueTab and SettingsTab are
+// instantiated whole, fed by the same models and firing the same callbacks,
+// so there is exactly one implementation of every behaviour and the shell is
+// only a different arrangement of it. The wide track table of fase 3b will
+// replace the centre pane; until then the phone's list *is* the library view.
+
+import { ListView } from "std-widgets.slint";
+import { Theme, Fmt } from "theme.slint";
+import { GridLine, LibraryRow, QueueRow, PlaylistRow } from "types.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar } from "widgets.slint";
+import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
+
+component SidebarEntry inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    callback clicked();
+
+    height: 34px;
+    background: root.active ? Theme.bg-selected : (t.has-hover ? Theme.bg-hover : transparent);
+    border-radius: 6px;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        Text {
+            text: root.label;
+            color: root.active ? Theme.accent : Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    t := TouchArea { clicked => { root.clicked(); } }
+}
+
+// A horizontal 0..1 slider in the house style, for the volume.
+component VolumeBar inherits Rectangle {
+    in property <float> value;
+    callback changed(float);
+
+    height: 24px;
+
+    track := Rectangle {
+        height: 4px;
+        border-radius: 2px;
+        background: Theme.bg-tertiary;
+
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(root.value, 0.0, 1.0);
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: Theme.accent;
+        }
+    }
+    Rectangle {
+        x: track.width * clamp(root.value, 0.0, 1.0) - self.width / 2;
+        width: touch.pressed ? 14px : 10px;
+        height: self.width;
+        border-radius: self.width / 2;
+        background: Theme.accent;
+        animate width { duration: 90ms; }
+    }
+    touch := TouchArea {
+        moved => { root.changed(clamp(self.mouse-x / track.width, 0.0, 1.0)); }
+        clicked => { root.changed(clamp(self.mouse-x / track.width, 0.0, 1.0)); }
+    }
+}
+
+export component DesktopShell inherits Rectangle {
+    background: Theme.bg-primary;
+
+    // --- Mirrors of AppWindow's state, wired straight through ---
+    in property <[LibraryRow]> library-rows;
+    in property <int> library-total;
+    in property <string> now-title;
+    in property <string> now-artist;
+    in property <string> now-album;
+    in property <string> now-path;
+    in property <image> now-art;
+    in-out property <bool> playing;
+    in-out property <bool> shuffle;
+    in-out property <int> repeat;
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    in-out property <float> volume;
+    in-out property <string> search;
+    in property <bool> autofocus-search;
+    in-out property <int> library-mode;
+    in property <[GridLine]> library-grid-lines;
+    in property <bool> library-grid;
+    in property <string> library-crumb;
+    in property <int> library-columns;
+    in property <[QueueRow]> queue-rows;
+    in property <[PlaylistRow]> playlists;
+    in property <[PlaylistRow]> all-playlists;
+    in property <bool> showing-playlists;
+    in property <bool> playlist-open;
+    in property <int> playlist-count;
+    in property <string> output-warning;
+    in property <bool> sleep-running;
+    in property <int> sleep-minutes;
+    in property <string> library-summary;
+    in property <int> loop-count;
+    in property <int> fade-seconds;
+
+    callback library-activated(int);
+    callback library-enqueued(int);
+    callback library-enqueue-path(string, bool);
+    callback library-mode-changed(int);
+    callback library-grid-tapped(string);
+    callback library-back();
+    callback playlist-open-requested(string);
+    callback playlist-enqueue-all();
+    callback playlist-create(string);
+    callback add-path-to-playlist(string, bool, string);
+    callback add-path-to-new-playlist(string, bool, string);
+    callback playlist-track-removed(string);
+    callback playlist-reordered(int, int);
+    callback playlist-rename(string, string);
+    callback playlist-delete(string);
+    callback playlist-enqueue-id(string);
+    callback queue-activated(int);
+    callback queue-removed(int);
+    callback queue-reordered(int, int);
+    callback queue-cleared();
+    callback search-changed(string);
+    callback toggle-play();
+    callback next-track();
+    callback prev-track();
+    callback cycle-repeat();
+    callback toggle-shuffle();
+    callback seek-to(int);
+    callback set-volume(float);
+    callback cycle-sleep();
+    callback rescan();
+    callback descargar-caratulas();
+    callback add-folder();
+    callback cycle-loops();
+    callback cycle-fade();
+
+    // The one piece of state the shell owns: whether the centre pane shows the
+    // library or the settings. Everything else lives in Rust, same as always.
+    property <bool> showing-settings: false;
+
+    VerticalLayout {
+        HorizontalLayout {
+            vertical-stretch: 1;
+
+            // --- Sidebar ---
+            Rectangle {
+                width: 210px;
+                background: Theme.bg-secondary;
+
+                VerticalLayout {
+                    padding: Theme.gap;
+                    spacing: 2px;
+
+                    Text {
+                        text: "Biblioteca";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        height: 26px;
+                        vertical-alignment: center;
+                    }
+                    for label[i] in ["Árbol", "Discos", "Consolas", "Juegos", "Listas"]: SidebarEntry {
+                        label: label;
+                        active: !root.showing-settings && root.library-mode == i;
+                        clicked => {
+                            root.showing-settings = false;
+                            root.library-mode-changed(i);
+                        }
+                    }
+
+                    Rectangle { height: Theme.gap; }
+                    Text {
+                        text: "Listas";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        height: 26px;
+                        vertical-alignment: center;
+                    }
+                    // The playlists themselves, one tap from anywhere.
+                    lists := ListView {
+                        vertical-stretch: 1;
+                        for pl in root.all-playlists: Rectangle {
+                            height: 34px;
+                            background: pt.has-hover ? Theme.bg-hover : transparent;
+                            border-radius: 6px;
+                            HorizontalLayout {
+                                padding-left: 12px;
+                                padding-right: 8px;
+                                Text {
+                                    text: pl.name;
+                                    color: Theme.text-primary;
+                                    font-size: Theme.font-body;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            pt := TouchArea {
+                                clicked => {
+                                    root.showing-settings = false;
+                                    root.playlist-open-requested(pl.id);
+                                }
+                            }
+                        }
+                    }
+
+                    SidebarEntry {
+                        label: "Ajustes";
+                        active: root.showing-settings;
+                        clicked => { root.showing-settings = true; }
+                    }
+                }
+            }
+
+            Rectangle { width: 1px; background: Theme.bg-tertiary; }
+
+            // --- Centre: the library, or the settings ---
+            Rectangle {
+                horizontal-stretch: 1;
+
+                if !root.showing-settings: LibraryTab {
+                    rows: root.library-rows;
+                    total: root.library-total;
+                    cramped: false;
+                    now-path: root.now-path;
+                    mode <=> root.library-mode;
+                    mode-changed(i) => { root.library-mode-changed(i); }
+                    grid-lines: root.library-grid-lines;
+                    grid: root.library-grid;
+                    columns: root.library-columns;
+                    crumb: root.library-crumb;
+                    grid-tapped(p) => { root.library-grid-tapped(p); }
+                    go-back => { root.library-back(); }
+                    autofocus-search: root.autofocus-search;
+                    search <=> root.search;
+                    activated(i) => { root.library-activated(i); }
+                    enqueued(i) => { root.library-enqueued(i); }
+                    enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
+                    search-changed(s) => { root.search-changed(s); }
+                    playlists: root.playlists;
+                    all-playlists: root.all-playlists;
+                    showing-playlists: root.showing-playlists;
+                    playlist-open: root.playlist-open;
+                    playlist-count: root.playlist-count;
+                    playlist-open-requested(id) => { root.playlist-open-requested(id); }
+                    playlist-enqueue-all => { root.playlist-enqueue-all(); }
+                    playlist-create(nombre) => { root.playlist-create(nombre); }
+                    add-path-to-playlist(p, hondo, id) => {
+                        root.add-path-to-playlist(p, hondo, id);
+                    }
+                    add-path-to-new-playlist(p, hondo, nombre) => {
+                        root.add-path-to-new-playlist(p, hondo, nombre);
+                    }
+                    playlist-track-removed(p) => { root.playlist-track-removed(p); }
+                    playlist-reordered(de, a) => { root.playlist-reordered(de, a); }
+                    playlist-rename(id, nombre) => { root.playlist-rename(id, nombre); }
+                    playlist-delete(id) => { root.playlist-delete(id); }
+                    playlist-enqueue-id(id) => { root.playlist-enqueue-id(id); }
+                }
+
+                if root.showing-settings: SettingsTab {
+                    volume: root.volume;
+                    sleep-running: root.sleep-running;
+                    sleep-minutes: root.sleep-minutes;
+                    library-summary: root.library-summary;
+                    loop-count: root.loop-count;
+                    fade-seconds: root.fade-seconds;
+                    set-volume(v) => { root.set-volume(v); }
+                    cycle-sleep => { root.cycle-sleep(); }
+                    rescan => { root.rescan(); }
+                    descargar-caratulas => { root.descargar-caratulas(); }
+                    add-folder => { root.add-folder(); }
+                    cycle-loops => { root.cycle-loops(); }
+                    cycle-fade => { root.cycle-fade(); }
+                }
+            }
+
+            Rectangle { width: 1px; background: Theme.bg-tertiary; }
+
+            // --- Right: the queue, always in sight ---
+            Rectangle {
+                width: 300px;
+                background: Theme.bg-primary;
+                QueueTab {
+                    rows: root.queue-rows;
+                    activated(i) => { root.queue-activated(i); }
+                    removed(i) => { root.queue-removed(i); }
+                    reordered(from, to) => { root.queue-reordered(from, to); }
+                    cleared => { root.queue-cleared(); }
+                }
+            }
+        }
+
+        // The output-warning banner, same rule as the phone shell: it has to
+        // reach you wherever you are.
+        if root.output-warning != "": Rectangle {
+            height: 40px;
+            background: Theme.warning-bg;
+            HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+                Text { text: "⚠"; color: Theme.warning-fg; vertical-alignment: center; }
+                Text {
+                    text: root.output-warning;
+                    color: Theme.warning-fg;
+                    font-size: 13px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // --- Transport bar ---
+        Rectangle {
+            height: 92px;
+            background: Theme.bg-secondary;
+
+            HorizontalLayout {
+                padding: Theme.gap;
+                spacing: Theme.gap * 1.5;
+
+                Artwork {
+                    width: 68px;
+                    height: 68px;
+                    art: root.now-art;
+                }
+
+                Rectangle {
+                    width: 240px;
+                    TrackInfo {
+                        title: root.now-title;
+                        artist: root.now-artist;
+                        album: root.now-album;
+                    }
+                }
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 2px;
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: Theme.gap * 2;
+
+                        RoundButton {
+                            glyph: "⤨";
+                            active: root.shuffle;
+                            size: 36px;
+                            clicked => { root.toggle-shuffle(); }
+                        }
+                        RoundButton {
+                            glyph: "◀◀";
+                            size: 40px;
+                            clicked => { root.prev-track(); }
+                        }
+                        Rectangle {
+                            width: 44px;
+                            height: 44px;
+                            border-radius: 22px;
+                            background: Theme.accent;
+                            Text {
+                                text: root.playing ? "❚❚" : "▶";
+                                color: #ffffff;
+                                font-size: 15px;
+                            }
+                            TouchArea { clicked => { root.toggle-play(); } }
+                        }
+                        RoundButton {
+                            glyph: "▶▶";
+                            size: 40px;
+                            clicked => { root.next-track(); }
+                        }
+                        RoundButton {
+                            glyph: root.repeat == 2 ? "↻¹" : "↻";
+                            active: root.repeat != 0;
+                            size: 36px;
+                            clicked => { root.cycle-repeat(); }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Text {
+                            text: Fmt.mmss(root.position-ms);
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                        }
+                        SeekBar {
+                            horizontal-stretch: 1;
+                            height: 24px;
+                            position-ms: root.position-ms;
+                            duration-ms: root.duration-ms;
+                            seek(ms) => { root.seek-to(ms); }
+                        }
+                        Text {
+                            text: root.duration-ms > 0 ? Fmt.mmss(root.duration-ms) : "--:--";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    width: 170px;
+                    spacing: 8px;
+                    alignment: center;
+                    Text {
+                        text: "🔊";
+                        color: Theme.text-secondary;
+                        vertical-alignment: center;
+                    }
+                    VolumeBar {
+                        width: 130px;
+                        value: root.volume;
+                        changed(v) => { root.set-volume(v); }
+                    }
+                }
+            }
+        }
+    }
+}

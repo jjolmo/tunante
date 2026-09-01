@@ -26,6 +26,23 @@
 > shortcuts.rs, que caen cuando el bootstrap se reescriba en fase 3d.
 > Pendiente de la fase: el crate de soporte (4), que según la regla del repo
 > espera al segundo consumidor.
+>
+> **Fase 2, hito de cierre alcanzado (mismo día).** `app.slint` está troceado
+> (`types` / `picker` / `widgets` / `tabs` / `desktop` / `app`, cuerpos
+> verbatim), y existe el tercer modo de presentación: `ui-mode` (0 auto · 1
+> mini · 2 desktop, auto corta en 900px de ancho, mismo patrón snapshot
+> anti-ciclo que `portrait`). `DesktopShell` es sidebar (modos + listas +
+> Ajustes) | biblioteca | cola, sobre una barra de transporte con seek y
+> volumen — construida instanciando `LibraryTab`, `QueueTab` y `SettingsTab`
+> enteros, mismos modelos y mismos callbacks: una sola implementación de cada
+> comportamiento, cero Rust nuevo salvo el flag `--desktop`/`--mini`.
+> Verificado en pantalla con una biblioteca real: ventana ancha → tres
+> paneles, cola poblada y un NSF sonando; ventana estrecha → mini exacto,
+> sesión restaurada incluida. Rejilla a 5 columnas en desktop. Lo que la fase
+> deja abierto a 3b: la tabla ancha de 17 columnas como panel central (hoy el
+> centro es la lista del teléfono con sus ModeTabs, duplicados con el
+> sidebar), interacción de escritorio (hover/click derecho/teclado) y el
+> control de `ui-mode` en Ajustes.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
