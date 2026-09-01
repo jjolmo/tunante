@@ -52,6 +52,10 @@ export component TrackTable inherits Rectangle {
     /// Row index and which star (1..5) was under the pointer; Rust decides
     /// whether that means set or clear.
     callback rated(int, int);
+    /// "Y después esta": append to the queue context, mini's own enqueue.
+    callback enqueued(int);
+    /// Reveal the row's file in the system file manager.
+    callback open-folder(int);
 
     // Column layout, as fractions of the width. One place, used by header and
     // rows alike, so they cannot drift.
@@ -128,6 +132,25 @@ export component TrackTable inherits Rectangle {
                 rt := TouchArea {
                     clicked => { root.selected = i; }
                     double-clicked => { root.activated(i); }
+                }
+
+                // Right-click, the desktop's other verb. Slint's native menu:
+                // it draws with the platform, not with our rectangles.
+                ContextMenuArea {
+                    Menu {
+                        MenuItem {
+                            title: "Reproducir";
+                            activated => { root.activated(i); }
+                        }
+                        MenuItem {
+                            title: "Encolar";
+                            activated => { root.enqueued(i); }
+                        }
+                        MenuItem {
+                            title: "Abrir carpeta";
+                            activated => { root.open-folder(i); }
+                        }
+                    }
                 }
 
                 HorizontalLayout {

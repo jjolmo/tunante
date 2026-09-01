@@ -147,6 +147,8 @@ export component AppWindow inherits Window {
     callback table-sorted(int);
     callback table-filter-changed(string);
     callback table-rated(int, int);
+    callback table-enqueued(int);
+    callback table-open-folder(int);
     in property <bool> table-faved;
     callback table-faved-changed(bool);
     callback table-needed();
@@ -306,6 +308,8 @@ export component AppWindow inherits Window {
         table-sorted(col) => { root.table-sorted(col); }
         table-filter-changed(s) => { root.table-filter-changed(s); }
         table-rated(i, stars) => { root.table-rated(i, stars); }
+        table-enqueued(i) => { root.table-enqueued(i); }
+        table-open-folder(i) => { root.table-open-folder(i); }
         table-faved: root.table-faved;
         table-faved-changed(f) => { root.table-faved-changed(f); }
         table-needed => { root.table-needed(); }

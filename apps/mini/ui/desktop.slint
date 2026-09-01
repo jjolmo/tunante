@@ -118,6 +118,8 @@ export component DesktopShell inherits Rectangle {
     callback table-sorted(int);
     callback table-filter-changed(string);
     callback table-rated(int, int);
+    callback table-enqueued(int);
+    callback table-open-folder(int);
     /// Whether the table is narrowed to rating > 0 — Rust's state, so the
     /// sidebar marks the entry that is actually in force.
     in property <bool> table-faved;
@@ -289,6 +291,8 @@ export component DesktopShell inherits Rectangle {
                     sorted(col) => { root.table-sorted(col); }
                     filter-changed(s) => { root.table-filter-changed(s); }
                     rated(i, stars) => { root.table-rated(i, stars); }
+                    enqueued(i) => { root.table-enqueued(i); }
+                    open-folder(i) => { root.table-open-folder(i); }
                 }
 
                 if root.centre == 1: LibraryTab {

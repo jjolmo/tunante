@@ -96,6 +96,18 @@
 > el tray entran en esa imagen; el job glibc ganó las cabeceras de gtk.
 > Verificado contra el StatusNotifierWatcher vivo. Pendiente del tray:
 > tooltip dinámico con la pista y el scroll-para-volumen del desktop.
+>
+> **Single instance y click derecho.** `apps/mini/src/single.rs`: un socket
+> Unix en `$XDG_RUNTIME_DIR`, connect-first — el segundo lanzamiento entrega
+> `raise` o `play <ruta>` y sale antes de crear ventana; el timer de la UI
+> lo drena junto a MPRIS y el tray. Verificado en vivo: una segunda
+> instancia con un PSF2 hizo que la primera lo reprodujera (confirmado por
+> MPRIS: Playing, Kingdom Hearts). El `open_target` de la CLI y el mensaje
+> `play` entran por la misma puerta (`play_from_path`). Y la tabla tiene su
+> primer menú contextual — `ContextMenuArea` nativo de Slint: Reproducir ·
+> Encolar (al contexto, el encolar de mini) · Abrir carpeta (xdg-open).
+> Compilado en ambas configuraciones; el click derecho queda por probar con
+> humano delante (el compositor rechaza clicks sintéticos).
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
