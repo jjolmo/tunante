@@ -132,6 +132,13 @@ impl Player {
         self.engine.set_loop_settings(loops, fade_ms);
     }
 
+    /// Skip tracks shorter than the threshold when the queue advances on its
+    /// own. 0 disables. Console rips are full of two-second jingles and SFX
+    /// rows, and this is the knob that keeps them out of a listening session.
+    pub fn set_short_filter(&mut self, threshold_ms: i64) {
+        self.queue.set_short_filter(threshold_ms);
+    }
+
     pub fn set_repeat(&mut self, mode: RepeatMode) {
         self.queue.set_repeat(mode);
     }
