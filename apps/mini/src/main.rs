@@ -52,6 +52,7 @@ mod mpris;
 mod output;
 mod picker;
 mod player;
+mod tray;
 use tunante_core::session;
 
 use std::cell::RefCell;
@@ -138,6 +139,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_ui_mode(1);
     }
     ui.set_ui_mode_label(SharedString::from(ui_mode_label(ui.get_ui_mode())));
+
+    // The tray runs its own GTK thread; clicks come back through tray::poll()
+    // in the UI timer, beside the MPRIS commands they resemble.
+    tray::spawn();
 
     if focus_search {
         ui.set_autofocus_search(true);
@@ -1556,6 +1561,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // command first. Advertised as unsupported, so nothing
                         // well-behaved should be asking.
                         mpris::Command::Seek(_) => {}
+                    }
+                    push_now_playing(&ui, p);
+                    sync_queue_marker(p, &queue_model);
+                }
+
+                // Anything the tray menu asked for. Same shapes as MPRIS,
+                // plus the two only a tray can mean: the window and the app.
+                while let Some(action) = tray::poll() {
+                    match action {
+                        tray::TrayAction::PlayPause => p.toggle_play(),
+                        tray::TrayAction::Next => {
+                            let _ = p.next();
+                        }
+                        tray::TrayAction::Prev => {
+                            let _ = p.prev();
+                        }
+                        tray::TrayAction::ToggleWindow => {
+                            if ui.window().is_visible() {
+                                let _ = ui.window().hide();
+                            } else {
+                                let _ = ui.window().show();
+                            }
+                        }
+                        tray::TrayAction::Quit => {
+                            let _ = slint::quit_event_loop();
+                        }
                     }
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);

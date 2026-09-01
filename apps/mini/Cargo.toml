@@ -84,10 +84,23 @@ slint = { version = "1.17", default-features = false, features = [
 # loop in main.rs does not have to know.
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+# The system tray, behind the `tray` feature: a desktop nicety, and the phone
+# builds (Alpine/musl, the APKBUILD) switch it off with --no-default-features,
+# which also keeps GTK out of that image. default-features = false on
+# tray-icon is load-bearing for the same reason it is in the desktop app: the
+# default set includes libxdo, whose absence at link time killed release jobs
+# before. The workspace [patch] swaps in vendor/tray-icon-patch. GTK is only
+# for the tray's own thread — the shell stays winit.
+tray-icon = { version = "0.21", default-features = false, optional = true }
+gtk = { version = "0.18", optional = true }
 mpris-server = "0.10"
 zbus = { version = "5", default-features = false, features = ["async-io"] }
 async-io = "2"
 futures-lite = "2"
+
+[features]
+default = ["tray"]
+tray = ["dep:tray-icon", "dep:gtk"]
 
 [build-dependencies]
 slint-build = "1.17"
