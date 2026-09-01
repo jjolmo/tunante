@@ -60,6 +60,8 @@ export component TrackTable inherits Rectangle {
     callback edit-requested(int);
     /// Open the reclassify sheet on this row.
     callback reclassify-requested(int);
+    /// Open the cover picker on this row.
+    callback cover-requested(int);
 
     // Column layout, as fractions of the width. One place, used by header and
     // rows alike, so they cannot drift.
@@ -157,6 +159,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Reclasificar…";
                             activated => { root.reclassify-requested(i); }
+                        }
+                        MenuItem {
+                            title: "Buscar carátula…";
+                            activated => { root.cover-requested(i); }
                         }
                         MenuItem {
                             title: "Abrir carpeta";

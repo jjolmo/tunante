@@ -9,8 +9,8 @@
 
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { ConsoleOption, GridLine, LibraryRow, QueueRow, PlaylistRow, TableRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet } from "widgets.slint";
+import { ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableRow } from "types.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 
@@ -142,6 +142,14 @@ export component DesktopShell inherits Rectangle {
     callback reclass-game-edited(string);
     callback reclass-accepted();
     callback reclass-cancelled();
+    callback table-cover-requested(int);
+    in-out property <bool> covering;
+    in property <string> cover-heading;
+    in property <string> cover-status;
+    in-out property <string> cover-query;
+    in property <[CoverCandidate]> cover-candidates;
+    callback cover-search(string);
+    callback cover-chosen(int);
     /// Whether the table is narrowed to rating > 0 — Rust's state, so the
     /// sidebar marks the entry that is actually in force.
     in property <bool> table-faved;
@@ -317,6 +325,7 @@ export component DesktopShell inherits Rectangle {
                     open-folder(i) => { root.table-open-folder(i); }
                     edit-requested(i) => { root.table-edit-requested(i); }
                     reclassify-requested(i) => { root.table-reclassify-requested(i); }
+                    cover-requested(i) => { root.table-cover-requested(i); }
                 }
 
                 if root.centre == 1: LibraryTab {
@@ -539,6 +548,16 @@ export component DesktopShell inherits Rectangle {
                 }
             }
         }
+    }
+
+    if root.covering: CoverSheet {
+        heading: root.cover-heading;
+        status: root.cover-status;
+        query <=> root.cover-query;
+        candidates: root.cover-candidates;
+        search(q) => { root.cover-search(q); }
+        chosen(i) => { root.cover-chosen(i); }
+        cancelled => { root.covering = false; }
     }
 
     if root.reclassifying: ReclassifySheet {

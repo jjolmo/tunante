@@ -18,8 +18,8 @@ import { DesktopShell } from "desktop.slint";
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
 // has, wherever the structs live now.
-import { ConsoleOption, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow } from "types.slint";
-export { ConsoleOption, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow }
+import { ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow } from "types.slint";
+export { ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow }
 
 export component AppWindow inherits Window {
     title: "Tunante";
@@ -170,6 +170,14 @@ export component AppWindow inherits Window {
     callback reclass-game-edited(string);
     callback reclass-accepted();
     callback reclass-cancelled();
+    callback table-cover-requested(int);
+    in-out property <bool> covering;
+    in property <string> cover-heading;
+    in property <string> cover-status;
+    in-out property <string> cover-query;
+    in property <[CoverCandidate]> cover-candidates;
+    callback cover-search(string);
+    callback cover-chosen(int);
     in property <bool> table-faved;
     callback table-faved-changed(bool);
     callback table-needed();
@@ -352,6 +360,14 @@ export component AppWindow inherits Window {
         reclass-game-edited(t) => { root.reclass-game-edited(t); }
         reclass-accepted => { root.reclass-accepted(); }
         reclass-cancelled => { root.reclass-cancelled(); }
+        table-cover-requested(i) => { root.table-cover-requested(i); }
+        covering <=> root.covering;
+        cover-heading: root.cover-heading;
+        cover-status: root.cover-status;
+        cover-query <=> root.cover-query;
+        cover-candidates: root.cover-candidates;
+        cover-search(q) => { root.cover-search(q); }
+        cover-chosen(i) => { root.cover-chosen(i); }
         table-faved: root.table-faved;
         table-faved-changed(f) => { root.table-faved-changed(f); }
         table-needed => { root.table-needed(); }

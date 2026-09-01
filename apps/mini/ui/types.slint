@@ -79,3 +79,13 @@ export struct ConsoleOption {
     id: string,
     name: string,
 }
+
+/// One cover on offer in the picker: the thumbnail already decoded (Slint
+/// cannot load a URL), and what the source calls it so a person can tell
+/// whether it is the right game before looking at the picture.
+export struct CoverCandidate {
+    img: image,
+    source: string,
+    name: string,
+    conf: string,
+}
