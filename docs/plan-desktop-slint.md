@@ -156,6 +156,19 @@
 > cachés de archivo compartidos). Con esto los tres diálogos de la 3c
 > existen; quedan como mejoras las sugerencias online de reclasificación
 > (el worker ya da el patrón) y la descarga masiva con preview/undo.
+>
+> **Fase 4, primer bloqueador caído: la unificación de BD.**
+> `apps/mini/src/store.rs`: si existe la BD del desktop
+> (`com.tunante.app/tunante.db`), mini la abre — la senior manda — e importa
+> una sola vez (marcador `mini.imported`) las claves `mini.*` de la BD
+> antigua; las compartidas a propósito (`audio_output_device`, `dsp_config`)
+> no viajan: para esas el desktop gana. Sin BD del desktop (el teléfono),
+> todo sigue igual. WAL en core hace segura la convivencia con el desktop
+> abierto. Tres tests de la lógica, y la prueba de fuego en vivo: mini
+> abierto contra el data home real adoptó la biblioteca completa del desktop
+> — la tabla con las pistas reales, las playlists reales en el sidebar, 7
+> ajustes importados. El binario de mini ya ES la app de escritorio sobre
+> los datos de verdad.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

@@ -87,4 +87,4 @@ mod imp {
     }
 }
 
-pub use imp::{claim, Instance, Start};
+pub use imp::{claim, Start};

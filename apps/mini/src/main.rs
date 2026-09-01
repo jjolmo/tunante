@@ -53,6 +53,7 @@ mod output;
 mod picker;
 mod player;
 mod single;
+mod store;
 mod tray;
 use tunante_core::session;
 
@@ -109,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let dbfile = db_path()?;
+    let dbfile = store::resolve()?;
     let db = Database::new(&dbfile)?;
 
     if let Some(folder) = &scan_target {
@@ -2166,18 +2167,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// `$XDG_DATA_HOME/tunante-mini`, falling back to `~/.local/share`. Separate from
 /// the desktop app's database on purpose: the two are independent libraries with
 /// different paths on different machines.
-fn db_path() -> Result<PathBuf, std::io::Error> {
-    let base = std::env::var("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))
-                .join(".local/share")
-        });
-    let dir = base.join("tunante-mini");
-    std::fs::create_dir_all(&dir)?;
-    Ok(dir.join("tunante-mini.db"))
-}
-
 /// Turn a `data:image/…;base64,…` URI into something Slint can draw.
 ///
 /// Scaled down on the way in. A cover is often 1000² or larger, which is
