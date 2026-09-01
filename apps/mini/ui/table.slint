@@ -49,10 +49,13 @@ export component TrackTable inherits Rectangle {
     callback activated(int);
     callback sorted(int);
     callback filter-changed(string);
+    /// Row index and which star (1..5) was under the pointer; Rust decides
+    /// whether that means set or clear.
+    callback rated(int, int);
 
     // Column layout, as fractions of the width. One place, used by header and
     // rows alike, so they cannot drift.
-    property <[float]> widths: [0.05, 0.32, 0.19, 0.22, 0.12, 0.10];
+    property <[float]> widths: [0.04, 0.28, 0.17, 0.20, 0.10, 0.12, 0.09];
 
     property <int> selected: -1;
 
@@ -100,7 +103,7 @@ export component TrackTable inherits Rectangle {
             background: Theme.bg-primary;
 
             HorizontalLayout {
-                for label[i] in ["#", "Título", "Artista", "Juego", "Consola", "Duración"]: HeaderCell {
+                for label[i] in ["#", "Título", "Artista", "Juego", "Consola", "★", "Duración"]: HeaderCell {
                     width: header.width * root.widths[i];
                     label: label;
                     active: root.sort-col == i;
@@ -169,8 +172,30 @@ export component TrackTable inherits Rectangle {
                         vertical-alignment: center;
                         overflow: elide;
                     }
-                    Text {
+                    stars-cell := Rectangle {
                         width: w * root.widths[5];
+                        Text {
+                            x: 0;
+                            width: parent.width;
+                            height: 100%;
+                            text: row.stars;
+                            color: Theme.accent;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                        }
+                        // On top of the row's own TouchArea, so a click on the
+                        // stars rates instead of selecting. Which star: plain
+                        // arithmetic over five equal slots.
+                        TouchArea {
+                            clicked => {
+                                root.rated(i, clamp(
+                                    floor(self.mouse-x / (stars-cell.width / 5)) + 1,
+                                    1, 5));
+                            }
+                        }
+                    }
+                    Text {
+                        width: w * root.widths[6];
                         text: row.duration;
                         color: Theme.text-muted;
                         font-size: Theme.font-small;

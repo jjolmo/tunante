@@ -69,4 +69,7 @@ export struct TableRow {
     console: string,
     duration: string,
     path: string,
+    /// Five glyphs, pre-painted ("★★★☆☆"): the UI never needs the number
+    /// back, and a click reports which star was under the pointer.
+    stars: string,
 }

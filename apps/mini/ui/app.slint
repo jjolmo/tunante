@@ -144,6 +144,9 @@ export component AppWindow inherits Window {
     callback table-activated(int);
     callback table-sorted(int);
     callback table-filter-changed(string);
+    callback table-rated(int, int);
+    in property <bool> table-faved;
+    callback table-faved-changed(bool);
     callback table-needed();
 
     // Turning the phone is the only layout breakpoint that matters: portrait puts
@@ -300,6 +303,9 @@ export component AppWindow inherits Window {
         table-activated(i) => { root.table-activated(i); }
         table-sorted(col) => { root.table-sorted(col); }
         table-filter-changed(s) => { root.table-filter-changed(s); }
+        table-rated(i, stars) => { root.table-rated(i, stars); }
+        table-faved: root.table-faved;
+        table-faved-changed(f) => { root.table-faved-changed(f); }
         table-needed => { root.table-needed(); }
         queue-rows: root.queue-rows;
         playlists: root.playlists;

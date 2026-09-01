@@ -117,6 +117,11 @@ export component DesktopShell inherits Rectangle {
     callback table-activated(int);
     callback table-sorted(int);
     callback table-filter-changed(string);
+    callback table-rated(int, int);
+    /// Whether the table is narrowed to rating > 0 — Rust's state, so the
+    /// sidebar marks the entry that is actually in force.
+    in property <bool> table-faved;
+    callback table-faved-changed(bool);
     /// Fired when the table pane comes into existence, so Rust can build the
     /// model lazily — the phone never pays for a model it never shows.
     callback table-needed();
@@ -199,8 +204,19 @@ export component DesktopShell inherits Rectangle {
                     }
                     SidebarEntry {
                         label: "Pistas";
-                        active: root.centre == 0;
-                        clicked => { root.centre = 0; }
+                        active: root.centre == 0 && !root.table-faved;
+                        clicked => {
+                            root.centre = 0;
+                            root.table-faved-changed(false);
+                        }
+                    }
+                    SidebarEntry {
+                        label: "Favoritos";
+                        active: root.centre == 0 && root.table-faved;
+                        clicked => {
+                            root.centre = 0;
+                            root.table-faved-changed(true);
+                        }
                     }
                     for label[i] in ["Árbol", "Discos", "Consolas", "Juegos", "Listas"]: SidebarEntry {
                         label: label;
@@ -270,6 +286,7 @@ export component DesktopShell inherits Rectangle {
                     activated(i) => { root.table-activated(i); }
                     sorted(col) => { root.table-sorted(col); }
                     filter-changed(s) => { root.table-filter-changed(s); }
+                    rated(i, stars) => { root.table-rated(i, stars); }
                 }
 
                 if root.centre == 1: LibraryTab {
