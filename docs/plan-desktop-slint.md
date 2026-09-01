@@ -15,8 +15,17 @@
 > `tunante_helper::watch` con el filtro y el manejador inyectados; en el
 > desktop queda solo lo que es suyo — releer en proceso con sus scan opts y
 > el emit de Tauri — así que hoy no cambia ningún comportamiento y la app
-> Slint enchufará `probe` en ese mismo hueco. Pendiente de la fase:
-> extracción de commands/ (3) y el crate de soporte (4).
+> Slint enchufará `probe` en ese mismo hueco. Y el punto 3: `src/services/`
+> tiene los cuerpos de los seis dominios como funciones libres sobre
+> `&AppState` + `Events` (el enum tipado de los 13 eventos vive en
+> `src/events.rs`, y su adaptador Tauri es el único sitio donde los nombres
+> siguen siendo strings); `commands/` quedó en cáscaras de una línea
+> (commands 637 líneas, services 2.633). Los cuerpos se movieron verbatim —
+> mismos locks, mismo orden, mismos hilos. Quedan dos wrappers de
+> compatibilidad (`scan_folder_sync`, `play_with_fade*`) para lib.rs y
+> shortcuts.rs, que caen cuando el bootstrap se reescriba en fase 3d.
+> Pendiente de la fase: el crate de soporte (4), que según la regla del repo
+> espera al segundo consumidor.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
