@@ -83,7 +83,9 @@ build() {
 	# se parece en nada a lo que de verdad pasa. `options` ya declara `net`,
 	# así que descargar está permitido; lo que se quiere es que el Cargo.lock
 	# mande, y eso es exactamente `--locked`.
-	cargo build --release --locked \
+	# --no-default-features: apaga el tray (GTK), que en el teléfono no
+	# significa nada y metería gtk3 entero en la imagen.
+	cargo build --release --locked --no-default-features \
 		-p tunante-mini \
 		-p tunante-decoder
 }

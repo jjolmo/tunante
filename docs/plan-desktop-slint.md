@@ -82,6 +82,20 @@
 > del desktop exige el writer de tunante-codec, que esta app no enlaza a
 > propósito; esa pieza llega con el vuelco o con un subcomando del decoder.
 > Queda de 3a: filtro de cortas y continue-from-queue.
+>
+> **Más 3a y el arranque de la 3d, mismo empujón.** El filtro de pistas
+> cortas está en Ajustes (des./5/10/30 s, persistido, sobre el filtro que la
+> cola de core siempre tuvo); continue-from-queue se queda esperando a que la
+> shell desktop tenga cola de usuario — hoy el encolar de mini va al contexto
+> y el ajuste no significaría nada. Y **el tray existe**: `apps/mini/src/tray.rs`
+> con el `tray-icon` parcheado en su hilo GTK propio (el modelo del spike 0.2,
+> ahora en producción), menú Mostrar/Ocultar · Reproducir/Pausa · Siguiente ·
+> Anterior · Salir, drenado por el timer de la UI junto a los comandos MPRIS
+> que imita. Detrás de la feature `tray` (default on): el teléfono compila con
+> `--no-default-features` — APKBUILD y el job Alpine ya lo hacen — y ni GTK ni
+> el tray entran en esa imagen; el job glibc ganó las cabeceras de gtk.
+> Verificado contra el StatusNotifierWatcher vivo. Pendiente del tray:
+> tooltip dinámico con la pista y el scroll-para-volumen del desktop.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
