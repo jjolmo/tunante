@@ -75,7 +75,13 @@
 > bandas y preamp como sliders de dB centrados en cero (mover una banda con el
 > EQ apagado lo enciende: eso es lo que el gesto significa), Mono y Limitador.
 > Audible en la pista que ya suena — atómicas leídas por frame, sin corte.
-> Queda de 3a: ratings en UI y filtro de cortas/continue-from-queue.
+> **Y los ratings en UI**: columna ★ en la tabla (cinco estrellas por fila,
+> click en la estrella k puntúa k, click en la que ya tiene la quita,
+> ordenable por cabecera) y entrada «Favoritos» en el sidebar que estrecha la
+> tabla a rating > 0. Solo BD por ahora — la prioridad BD/tag/`_ratings.m3u`
+> del desktop exige el writer de tunante-codec, que esta app no enlaza a
+> propósito; esa pieza llega con el vuelco o con un subcomando del decoder.
+> Queda de 3a: filtro de cortas y continue-from-queue.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

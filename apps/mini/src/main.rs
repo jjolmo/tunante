@@ -660,6 +660,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     {
+        let (db_t, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        ui.on_table_rated(move |index, stars| {
+            let mut st = st.borrow_mut();
+            let Some(track) = st.tracks.get(index as usize) else { return };
+            // Clicking the star it already has clears it — the second tap on a
+            // toggle, not a way to be stuck at one star forever.
+            let new = if track.rating == stars { 0 } else { stars };
+            let (id, path) = (track.id.clone(), track.path.clone());
+            if let Err(e) = db_t.set_track_rating(&id, new) {
+                eprintln!("no se pudo guardar la puntuación: {e}");
+                return;
+            }
+            for t in st.all.iter_mut().filter(|t| t.path == path) {
+                t.rating = new;
+            }
+            rebuild_table(&mut st, &model);
+        });
+    }
+    {
+        let (db_t, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_faved_changed(move |faved| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            // Favoritos can be the first thing clicked in a session, before
+            // the pane's lazy init ever fired.
+            if !st.built {
+                st.built = true;
+                st.all = db_t.get_all_tracks().unwrap_or_default();
+            }
+            st.faved = faved;
+            rebuild_table(&mut st, &model);
+            ui.set_table_faved(faved);
+        });
+    }
+
+    {
         let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
         let weak_v = ui.as_weak();
         ui.on_library_mode_changed(move |i| {
@@ -2103,6 +2140,8 @@ struct TableState {
     sort_col: i32,
     asc: bool,
     filter: String,
+    /// Narrowed to rating > 0 — the sidebar's Favoritos entry.
+    faved: bool,
     built: bool,
 }
 
@@ -2116,9 +2155,17 @@ impl Default for TableState {
             sort_col: 1,
             asc: true,
             filter: String::new(),
+            faved: false,
             built: false,
         }
     }
+}
+
+/// Five glyphs, filled up to the rating. Pre-painted here because the UI
+/// never needs the number back — a click reports which star was hit.
+fn stars_for(rating: i32) -> String {
+    let r = rating.clamp(0, 5) as usize;
+    "★".repeat(r) + &"☆".repeat(5 - r)
 }
 
 fn table_console_label(t: &tunante_core::db::models::Track) -> &'static str {
@@ -2131,6 +2178,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
     let mut tracks: Vec<_> = st
         .all
         .iter()
+        .filter(|t| !st.faved || t.rating > 0)
         .filter(|t| {
             needle.is_empty()
                 || library::plegar(&t.title).contains(&needle)
@@ -2145,7 +2193,8 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         2 => tracks.sort_by(|a, b| library::plegar(&a.artist).cmp(&library::plegar(&b.artist))),
         3 => tracks.sort_by(|a, b| library::plegar(&a.game).cmp(&library::plegar(&b.game))),
         4 => tracks.sort_by(|a, b| table_console_label(a).cmp(table_console_label(b))),
-        5 => tracks.sort_by_key(|t| t.duration_ms),
+        5 => tracks.sort_by_key(|t| t.rating),
+        6 => tracks.sort_by_key(|t| t.duration_ms),
         _ => tracks.sort_by(|a, b| library::plegar(&a.title).cmp(&library::plegar(&b.title))),
     }
     if !st.asc {
@@ -2173,6 +2222,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                     (t.duration_ms / 1_000) % 60
                 )),
                 path: SharedString::from(t.path.as_str()),
+                stars: SharedString::from(stars_for(t.rating)),
             })
             .collect::<Vec<_>>(),
     );
