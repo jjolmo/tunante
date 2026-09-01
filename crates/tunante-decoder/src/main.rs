@@ -28,7 +28,7 @@
 //!            seconds per file — the difference between a scan of minutes and
 //!            one of half an hour.
 //!
-//! tunante-decoder play <path> [duration_hint_ms] [--loops N] [--fade MS]
+//! tunante-decoder play <path> [duration_hint_ms] [--loops N] [--fade MS] [--vgm-loops F]
 //!     stdout: one line of JSON header, then raw PCM until EOF
 //!             {"sample_rate":44100,"channels":2,"duration_ms":123456}
 //!             <f32 native-endian, interleaved>
@@ -59,7 +59,7 @@ fn main() -> ExitCode {
 
     let usage = || {
         eprintln!("usage: tunante-decoder probe <path> [--fast]");
-        eprintln!("       tunante-decoder play  <path> [hint_ms] [--loops N] [--fade MS]");
+        eprintln!("       tunante-decoder play  <path> [hint_ms] [--loops N] [--fade MS] [--vgm-loops F]");
         eprintln!("       tunante-decoder art   <path>");
     };
 
@@ -93,6 +93,17 @@ fn main() -> ExitCode {
             }
             if let Some(ms) = flag("--fade") {
                 opts.fade_ms = ms;
+            }
+            // A user setting, so it has to be able to travel down here: it must
+            // match what the scanner used, or the progress bar disagrees with
+            // what is heard.
+            if let Some(v) = args
+                .iter()
+                .skip_while(|a| *a != "--vgm-loops")
+                .nth(1)
+                .and_then(|s| s.parse::<f64>().ok())
+            {
+                opts.vgm_loop_count = v;
             }
 
             play(path, hint, opts)

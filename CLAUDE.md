@@ -2,7 +2,8 @@
 
 ## Architecture
 - **Framework**: Tauri v2 (Rust backend) + SvelteKit 2 (Svelte 5 frontend)
-- **Audio**: rodio + symphonia for standard format playback
+- **Audio**: decoded out of process by `tunante-decoder` (PCM over a pipe),
+  mixed and output by rodio via `tunante-audio` — no app process links the codecs
 - **Database**: SQLite via rusqlite (bundled)
 - **Metadata**: lofty crate for reading audio tags
 - **Styling**: Tailwind CSS v4
@@ -32,6 +33,8 @@ apps/
     rust/               #   JNI bridge: the Rust half of the same app (cdylib)
 crates/                 # Shared by every app
   tunante-core/         #   UI-agnostic: db/ (SQLite), queue, session, vgm_path, dsp/
+  tunante-audio/        #   The playback engine: device selection + recovery,
+                        #   DSP chain, decoding via tunante-decoder (PipeSource)
   tunante-codec/        #   Every decoder + metadata reader
   tunante-decoder/      #   The out-of-process helper binary: a file in, PCM out
   tunante-helper/       #   Client for that helper: probe, artwork, scan, PipeSource

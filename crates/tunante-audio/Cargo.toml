@@ -1,0 +1,22 @@
+[package]
+name = "tunante-audio"
+version = "0.1.0"
+edition = "2021"
+description = "The playback engine every Tunante app shares: one rodio output with device selection and unplug recovery, the DSP chain applied over it, and every format decoded out of process through tunante-decoder"
+license = "GPL-2.0-or-later"
+
+[dependencies]
+# For the DSP chain (the `dsp` default feature). This crate is the layer that
+# marries the desktop's engine to the out-of-process decoding model, so unlike
+# tunante-mini it wants the chain compiled in.
+tunante-core = { path = "../tunante-core" }
+
+# PipeSource: the decoder helper's PCM, wearing a rodio::Source. This crate
+# deliberately does NOT depend on tunante-codec — the vendored C cores link
+# into tunante-decoder alone, and any app built on this engine stays free of
+# them.
+tunante-helper = { path = "../tunante-helper" }
+
+rodio = { version = "0.22", default-features = false, features = ["playback"] }
+log = "0.4"
+thiserror = "2"

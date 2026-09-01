@@ -4,6 +4,7 @@ members = [
     "apps/desktop/src-tauri",
     "apps/mini",
     "crates/tunante-core",
+    "crates/tunante-audio",
     "crates/tunante-codec",
     "crates/tunante-decoder",
     "crates/tunante-helper",
