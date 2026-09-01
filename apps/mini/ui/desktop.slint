@@ -9,8 +9,8 @@
 
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { GridLine, LibraryRow, QueueRow, PlaylistRow, TableRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet } from "widgets.slint";
+import { ConsoleOption, GridLine, LibraryRow, QueueRow, PlaylistRow, TableRow } from "types.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 
@@ -131,6 +131,17 @@ export component DesktopShell inherits Rectangle {
     in-out property <string> meta-track;
     callback metadata-accepted();
     callback metadata-cancelled();
+    callback table-reclassify-requested(int);
+    in-out property <bool> reclassifying;
+    in property <string> reclass-heading;
+    in property <[ConsoleOption]> consoles;
+    in-out property <string> reclass-console;
+    in-out property <string> reclass-game;
+    in-out property <bool> reclass-scope-folder;
+    in property <[string]> reclass-suggestions;
+    callback reclass-game-edited(string);
+    callback reclass-accepted();
+    callback reclass-cancelled();
     /// Whether the table is narrowed to rating > 0 — Rust's state, so the
     /// sidebar marks the entry that is actually in force.
     in property <bool> table-faved;
@@ -305,6 +316,7 @@ export component DesktopShell inherits Rectangle {
                     enqueued(i) => { root.table-enqueued(i); }
                     open-folder(i) => { root.table-open-folder(i); }
                     edit-requested(i) => { root.table-edit-requested(i); }
+                    reclassify-requested(i) => { root.table-reclassify-requested(i); }
                 }
 
                 if root.centre == 1: LibraryTab {
@@ -527,6 +539,18 @@ export component DesktopShell inherits Rectangle {
                 }
             }
         }
+    }
+
+    if root.reclassifying: ReclassifySheet {
+        heading: root.reclass-heading;
+        scope-folder <=> root.reclass-scope-folder;
+        consoles: root.consoles;
+        selected-console <=> root.reclass-console;
+        game-text <=> root.reclass-game;
+        suggestions: root.reclass-suggestions;
+        game-edited(t) => { root.reclass-game-edited(t); }
+        accepted => { root.reclass-accepted(); }
+        cancelled => { root.reclass-cancelled(); }
     }
 
     if root.editing-metadata: MetadataSheet {

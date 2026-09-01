@@ -26,6 +26,9 @@ tunante-art = { path = "../../crates/tunante-art" }
 
 serde_json = "1"
 walkdir = "2"
+# Override ids for the classification corrections, same shape the desktop
+# writes.
+uuid = { version = "1", features = ["v4"] }
 
 # One syscall: sched_setattr, to raise this thread's uclamp.min. See src/boost.rs
 # — it is worth 68 fps against 112 on the phone, and there is no std API for it.

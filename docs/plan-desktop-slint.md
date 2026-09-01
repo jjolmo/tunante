@@ -118,8 +118,15 @@
 > escribe con `db.update_track_metadata`, actualiza las cachés de la tabla en
 > el sitio y re-lee el árbol (`refresh_library`). El número vacío limpia; el
 > no parseable no toca. Solo BD, como los ratings: escribir el tag en el
-> fichero pide los writers de codec. Pendiente 3c: reclasificación y picker
-> de carátulas — ambos con su lógica ya en crates que mini enlaza.
+> fichero pide los writers de codec. **Y el segundo: la reclasificación.**
+> «Reclasificar…» en el menú contextual abre `ReclassifySheet`: ámbito
+> (carpeta, el caso para el que existe, o solo la pista), catálogo de
+> consolas con «(automática)» primero (id vacío → set_override lo convierte
+> en limpiar la corrección, regla de core reutilizada), campo de juego con
+> sugerencias de lo que la biblioteca ya llama a las cosas. `set_override`
+> re-deriva las filas él solo (`reclassify_under`); mini recarga cachés y
+> árbol. Las sugerencias online (Libretro/Steam) esperan a un hilo worker —
+> bloquean en red. Pendiente 3c: el picker de carátulas.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

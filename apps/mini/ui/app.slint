@@ -18,8 +18,8 @@ import { DesktopShell } from "desktop.slint";
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
 // has, wherever the structs live now.
-import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow } from "types.slint";
-export { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow }
+import { ConsoleOption, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow } from "types.slint";
+export { ConsoleOption, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow }
 
 export component AppWindow inherits Window {
     title: "Tunante";
@@ -159,6 +159,17 @@ export component AppWindow inherits Window {
     in-out property <string> meta-track;
     callback metadata-accepted();
     callback metadata-cancelled();
+    callback table-reclassify-requested(int);
+    in-out property <bool> reclassifying;
+    in property <string> reclass-heading;
+    in property <[ConsoleOption]> consoles;
+    in-out property <string> reclass-console;
+    in-out property <string> reclass-game;
+    in-out property <bool> reclass-scope-folder;
+    in property <[string]> reclass-suggestions;
+    callback reclass-game-edited(string);
+    callback reclass-accepted();
+    callback reclass-cancelled();
     in property <bool> table-faved;
     callback table-faved-changed(bool);
     callback table-needed();
@@ -330,6 +341,17 @@ export component AppWindow inherits Window {
         meta-track <=> root.meta-track;
         metadata-accepted => { root.metadata-accepted(); }
         metadata-cancelled => { root.metadata-cancelled(); }
+        table-reclassify-requested(i) => { root.table-reclassify-requested(i); }
+        reclassifying <=> root.reclassifying;
+        reclass-heading: root.reclass-heading;
+        consoles: root.consoles;
+        reclass-console <=> root.reclass-console;
+        reclass-game <=> root.reclass-game;
+        reclass-scope-folder <=> root.reclass-scope-folder;
+        reclass-suggestions: root.reclass-suggestions;
+        reclass-game-edited(t) => { root.reclass-game-edited(t); }
+        reclass-accepted => { root.reclass-accepted(); }
+        reclass-cancelled => { root.reclass-cancelled(); }
         table-faved: root.table-faved;
         table-faved-changed(f) => { root.table-faved-changed(f); }
         table-needed => { root.table-needed(); }

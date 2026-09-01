@@ -708,6 +708,138 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // --- Reclassification --------------------------------------------------
+    //
+    // The catalog, "(automática)" first: an empty id means "let the rules
+    // decide", which set_override turns into clearing the correction.
+    {
+        let mut consoles = vec![ConsoleOption {
+            id: SharedString::from(""),
+            name: SharedString::from("(automática)"),
+        }];
+        consoles.extend(tunante_core::console::CONSOLES.iter().map(|c| ConsoleOption {
+            id: SharedString::from(c.id),
+            name: SharedString::from(c.name_es),
+        }));
+        ui.set_consoles(ModelRc::new(VecModel::from(consoles)));
+    }
+    let sugg_model = Rc::new(VecModel::from(Vec::<SharedString>::new()));
+    ui.set_reclass_suggestions(ModelRc::from(sugg_model.clone()));
+    // (folder target, track target), captured when the sheet opens so a
+    // re-sorted table cannot change what Guardar means.
+    let reclass_target: Rc<RefCell<Option<(String, String)>>> = Rc::new(RefCell::new(None));
+
+    {
+        let (st, target, sugg) = (
+            table_state.clone(),
+            reclass_target.clone(),
+            sugg_model.clone(),
+        );
+        let weak = ui.as_weak();
+        ui.on_table_reclassify_requested(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let st = st.borrow();
+            let Some(t) = st.tracks.get(index as usize) else { return };
+            let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
+            let folder = std::path::Path::new(real)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            *target.borrow_mut() = Some((folder.clone(), t.path.clone()));
+            let folder_name = std::path::Path::new(&folder)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or(folder);
+            ui.set_reclass_heading(SharedString::from(folder_name));
+            ui.set_reclass_scope_folder(true);
+            ui.set_reclass_console(SharedString::from(t.console_id.as_str()));
+            ui.set_reclass_game(SharedString::from(t.game.as_str()));
+            sugg.set_vec(Vec::new());
+            ui.set_reclassifying(true);
+        });
+    }
+    {
+        let (st, sugg) = (table_state.clone(), sugg_model.clone());
+        ui.on_reclass_game_edited(move |q| {
+            // What the library already calls things, so a correction lands on
+            // the spelling the rest of the collection uses. The online
+            // sources (Libretro, Steam) come later — they block on the
+            // network and want a worker thread this dialog does not have yet.
+            let q = library::plegar(&q);
+            let mut out: Vec<SharedString> = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            if q.len() >= 2 {
+                for t in st.borrow().all.iter() {
+                    if t.game.is_empty() || !library::plegar(&t.game).contains(&q) {
+                        continue;
+                    }
+                    if seen.insert(t.game.to_lowercase()) {
+                        out.push(SharedString::from(t.game.as_str()));
+                        if out.len() >= 8 {
+                            break;
+                        }
+                    }
+                }
+            }
+            sugg.set_vec(out);
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        ui.on_reclass_cancelled(move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_reclassifying(false);
+            }
+        });
+    }
+    {
+        let (db_r, st, model, target) = (
+            db.clone(),
+            table_state.clone(),
+            table_model.clone(),
+            reclass_target.clone(),
+        );
+        let (tree_r, views_r) = (tree.clone(), views.clone());
+        let weak = ui.as_weak();
+        ui.on_reclass_accepted(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some((folder, track)) = target.borrow_mut().take() else {
+                ui.set_reclassifying(false);
+                return;
+            };
+            let (scope, target_path) = if ui.get_reclass_scope_folder() {
+                ("folder", folder)
+            } else {
+                ("track", track)
+            };
+            let console = ui.get_reclass_console().to_string();
+            let game = ui.get_reclass_game().to_string();
+
+            // set_override re-derives every affected row itself, and an
+            // all-empty correction becomes a clear — core's rules, reused.
+            if let Err(e) = db_r.set_override(
+                &uuid::Uuid::new_v4().to_string(),
+                scope,
+                &target_path,
+                Some(&console),
+                Some(&game),
+            ) {
+                eprintln!("no se pudo guardar la corrección: {e}");
+                ui.set_reclassifying(false);
+                return;
+            }
+
+            // Derived columns changed under the caches: re-read, re-cut.
+            {
+                let mut st = st.borrow_mut();
+                st.all = db_r.get_all_tracks().unwrap_or_default();
+                rebuild_table(&mut st, &model);
+            }
+            refresh_library(&ui, &tree_r, &db_r, &views_r);
+            ui.set_reclassifying(false);
+        });
+    }
+
     // --- The metadata editor ---------------------------------------------
     // Which track the open sheet is about. An id and not a row index: the
     // table can be re-sorted or re-filtered underneath a dialog.
