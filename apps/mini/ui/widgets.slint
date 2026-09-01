@@ -1172,3 +1172,118 @@ export component DbSliderRow inherits Rectangle {
         }
     }
 }
+
+
+// One labelled text field of the metadata editor.
+component EditField inherits VerticalLayout {
+    in property <string> label;
+    in-out property <string> value;
+    spacing: 4px;
+
+    Text {
+        text: root.label;
+        color: Theme.text-muted;
+        font-size: Theme.font-small;
+    }
+    Rectangle {
+        height: Theme.touch-target - 8px;
+        background: Theme.bg-tertiary;
+        border-radius: Theme.radius;
+        border-width: campo.has-focus ? 1px : 0px;
+        border-color: Theme.accent;
+
+        HorizontalLayout {
+            padding-left: Theme.gap;
+            padding-right: Theme.gap;
+            campo := TextInput {
+                color: Theme.text-primary;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+                single-line: true;
+                text <=> root.value;
+            }
+        }
+    }
+}
+
+// The metadata editor: a centred modal card, the desktop idiom — the phone's
+// sheets rise from the bottom edge because that is where thumbs live, but a
+// pointer lives in the middle of the screen.
+export component MetadataSheet inherits Rectangle {
+    in property <string> heading;
+    in property <string> detail;
+    in-out property <string> title-text;
+    in-out property <string> artist-text;
+    in-out property <string> album-text;
+    in-out property <string> track-text;
+    callback accepted();
+    callback cancelled();
+
+    background: #000000bb;
+
+    // Clicking the backdrop cancels; declared first so the card sits on top.
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: min(480px, root.width - Theme.gap * 4);
+        height: card.preferred-height;
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+
+        // Swallow the clicks that land on the card itself.
+        TouchArea { }
+
+        card := VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: root.heading;
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                overflow: elide;
+            }
+            Text {
+                text: root.detail;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                overflow: elide;
+            }
+
+            EditField { label: "Título"; value <=> root.title-text; }
+            EditField { label: "Artista"; value <=> root.artist-text; }
+            EditField { label: "Álbum"; value <=> root.album-text; }
+            EditField { label: "Nº de pista"; value <=> root.track-text; }
+
+            HorizontalLayout {
+                spacing: Theme.gap;
+                alignment: end;
+
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: tc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Cancelar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    tc := TouchArea { clicked => { root.cancelled(); } }
+                }
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: Theme.accent;
+                    Text {
+                        text: "Guardar";
+                        color: #ffffff;
+                        font-size: Theme.font-body;
+                    }
+                    TouchArea { clicked => { root.accepted(); } }
+                }
+            }
+        }
+    }
+}

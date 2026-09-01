@@ -149,6 +149,16 @@ export component AppWindow inherits Window {
     callback table-rated(int, int);
     callback table-enqueued(int);
     callback table-open-folder(int);
+    callback table-edit-requested(int);
+    in-out property <bool> editing-metadata;
+    in property <string> meta-heading;
+    in property <string> meta-detail;
+    in-out property <string> meta-title;
+    in-out property <string> meta-artist;
+    in-out property <string> meta-album;
+    in-out property <string> meta-track;
+    callback metadata-accepted();
+    callback metadata-cancelled();
     in property <bool> table-faved;
     callback table-faved-changed(bool);
     callback table-needed();
@@ -310,6 +320,16 @@ export component AppWindow inherits Window {
         table-rated(i, stars) => { root.table-rated(i, stars); }
         table-enqueued(i) => { root.table-enqueued(i); }
         table-open-folder(i) => { root.table-open-folder(i); }
+        table-edit-requested(i) => { root.table-edit-requested(i); }
+        editing-metadata <=> root.editing-metadata;
+        meta-heading: root.meta-heading;
+        meta-detail: root.meta-detail;
+        meta-title <=> root.meta-title;
+        meta-artist <=> root.meta-artist;
+        meta-album <=> root.meta-album;
+        meta-track <=> root.meta-track;
+        metadata-accepted => { root.metadata-accepted(); }
+        metadata-cancelled => { root.metadata-cancelled(); }
         table-faved: root.table-faved;
         table-faved-changed(f) => { root.table-faved-changed(f); }
         table-needed => { root.table-needed(); }

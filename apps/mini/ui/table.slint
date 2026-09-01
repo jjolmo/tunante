@@ -56,6 +56,8 @@ export component TrackTable inherits Rectangle {
     callback enqueued(int);
     /// Reveal the row's file in the system file manager.
     callback open-folder(int);
+    /// Open the metadata editor on this row.
+    callback edit-requested(int);
 
     // Column layout, as fractions of the width. One place, used by header and
     // rows alike, so they cannot drift.
@@ -145,6 +147,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Encolar";
                             activated => { root.enqueued(i); }
+                        }
+                        MenuItem {
+                            title: "Editar metadatos…";
+                            activated => { root.edit-requested(i); }
                         }
                         MenuItem {
                             title: "Abrir carpeta";
