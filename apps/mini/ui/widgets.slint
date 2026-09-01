@@ -1090,3 +1090,85 @@ export component NameSheet inherits Rectangle {
     }
 }
 
+
+
+// A labelled dB slider row for the equalizer section: centre-zero bar with a
+// tick, the fill growing from the middle towards the value.
+export component DbSliderRow inherits Rectangle {
+    in property <string> label;
+    in property <float> db;          // -12 .. +12
+    in property <bool> active: true;
+    callback changed(float);
+
+    height: Theme.touch-target;
+
+    property <float> fraction: clamp((root.db + 12) / 24, 0.0, 1.0);
+
+    HorizontalLayout {
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        spacing: Theme.gap;
+
+        Text {
+            text: root.label;
+            color: root.active ? Theme.text-primary : Theme.text-muted;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            width: 110px;
+            overflow: elide;
+        }
+
+        Rectangle {
+            bar := Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.bg-tertiary;
+
+                // The zero tick, so flat is findable by eye and by finger.
+                Rectangle {
+                    x: parent.width / 2;
+                    y: -3px;
+                    width: 1px;
+                    height: 10px;
+                    background: Theme.text-muted;
+                }
+
+                // Fill from the centre towards the value, either direction.
+                Rectangle {
+                    x: min(bar.width / 2, bar.width * root.fraction);
+                    width: abs(bar.width * root.fraction - bar.width / 2);
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: root.active ? Theme.accent : Theme.text-muted;
+                }
+            }
+
+            Rectangle {
+                x: bar.width * root.fraction - self.width / 2;
+                width: touch.pressed ? 16px : 12px;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: root.active ? Theme.accent : Theme.text-muted;
+                animate width { duration: 90ms; }
+            }
+
+            touch := TouchArea {
+                moved => {
+                    root.changed(clamp(self.mouse-x / bar.width, 0.0, 1.0) * 24 - 12);
+                }
+                clicked => {
+                    root.changed(clamp(self.mouse-x / bar.width, 0.0, 1.0) * 24 - 12);
+                }
+            }
+        }
+
+        Text {
+            text: (root.db >= 0.5 ? "+" : "") + round(root.db) + " dB";
+            color: root.active ? Theme.text-secondary : Theme.text-muted;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+            horizontal-alignment: right;
+            width: 52px;
+        }
+    }
+}

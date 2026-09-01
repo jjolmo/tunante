@@ -339,65 +339,22 @@ pub fn set_audio_output(state: &AppState, selection: &str) -> Result<(), String>
 // DSP chain
 // ---------------------------------------------------------------------------
 
-/// The whole DSP chain state, as sent to and from the UI.
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct DspConfig {
-    pub mono: bool,
-    pub mono_compensate: bool,
-    pub mono_phase_safe: bool,
-    pub balance: f32,
-    pub width_enabled: bool,
-    pub width: f32,
-    pub preamp_enabled: bool,
-    pub preamp_db: f32,
-    pub eq_enabled: bool,
-    pub eq_low_db: f32,
-    pub eq_mid_db: f32,
-    pub eq_high_db: f32,
-    pub limiter: bool,
-}
+/// The whole chain's state, as sent to and from the UI. Lives in
+/// `tunante-core::dsp` since mini's settings screen became its second
+/// consumer; the wire and persistence format did not move.
+pub use tunante_core::dsp::DspConfig;
 
 /// Apply a whole DSP configuration at once.
 ///
 /// Every value goes into an atomic the audio thread reads per frame, so this
 /// takes effect on the track that is already playing — no restart, no gap.
 pub fn set_dsp_config(state: &AppState, config: &DspConfig) {
-    let audio = state.audio.lock();
-    let dsp = audio.dsp();
-    dsp.mono.set(config.mono);
-    dsp.mono_compensate.set(config.mono_compensate);
-    dsp.mono_phase_safe.set(config.mono_phase_safe);
-    dsp.balance.set(config.balance.clamp(-1.0, 1.0));
-    dsp.width_enabled.set(config.width_enabled);
-    dsp.width.set(config.width.clamp(0.0, 2.0));
-    dsp.preamp_enabled.set(config.preamp_enabled);
-    dsp.preamp_db.set(config.preamp_db.clamp(-20.0, 20.0));
-    dsp.eq_enabled.set(config.eq_enabled);
-    dsp.eq_low_db.set(config.eq_low_db.clamp(-20.0, 20.0));
-    dsp.eq_mid_db.set(config.eq_mid_db.clamp(-20.0, 20.0));
-    dsp.eq_high_db.set(config.eq_high_db.clamp(-20.0, 20.0));
-    dsp.limiter.set(config.limiter);
+    config.apply_to(state.audio.lock().dsp());
 }
 
 /// Read back the chain state, so the UI can't drift from the engine.
 pub fn get_dsp_config(state: &AppState) -> DspConfig {
-    let audio = state.audio.lock();
-    let dsp = audio.dsp();
-    DspConfig {
-        mono: dsp.mono.get(),
-        mono_compensate: dsp.mono_compensate.get(),
-        mono_phase_safe: dsp.mono_phase_safe.get(),
-        balance: dsp.balance.get(),
-        width_enabled: dsp.width_enabled.get(),
-        width: dsp.width.get(),
-        preamp_enabled: dsp.preamp_enabled.get(),
-        preamp_db: dsp.preamp_db.get(),
-        eq_enabled: dsp.eq_enabled.get(),
-        eq_low_db: dsp.eq_low_db.get(),
-        eq_mid_db: dsp.eq_mid_db.get(),
-        eq_high_db: dsp.eq_high_db.get(),
-        limiter: dsp.limiter.get(),
-    }
+    DspConfig::read_from(state.audio.lock().dsp())
 }
 
 #[cfg(test)]

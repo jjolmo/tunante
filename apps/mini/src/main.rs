@@ -393,6 +393,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_output_label(SharedString::from(output_label(&stored)));
     }
 
+    // The DSP chain: same JSON, same `dsp_config` key the desktop persists,
+    // so when the two databases become one the equalizer simply carries over.
+    let dsp_config = Rc::new(RefCell::new(
+        db.get_setting("dsp_config")
+            .ok()
+            .flatten()
+            .and_then(|s| serde_json::from_str::<tunante_core::dsp::DspConfig>(&s).ok())
+            .unwrap_or_default(),
+    ));
+    {
+        let c = dsp_config.borrow();
+        if let Some(p) = player.borrow_mut().as_mut() {
+            c.apply_to(p.engine_mut().dsp());
+        }
+        ui.set_eq_enabled(c.eq_enabled);
+        ui.set_eq_low(c.eq_low_db);
+        ui.set_eq_mid(c.eq_mid_db);
+        ui.set_eq_high(c.eq_high_db);
+        ui.set_preamp_db(c.preamp_db);
+        ui.set_dsp_mono(c.mono);
+        ui.set_dsp_limiter(c.limiter);
+    }
+
     let queue_model = Rc::new(VecModel::from(Vec::<QueueRow>::new()));
     ui.set_queue_rows(ModelRc::from(queue_model.clone()));
 
@@ -1240,6 +1263,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- The equalizer section -----------------------------------------------
+    //
+    // One pattern five times: mutate the mirrored config, push it into the
+    // engine's atomics (audible on the track already playing), persist it.
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_toggle_eq(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            c.eq_enabled = !c.eq_enabled;
+            ui.set_eq_enabled(c.eq_enabled);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_set_eq_band(move |band, v| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            let v = v.clamp(-12.0, 12.0);
+            match band {
+                0 => c.eq_low_db = v,
+                1 => c.eq_mid_db = v,
+                _ => c.eq_high_db = v,
+            }
+            // Dragging a band while the section is off would move a slider
+            // that changes nothing — turning it on is what the gesture meant.
+            c.eq_enabled = true;
+            ui.set_eq_enabled(true);
+            ui.set_eq_low(c.eq_low_db);
+            ui.set_eq_mid(c.eq_mid_db);
+            ui.set_eq_high(c.eq_high_db);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_set_preamp(move |v| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            c.preamp_db = v.clamp(-12.0, 12.0);
+            // A slider with no separate switch: zero means off, which is also
+            // what the bar shows.
+            c.preamp_enabled = c.preamp_db.abs() >= 0.5;
+            ui.set_preamp_db(c.preamp_db);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_toggle_mono(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            c.mono = !c.mono;
+            ui.set_dsp_mono(c.mono);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_toggle_limiter(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            c.limiter = !c.limiter;
+            ui.set_dsp_limiter(c.limiter);
+            store_dsp(&db, &player, &c);
+        });
+    }
+
     // --- Search --------------------------------------------------------------
     {
         let (db, rows_model, tree, views) =
@@ -1956,6 +2053,21 @@ fn to_ui_rows(rows: &[library::Row]) -> Vec<LibraryRow> {
             path: SharedString::from(r.path.as_str()),
         })
         .collect()
+}
+
+/// Push a DSP config into the engine and remember it — the two halves of
+/// every equalizer gesture.
+fn store_dsp(
+    db: &Database,
+    player: &Rc<RefCell<Option<player::Player>>>,
+    cfg: &tunante_core::dsp::DspConfig,
+) {
+    if let Some(p) = player.borrow_mut().as_mut() {
+        cfg.apply_to(p.engine_mut().dsp());
+    }
+    if let Ok(json) = serde_json::to_string(cfg) {
+        let _ = db.set_setting("dsp_config", &json);
+    }
 }
 
 fn ui_mode_label(mode: i32) -> &'static str {

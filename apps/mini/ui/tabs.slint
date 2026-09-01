@@ -4,7 +4,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow } from "types.slint";
-import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet } from "widgets.slint";
+import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow } from "widgets.slint";
 
 export component SettingsTab inherits Rectangle {
     in property <float> volume;
@@ -24,6 +24,18 @@ export component SettingsTab inherits Rectangle {
     in property <string> ui-mode-label: "auto";
     callback cycle-output();
     callback cycle-ui-mode();
+    in property <bool> eq-enabled;
+    in property <float> eq-low;
+    in property <float> eq-mid;
+    in property <float> eq-high;
+    in property <float> preamp-db;
+    in property <bool> dsp-mono;
+    in property <bool> dsp-limiter;
+    callback toggle-eq();
+    callback set-eq-band(int, float);
+    callback set-preamp(float);
+    callback toggle-mono();
+    callback toggle-limiter();
 
     // Desplazable, y no es un detalle: en apaisado la ventana deja unos 288
     // puntos y estas filas suman bastante más. Sin esto, tumbado el móvil, el
@@ -127,6 +139,58 @@ export component SettingsTab inherits Rectangle {
             label: "Salida de audio";
             value: root.output-label;
             clicked => { root.cycle-output(); }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        Text {
+            text: "Ecualizador";
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            horizontal-alignment: left;
+            x: Theme.gap;
+        }
+
+        SettingRow {
+            label: "Ecualizador";
+            value: root.eq-enabled ? "activado" : "desactivado";
+            highlighted: root.eq-enabled;
+            clicked => { root.toggle-eq(); }
+        }
+        DbSliderRow {
+            label: "Graves";
+            db: root.eq-low;
+            active: root.eq-enabled;
+            changed(v) => { root.set-eq-band(0, v); }
+        }
+        DbSliderRow {
+            label: "Medios";
+            db: root.eq-mid;
+            active: root.eq-enabled;
+            changed(v) => { root.set-eq-band(1, v); }
+        }
+        DbSliderRow {
+            label: "Agudos";
+            db: root.eq-high;
+            active: root.eq-enabled;
+            changed(v) => { root.set-eq-band(2, v); }
+        }
+        DbSliderRow {
+            label: "Preamplificador";
+            db: root.preamp-db;
+            changed(v) => { root.set-preamp(v); }
+        }
+        SettingRow {
+            label: "Mono";
+            value: root.dsp-mono ? "sí" : "no";
+            highlighted: root.dsp-mono;
+            clicked => { root.toggle-mono(); }
+        }
+        SettingRow {
+            label: "Limitador";
+            value: root.dsp-limiter ? "sí" : "no";
+            highlighted: root.dsp-limiter;
+            clicked => { root.toggle-limiter(); }
         }
 
         Rectangle { height: 1px; background: Theme.border; }
