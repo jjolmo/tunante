@@ -1370,6 +1370,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // resume that only survives a clean exit rarely fires.
                 ticks += 1;
                 if ticks % 10 == 0 {
+                    // Same cadence as the desktop's output supervisor: rebuild
+                    // the stream if the device died under us or the system
+                    // default moved (Bluetooth arriving is the everyday case).
+                    // The engine rate-limits itself, so a quiet tick is one
+                    // atomic swap and a device-name lookup.
+                    if let Some(name) = p.reconcile_output() {
+                        eprintln!("salida de audio recuperada: {name}");
+                    }
                     session::Session::save(
                         &db,
                         p.current().map(|t| t.path.as_str()),
