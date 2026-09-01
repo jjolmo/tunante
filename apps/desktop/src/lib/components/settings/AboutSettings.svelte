@@ -104,10 +104,13 @@
 
 <div class="about-settings">
 	<div class="about-header">
-		<svg width="48" height="48" viewBox="0 0 16 16" fill="var(--color-accent)">
-			<path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM0 8a8 8 0 1116 0A8 8 0 010 8z" />
-			<path d="M5 5.5a1 1 0 012 0v4a1 1 0 01-2 0v-4zm4 0a1 1 0 012 0v4a1 1 0 01-2 0v-4z" />
-		</svg>
+		<!--
+		  The real logo, not a stand-in. `favicon.svg` is `assets/logo.png`
+		  rendered a pixel at a time by `scripts/gen-icons.py`, so this is the
+		  same drawing as the window icon and the tray, and it follows the
+		  source the moment anyone redraws it.
+		-->
+		<img src="/favicon.svg" alt="" width="64" height="64" class="about-logo" />
 		<div class="about-title-block">
 			<h2 class="about-title">Tunante</h2>
 			<span class="about-version">v{appVersion}</span>
@@ -215,6 +218,15 @@
 		display: flex;
 		align-items: center;
 		gap: 16px;
+	}
+
+	/* 64, which is twice the 32px grid the logo is drawn on. Anything that is
+	   not a whole multiple puts the pixel edges between screen pixels and the
+	   art goes soft — the same rule `gen-icons.py` follows for every size it
+	   produces. */
+	.about-logo {
+		flex-shrink: 0;
+		image-rendering: pixelated;
 	}
 
 	.about-title-block {
