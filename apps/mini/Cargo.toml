@@ -10,19 +10,20 @@ name = "tunante-mini"
 path = "src/main.rs"
 
 [dependencies]
-# No `dsp` feature: mini has no DSP chain. It still needs rodio itself, to own
-# the audio output and play what the decoder helper pipes back.
 tunante-core = { path = "../../crates/tunante-core", default-features = false }
+
+# The playback engine, shared with the desktop app since fase 3a of
+# docs/plan-desktop-slint.md: the same out-of-process decoding this app proved
+# on the phone, plus output-device selection, unplug recovery and the DSP
+# chain over every source. rodio stopped being a direct dependency here — the
+# engine owns it (and brings core's `dsp` feature along).
+tunante-audio = { path = "../../crates/tunante-audio" }
 
 # The client for the tunante-decoder helper: probe, artwork and PCM over a pipe.
 # Shared with tunante-android, which needs exactly the same thing.
 tunante-helper = { path = "../../crates/tunante-helper" }
 tunante-art = { path = "../../crates/tunante-art" }
 
-# No symphonia features: this process decodes nothing. Every format, standard
-# ones included, arrives as raw PCM from tunante-decoder, so all rodio does here
-# is mix and talk to ALSA.
-rodio = { version = "0.22", default-features = false, features = ["playback"] }
 serde_json = "1"
 walkdir = "2"
 

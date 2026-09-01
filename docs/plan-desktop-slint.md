@@ -51,6 +51,19 @@
 > Queda de 3b: más columnas y configurables, click derecho/teclado/
 > multiselección, ratings, watcher en la app nueva, y el control de
 > `ui-mode` en Ajustes.
+>
+> **3a, primer bocado: las dos apps suenan por el mismo motor.** El player de
+> mini (`apps/mini/src/player.rs`) corre sobre `tunante_audio::AudioEngine`:
+> misma fachada pública (main.rs no cambió una llamada), la cola intacta, y
+> mini gana selección de dispositivo, recuperación de desconexiones
+> (`reconcile_output` cada 5 s desde el timer de la UI, con el rate-limit del
+> engine) y la cadena DSP instalada en passthrough. La propiedad que mini
+> protegía — un solo cliente ALSA por sesión, sin click entre pistas — se
+> conserva: el engine mantiene el `MixerDeviceSink` y solo reconecta el
+> `Player` de rodio. rodio dejó de ser dependencia directa de mini. Verificado
+> con un PSF sonando por el engine en la shell desktop. Queda de 3a: el
+> selector de salida y el panel DSP/EQ en Ajustes (`engine_mut()` ya está
+> expuesto para ellos), ratings en UI, y filtro de cortas/continue-from-queue.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

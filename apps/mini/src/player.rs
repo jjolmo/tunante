@@ -1,61 +1,56 @@
 //! The audio output, and the queue on top of it.
 //!
-//! Deliberately thin. Everything hard about decoding happens in another process
-//! (see the `tunante-helper` crate); what is left here is opening one ALSA client, keeping
-//! it open for the life of the app, and pushing sources at it.
-//!
-//! One ALSA client for the whole session matters on this hardware: handing the
-//! device back and re-taking it on every track change is what produces the click
-//! between tracks.
+//! Since fase 3a of docs/plan-desktop-slint.md the output half is
+//! [`tunante_audio::AudioEngine`] — the same engine the desktop app runs on:
+//! decoding stays out of process in `tunante-decoder`, and on top of what this
+//! file used to do itself the engine brings output-device selection, recovery
+//! when the device dies under us (Bluetooth, unplugs), and the DSP chain
+//! installed over every source. What is left here is the queue and the
+//! adaptation between "what a screen asks" and "what the engine does".
 
 use std::path::Path;
-use std::time::{Duration, Instant};
 
-use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player as RodioPlayer, Source};
+use tunante_audio::AudioEngine;
 use tunante_core::db::models::Track;
-use tunante_core::{PlayClock, PlayQueue, RepeatMode};
-
-use tunante_helper::PipeSource;
+use tunante_core::{PlayQueue, RepeatMode};
 
 pub struct Player {
-    _device: MixerDeviceSink,
-    player: RodioPlayer,
+    engine: AudioEngine,
     queue: PlayQueue,
-    volume: f32,
-    /// Where the track is. Wall-clock, because the decoder pipe carries no
-    /// timing of its own. Moved to `tunante_core::clock` so tunante-android
-    /// cannot reinvent it differently — which it did, and got seeking wrong.
-    clock: PlayClock,
-    duration_ms: u64,
-    /// rodio reports an empty player for a moment after a source is appended,
-    /// before the mixer starts pulling. Without a short grace period the
-    /// end-of-track check fires immediately and the queue runs away.
-    appended_at: Instant,
-    has_source: bool,
     /// How long a looping track should last. Console music mostly loops by
-    /// design, so the player has to decide when to stop.
+    /// design, so the player has to decide when to stop. Mirrored into the
+    /// engine; kept here too because the settings screen reads it back.
     loops: u32,
     fade_ms: u64,
 }
 
 impl Player {
     pub fn new() -> Result<Self, String> {
-        let device = DeviceSinkBuilder::open_default_sink()
-            .map_err(|e| format!("no audio output: {e}"))?;
-        let player = RodioPlayer::connect_new(&device.mixer());
-
-        Ok(Self {
-            _device: device,
-            player,
+        let engine = AudioEngine::new().map_err(|e| format!("no audio output: {e}"))?;
+        let mut p = Self {
+            engine,
             queue: PlayQueue::new(),
-            volume: 1.0,
-            clock: PlayClock::new(),
-            duration_ms: 0,
-            appended_at: Instant::now(),
-            has_source: false,
             loops: 2,
             fade_ms: 8_000,
-        })
+        };
+        // The engine's default is the desktop's 0.8; this app has always
+        // started at full volume and the session restore adjusts it after.
+        p.engine.set_volume(1.0);
+        p.engine.set_loop_settings(p.loops, p.fade_ms);
+        Ok(p)
+    }
+
+    /// The engine itself, for the screens that talk to it directly: output
+    /// device selection and the DSP chain.
+    pub fn engine_mut(&mut self) -> &mut AudioEngine {
+        &mut self.engine
+    }
+
+    /// Rebuild the output if the device died or the system default moved —
+    /// call it every few seconds from the UI timer. Returns the new device
+    /// name when a rebuild happened.
+    pub fn reconcile_output(&mut self) -> Option<String> {
+        self.engine.reconcile_output()
     }
 
     pub fn queue(&self) -> &PlayQueue {
@@ -82,39 +77,21 @@ impl Player {
             None => return Ok(()),
         };
 
-        // Dropping the old source kills the old helper process, which is what
-        // frees its console RAM. No sleep is needed here — unlike the in-process
-        // desktop engine, there are no C globals to tear down first.
-        self.player.stop();
-
-        let source = PipeSource::open(Path::new(&path), hint, self.loops, self.fade_ms)?;
-        self.duration_ms = source
-            .total_duration()
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-
-        self.player.append(source);
-        self.player.set_volume(self.volume);
-        self.player.play();
-
-        self.clock.start();
-        self.appended_at = Instant::now();
-        self.has_source = true;
-        Ok(())
+        self.engine
+            .play_file(Path::new(&path), hint)
+            .map_err(|e| e.to_string())
     }
 
     pub fn toggle_play(&mut self) {
-        if self.player.is_paused() {
-            self.player.play();
-            self.clock.resume();
+        if self.engine.is_playing() {
+            self.engine.pause();
         } else {
-            self.player.pause();
-            self.clock.pause();
+            self.engine.resume();
         }
     }
 
     pub fn is_playing(&self) -> bool {
-        self.has_source && !self.player.is_paused()
+        self.engine.is_playing()
     }
 
     pub fn next(&mut self) -> Result<(), String> {
@@ -135,19 +112,15 @@ impl Player {
     }
 
     pub fn stop(&mut self) {
-        self.player.stop();
-        self.has_source = false;
-        self.clock.stop();
-        self.duration_ms = 0;
+        self.engine.stop();
     }
 
     pub fn set_volume(&mut self, v: f32) {
-        self.volume = v.clamp(0.0, 1.0);
-        self.player.set_volume(self.volume);
+        self.engine.set_volume(v);
     }
 
     pub fn volume(&self) -> f32 {
-        self.volume
+        self.engine.volume()
     }
 
     /// Applies from the next track on: changing it mid-track would mean
@@ -156,6 +129,7 @@ impl Player {
     pub fn set_loop_settings(&mut self, loops: u32, fade_ms: u64) {
         self.loops = loops;
         self.fade_ms = fade_ms;
+        self.engine.set_loop_settings(loops, fade_ms);
     }
 
     pub fn set_repeat(&mut self, mode: RepeatMode) {
@@ -176,14 +150,12 @@ impl Player {
 
     /// Jump within the current track.
     ///
-    /// The wall-clock position is moved to match immediately, so the progress
+    /// Clamped to the known duration so a drag past the end lands on the end;
+    /// the engine moves its own wall clock with the request, so the progress
     /// bar lands where the finger left it rather than snapping back while the
     /// helper catches up.
     pub fn seek(&mut self, ms: u64) {
-        let pos = Duration::from_millis(ms.min(self.duration_ms));
-        if self.player.try_seek(pos).is_ok() {
-            self.clock.seek(pos);
-        }
+        let _ = self.engine.seek(ms.min(self.engine.duration_ms()));
     }
 
     /// Put a track at the end of the queue.
@@ -278,26 +250,21 @@ impl Player {
     }
 
     pub fn position_ms(&self) -> u64 {
-        self.clock.position_ms()
+        self.engine.position_ms()
     }
 
     pub fn duration_ms(&self) -> u64 {
-        self.duration_ms
+        self.engine.duration_ms()
     }
 
     /// Advance the queue if the current track has run out.
     ///
-    /// Call this on a timer from the UI thread. The grace period covers the gap
-    /// between appending a source and the mixer starting to pull from it, during
-    /// which rodio would otherwise report the track as already over.
+    /// Call this on a timer from the UI thread. The engine's own grace period
+    /// covers the gap between appending a source and the mixer starting to
+    /// pull from it, during which rodio would otherwise report the track as
+    /// already over.
     pub fn poll_track_end(&mut self) -> bool {
-        if !self.has_source || self.player.is_paused() {
-            return false;
-        }
-        if self.appended_at.elapsed() < Duration::from_millis(500) {
-            return false;
-        }
-        if self.player.empty() {
+        if self.engine.track_finished() {
             let _ = self.next();
             return true;
         }
