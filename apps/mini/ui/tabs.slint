@@ -1,0 +1,1277 @@
+// The four screens of the phone shell. Split out of app.slint in fase 2 of
+// docs/plan-desktop-slint.md — bodies verbatim, only the export changed.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Fmt } from "theme.slint";
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow } from "types.slint";
+import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet } from "widgets.slint";
+
+export component SettingsTab inherits Rectangle {
+    in property <float> volume;
+    in property <bool> sleep-running;
+    in property <int> sleep-minutes;
+    in property <string> library-summary;
+    in property <int> loop-count;
+    in property <int> fade-seconds;
+    callback set-volume(float);
+    callback cycle-sleep();
+    callback rescan();
+    callback descargar-caratulas();
+    callback add-folder();
+    callback cycle-loops();
+    callback cycle-fade();
+
+    // Desplazable, y no es un detalle: en apaisado la ventana deja unos 288
+    // puntos y estas filas suman bastante más. Sin esto, tumbado el móvil, el
+    // temporizador de apagado y "volver a analizar" quedaban fuera de la
+    // pantalla sin manera de llegar a ellos.
+    ScrollView {
+        // El estilo por defecto de Slint construye su Flickable con
+        // `interactive: false`, así que sin esto sólo se desplaza por la barra
+        // lateral y el dedo no hace nada. Lo mismo que en las listas.
+        mouse-drag-pan-enabled: true;
+
+    VerticalLayout {
+        padding-top: Theme.gap;
+
+        Text {
+            text: "Sonido";
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            horizontal-alignment: left;
+            x: Theme.gap;
+        }
+
+        // Volume, as a bar you drag. Same reasoning as the seek bar: the whole
+        // strip is the target.
+        Rectangle {
+            height: Theme.touch-target;
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: Theme.gap;
+
+                Text {
+                    text: "🕪";
+                    color: Theme.text-muted;
+                    font-size: 16px;
+                    vertical-alignment: center;
+                    width: 22px;
+                }
+
+                Rectangle {
+                    vol := Rectangle {
+                        height: 4px;
+                        border-radius: 2px;
+                        background: Theme.bg-tertiary;
+                        Rectangle {
+                            x: 0;
+                            width: parent.width * root.volume;
+                            height: parent.height;
+                            border-radius: parent.border-radius;
+                            background: Theme.accent;
+                        }
+                    }
+                    Rectangle {
+                        x: vol.width * root.volume - self.width / 2;
+                        width: 14px;
+                        height: 14px;
+                        border-radius: 7px;
+                        background: Theme.accent;
+                    }
+                    voltouch := TouchArea {
+                        moved => { root.set-volume(clamp(self.mouse-x / vol.width, 0.0, 1.0)); }
+                        clicked => { root.set-volume(clamp(self.mouse-x / vol.width, 0.0, 1.0)); }
+                    }
+                }
+
+                Text {
+                    text: round(root.volume * 100) + "%";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                    width: 44px;
+                    horizontal-alignment: right;
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        Text {
+            text: "Música de consola";
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            x: Theme.gap;
+        }
+
+        // What decides how long a track that never ends actually lasts.
+        SettingRow {
+            label: "Repeticiones del bucle";
+            value: root.loop-count + "×";
+            clicked => { root.cycle-loops(); }
+        }
+        SettingRow {
+            label: "Fundido final";
+            value: root.fade-seconds == 0 ? "sin fundido" : root.fade-seconds + " s";
+            clicked => { root.cycle-fade(); }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        Text {
+            text: "Biblioteca";
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            x: Theme.gap;
+        }
+
+        SettingRow {
+            label: "Carpetas analizadas";
+            value: root.library-summary;
+        }
+        SettingRow {
+            label: "Añadir una carpeta";
+            value: "＋";
+            clicked => { root.add-folder(); }
+        }
+        SettingRow {
+            label: "Volver a analizar";
+            value: "↻";
+            clicked => { root.rescan(); }
+        }
+        SettingRow {
+            label: "Descargar carátulas";
+            value: "⬇";
+            clicked => { root.descargar-caratulas(); }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        SettingRow {
+            label: "Apagar la música en";
+            value: root.sleep-running ? root.sleep-minutes + " min" : "desactivado";
+            highlighted: root.sleep-running;
+            clicked => { root.cycle-sleep(); }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+    }
+    }
+}
+
+export component NowPlayingTab inherits Rectangle {
+    in property <string> title;
+    in property <string> artist;
+    in property <string> album;
+    in property <bool> portrait;
+    in property <image> art;
+    in property <bool> playing;
+    in property <bool> shuffle;
+    in property <int> repeat;
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    // Both sizes come from the window, not from this component, so nothing here
+    // feeds back into the layout that sizes it.
+    in property <length> art-portrait;
+    in property <length> art-landscape;
+
+    callback toggle-play();
+    callback next-track();
+    callback prev-track();
+    callback cycle-repeat();
+    callback toggle-shuffle();
+    callback seek(int);
+
+    // Portrait: cover on top, text under it, transport at the bottom.
+    if root.portrait: VerticalLayout {
+        padding: Theme.gap;
+        spacing: Theme.gap;
+
+        Rectangle { vertical-stretch: 1; }
+
+        HorizontalLayout {
+            alignment: center;
+            Artwork { side: root.art-portrait; art: root.art; }
+        }
+
+        TrackInfo {
+            title: root.title;
+            artist: root.artist;
+            album: root.album;
+            centered: true;
+        }
+
+        Rectangle { vertical-stretch: 1; }
+
+        Transport {
+            playing: root.playing;
+            shuffle: root.shuffle;
+            repeat: root.repeat;
+            position-ms: root.position-ms;
+            duration-ms: root.duration-ms;
+            toggle-play => { root.toggle-play(); }
+            next-track => { root.next-track(); }
+            prev-track => { root.prev-track(); }
+            cycle-repeat => { root.cycle-repeat(); }
+            toggle-shuffle => { root.toggle-shuffle(); }
+            seek(ms) => { root.seek(ms); }
+        }
+    }
+
+    // Landscape: cover on the leading edge, everything else beside it. Turning
+    // the phone buys width, not height, so stacking would only shrink the cover.
+    if !root.portrait: HorizontalLayout {
+        padding: Theme.gap;
+        spacing: Theme.gap;
+        // No `alignment` on purpose. Setting one — this said `start` — makes
+        // Slint give every child its preferred width and pack them, which
+        // silently voids the `horizontal-stretch` below: the whole right-hand
+        // third of the screen stayed empty while the seek bar sat squeezed in
+        // the middle. The default is stretch, and the cover keeps its size
+        // regardless because Artwork binds its own width.
+
+        Artwork { side: root.art-landscape; art: root.art; }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: Theme.gap;
+
+            Rectangle { vertical-stretch: 1; }
+
+            TrackInfo {
+                title: root.title;
+                artist: root.artist;
+                album: root.album;
+                centered: false;
+            }
+
+            Rectangle { vertical-stretch: 1; }
+
+            Transport {
+                wide: true;
+                playing: root.playing;
+                shuffle: root.shuffle;
+                repeat: root.repeat;
+                position-ms: root.position-ms;
+                duration-ms: root.duration-ms;
+                toggle-play => { root.toggle-play(); }
+                next-track => { root.next-track(); }
+                prev-track => { root.prev-track(); }
+                cycle-repeat => { root.cycle-repeat(); }
+                toggle-shuffle => { root.toggle-shuffle(); }
+                seek(ms) => { root.seek(ms); }
+            }
+        }
+    }
+}
+
+export component QueueTab inherits Rectangle {
+    in property <[QueueRow]> rows;
+    callback activated(int);
+    callback removed(int);
+    callback reordered(int, int);
+    callback cleared();
+
+    property <length> row-height: Theme.touch-target + 8px;
+    // Which row is being carried, and how far it has travelled. -1 for none.
+    property <int> dragging: -1;
+    property <length> drag-offset: 0px;
+    // Emptying the queue stops the music, so it asks first. The second tap
+    // lands where the first one did, which is why the strip does not move or
+    // change height between the two states.
+    property <bool> confirming: false;
+
+    VerticalLayout {
+
+    // Above the list rather than the first row in it.
+    //
+    // As a row it would scroll under the finger, and a destructive control that
+    // moves while you fling a list is a control you eventually hit by accident.
+    // Fixed, it is also still there when the queue is long.
+    if root.rows.length > 0: Rectangle {
+        height: Theme.touch-target;
+        background: root.confirming ? #a33333 : Theme.bg-secondary;
+
+        HorizontalLayout {
+            padding-left: Theme.gap;
+            padding-right: Theme.gap;
+            spacing: 8px;
+            alignment: center;
+
+            Text {
+                text: root.confirming ? "✕" : "🗑";
+                color: root.confirming ? #ffffff : Theme.text-secondary;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+            }
+            Text {
+                text: root.confirming
+                    ? "¿Seguro? Toca otra vez"
+                    : "Vaciar la cola (" + root.rows.length + ")";
+                color: root.confirming ? #ffffff : Theme.text-secondary;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+            }
+        }
+
+        TouchArea {
+            clicked => {
+                if (root.confirming) {
+                    root.confirming = false;
+                    root.cleared();
+                } else {
+                    root.confirming = true;
+                    undo.running = true;
+                }
+            }
+        }
+
+        // A confirmation that waits forever is a trap of its own: come back to
+        // the tab five minutes later and the next tap empties the queue.
+        undo := Timer {
+            interval: 4s;
+            running: false;
+            triggered => {
+                self.running = false;
+                root.confirming = false;
+            }
+        }
+    }
+
+    ListView {
+        vertical-stretch: 1;
+        // Slint's default style builds its Flickable with `interactive: false`,
+        // so the list only scrolls by its scrollbar and the finger does nothing.
+        // Fine for a desktop with a wheel; wrong for anything held in a hand.
+        mouse-drag-pan-enabled: true;
+        for row[i] in root.rows: Rectangle {
+            height: root.row-height;
+            // The row being carried rides above the rest and follows the finger.
+            y: root.dragging == i ? root.drag-offset : 0px;
+            opacity: root.dragging == i ? 0.85 : 1.0;
+
+            SwipeRow {
+                surface-color: row.playing ? Theme.bg-selected : Theme.bg-primary;
+                // Swiping while carrying a row would be two gestures at once.
+                enabled: root.dragging == -1;
+                action-label: "Quitar";
+                action-color: #a33333;
+                swiped => { root.removed(i); }
+                tapped => { root.activated(i); }
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+                    spacing: Theme.gap;
+
+                    Text {
+                        text: row.playing ? "▶" : "";
+                        color: Theme.accent;
+                        width: 16px;
+                        vertical-alignment: center;
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: row.title;
+                            color: row.playing ? Theme.accent : Theme.text-primary;
+                            font-size: Theme.font-body;
+                            overflow: elide;
+                        }
+                        Text {
+                            text: row.subtitle;
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-small;
+                            overflow: elide;
+                        }
+                    }
+
+                    // El asa. Reordenar vive en un objetivo propio y no en toda
+                    // la fila: una fila que se mueve al arrastrar en cualquier
+                    // punto no puede ser además una lista que se desplaza con el
+                    // dedo.
+                    //
+                    // Hay que MANTENER pulsado antes de arrastrar, y no es un
+                    // capricho de diseño: el Flickable de la lista se queda
+                    // cualquier gesto vertical que empiece dentro de los
+                    // primeros 500 ms de la pulsación (DISTANCE_THRESHOLD y
+                    // DURATION_THRESHOLD en items/flickable.rs). Pasado ese
+                    // umbral, el arrastre llega aquí. Por eso el asa se enciende
+                    // al pulsar: es la única pista de que aguantar sirve para
+                    // algo.
+                    Rectangle {
+                        width: Theme.touch-target;
+                        border-radius: Theme.radius;
+                        background: grip.pressed ? Theme.bg-hover : transparent;
+
+                        Text {
+                            text: "≡";
+                            color: grip.pressed ? Theme.accent : Theme.text-muted;
+                            font-size: 20px;
+                        }
+
+                        grip := TouchArea {
+                            moved => {
+                                root.dragging = i;
+                                root.drag-offset = self.mouse-y - self.pressed-y;
+                            }
+                            pointer-event(e) => {
+                                if (root.dragging == i) {
+                                    if (e.kind == PointerEventKind.up) {
+                                        // Whole rows only: half a row of travel
+                                        // is a wobble, not an instruction.
+                                        root.reordered(i, i + round(root.drag-offset / root.row-height));
+                                        root.dragging = -1;
+                                        root.drag-offset = 0px;
+                                    } else if (e.kind == PointerEventKind.cancel) {
+                                        // The Flickable took the gesture. Let go
+                                        // without reordering: latching `dragging`
+                                        // on `moved` and only clearing it on `up`
+                                        // leaves it stuck at this row for the rest
+                                        // of the run, and it gates every row's
+                                        // swipe.
+                                        root.dragging = -1;
+                                        root.drag-offset = 0px;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    }
+}
+
+// Una entrada del menú de pulsación larga.
+//
+// Alta a propósito: sale bajo un dedo que ya está apoyado en la pantalla, y una
+// fila de 48px con el pulgar encima se falla más de lo que parece.
+export component LibraryTab inherits Rectangle {
+    in property <[LibraryRow]> rows;
+    in property <int> total;
+    // True when the on-screen keyboard has taken most of the window. The count
+    // is the first thing worth dropping: it is a nicety, and searching is the
+    // one moment the list needs every row it can get.
+    in property <bool> cramped;
+    in property <string> now-path;
+    in-out property <string> search;
+    in-out property <int> mode;
+    callback mode-changed(int);
+    // Discos, Juegos y Consolas se dibujan en rejilla; el nivel de pistas, en lista.
+    in property <[GridLine]> grid-lines;
+    in property <bool> grid;
+    in property <int> columns: 3;
+    /// Dónde estamos dentro de una vista de rejilla, para poder volver.
+    in property <string> crumb;
+    callback grid-tapped(string);
+    callback go-back();
+    callback enqueued(int);
+    // Qué tiene el menú abierto, por ruta y no por índice: las filas se
+    // reconstruyen al desplegar una carpeta, y una tarjeta de la rejilla no
+    // tiene índice de fila siquiera. Vacía = cerrado.
+    property <string> menu-path;
+    property <string> menu-name;
+    property <bool> menu-is-folder;
+    callback enqueue-path(string, bool);
+    // Focus the search field as soon as this tab is built. Only used by the
+    // spike: it makes "does the on-screen keyboard come up?" answerable over
+    // ssh, without needing someone to put a finger on the glass.
+    in property <bool> autofocus-search;
+    callback activated(int);
+    callback search-changed(string);
+
+    // --- Listas ---
+    //
+    // Dos modelos y no uno: el selector de «añadir a una lista» tiene que
+    // enseñarlas todas aunque el buscador esté filtrando la vista. Filtrar un
+    // solo modelo escondería listas del selector sin decir por qué.
+    in property <[PlaylistRow]> playlists;
+    in property <[PlaylistRow]> all-playlists;
+    // Las dos vistas del modo Listas, decididas en Rust para que no puedan estar
+    // encendidas a la vez.
+    in property <bool> showing-playlists;
+    in property <bool> playlist-open;
+    // Cuántas pistas tiene la lista abierta *de verdad*. No `rows.length`: ésa es
+    // la lista ya filtrada por el buscador, y «encolar todas» son todas.
+    in property <int> playlist-count;
+    callback playlist-open-requested(string);
+    callback playlist-enqueue-all();
+    callback playlist-create(string);
+    callback add-path-to-playlist(string, bool, string);
+    callback add-path-to-new-playlist(string, bool, string);
+    // Qué está pidiendo la hoja del nombre. 0 cerrada, 1 crear una lista nueva,
+    // 2 crearla con lo que hay pendiente dentro.
+    property <int> name-sheet: 0;
+    // Qué espera a que se elija una lista, y si va con subcarpetas. Vacía =
+    // selector cerrado, igual que `menu-path` gobierna el de acciones.
+    property <string> pending-path;
+    property <bool> pending-deep;
+    callback playlist-track-removed(string);
+    callback playlist-reordered(int, int);
+    callback playlist-rename(string, string);
+    callback playlist-delete(string);
+    // Encolar una lista sin entrar en ella, desde su menú del listado.
+    callback playlist-enqueue-id(string);
+    // Qué fila se está llevando el dedo dentro de una lista, y cuánto ha viajado.
+    property <int> dragging: -1;
+    property <length> drag-offset: 0px;
+    // Sobre qué lista está abierto el menú. Por id, no por índice: el modelo se
+    // rehace al crear, renombrar o borrar.
+    property <string> pl-menu-id;
+    property <string> pl-menu-name;
+    // Borrar una lista se lleva por delante todas sus pistas de golpe, así que
+    // pide el segundo toque igual que vaciar la cola.
+    property <bool> pl-confirm-delete;
+
+    init => {
+        if (root.autofocus-search) {
+            input.focus();
+        }
+    }
+
+    VerticalLayout {
+
+        // Cuatro maneras de mirar lo mismo. El árbol refleja el disco, que es
+        // honesto pero obliga a bajar hasta un juego cuyo nombre ya sabes;
+        // Discos y Consolas son índices sobre las mismas filas, y Listas es la
+        // única cuyo contenido y orden eligió alguien a mano. El menú de
+        // pulsación larga funciona igual en todas.
+        Rectangle {
+            height: Theme.touch-target - 6px;
+            background: Theme.bg-primary;
+
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: 4px;
+
+                ModeTab {
+                    label: "Árbol";
+                    selected: root.mode == 0;
+                    clicked => { root.mode = 0; root.mode-changed(0); }
+                }
+                ModeTab {
+                    label: "Discos";
+                    selected: root.mode == 1;
+                    clicked => { root.mode = 1; root.mode-changed(1); }
+                }
+                ModeTab {
+                    label: "Consolas";
+                    selected: root.mode == 2;
+                    clicked => { root.mode = 2; root.mode-changed(2); }
+                }
+                ModeTab {
+                    // Por la etiqueta de álbum, no por carpeta: Discos dice lo
+                    // que hay en el disco y Juegos lo que dice el rip. Difieren
+                    // en un juego partido en dos carpetas, y en una carpeta que
+                    // guarda varios juegos.
+                    label: "Juegos";
+                    selected: root.mode == 3;
+                    clicked => { root.mode = 3; root.mode-changed(3); }
+                }
+                ModeTab {
+                    label: "Listas";
+                    selected: root.mode == 4;
+                    clicked => { root.mode = 4; root.mode-changed(4); }
+                }
+            }
+        }
+
+        // The search field, and the reason this tab is the one that decides the
+        // toolkit: tapping it has to raise the on-screen keyboard. TextInput is
+        // the primitive Slint fires InputMethodRequest::Enable from, so this is
+        // the real test and not an approximation of it.
+        Rectangle {
+            height: Theme.touch-target + Theme.gap;
+            background: Theme.bg-primary;
+
+            Rectangle {
+                height: Theme.touch-target;
+                x: Theme.gap;
+                width: parent.width - Theme.gap * 2;
+                background: Theme.bg-tertiary;
+                border-radius: Theme.radius;
+                border-width: input.has-focus ? 1px : 0px;
+                border-color: Theme.accent;
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+
+                    Rectangle {
+                        // Placeholder rather than a magnifier glyph: U+2315 is
+                        // missing from the phone's fonts and rendered as a
+                        // squiggle. Text we control always draws.
+                        Text {
+                            x: 0;
+                            // Dice lo que hace: en el árbol busca en toda la
+                            // biblioteca, y en las rejillas filtra lo que hay
+                            // delante. Es el mismo campo haciendo dos cosas, y
+                            // callárselo sería mentir sobre cuál.
+                            text: root.mode == 0 ? "Buscar…" : "Filtrar lo que se ve…";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            visible: root.search == "";
+                        }
+
+                        input := TextInput {
+                            x: 0;
+                            width: parent.width;
+                            text <=> root.search;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            single-line: true;
+                            edited => { root.search-changed(self.text); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // The tree, flattened: each row carries its own depth, and children are
+        // fetched from SQLite when a folder is opened. Nothing builds the whole
+        // structure in memory — that is what caused an OOM at 16k tracks in the
+        // desktop app.
+        // Migas: sólo aparecen dentro de una consola o de un disco, y son lo que
+        // devuelve atrás. En un móvil no hay una tecla de retroceso fiable dentro
+        // de la aplicación, así que tiene que estar en la propia pantalla.
+        if root.crumb != "": Rectangle {
+            height: Theme.touch-target;
+            background: Theme.bg-secondary;
+
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: 8px;
+
+                Text {
+                    text: "◂";
+                    color: Theme.accent;
+                    font-size: Theme.font-body;
+                    width: 16px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: root.crumb;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+            }
+            TouchArea { clicked => { root.go-back(); } }
+        }
+
+        // Encolar la lista entera.
+        //
+        // Con la forma de la tira de vaciar la cola, y en el mismo sitio: fija
+        // sobre la lista, para que no se escape bajo el dedo al deslizar. Sin
+        // confirmación de dos toques, en cambio — añadir a la cola no destruye
+        // nada, y pedir permiso para algo inocuo enseña a decir que sí sin leer.
+        if root.playlist-open && root.playlist-count > 0: Rectangle {
+            height: Theme.touch-target;
+            background: Theme.bg-secondary;
+
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: 8px;
+                alignment: center;
+
+                Text {
+                    text: "≡";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "Encolar todas (" + root.playlist-count + ")";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                }
+            }
+
+            TouchArea { clicked => { root.playlist-enqueue-all(); } }
+        }
+
+        // Crear una lista, desde el propio listado.
+        //
+        // Fija sobre la lista y no una fila más: una fila se va bajo el dedo en
+        // cuanto hay listas de sobra, y ésta es la única manera de crear.
+        if root.showing-playlists: Rectangle {
+            height: Theme.touch-target;
+            background: Theme.bg-secondary;
+
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: 8px;
+                alignment: center;
+
+                Text {
+                    text: "+";
+                    color: Theme.accent;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "Nueva lista";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                }
+            }
+
+            TouchArea { clicked => { root.name-sheet = 1; } }
+        }
+
+        // El listado de listas.
+        if root.showing-playlists: ListView {
+            mouse-drag-pan-enabled: true;
+            vertical-stretch: 1;
+
+            for pl in root.playlists: SwipeRow {
+                height: Theme.touch-target;
+                surface-color: Theme.bg-primary;
+                // Nada que deslizar aquí: una lista no se encola de un gesto, se
+                // abre. Va en un SwipeRow igualmente por la pulsación larga, que
+                // es suya y trae la guarda de "no actives al soltar".
+                enabled: false;
+                tapped => { root.playlist-open-requested(pl.id); }
+                held => {
+                    root.pl-menu-id = pl.id;
+                    root.pl-menu-name = pl.name;
+                    root.pl-confirm-delete = false;
+                }
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+                    spacing: 8px;
+
+                    Text {
+                        text: "♫";
+                        color: Theme.text-muted;
+                        width: 18px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: pl.name;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: pl.subtitle;
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                }
+            }
+        }
+
+        if root.grid: ListView {
+            mouse-drag-pan-enabled: true;
+            vertical-stretch: 1;
+
+            for line in root.grid-lines: linea := Rectangle {
+                // El ancho de una tarjeta, calculado una vez y aplicado a cada
+                // una. Fijarlo no es cosmético: el título lleva `wrap` y eso le
+                // da al texto un ancho mínimo —su palabra más larga—, que el
+                // HorizontalLayout respeta haciendo crecer la celda. Sin esto,
+                // "Game Boy Advance" ensancha su columna y la tercera se sale
+                // de la pantalla.
+                property <length> cell-w:
+                    (root.width - Theme.gap * 2 - (root.columns - 1) * 6px) / root.columns;
+
+                // Cuadradas, más un poco para el subtítulo.
+                height: linea.cell-w + 12px;
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+                    padding-bottom: 6px;
+                    spacing: 6px;
+
+                    for cell in line.cells: GridItem {
+                        width: linea.cell-w;
+                        cell: cell;
+                        current: cell.playing;
+                        tapped => { root.grid-tapped(cell.path); }
+                        held => {
+                            root.menu-path = cell.path;
+                            root.menu-name = cell.title;
+                            // Una tarjeta siempre es un contenedor: un disco o
+                            // una consola. Nunca es una pista suelta.
+                            root.menu-is-folder = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // El árbol y, con las mismas filas, las pistas de una lista abierta: una
+        // pista se dibuja igual venga de donde venga, así que esto no se duplica.
+        if !root.grid && !root.showing-playlists: ListView {
+            // Slint's default style builds its Flickable with `interactive: false`,
+            // so the list only scrolls by its scrollbar and the finger does nothing.
+            // Fine for a desktop with a wheel; wrong for anything held in a hand.
+            mouse-drag-pan-enabled: true;
+            vertical-stretch: 1;
+
+            for row[i] in root.rows: Rectangle {
+                height: Theme.touch-target;
+                // La fila que se lleva el dedo va por encima del resto.
+                y: root.dragging == i ? root.drag-offset : 0px;
+                opacity: root.dragging == i ? 0.85 : 1.0;
+
+                SwipeRow {
+                height: Theme.touch-target;
+                // Where you are in the tree, without having to remember.
+                surface-color: !row.is-folder && row.path == root.now-path
+                    ? Theme.bg-selected : Theme.bg-primary;
+                // Sólo las pistas se encolan; una carpeta se despliega. Y
+                // deslizar mientras se lleva una fila en volandas serían dos
+                // gestos a la vez.
+                enabled: !row.is-folder && root.dragging == -1;
+                action-label: "A la cola";
+                swiped => { root.enqueued(i); }
+                tapped => { root.activated(i); }
+                held => {
+                    root.menu-path = row.path;
+                    root.menu-name = row.title;
+                    root.menu-is-folder = row.is-folder;
+                }
+
+                HorizontalLayout {
+                    padding-left: Theme.gap + row.depth * 16px;
+                    padding-right: Theme.gap;
+                    spacing: 8px;
+
+                    Text {
+                        text: row.is-folder ? (row.expanded ? "▾" : "▸") : "";
+                        color: Theme.text-secondary;
+                        width: 14px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.is-folder ? "🗀" : "♪";
+                        color: Theme.text-muted;
+                        width: 18px;
+                        vertical-alignment: center;
+                    }
+                    Text {
+                        text: row.title;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        // Se queda todo el hueco sobrante, que es lo que ancla
+                        // la cifra de la derecha. Sin esto el layout repartía el
+                        // sobrante entre los dos y cada "258 pistas" o cada
+                        // "2:44" caía a una altura distinta, en escalera.
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: row.subtitle;
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+
+                    // El asa de reordenar, sólo dentro de una lista.
+                    //
+                    // Y sólo sin filtro: el índice `i` recorre las filas
+                    // *visibles*, y dárselo a un reordenamiento contra la lista
+                    // entera la revolvería en silencio. Es más honesto que la
+                    // opción desaparezca que dejarla mintiendo.
+                    //
+                    // Objetivo propio, y hay que MANTENER pulsado antes de
+                    // arrastrar, por lo mismo que en la Cola: el Flickable de la
+                    // lista se queda cualquier gesto vertical que empiece dentro
+                    // de los primeros 500 ms.
+                    if root.playlist-open && root.search == "": Rectangle {
+                        width: Theme.touch-target;
+                        border-radius: Theme.radius;
+                        background: grip.pressed ? Theme.bg-hover : transparent;
+
+                        Text {
+                            text: "≡";
+                            color: grip.pressed ? Theme.accent : Theme.text-muted;
+                            font-size: 20px;
+                        }
+
+                        grip := TouchArea {
+                            moved => {
+                                root.dragging = i;
+                                root.drag-offset = self.mouse-y - self.pressed-y;
+                            }
+                            pointer-event(e) => {
+                                if (root.dragging == i) {
+                                    if (e.kind == PointerEventKind.up) {
+                                        // Filas enteras: media fila de recorrido
+                                        // es un temblor, no una instrucción.
+                                        root.playlist-reordered(
+                                            i, i + round(root.drag-offset / Theme.touch-target));
+                                        root.dragging = -1;
+                                        root.drag-offset = 0px;
+                                    } else if (e.kind == PointerEventKind.cancel) {
+                                        // El Flickable se ha quedado el gesto.
+                                        // Soltar sin reordenar, y sobre todo
+                                        // soltar: `dragging` apaga el deslizar de
+                                        // TODAS las filas de la pestaña, en los
+                                        // cuatro modos, así que quedarse encallado
+                                        // aquí mata la biblioteca entera hasta
+                                        // reiniciar.
+                                        root.dragging = -1;
+                                        root.drag-offset = 0px;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+            }
+        }
+
+        if !root.cramped: Rectangle {
+            height: 22px;
+            background: Theme.bg-secondary;
+
+            Text {
+                text: root.total == 1 ? "1 elemento" : root.total + " elementos";
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+            }
+        }
+    }
+
+    // El menú de la pulsación larga.
+    //
+    // Declarado después del layout, que en Slint es lo que lo pone encima y le
+    // da los eventos. Sale desde abajo, al alcance del pulgar: el dedo ya está
+    // ahí, que es donde acaba de mantener pulsado.
+    if root.menu-path != "": Rectangle {
+        background: #000000bb;
+
+        // Tocar fuera cierra. Va antes que la hoja para quedar debajo de ella.
+        TouchArea {
+            clicked => { root.menu-path = ""; }
+        }
+
+        Rectangle {
+            y: parent.height - self.height;
+            // Con tope, y el tope importa en apaisado: sobre una carpeta la hoja
+            // lleva cinco entradas y su titulo, y eso es mas alto que los 1080
+            // px que quedan girado el telefono. Sin el, `y` se vuelve negativa y
+            // lo que se sale por arriba es justo el nombre de la carpeta sobre
+            // la que se va a actuar.
+            height: min(sheet.preferred-height, parent.height);
+            background: Theme.bg-secondary;
+
+            // Se come los toques que caen en la hoja, para que no lleguen al
+            // fondo y la cierren nada más abrirla.
+            TouchArea { }
+
+            // Y desplazable, porque recortar por arriba o por abajo son igual de
+            // malos: arriba se pierde sobre qué estás actuando, abajo se pierde
+            // "Cancelar", que es la salida.
+            ScrollView {
+                height: parent.height;
+                mouse-drag-pan-enabled: true;
+
+            sheet := VerticalLayout {
+                padding: Theme.gap;
+                spacing: 2px;
+
+                Text {
+                    text: root.menu-name;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-body;
+                    overflow: elide;
+                    height: Theme.touch-target;
+                    vertical-alignment: center;
+                }
+                Rectangle { height: 1px; background: Theme.border; }
+
+                MenuAction {
+                    glyph: "≡";
+                    label: root.menu-is-folder
+                        ? "Añadir todo, con las subcarpetas"
+                        : "Añadir a la cola";
+                    clicked => {
+                        root.enqueue-path(root.menu-path, true);
+                        root.menu-path = "";
+                    }
+                }
+
+                // Dentro de una lista hay una acción más que en ningún otro
+                // sitio: sacar la pista de donde está.
+                if root.playlist-open: MenuAction {
+                    glyph: "✕";
+                    label: "Quitar de la lista";
+                    clicked => {
+                        root.playlist-track-removed(root.menu-path);
+                        root.menu-path = "";
+                    }
+                }
+
+                // Sólo tiene sentido en una carpeta: para un fichero suelto las
+                // dos entradas harían lo mismo y una de ellas sobraría.
+                if root.menu-is-folder: MenuAction {
+                    glyph: "🗀";
+                    label: "Añadir sólo esta carpeta";
+                    clicked => {
+                        root.enqueue-path(root.menu-path, false);
+                        root.menu-path = "";
+                    }
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // A una lista. Cierra este nivel y abre el selector en el mismo
+                // fotograma: `pending-path` es lo que gobierna el segundo.
+                MenuAction {
+                    glyph: "♫";
+                    label: root.menu-is-folder
+                        ? "Añadir carpeta y subcarpetas a lista"
+                        : "Añadir a una lista";
+                    clicked => {
+                        root.pending-path = root.menu-path;
+                        root.pending-deep = true;
+                        root.menu-path = "";
+                    }
+                }
+
+                if root.menu-is-folder: MenuAction {
+                    glyph: "♫";
+                    label: "Añadir carpeta a lista";
+                    clicked => {
+                        root.pending-path = root.menu-path;
+                        root.pending-deep = false;
+                        root.menu-path = "";
+                    }
+                }
+
+                MenuAction {
+                    glyph: "✕";
+                    label: "Cancelar";
+                    clicked => { root.menu-path = ""; }
+                }
+            }
+            }
+        }
+    }
+
+    // El menú de una lista: renombrarla o borrarla.
+    if root.pl-menu-id != "": Rectangle {
+        background: #000000bb;
+
+        TouchArea { clicked => { root.pl-menu-id = ""; } }
+
+        Rectangle {
+            y: parent.height - self.height;
+            height: menu-lista.preferred-height;
+            background: Theme.bg-secondary;
+
+            TouchArea { }
+
+            menu-lista := VerticalLayout {
+                padding: Theme.gap;
+                spacing: 2px;
+
+                Text {
+                    text: root.pl-menu-name;
+                    color: Theme.text-primary;
+                    font-size: Theme.font-body;
+                    overflow: elide;
+                    height: Theme.touch-target;
+                    vertical-alignment: center;
+                }
+                Rectangle { height: 1px; background: Theme.border; }
+
+                MenuAction {
+                    glyph: "≡";
+                    label: "Encolar todas";
+                    clicked => {
+                        root.playlist-enqueue-id(root.pl-menu-id);
+                        root.pl-menu-id = "";
+                    }
+                }
+
+                MenuAction {
+                    glyph: "✎";
+                    label: "Renombrar";
+                    clicked => { root.name-sheet = 3; }
+                }
+
+                // Borrar se lleva la lista entera, así que el primer toque sólo
+                // arma. La entrada no cambia de sitio ni de alto entre los dos
+                // estados: el segundo toque cae donde cayó el primero.
+                MenuAction {
+                    glyph: root.pl-confirm-delete ? "✕" : "🗑";
+                    label: root.pl-confirm-delete
+                        ? "¿Seguro? Toca otra vez"
+                        : "Borrar la lista";
+                    clicked => {
+                        if (root.pl-confirm-delete) {
+                            root.playlist-delete(root.pl-menu-id);
+                            root.pl-confirm-delete = false;
+                            root.pl-menu-id = "";
+                        } else {
+                            root.pl-confirm-delete = true;
+                            deshacer.running = true;
+                        }
+                    }
+                }
+
+                // Una confirmación que espera para siempre es su propia trampa:
+                // vuelve al menú un rato después y el siguiente toque borra.
+                deshacer := Timer {
+                    interval: 4s;
+                    running: false;
+                    triggered => {
+                        self.running = false;
+                        root.pl-confirm-delete = false;
+                    }
+                }
+
+                MenuAction {
+                    glyph: "✕";
+                    label: "Cancelar";
+                    clicked => { root.pl-menu-id = ""; }
+                }
+            }
+        }
+    }
+
+    // El selector: a qué lista va lo que se acaba de elegir.
+    //
+    // Después de la hoja de acciones, que es lo que lo pone encima de ella.
+    if root.pending-path != "": Rectangle {
+        background: #000000bb;
+
+        TouchArea { clicked => { root.pending-path = ""; } }
+
+        Rectangle {
+            y: parent.height - self.height;
+            height: min(selector.preferred-height, parent.height);
+            background: Theme.bg-secondary;
+
+            TouchArea { }
+
+            selector := VerticalLayout {
+                padding: Theme.gap;
+                spacing: 2px;
+
+                Text {
+                    text: "Añadir a…";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-body;
+                    height: Theme.touch-target;
+                    vertical-alignment: center;
+                }
+                Rectangle { height: 1px; background: Theme.border; }
+
+                MenuAction {
+                    glyph: "+";
+                    label: "Crear lista nueva…";
+                    clicked => { root.name-sheet = 2; }
+                }
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // La altura, explícita y con tope de media pantalla.
+                //
+                // Explícita porque un ScrollView no saca altura preferida de su
+                // contenido: dentro de un VerticalLayout se encoge a una fila y
+                // el resto de las listas quedan detrás de una barra de
+                // desplazamiento que nadie va a ver. Con tope porque un `for`
+                // aquí instancia todas las filas, y sin él la hoja crecería por
+                // encima del borde superior en cuanto haya listas de sobra.
+                ScrollView {
+                    height: min(root.height * 0.5,
+                                root.all-playlists.length * (Theme.touch-target + 10px));
+                    mouse-drag-pan-enabled: true;
+
+                    VerticalLayout {
+                        spacing: 2px;
+                        for pl in root.all-playlists: MenuAction {
+                            glyph: "♫";
+                            label: pl.name;
+                            clicked => {
+                                root.add-path-to-playlist(
+                                    root.pending-path, root.pending-deep, pl.id);
+                                root.pending-path = "";
+                            }
+                        }
+                    }
+                }
+
+                MenuAction {
+                    glyph: "✕";
+                    label: "Cancelar";
+                    clicked => { root.pending-path = ""; }
+                }
+            }
+        }
+    }
+
+    // La hoja del nombre, después de todo lo demás para quedar por encima.
+    if root.name-sheet == 1: NameSheet {
+        heading: "Nueva lista";
+        confirm-label: "Crear";
+        accepted(nombre) => {
+            root.playlist-create(nombre);
+            root.name-sheet = 0;
+        }
+        cancelled => { root.name-sheet = 0; }
+    }
+
+    // Crear y añadir de una vez.
+    //
+    // Un paso y no dos porque `playlist-create` no devuelve nada: la interfaz no
+    // puede enterarse del id recién creado para añadirle algo después, así que
+    // las dos mitades tienen que ocurrir del lado de Rust.
+    if root.name-sheet == 2: NameSheet {
+        heading: "Nueva lista, con lo elegido dentro";
+        confirm-label: "Crear y añadir";
+        accepted(nombre) => {
+            root.add-path-to-new-playlist(root.pending-path, root.pending-deep, nombre);
+            root.name-sheet = 0;
+            root.pending-path = "";
+        }
+        // Cancelar aquí vuelve al selector, no al principio: el sitio del que
+        // vienes sigue teniendo sentido.
+        cancelled => { root.name-sheet = 0; }
+    }
+
+    if root.name-sheet == 3: NameSheet {
+        heading: "Renombrar la lista";
+        confirm-label: "Guardar";
+        initial: root.pl-menu-name;
+        accepted(nombre) => {
+            root.playlist-rename(root.pl-menu-id, nombre);
+            root.name-sheet = 0;
+            root.pl-menu-id = "";
+        }
+        cancelled => { root.name-sheet = 0; }
+    }
+}
+

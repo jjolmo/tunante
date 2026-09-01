@@ -1,0 +1,174 @@
+// First run: pick the folders the library is built from.
+
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { FolderEntry } from "types.slint";
+
+// First run: pick the folders the library is built from.
+//
+// A browser of our own rather than the XDG portal. On a phone the portal chooser
+// is a desktop file dialog in a phone-sized hole, and this only ever has to do
+// one thing: walk directories and tick some.
+export component FolderPicker inherits Rectangle {
+    in property <[FolderEntry]> entries;
+    in property <string> current-path;
+    in property <int> chosen-count;
+    callback enter(int);
+    callback toggle(int);
+    callback go-up();
+    callback done();
+
+    background: Theme.bg-primary;
+
+    VerticalLayout {
+        Rectangle {
+            height: 64px;
+            background: Theme.bg-secondary;
+            VerticalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                alignment: center;
+                spacing: 2px;
+                Text {
+                    text: "¿Dónde está tu música?";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-title;
+                }
+                Text {
+                    text: root.current-path;
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // Up one level. Always present, so there is never a dead end.
+        Rectangle {
+            height: Theme.touch-target;
+            background: up-touch.has-hover ? Theme.bg-hover : transparent;
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                spacing: 8px;
+                Text {
+                    text: "▴";
+                    color: Theme.text-secondary;
+                    width: 18px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "Subir un nivel";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                }
+            }
+            up-touch := TouchArea { clicked => { root.go-up(); } }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        ListView {
+            // Slint's default style builds its Flickable with `interactive: false`,
+            // so the list only scrolls by its scrollbar and the finger does nothing.
+            // Fine for a desktop with a wheel; wrong for anything held in a hand.
+            mouse-drag-pan-enabled: true;
+            vertical-stretch: 1;
+            for e[i] in root.entries: Rectangle {
+                height: Theme.touch-target + 4px;
+                background: e.chosen ? Theme.bg-selected : (t.has-hover ? Theme.bg-hover : transparent);
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+                    spacing: 10px;
+
+                    // Tick box on the left: tapping it chooses the folder,
+                    // tapping the name opens it. Two targets, both finger-sized.
+                    Rectangle {
+                        width: Theme.touch-target;
+                        Rectangle {
+                            width: 22px;
+                            height: 22px;
+                            border-radius: 4px;
+                            border-width: 2px;
+                            border-color: e.chosen ? Theme.accent : Theme.text-muted;
+                            background: e.chosen ? Theme.accent : transparent;
+                            Text {
+                                text: e.chosen ? "✓" : "";
+                                color: Theme.bg-primary;
+                                font-size: 15px;
+                            }
+                        }
+                        TouchArea { clicked => { root.toggle(i); } }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        HorizontalLayout {
+                            spacing: 8px;
+                            Text {
+                                text: "🗀";
+                                color: Theme.text-muted;
+                                width: 18px;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: e.name;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-body;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        t := TouchArea { clicked => { root.enter(i); } }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 72px;
+            background: Theme.bg-secondary;
+            HorizontalLayout {
+                padding: Theme.gap;
+                spacing: Theme.gap;
+
+                Text {
+                    text: root.chosen-count == 0
+                        ? "Marca al menos una carpeta"
+                        : root.chosen-count + " carpeta(s) elegidas";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                    horizontal-stretch: 1;
+                }
+
+                Rectangle {
+                    width: 130px;
+                    border-radius: Theme.radius;
+                    background: root.chosen-count > 0 ? Theme.accent : Theme.bg-tertiary;
+                    Text {
+                        text: "Analizar";
+                        color: root.chosen-count > 0 ? #ffffff : Theme.text-muted;
+                        font-size: Theme.font-body;
+                    }
+                    TouchArea {
+                        enabled: root.chosen-count > 0;
+                        clicked => { root.done(); }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// A row you can shove sideways to act on it.
+//
+// Wraps its content and reports the gesture; the content itself is passed in as
+// children, so the same behaviour serves the library and the queue without
+// either of them knowing about swiping.
+//
+// Deliberately built on SwipeGestureHandler rather than a bare TouchArea: the
+// handler is what tells a sideways drag apart from the vertical flick that
+// scrolls the list, and getting that wrong makes the list impossible to scroll.
