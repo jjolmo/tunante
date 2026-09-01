@@ -68,8 +68,14 @@
 > no está) y **«Modo de interfaz»** (auto/mini/escritorio, persistido en
 > `mini.ui_mode` — el override manual que el plan pedía; los flags CLI ganan
 > sin persistir). Más el instrumento `--tab N`, por la misma razón que existe
-> `--mode`. Queda de 3a: el panel DSP/EQ en Ajustes (`engine_mut()` espera),
-> ratings en UI, y filtro de cortas/continue-from-queue.
+> `--mode`. **Y el panel DSP/EQ**: `DspConfig` bajó de la app Tauri a
+> `tunante-core::dsp` el día que ganó su segundo consumidor (mismo JSON, misma
+> clave `dsp_config`, mismos clamps — ahora en `apply_to`/`read_from`, y el
+> desktop los reusa), y Ajustes ganó la sección Ecualizador: toggle, tres
+> bandas y preamp como sliders de dB centrados en cero (mover una banda con el
+> EQ apagado lo enciende: eso es lo que el gesto significa), Mono y Limitador.
+> Audible en la pista que ya suena — atómicas leídas por frame, sin corte.
+> Queda de 3a: ratings en UI y filtro de cortas/continue-from-queue.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

@@ -159,6 +159,18 @@ export component DesktopShell inherits Rectangle {
     in property <string> ui-mode-label;
     callback cycle-output();
     callback cycle-ui-mode();
+    in property <bool> eq-enabled;
+    in property <float> eq-low;
+    in property <float> eq-mid;
+    in property <float> eq-high;
+    in property <float> preamp-db;
+    in property <bool> dsp-mono;
+    in property <bool> dsp-limiter;
+    callback toggle-eq();
+    callback set-eq-band(int, float);
+    callback set-preamp(float);
+    callback toggle-mono();
+    callback toggle-limiter();
 
     // The one piece of state the shell owns: which pane the centre shows.
     // 0 = the track table · 1 = the phone's library views · 2 = settings.
@@ -318,6 +330,18 @@ export component DesktopShell inherits Rectangle {
                     ui-mode-label: root.ui-mode-label;
                     cycle-output => { root.cycle-output(); }
                     cycle-ui-mode => { root.cycle-ui-mode(); }
+                    eq-enabled: root.eq-enabled;
+                    eq-low: root.eq-low;
+                    eq-mid: root.eq-mid;
+                    eq-high: root.eq-high;
+                    preamp-db: root.preamp-db;
+                    dsp-mono: root.dsp-mono;
+                    dsp-limiter: root.dsp-limiter;
+                    toggle-eq => { root.toggle-eq(); }
+                    set-eq-band(b, v) => { root.set-eq-band(b, v); }
+                    set-preamp(v) => { root.set-preamp(v); }
+                    toggle-mono => { root.toggle-mono(); }
+                    toggle-limiter => { root.toggle-limiter(); }
                 }
             }
 

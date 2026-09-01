@@ -188,6 +188,76 @@ impl DspSettings {
     }
 }
 
+/// The whole chain's state as plain values — what a UI edits and what the
+/// settings table stores (the desktop persists it as JSON under the
+/// `dsp_config` key, and the field names here are that format).
+///
+/// Moved down from the desktop app the day mini's settings screen became its
+/// second consumer. [`apply_to`](Self::apply_to) carries the clamps, so no
+/// caller can push a value the processors were not written for.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DspConfig {
+    pub mono: bool,
+    pub mono_compensate: bool,
+    pub mono_phase_safe: bool,
+    pub balance: f32,
+    pub width_enabled: bool,
+    pub width: f32,
+    pub preamp_enabled: bool,
+    pub preamp_db: f32,
+    pub eq_enabled: bool,
+    pub eq_low_db: f32,
+    pub eq_mid_db: f32,
+    pub eq_high_db: f32,
+    pub limiter: bool,
+}
+
+impl Default for DspConfig {
+    fn default() -> Self {
+        Self::read_from(&DspSettings::default())
+    }
+}
+
+impl DspConfig {
+    /// Push every value into the shared atomics. Takes effect on the track
+    /// that is already playing — the audio thread reads them per frame.
+    pub fn apply_to(&self, dsp: &DspSettings) {
+        dsp.mono.set(self.mono);
+        dsp.mono_compensate.set(self.mono_compensate);
+        dsp.mono_phase_safe.set(self.mono_phase_safe);
+        dsp.balance.set(self.balance.clamp(-1.0, 1.0));
+        dsp.width_enabled.set(self.width_enabled);
+        dsp.width.set(self.width.clamp(0.0, 2.0));
+        dsp.preamp_enabled.set(self.preamp_enabled);
+        dsp.preamp_db.set(self.preamp_db.clamp(-20.0, 20.0));
+        dsp.eq_enabled.set(self.eq_enabled);
+        dsp.eq_low_db.set(self.eq_low_db.clamp(-20.0, 20.0));
+        dsp.eq_mid_db.set(self.eq_mid_db.clamp(-20.0, 20.0));
+        dsp.eq_high_db.set(self.eq_high_db.clamp(-20.0, 20.0));
+        dsp.limiter.set(self.limiter);
+    }
+
+    /// Read the chain's current state back, so a UI cannot drift from the
+    /// engine.
+    pub fn read_from(dsp: &DspSettings) -> Self {
+        Self {
+            mono: dsp.mono.get(),
+            mono_compensate: dsp.mono_compensate.get(),
+            mono_phase_safe: dsp.mono_phase_safe.get(),
+            balance: dsp.balance.get(),
+            width_enabled: dsp.width_enabled.get(),
+            width: dsp.width.get(),
+            preamp_enabled: dsp.preamp_enabled.get(),
+            preamp_db: dsp.preamp_db.get(),
+            eq_enabled: dsp.eq_enabled.get(),
+            eq_low_db: dsp.eq_low_db.get(),
+            eq_mid_db: dsp.eq_mid_db.get(),
+            eq_high_db: dsp.eq_high_db.get(),
+            limiter: dsp.limiter.get(),
+        }
+    }
+}
+
 /// An ordered stack of processors.
 pub struct DspChain {
     processors: Vec<Box<dyn DspProcessor>>,

@@ -123,6 +123,18 @@ export component AppWindow inherits Window {
     in property <string> ui-mode-label: "auto";
     callback cycle-output();
     callback cycle-ui-mode();
+    in property <bool> eq-enabled;
+    in property <float> eq-low;
+    in property <float> eq-mid;
+    in property <float> eq-high;
+    in property <float> preamp-db;
+    in property <bool> dsp-mono;
+    in property <bool> dsp-limiter;
+    callback toggle-eq();
+    callback set-eq-band(int, float);
+    callback set-preamp(float);
+    callback toggle-mono();
+    callback toggle-limiter();
 
     // The desktop shell's track table. Sort and filter live in Rust.
     in property <[TableRow]> table-rows;
@@ -342,6 +354,18 @@ export component AppWindow inherits Window {
         ui-mode-label: root.ui-mode-label;
         cycle-output => { root.cycle-output(); }
         cycle-ui-mode => { root.cycle-ui-mode(); }
+        eq-enabled: root.eq-enabled;
+        eq-low: root.eq-low;
+        eq-mid: root.eq-mid;
+        eq-high: root.eq-high;
+        preamp-db: root.preamp-db;
+        dsp-mono: root.dsp-mono;
+        dsp-limiter: root.dsp-limiter;
+        toggle-eq => { root.toggle-eq(); }
+        set-eq-band(b, v) => { root.set-eq-band(b, v); }
+        set-preamp(v) => { root.set-preamp(v); }
+        toggle-mono => { root.toggle-mono(); }
+        toggle-limiter => { root.toggle-limiter(); }
     }
 
     if !root.setup-mode && root.scan-status == "" && !root.desktop: VerticalLayout {
@@ -440,6 +464,18 @@ export component AppWindow inherits Window {
                         ui-mode-label: root.ui-mode-label;
                         cycle-output => { root.cycle-output(); }
                         cycle-ui-mode => { root.cycle-ui-mode(); }
+                        eq-enabled: root.eq-enabled;
+                        eq-low: root.eq-low;
+                        eq-mid: root.eq-mid;
+                        eq-high: root.eq-high;
+                        preamp-db: root.preamp-db;
+                        dsp-mono: root.dsp-mono;
+                        dsp-limiter: root.dsp-limiter;
+                        toggle-eq => { root.toggle-eq(); }
+                        set-eq-band(b, v) => { root.set-eq-band(b, v); }
+                        set-preamp(v) => { root.set-preamp(v); }
+                        toggle-mono => { root.toggle-mono(); }
+                        toggle-limiter => { root.toggle-limiter(); }
                     }
 
                     if root.tab == 2: LibraryTab {
