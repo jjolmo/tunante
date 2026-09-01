@@ -335,6 +335,166 @@ pub fn suggest_names(http: &dyn Http, query: &str) -> Vec<String> {
     out
 }
 
+/// Every cover these services will offer for a name, for somebody to choose
+/// between.
+///
+/// The counterpart to [`suggest_names`], and loose for the same reason. The
+/// functions above gate on the name matching, because what they pick gets
+/// written into a library with nobody looking; here a person is looking at the
+/// images, so the useful answer is everything plausible and the strictness
+/// moves to them.
+///
+/// What the gates *would* have said is kept rather than thrown away: a result
+/// that passes one is still marked confident, so the list can show which rows
+/// are the same game and which are merely near it.
+pub fn search_covers(http: &dyn Http, query: &str) -> Vec<Hit> {
+    let mut out: Vec<Hit> = Vec::new();
+    if usable(query).is_none() {
+        return out;
+    }
+    let push = |hit: Hit, out: &mut Vec<Hit>| {
+        if !out.iter().any(|h| h.url == hit.url) {
+            out.push(hit);
+        }
+    };
+
+    // iTunes, in the measured order of what actually finds covers.
+    let url = format!(
+        "https://itunes.apple.com/search?term={}&media=music&entity=album&limit=12",
+        urlencoding::encode(&format!("{query} soundtrack"))
+    );
+    if let Some(data) = json(http, &url) {
+        for r in data.get("results").and_then(|v| v.as_array()).unwrap_or(&Vec::new()) {
+            let (Some(title), Some(art)) = (
+                r.get("collectionName").and_then(|v| v.as_str()),
+                r.get("artworkUrl100").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            push(
+                Hit {
+                    url: art.replace("100x100bb", "600x600bb"),
+                    confidence: if album_matches(query, title) {
+                        Confidence::High
+                    } else {
+                        Confidence::Low
+                    },
+                    source: "itunes",
+                    matched_name: title.to_string(),
+                },
+                &mut out,
+            );
+        }
+    }
+
+    // Steam, for PC and for anything that never had a cartridge.
+    let url = format!(
+        "https://steamcommunity.com/actions/SearchApps/{}",
+        urlencoding::encode(query)
+    );
+    if let Some(data) = json(http, &url) {
+        for a in data.as_array().unwrap_or(&Vec::new()).iter().take(10) {
+            let (Some(title), Some(appid)) = (
+                a.get("name").and_then(|v| v.as_str()),
+                a.get("appid").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            push(
+                Hit {
+                    url: format!(
+                        "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"
+                    ),
+                    confidence: if same_name(query, title) {
+                        Confidence::High
+                    } else {
+                        Confidence::Low
+                    },
+                    source: "steam",
+                    matched_name: title.to_string(),
+                },
+                &mut out,
+            );
+        }
+    }
+
+    // Deezer. Quota exhaustion still arrives as a 200 with an `error` object.
+    let url = format!(
+        "https://api.deezer.com/search/album?q={}&limit=12",
+        urlencoding::encode(query)
+    );
+    if let Some(data) = json(http, &url) {
+        if data.get("error").is_none() {
+            for r in data.get("data").and_then(|v| v.as_array()).unwrap_or(&Vec::new()) {
+                let (Some(title), Some(cover)) = (
+                    r.get("title").and_then(|v| v.as_str()),
+                    r.get("cover_xl").and_then(|v| v.as_str()),
+                ) else {
+                    continue;
+                };
+                push(
+                    Hit {
+                        url: cover.to_string(),
+                        confidence: if album_matches(query, title) {
+                            Confidence::High
+                        } else {
+                            Confidence::Low
+                        },
+                        source: "deezer",
+                        matched_name: title.to_string(),
+                    },
+                    &mut out,
+                );
+            }
+        }
+    }
+
+    // Nintendo's catalogue: the only source that knows what a Switch or a DS
+    // game is called, and the only one with a cover for them at all.
+    let url = format!(
+        "https://searching.nintendo-europe.com/en/select?q={}&fq=type:GAME&wt=json&rows=10",
+        urlencoding::encode(query)
+    );
+    if let Some(data) = json(http, &url) {
+        let docs = data
+            .get("response")
+            .and_then(|r| r.get("docs"))
+            .and_then(|d| d.as_array())
+            .cloned()
+            .unwrap_or_default();
+        for d in &docs {
+            let (Some(title), Some(img)) = (
+                d.get("title").and_then(|v| v.as_str()),
+                d.get("image_url_sq_s").and_then(|v| v.as_str()),
+            ) else {
+                continue;
+            };
+            push(
+                Hit {
+                    url: if img.starts_with("//") { format!("https:{img}") } else { img.to_string() },
+                    confidence: if same_name(query, title) {
+                        Confidence::High
+                    } else {
+                        Confidence::Low
+                    },
+                    source: "nintendo",
+                    matched_name: title.to_string(),
+                },
+                &mut out,
+            );
+        }
+    }
+
+    // Wikipedia last, as it is in the chain, and never as anything but a
+    // guess: what it returns is whatever the article's lead image happens to
+    // be, which is sometimes a title screen and sometimes a screenshot.
+    if let Some(hit) = wikipedia(http, query) {
+        push(hit, &mut out);
+    }
+
+    out
+}
+
 pub const CHAIN: &[(&str, fn(&dyn Http, &str) -> Option<Hit>)] = &[
     ("itunes", itunes),
     ("steam", steam),

@@ -127,6 +127,62 @@ impl Index {
         best
     }
 
+    /// Every entry somebody might have meant, best first.
+    ///
+    /// Deliberately looser than [`Index::best_match`], because it answers a
+    /// different question. That one decides what to write into a folder with
+    /// nobody watching, so two plausible games are a reason to decline; this
+    /// one fills a list a person reads, where a second plausible game is a
+    /// second row rather than a failure.
+    pub fn candidates(&self, query: &str, limit: usize) -> Vec<usize> {
+        let q = name::normalize(query);
+        if q.key.is_empty() {
+            return Vec::new();
+        }
+        let qkeys: Vec<&str> = q.keys().collect();
+        let mut scored: Vec<(u8, usize)> = Vec::new();
+        for (i, e) in self.entries.iter().enumerate() {
+            if let Some(rank) = closeness(&qkeys, &e.norm) {
+                scored.push((rank, i));
+            }
+        }
+        // Closest first; then the best region, so the row a person sees first
+        // is the one a download would have chosen; then the shortest name,
+        // which is the game rather than a compilation that contains it.
+        scored.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+                .then_with(|| {
+                    region_rank(&self.entries[a.1].norm.groups)
+                        .cmp(&region_rank(&self.entries[b.1].norm.groups))
+                })
+                .then_with(|| self.entries[a.1].file.len().cmp(&self.entries[b.1].file.len()))
+                .then_with(|| self.entries[a.1].file.cmp(&self.entries[b.1].file))
+        });
+        scored.into_iter().take(limit).map(|(_, i)| i).collect()
+    }
+
+    /// The entries whose name *is* this name, under any of its spellings.
+    ///
+    /// The cheap half of [`Index::candidates`], and the only part worth running
+    /// across twenty archives that do not belong to this console: it is a hash
+    /// lookup rather than a scan, and a fuzzy hit from an unrelated platform is
+    /// a lottery — the same reasoning as [`crate::search`].
+    pub fn exact(&self, query: &str) -> Vec<usize> {
+        let q = name::normalize(query);
+        let mut out: Vec<usize> = Vec::new();
+        for k in q.keys() {
+            if let Some(hits) = self.by_key.get(k) {
+                for &i in hits {
+                    if !out.contains(&i) {
+                        out.push(i);
+                    }
+                }
+            }
+        }
+        out.sort_by_key(|&i| region_rank(&self.entries[i].norm.groups));
+        out
+    }
+
     fn match_one(&self, candidate: &str) -> Option<Match> {
         let q = name::normalize(candidate);
         if q.key.is_empty() {
@@ -327,6 +383,48 @@ impl Index {
     }
 }
 
+/// How closely an entry answers a query, smaller being closer, or `None` for
+/// not at all: 0 the same name, 1 one name extends the other, 2 one contains
+/// the other, 3 a fuzzy resemblance.
+fn closeness(qkeys: &[&str], entry: &Normalized) -> Option<u8> {
+    if entry.key.is_empty() {
+        return None;
+    }
+    let mut best: Option<u8> = None;
+    let note = |r: u8, best: &mut Option<u8>| {
+        if best.is_none_or(|b| r < b) {
+            *best = Some(r);
+        }
+    };
+    for q in qkeys {
+        if q.is_empty() {
+            continue;
+        }
+        for ek in entry.keys() {
+            if ek.is_empty() {
+                continue;
+            }
+            if *q == ek {
+                return Some(0);
+            }
+            if ek.starts_with(&format!("{q} ")) || q.starts_with(&format!("{ek} ")) {
+                note(1, &mut best);
+            } else if ek.contains(q) || q.contains(ek) {
+                note(2, &mut best);
+            } else {
+                // The same length prefilter the fuzzy matcher uses, for the
+                // same reason: similarity is the expensive part and two names
+                // of very different lengths never clear the cutoff anyway.
+                let (a, b) = (q.len() as f64, ek.len() as f64);
+                if a.min(b) / a.max(b) >= 0.6 && name::similarity(q, ek) >= FUZZY_CUTOFF {
+                    note(3, &mut best);
+                }
+            }
+        }
+    }
+    best
+}
+
 /// Words that describe how a rip was packaged rather than what it is of.
 ///
 /// Deliberately excludes anything that could name a different product —
@@ -501,6 +599,45 @@ mod tests {
         let body = "<html><body>".to_string() + &"nothing here. ".repeat(100) + "</body></html>";
         assert_eq!(parse_autoindex(&body).len(), 0);
         assert!(!looks_like_a_listing(&body, 0));
+    }
+
+    /// The picker's list, which is a different question from the matcher's
+    /// answer: `final fantasy` is exactly the query [`Index::match_one`]
+    /// declines because it cannot tell II from III, and exactly the one a
+    /// person wants both rows for.
+    #[test]
+    fn a_list_offers_what_a_single_answer_has_to_decline() {
+        let idx = index();
+        assert!(idx.best_match(&["Final Fantasy".into()]).is_none(), "ambiguous, so no answer");
+        let names: Vec<&str> =
+            idx.candidates("Final Fantasy", 8).into_iter().map(|i| idx.entries[i].file.as_str()).collect();
+        assert!(names.contains(&"Final Fantasy II (USA)"), "got {names:?}");
+        assert!(names.contains(&"Final Fantasy III (USA)"), "got {names:?}");
+    }
+
+    /// The name itself first, then what merely contains it. Typing a game and
+    /// getting its sequel at the top would be a list nobody scrolls past.
+    #[test]
+    fn the_closest_name_is_the_first_row() {
+        let idx = index();
+        let first = idx.candidates("Mega Man X", 8)[0];
+        assert_eq!(idx.entries[first].file, "Mega Man X (USA)");
+    }
+
+    /// Every region, since which box art a person wants is the whole reason
+    /// they opened a list, but the one a download would have taken first.
+    #[test]
+    fn every_region_is_offered_best_one_first() {
+        let idx = index();
+        let got: Vec<&str> =
+            idx.exact("Demon's Crest").into_iter().map(|i| idx.entries[i].file.as_str()).collect();
+        assert_eq!(got, ["Demon's Crest (USA)", "Demon's Crest (Europe)"]);
+    }
+
+    #[test]
+    fn a_name_the_archive_does_not_have_offers_nothing() {
+        assert!(index().exact("Halo").is_empty());
+        assert!(index().candidates("Halo", 8).is_empty());
     }
 
     fn index() -> Index {

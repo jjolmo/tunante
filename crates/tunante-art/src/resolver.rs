@@ -195,6 +195,33 @@ impl Default for BulkOptions {
 /// probing really is CPU-bound.
 pub const WORKERS: usize = 4;
 
+/// How many rows one archive may contribute to the picker. Enough to show the
+/// regional variants of the right game, few enough that they do not push the
+/// other sources off the end of the list.
+const ARCHIVE_OPTIONS: usize = 8;
+
+/// One archive entry as something to offer.
+///
+/// The confidence is what it is worth as an *answer*, not how well it sorted:
+/// the same name is the same game, anything else is a suggestion, and a hit
+/// from a platform that did not corroborate it is one step less either way —
+/// the same rule [`crate::search`] applies.
+fn archive_hit(system: &str, entry: &crate::index::Entry, query: &str, same_console: bool) -> sources::Hit {
+    let equal = name::normalize(query).keys().any(|k| entry.norm.keys().any(|e| e == k));
+    let confidence = match (equal, same_console) {
+        (true, true) => Confidence::Exact,
+        (true, false) => Confidence::High,
+        (false, true) => Confidence::Medium,
+        (false, false) => Confidence::Low,
+    };
+    sources::Hit {
+        url: archive::cover_url(system, &entry.file),
+        confidence,
+        source: if same_console { "libretro" } else { "libretro-other" },
+        matched_name: entry.file.clone(),
+    }
+}
+
 pub struct Resolver {
     http: Arc<dyn Http>,
 }
@@ -279,6 +306,118 @@ impl Resolver {
             }
         }
         None
+    }
+
+    /// Every cover on offer for one request, for a person to choose from.
+    ///
+    /// The list the automatic path never shows. [`Resolver::find`] returns the
+    /// one answer it is willing to write unattended and stops at the first
+    /// source that has it, which is right for a bulk run and useless when the
+    /// answer is wrong: there is nothing to correct it *with*. This asks
+    /// everything and returns everything, ordered the way the chain is ordered,
+    /// and lets the person decide.
+    ///
+    /// `query` is a name they typed. Without one this falls back to the same
+    /// candidates the automatic path uses, so opening the picker on a track
+    /// shows what the download would have found.
+    ///
+    /// Only the console's own archive is scanned loosely. The other twenty are
+    /// asked for the name outright — a fuzzy match against 46,000 titles from
+    /// archives that do not corroborate the platform is a lottery, which is the
+    /// same reasoning as [`crate::search`], and here it would also be twenty
+    /// scans deep in a user's keystroke.
+    pub fn options(&self, req: &CoverRequest, query: Option<&str>, limit: usize) -> Vec<sources::Hit> {
+        let names: Vec<String> = match query.map(str::trim).filter(|q| !q.is_empty()) {
+            Some(q) => vec![q.to_string()],
+            None => req.candidates.iter().filter(|c| !c.trim().is_empty()).cloned().collect(),
+        };
+        if names.is_empty() {
+            return Vec::new();
+        }
+
+        let mut out: Vec<sources::Hit> = Vec::new();
+        let push = |hit: sources::Hit, out: &mut Vec<sources::Hit>| {
+            if !out.iter().any(|h| h.url == hit.url) {
+                out.push(hit);
+            }
+        };
+
+        // 1. This console's own archive, loosely.
+        if let Some(system) = req.libretro_system.as_deref() {
+            if let Ok(index) = archive::index_for(self.http.as_ref(), system) {
+                for name in &names {
+                    for i in index.candidates(name, ARCHIVE_OPTIONS) {
+                        let entry = &index.entries[i];
+                        push(archive_hit(system, entry, name, true), &mut out);
+                    }
+                }
+            }
+        }
+
+        // 2. Every other archive, on the name outright. This is where a Game
+        //    Boy folder holding a Game Boy Color game gets its box art.
+        for name in &names {
+            if name::normalize(name).key.len() < search::MIN_CROSS_LEN {
+                continue;
+            }
+            for (cid, system) in &req.other_systems {
+                if *cid == req.console_id {
+                    continue;
+                }
+                let Ok(index) = archive::index_for(self.http.as_ref(), system) else { continue };
+                // One per archive: the rest are the same game's other regions,
+                // and twenty archives' worth of those would bury the sources
+                // below.
+                if let Some(&i) = index.exact(name).first() {
+                    push(archive_hit(system, &index.entries[i], name, false), &mut out);
+                }
+            }
+        }
+
+        // 3. The storefronts and album services, loosely.
+        for name in &names {
+            for hit in sources::search_covers(self.http.as_ref(), name) {
+                push(hit, &mut out);
+            }
+        }
+
+        out.truncate(limit);
+        out
+    }
+
+    /// Take a cover somebody chose and make it this game\'s.
+    ///
+    /// Everything the automatic path would have decided is already decided, so
+    /// this only downloads, checks and keeps — but it keeps in both places, and
+    /// missing either one makes the choice look like it did not take. The cache
+    /// is what the player reads for the artwork panel, and the folder is what
+    /// survives a rescan and reaches the phone.
+    ///
+    /// [`Overwrite::Replace`], unconditionally. The rule that protects the
+    /// user\'s own artwork exists because a *download* must not overwrite it;
+    /// this is the user pointing at an image and saying to use that one.
+    pub fn fetch_chosen(&self, req: &CoverRequest, url: &str) -> Result<Resolved, ArtError> {
+        let resp = self.http.get(url, image::MAX_BYTES)?;
+        if !resp.is_success() {
+            return Err(ArtError::Http { status: resp.status, url: url.to_string() });
+        }
+        let info = image::inspect(&resp.body)?;
+
+        let key = req.cache_key();
+        cache::forget(&key);
+        let _ = cache::put(&key, &resp.body);
+
+        if let Some(dir) = req.dir.as_ref() {
+            folder::store_cover(dir, &resp.body, &info, Overwrite::Replace)?;
+        }
+
+        Ok(Resolved {
+            bytes: resp.body,
+            info,
+            confidence: Confidence::Exact,
+            source: "chosen".into(),
+            matched_name: req.primary().to_string(),
+        })
     }
 
     /// Throw away whatever is remembered about this request.

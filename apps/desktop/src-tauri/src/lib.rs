@@ -1365,6 +1365,8 @@ pub fn run() {
             commands::library::get_artwork,
             commands::covers::resolve_cover,
             commands::covers::refetch_cover,
+            commands::covers::search_cover_options,
+            commands::covers::choose_cover,
             commands::covers::preview_cover_downloads,
             commands::covers::download_covers,
             commands::covers::cancel_cover_download,

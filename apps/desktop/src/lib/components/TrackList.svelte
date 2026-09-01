@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { libraryStore } from '$lib/stores/library.svelte';
-	import { coversStore } from '$lib/stores/covers.svelte';
 	import { playlistsStore } from '$lib/stores/playlists.svelte';
 	import { trackDnd } from '$lib/stores/trackDnd.svelte';
 	import { consolesStore } from '$lib/stores/consoles.svelte';
@@ -13,6 +12,7 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import type { ContextMenuItem } from './ContextMenu.svelte';
 	import ContextMenu from './ContextMenu.svelte';
+	import CoverPickerDialog from './CoverPickerDialog.svelte';
 	import MetadataDialog from './MetadataDialog.svelte';
 	import SearchBar from './SearchBar.svelte';
 
@@ -31,6 +31,7 @@
 
 	// Metadata dialog state
 	let metadataDialogTracks = $state<Track[]>([]);
+	let coverPickerTrack = $state<Track | null>(null);
 
 	// Column resize state
 	let resizingCol = $state<string | null>(null);
@@ -262,18 +263,15 @@
 				label: 'Open containing folder',
 				action: () => invoke('open_containing_folder', { path: track.path })
 			});
-			// For when the cover is wrong. Forces past the cache, past
-			// "never overwrite", and past the confidence floor a bulk run
-			// applies — the user asked for this one specifically.
+			// For when the cover is wrong. Asking for the automatic answer
+			// again was the old behaviour and could only ever produce the same
+			// kind of answer — when the cover is wrong because the name is
+			// wrong, there was nothing for it to do differently. The picker
+			// shows every candidate and takes a name.
 			items.push({
-				label: 'Re-download cover art',
-				action: async () => {
-					try {
-						await invoke('refetch_cover', { trackPath: track.path });
-						coversStore.refreshToken++;
-					} catch (e) {
-						console.error('refetch cover:', e);
-					}
+				label: 'Cover art…',
+				action: () => {
+					coverPickerTrack = track;
 				}
 			});
 		}
@@ -643,6 +641,10 @@
 		y={contextMenu.y}
 		onclose={() => (contextMenu = null)}
 	/>
+{/if}
+
+{#if coverPickerTrack}
+	<CoverPickerDialog track={coverPickerTrack} onclose={() => (coverPickerTrack = null)} />
 {/if}
 
 {#if metadataDialogTracks.length > 0}

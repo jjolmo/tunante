@@ -169,6 +169,103 @@ pub async fn refetch_cover(
     }))
 }
 
+/// One cover on offer, for the picker.
+///
+/// A URL rather than the image: the window loads them itself. Thirty covers
+/// fetched through the backend and handed over as base64 is thirty round trips
+/// and several megabytes of string, to arrive at what an `<img src>` does for
+/// free — and the picker is a grid that scrolls, so most of them are never
+/// looked at.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CoverOption {
+    pub url: String,
+    /// Which archive or service offered it.
+    pub source: String,
+    /// What that source calls it, so a person can tell whether it is the right
+    /// game before they even look at the picture.
+    pub name: String,
+    pub confidence: Confidence,
+}
+
+/// Every cover on offer for a track, optionally for a name the user typed.
+///
+/// The counterpart to [`refetch_cover`]. That one takes the automatic answer
+/// again and can only ever produce the same kind of answer; when the cover is
+/// wrong because the *name* is wrong — a folder called `ct`, a soundtrack whose
+/// album tag is not the game's title — there is nothing for it to do
+/// differently. Here the person supplies the name and picks the picture.
+#[tauri::command]
+pub async fn search_cover_options(
+    track_path: String,
+    query: Option<String>,
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<CoverOption>, String> {
+    let track = state
+        .db
+        .lock()
+        .get_track_by_path(&track_path)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no such track: {track_path}"))?;
+    // No folder: this searches, it does not write. The write happens in
+    // `choose_cover`, once somebody has pointed at one.
+    let req = request_for(&track, false);
+
+    // Off the async runtime, as everything that talks to the archives is: this
+    // asks up to twenty index files and four services, and would park a tokio
+    // worker for all of it.
+    tauri::async_runtime::spawn_blocking(move || {
+        resolver()
+            .options(&req, query.as_deref(), MAX_OPTIONS)
+            .into_iter()
+            .map(|h| CoverOption {
+                url: h.url,
+                source: h.source.to_string(),
+                name: h.matched_name,
+                confidence: h.confidence,
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// As many covers as a person will scroll through before giving up and typing
+/// a better name.
+const MAX_OPTIONS: usize = 60;
+
+/// Use this cover for this track.
+///
+/// Writes into the folder with [`Overwrite::Replace`] and past the confidence
+/// floor, both deliberately: every rule that makes the automatic path cautious
+/// exists because a *download* must not overwrite what the user chose, and this
+/// is the user choosing.
+#[tauri::command]
+pub async fn choose_cover(
+    track_path: String,
+    url: String,
+    state: State<'_, Arc<AppState>>,
+) -> Result<String, String> {
+    let track = state
+        .db
+        .lock()
+        .get_track_by_path(&track_path)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("no such track: {track_path}"))?;
+    let req = request_for(&track, true);
+
+    let found = tauri::async_runtime::spawn_blocking(move || resolver().fetch_chosen(&req, &url))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    use base64::Engine;
+    Ok(format!(
+        "data:{};base64,{}",
+        found.info.format.mime(),
+        base64::engine::general_purpose::STANDARD.encode(&found.bytes)
+    ))
+}
+
 /// Which tracks a scope covers, one per game.
 fn tracks_for_scope(state: &AppState, scope: &str, target: &str) -> Result<Vec<Track>, String> {
     let db = state.db.lock();
