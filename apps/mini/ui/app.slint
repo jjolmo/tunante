@@ -13,6 +13,7 @@ import { Theme, Fmt } from "theme.slint";
 import { TabSwitcher, MiniPlayer } from "widgets.slint";
 import { NowPlayingTab, QueueTab, SettingsTab, LibraryTab } from "tabs.slint";
 import { FolderPicker } from "picker.slint";
+import { DesktopShell } from "desktop.slint";
 
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
@@ -23,10 +24,11 @@ export { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry }
 export component AppWindow inherits Window {
     title: "Tunante";
     background: Theme.bg-primary;
-    // A sensible desktop size for development. On the phone the compositor makes
-    // it fullscreen and this is ignored.
-    preferred-width: 400px;
-    preferred-height: 800px;
+    // A sensible size for development — phone-shaped, unless the desktop shell
+    // was forced from the command line before the window mapped. On the phone
+    // the compositor makes it fullscreen and this is ignored.
+    preferred-width: root.ui-mode == 2 ? 1400px : 400px;
+    preferred-height: root.ui-mode == 2 ? 850px : 800px;
 
     in property <[LibraryRow]> library-rows;
     in property <[QueueRow]> queue-rows;
@@ -143,22 +145,44 @@ export component AppWindow inherits Window {
     // binding on root.height would close a cycle Slint rejects outright.
     property <bool> cramped: false;
 
-    changed width => {
+    // The third presentation: a wide window becomes the desktop shell —
+    // sidebar, library, queue, one transport bar. Same anti-cycle rule as
+    // `portrait`: snapshotted from `changed`, never derived, because whether
+    // the shell exists decides the layout that sizes the window.
+    //
+    // `ui-mode` is the manual override from settings: 0 auto · 1 mini · 2
+    // desktop. Auto draws the line at 900px of width.
+    in-out property <int> ui-mode: 0;
+    property <bool> desktop: false;
+
+    function reshape() {
         root.portrait = root.height >= root.width;
+        root.desktop = root.ui-mode == 2
+            || (root.ui-mode == 0 && root.width >= 900px);
+    }
+
+    changed width => {
+        root.reshape();
         root.retile();
     }
 
-    // Tres de ancho con el móvil de pie, ocho tumbado. Se avisa a Rust sólo
-    // cuando cambia de verdad: cada píxel de redimensionado dispara `changed`.
+    // Tres de ancho con el móvil de pie, ocho tumbado, cinco en la shell de
+    // escritorio (el panel central pierde ~510px entre sidebar y cola). Se
+    // avisa a Rust sólo cuando cambia de verdad: cada píxel de redimensionado
+    // dispara `changed`.
     function retile() {
-        if (root.library-columns != (root.portrait ? 3 : 8)) {
-            root.library-columns = root.portrait ? 3 : 8;
+        if (root.library-columns != (root.desktop ? 5 : (root.portrait ? 3 : 8))) {
+            root.library-columns = root.desktop ? 5 : (root.portrait ? 3 : 8);
             root.library-columns-changed(root.library-columns);
         }
     }
     changed height => {
-        root.portrait = root.height >= root.width;
+        root.reshape();
         root.cramped = root.height < 300px;
+        root.retile();
+    }
+    changed ui-mode => {
+        root.reshape();
         root.retile();
     }
 
@@ -220,7 +244,81 @@ export component AppWindow inherits Window {
         }
     }
 
-    if !root.setup-mode && root.scan-status == "": VerticalLayout {
+    // The desktop shell replaces the whole tabbed layout, not a tab of it: the
+    // four screens exist inside it as panes.
+    if !root.setup-mode && root.scan-status == "" && root.desktop: DesktopShell {
+        library-rows: root.library-rows;
+        library-total: root.library-total;
+        now-title: root.now-title;
+        now-artist: root.now-artist;
+        now-album: root.now-album;
+        now-path: root.now-path;
+        now-art: root.now-art;
+        playing: root.playing;
+        shuffle: root.shuffle;
+        repeat: root.repeat;
+        position-ms: root.position-ms;
+        duration-ms: root.duration-ms;
+        volume: root.volume;
+        search <=> root.search;
+        autofocus-search: root.autofocus-search;
+        library-mode <=> root.library-mode;
+        library-grid-lines: root.library-grid-lines;
+        library-grid: root.library-grid;
+        library-crumb: root.library-crumb;
+        library-columns: root.library-columns;
+        queue-rows: root.queue-rows;
+        playlists: root.playlists;
+        all-playlists: root.all-playlists;
+        showing-playlists: root.showing-playlists;
+        playlist-open: root.playlist-open;
+        playlist-count: root.playlist-count;
+        output-warning: root.output-warning;
+        sleep-running: root.sleep-running;
+        sleep-minutes: root.sleep-minutes;
+        library-summary: root.library-summary;
+        loop-count: root.loop-count;
+        fade-seconds: root.fade-seconds;
+
+        library-activated(i) => { root.library-activated(i); }
+        library-enqueued(i) => { root.library-enqueued(i); }
+        library-enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
+        library-mode-changed(i) => { root.library-mode-changed(i); }
+        library-grid-tapped(p) => { root.library-grid-tapped(p); }
+        library-back => { root.library-back(); }
+        playlist-open-requested(id) => { root.playlist-open-requested(id); }
+        playlist-enqueue-all => { root.playlist-enqueue-all(); }
+        playlist-create(nombre) => { root.playlist-create(nombre); }
+        add-path-to-playlist(p, hondo, id) => { root.add-path-to-playlist(p, hondo, id); }
+        add-path-to-new-playlist(p, hondo, nombre) => {
+            root.add-path-to-new-playlist(p, hondo, nombre);
+        }
+        playlist-track-removed(p) => { root.playlist-track-removed(p); }
+        playlist-reordered(de, a) => { root.playlist-reordered(de, a); }
+        playlist-rename(id, nombre) => { root.playlist-rename(id, nombre); }
+        playlist-delete(id) => { root.playlist-delete(id); }
+        playlist-enqueue-id(id) => { root.playlist-enqueue-id(id); }
+        queue-activated(i) => { root.queue-activated(i); }
+        queue-removed(i) => { root.queue-removed(i); }
+        queue-reordered(from, to) => { root.queue-reordered(from, to); }
+        queue-cleared => { root.queue-cleared(); }
+        search-changed(s) => { root.search-changed(s); }
+        toggle-play => { root.toggle-play(); }
+        next-track => { root.next-track(); }
+        prev-track => { root.prev-track(); }
+        cycle-repeat => { root.cycle-repeat(); }
+        toggle-shuffle => { root.toggle-shuffle(); }
+        seek-to(ms) => { root.seek-to(ms); }
+        set-volume(v) => { root.set-volume(v); }
+        cycle-sleep => { root.cycle-sleep(); }
+        rescan => { root.rescan(); }
+        descargar-caratulas => { root.descargar-caratulas(); }
+        add-folder => { root.add-folder(); }
+        cycle-loops => { root.cycle-loops(); }
+        cycle-fade => { root.cycle-fade(); }
+    }
+
+    if !root.setup-mode && root.scan-status == "" && !root.desktop: VerticalLayout {
         HorizontalLayout {
             vertical-stretch: 1;
 
