@@ -524,6 +524,83 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- The desktop shell's track table -------------------------------------
+    //
+    // Built lazily on `table-needed`: the phone never instantiates the pane, so
+    // it never pays for a whole-library model. Rust owns sort and filter — the
+    // UI only reports which header or row was touched — and the full
+    // sort-and-rebuild was measured at 11–21 ms over 30k rows in the spike.
+    let table_model = Rc::new(VecModel::from(Vec::<TableRow>::new()));
+    ui.set_table_rows(ModelRc::from(table_model.clone()));
+    let table_state = Rc::new(RefCell::new(TableState::default()));
+
+    {
+        let (db_t, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_needed(move || {
+            let mut st = st.borrow_mut();
+            if st.built {
+                return;
+            }
+            st.built = true;
+            st.all = db_t.get_all_tracks().unwrap_or_default();
+            rebuild_table(&mut st, &model);
+            if let Some(ui) = weak.upgrade() {
+                ui.set_table_sort_col(st.sort_col);
+                ui.set_table_sort_asc(st.asc);
+            }
+        });
+    }
+    {
+        let (st, model) = (table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_sorted(move |col| {
+            let mut st = st.borrow_mut();
+            st.asc = if st.sort_col == col { !st.asc } else { true };
+            st.sort_col = col;
+            rebuild_table(&mut st, &model);
+            if let Some(ui) = weak.upgrade() {
+                ui.set_table_sort_col(st.sort_col);
+                ui.set_table_sort_asc(st.asc);
+            }
+        });
+    }
+    {
+        let (st, model) = (table_state.clone(), table_model.clone());
+        ui.on_table_filter_changed(move |s| {
+            let mut st = st.borrow_mut();
+            st.filter = s.to_string();
+            rebuild_table(&mut st, &model);
+        });
+    }
+    {
+        let (st, player_t, queue_model_t) = (
+            table_state.clone(),
+            player.clone(),
+            queue_model.clone(),
+        );
+        let weak = ui.as_weak();
+        ui.on_table_activated(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let tracks = st.borrow().tracks.clone();
+            let index = index as usize;
+            if index >= tracks.len() {
+                return;
+            }
+            // The table's visible order — filtered, sorted — becomes the queue,
+            // which is what double-clicking a row in any desktop player means.
+            if let Some(p) = player_t.borrow_mut().as_mut() {
+                p.set_tracks(tracks.clone());
+                if let Err(e) = p.play_index(index) {
+                    eprintln!("no se pudo reproducir: {e}");
+                    return;
+                }
+                push_now_playing(&ui, p);
+            }
+            queue_model_t.set_vec(to_queue_rows(&tracks, Some(index)));
+        });
+    }
+
     {
         let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
         let weak_v = ui.as_weak();
@@ -1798,6 +1875,93 @@ fn to_ui_rows(rows: &[library::Row]) -> Vec<LibraryRow> {
             path: SharedString::from(r.path.as_str()),
         })
         .collect()
+}
+
+/// The desktop table's world: the whole library once, then whatever the
+/// current filter and sort make of it. `all` is read from the database the
+/// first time the pane exists and reused after — a rescan refreshes it the
+/// next time the app starts, which is the same freshness the tree's indexes
+/// live with.
+struct TableState {
+    all: Vec<tunante_core::db::models::Track>,
+    tracks: Vec<tunante_core::db::models::Track>,
+    sort_col: i32,
+    asc: bool,
+    filter: String,
+    built: bool,
+}
+
+impl Default for TableState {
+    /// By title, ascending — matching the `table-sort-col: 1` the UI declares,
+    /// so the arrow in the header tells the truth before the first click.
+    fn default() -> Self {
+        Self {
+            all: Vec::new(),
+            tracks: Vec::new(),
+            sort_col: 1,
+            asc: true,
+            filter: String::new(),
+            built: false,
+        }
+    }
+}
+
+fn table_console_label(t: &tunante_core::db::models::Track) -> &'static str {
+    tunante_core::console::label_es(tunante_core::console::key_of(t))
+}
+
+/// Apply the filter and the sort, and hand the result to the UI model.
+fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
+    let needle = library::plegar(&st.filter);
+    let mut tracks: Vec<_> = st
+        .all
+        .iter()
+        .filter(|t| {
+            needle.is_empty()
+                || library::plegar(&t.title).contains(&needle)
+                || library::plegar(&t.artist).contains(&needle)
+                || library::plegar(&t.game).contains(&needle)
+        })
+        .cloned()
+        .collect();
+
+    match st.sort_col {
+        0 => tracks.sort_by_key(|t| t.track_number.unwrap_or(0)),
+        2 => tracks.sort_by(|a, b| library::plegar(&a.artist).cmp(&library::plegar(&b.artist))),
+        3 => tracks.sort_by(|a, b| library::plegar(&a.game).cmp(&library::plegar(&b.game))),
+        4 => tracks.sort_by(|a, b| table_console_label(a).cmp(table_console_label(b))),
+        5 => tracks.sort_by_key(|t| t.duration_ms),
+        _ => tracks.sort_by(|a, b| library::plegar(&a.title).cmp(&library::plegar(&b.title))),
+    }
+    if !st.asc {
+        tracks.reverse();
+    }
+
+    model.set_vec(
+        tracks
+            .iter()
+            .map(|t| TableRow {
+                n: SharedString::from(
+                    t.track_number.map(|n| n.to_string()).unwrap_or_default(),
+                ),
+                title: SharedString::from(if t.title.is_empty() {
+                    t.path.as_str()
+                } else {
+                    t.title.as_str()
+                }),
+                artist: SharedString::from(t.artist.as_str()),
+                game: SharedString::from(t.game.as_str()),
+                console: SharedString::from(table_console_label(t)),
+                duration: SharedString::from(format!(
+                    "{}:{:02}",
+                    t.duration_ms / 60_000,
+                    (t.duration_ms / 1_000) % 60
+                )),
+                path: SharedString::from(t.path.as_str()),
+            })
+            .collect::<Vec<_>>(),
+    );
+    st.tracks = tracks;
 }
 
 fn to_queue_rows(

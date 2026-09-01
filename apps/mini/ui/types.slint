@@ -57,3 +57,16 @@ export struct FolderEntry {
     path: string,
     chosen: bool,
 }
+
+/// One row of the desktop shell's track table. Everything is a display string
+/// already — Rust owns the sorting and filtering, so the UI never needs the
+/// raw values back.
+export struct TableRow {
+    n: string,
+    title: string,
+    artist: string,
+    game: string,
+    console: string,
+    duration: string,
+    path: string,
+}

@@ -1,0 +1,184 @@
+// The desktop shell's track table: every track in the library as sortable,
+// filterable columns — what the Tauri desktop calls "All Tracks".
+//
+// The spike (apps/mini/examples/table_spike.rs) proved the shape first: a
+// ListView over fixed-height rows holds 30 000 × 17 at the panel's refresh
+// rate on both renderers, and a full sort-and-rebuild costs 11–21 ms. This is
+// that table grown real: fewer columns for now (fase 3b widens it), and the
+// sorting/filtering on the Rust side of the callbacks, where the data is.
+
+import { ListView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { TableRow } from "types.slint";
+
+component HeaderCell inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    in property <bool> asc;
+    callback clicked();
+
+    background: t.has-hover ? Theme.bg-hover : transparent;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        spacing: 4px;
+        Text {
+            text: root.label;
+            color: root.active ? Theme.accent : Theme.text-secondary;
+            font-size: Theme.font-small;
+            font-weight: 600;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.active: Text {
+            text: root.asc ? "▲" : "▼";
+            color: Theme.accent;
+            font-size: 9px;
+            vertical-alignment: center;
+        }
+    }
+    t := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component TrackTable inherits Rectangle {
+    in property <[TableRow]> rows;
+    in property <string> now-path;
+    in property <int> sort-col;
+    in property <bool> sort-asc;
+    in-out property <string> filter;
+    callback activated(int);
+    callback sorted(int);
+    callback filter-changed(string);
+
+    // Column layout, as fractions of the width. One place, used by header and
+    // rows alike, so they cannot drift.
+    property <[float]> widths: [0.05, 0.32, 0.19, 0.22, 0.12, 0.10];
+
+    property <int> selected: -1;
+
+    VerticalLayout {
+        // --- Filter box ---
+        Rectangle {
+            height: 40px;
+            background: Theme.bg-secondary;
+            border-radius: 8px;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: "🔍";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                }
+                filter-input := TextInput {
+                    color: Theme.text-primary;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                    single-line: true;
+                    text <=> root.filter;
+                    edited => { root.filter-changed(self.text); }
+                }
+            }
+            if root.filter == "" && !filter-input.has-focus: HorizontalLayout {
+                padding-left: 36px;
+                Text {
+                    text: "Filtrar pistas…";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-body;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // --- Header ---
+        header := Rectangle {
+            height: 30px;
+            background: Theme.bg-primary;
+
+            HorizontalLayout {
+                for label[i] in ["#", "Título", "Artista", "Juego", "Consola", "Duración"]: HeaderCell {
+                    width: header.width * root.widths[i];
+                    label: label;
+                    active: root.sort-col == i;
+                    asc: root.sort-asc;
+                    clicked => { root.sorted(i); }
+                }
+            }
+        }
+        Rectangle { height: 1px; background: Theme.bg-tertiary; }
+
+        // --- Rows ---
+        ListView {
+            vertical-stretch: 1;
+
+            for row[i] in root.rows: Rectangle {
+                property <bool> playing: row.path == root.now-path;
+                height: 28px;
+                background: i == root.selected ? Theme.bg-selected
+                    : (rt.has-hover ? Theme.bg-hover
+                    : (mod(i, 2) == 0 ? Theme.bg-primary : Theme.bg-secondary));
+
+                rt := TouchArea {
+                    clicked => { root.selected = i; }
+                    double-clicked => { root.activated(i); }
+                }
+
+                HorizontalLayout {
+                    property <length> w: parent.width;
+                    Text {
+                        width: w * root.widths[0];
+                        text: playing ? "▶" : row.n;
+                        color: playing ? Theme.accent : Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+                    Text {
+                        width: w * root.widths[1];
+                        text: row.title;
+                        color: playing ? Theme.accent : Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: w * root.widths[2];
+                        text: row.artist;
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: w * root.widths[3];
+                        text: row.game;
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: w * root.widths[4];
+                        text: row.console;
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                    Text {
+                        width: w * root.widths[5];
+                        text: row.duration;
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                        horizontal-alignment: right;
+                    }
+                }
+            }
+        }
+    }
+}

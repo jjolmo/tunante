@@ -18,8 +18,8 @@ import { DesktopShell } from "desktop.slint";
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
 // has, wherever the structs live now.
-import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry } from "types.slint";
-export { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry }
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow } from "types.slint";
+export { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow }
 
 export component AppWindow inherits Window {
     title: "Tunante";
@@ -119,6 +119,16 @@ export component AppWindow inherits Window {
     callback add-folder();
     callback cycle-loops();
     callback cycle-fade();
+
+    // The desktop shell's track table. Sort and filter live in Rust.
+    in property <[TableRow]> table-rows;
+    in property <int> table-sort-col: 1;
+    in property <bool> table-sort-asc: true;
+    in-out property <string> table-filter;
+    callback table-activated(int);
+    callback table-sorted(int);
+    callback table-filter-changed(string);
+    callback table-needed();
 
     // Turning the phone is the only layout breakpoint that matters: portrait puts
     // the switcher along the bottom edge, within reach of a thumb; landscape moves
@@ -267,6 +277,14 @@ export component AppWindow inherits Window {
         library-grid: root.library-grid;
         library-crumb: root.library-crumb;
         library-columns: root.library-columns;
+        table-rows: root.table-rows;
+        table-sort-col: root.table-sort-col;
+        table-sort-asc: root.table-sort-asc;
+        table-filter <=> root.table-filter;
+        table-activated(i) => { root.table-activated(i); }
+        table-sorted(col) => { root.table-sorted(col); }
+        table-filter-changed(s) => { root.table-filter-changed(s); }
+        table-needed => { root.table-needed(); }
         queue-rows: root.queue-rows;
         playlists: root.playlists;
         all-playlists: root.all-playlists;

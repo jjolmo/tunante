@@ -9,9 +9,10 @@
 
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { GridLine, LibraryRow, QueueRow, PlaylistRow } from "types.slint";
+import { GridLine, LibraryRow, QueueRow, PlaylistRow, TableRow } from "types.slint";
 import { Artwork, TrackInfo, RoundButton, SeekBar } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
+import { TrackTable } from "table.slint";
 
 component SidebarEntry inherits Rectangle {
     in property <string> label;
@@ -107,6 +108,19 @@ export component DesktopShell inherits Rectangle {
     in property <int> loop-count;
     in property <int> fade-seconds;
 
+    // The track table's world. Rust owns sort and filter; the table only
+    // reports which header or row was touched.
+    in property <[TableRow]> table-rows;
+    in property <int> table-sort-col;
+    in property <bool> table-sort-asc;
+    in-out property <string> table-filter;
+    callback table-activated(int);
+    callback table-sorted(int);
+    callback table-filter-changed(string);
+    /// Fired when the table pane comes into existence, so Rust can build the
+    /// model lazily — the phone never pays for a model it never shows.
+    callback table-needed();
+
     callback library-activated(int);
     callback library-enqueued(int);
     callback library-enqueue-path(string, bool);
@@ -142,9 +156,10 @@ export component DesktopShell inherits Rectangle {
     callback cycle-loops();
     callback cycle-fade();
 
-    // The one piece of state the shell owns: whether the centre pane shows the
-    // library or the settings. Everything else lives in Rust, same as always.
-    property <bool> showing-settings: false;
+    // The one piece of state the shell owns: which pane the centre shows.
+    // 0 = the track table · 1 = the phone's library views · 2 = settings.
+    // Everything else lives in Rust, same as always.
+    property <int> centre: 0;
 
     VerticalLayout {
         HorizontalLayout {
@@ -166,11 +181,16 @@ export component DesktopShell inherits Rectangle {
                         height: 26px;
                         vertical-alignment: center;
                     }
+                    SidebarEntry {
+                        label: "Pistas";
+                        active: root.centre == 0;
+                        clicked => { root.centre = 0; }
+                    }
                     for label[i] in ["Árbol", "Discos", "Consolas", "Juegos", "Listas"]: SidebarEntry {
                         label: label;
-                        active: !root.showing-settings && root.library-mode == i;
+                        active: root.centre == 1 && root.library-mode == i;
                         clicked => {
-                            root.showing-settings = false;
+                            root.centre = 1;
                             root.library-mode-changed(i);
                         }
                     }
@@ -203,7 +223,7 @@ export component DesktopShell inherits Rectangle {
                             }
                             pt := TouchArea {
                                 clicked => {
-                                    root.showing-settings = false;
+                                    root.centre = 1;
                                     root.playlist-open-requested(pl.id);
                                 }
                             }
@@ -212,19 +232,31 @@ export component DesktopShell inherits Rectangle {
 
                     SidebarEntry {
                         label: "Ajustes";
-                        active: root.showing-settings;
-                        clicked => { root.showing-settings = true; }
+                        active: root.centre == 2;
+                        clicked => { root.centre = 2; }
                     }
                 }
             }
 
             Rectangle { width: 1px; background: Theme.bg-tertiary; }
 
-            // --- Centre: the library, or the settings ---
+            // --- Centre: the table, the library views, or the settings ---
             Rectangle {
                 horizontal-stretch: 1;
 
-                if !root.showing-settings: LibraryTab {
+                if root.centre == 0: TrackTable {
+                    init => { root.table-needed(); }
+                    rows: root.table-rows;
+                    now-path: root.now-path;
+                    sort-col: root.table-sort-col;
+                    sort-asc: root.table-sort-asc;
+                    filter <=> root.table-filter;
+                    activated(i) => { root.table-activated(i); }
+                    sorted(col) => { root.table-sorted(col); }
+                    filter-changed(s) => { root.table-filter-changed(s); }
+                }
+
+                if root.centre == 1: LibraryTab {
                     rows: root.library-rows;
                     total: root.library-total;
                     cramped: false;
@@ -264,7 +296,7 @@ export component DesktopShell inherits Rectangle {
                     playlist-enqueue-id(id) => { root.playlist-enqueue-id(id); }
                 }
 
-                if root.showing-settings: SettingsTab {
+                if root.centre == 2: SettingsTab {
                     volume: root.volume;
                     sleep-running: root.sleep-running;
                     sleep-minutes: root.sleep-minutes;
