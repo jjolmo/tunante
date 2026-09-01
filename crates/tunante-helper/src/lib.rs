@@ -237,14 +237,37 @@ impl PipeSource {
         loops: u32,
         fade_ms: u64,
     ) -> Result<Self, String> {
-        let mut child = decoder_command()
-            .arg("play")
+        Self::open_with(path, duration_hint_ms, loops, fade_ms, None)
+    }
+
+    /// [`PipeSource::open`], plus the vgmstream loop count when the caller has
+    /// an opinion about it.
+    ///
+    /// It is a separate knob from `loops` because it means a different thing to
+    /// a different layer: vgmstream loops on the points recorded in the
+    /// container and counts them itself, while `loops` replays a tagged length
+    /// for backends with no notion of an ending. `None` leaves the decoder on
+    /// its default, which is also what the scanner used — so a caller that has
+    /// no user setting to honour should pass `None`, not a number.
+    pub fn open_with(
+        path: &Path,
+        duration_hint_ms: i64,
+        loops: u32,
+        fade_ms: u64,
+        vgm_loop_count: Option<f64>,
+    ) -> Result<Self, String> {
+        let mut cmd = decoder_command();
+        cmd.arg("play")
             .arg(path)
             .arg(duration_hint_ms.to_string())
             .arg("--loops")
             .arg(loops.max(1).to_string())
             .arg("--fade")
-            .arg(fade_ms.to_string())
+            .arg(fade_ms.to_string());
+        if let Some(v) = vgm_loop_count {
+            cmd.arg("--vgm-loops").arg(v.to_string());
+        }
+        let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             // This used to go to /dev/null, which on a desktop is reasonable —

@@ -8732,7 +8732,6 @@ dependencies = [
  "parking_lot",
  "png 0.17.16",
  "reqwest",
- "rodio",
  "rusqlite",
  "serde",
  "serde_json",
@@ -8746,6 +8745,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tray-icon",
  "tunante-art",
+ "tunante-audio",
  "tunante-codec",
  "tunante-core",
  "urlencoding",
@@ -8781,6 +8781,17 @@ dependencies = [
  "thiserror 2.0.18",
  "ureq",
  "urlencoding",
+]
+
+[[package]]
+name = "tunante-audio"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "rodio",
+ "thiserror 2.0.18",
+ "tunante-core",
+ "tunante-helper",
 ]
 
 [[package]]

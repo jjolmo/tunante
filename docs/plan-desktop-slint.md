@@ -1,6 +1,17 @@
 # Tunante desktop sobre el stack de mini — plan de migración
 
-> Estado: **Fase 0 casi cerrada el mismo día de escribirlo (2026-09-01).**
+> Estado: **Fase 0 casi cerrada y el punto 1 de la Fase 1 ejecutado el mismo
+> día de escribirlo (2026-09-01).** `crates/tunante-audio` existe: el
+> `AudioEngine` del desktop decodificando por `DspSource<PipeSource>` — el
+> matrimonio quedó consumado. El desktop Tauri ya corre sobre él (rodio dejó
+> de ser dependencia directa suya), el decoder viaja como sidecar de Tauri
+> (`externalBin` + `scripts/stage-decoder.mjs`, con placeholder en `build.rs`
+> para que `cargo check` no lo exija), y el protocolo del decoder ganó
+> `--vgm-loops`, el único mando que no podía viajar por la tubería. Verificado:
+> workspace y Android en verde, smoke test de formatos en release, y ogg + NSF
+> sonando de verdad por la cadena nueva (4,5 MB de pico de RAM en el proceso
+> del player con el core NDS-class fuera). Pendiente de la fase: watcher a
+> canal (2), extracción de commands/ (3) y el crate de soporte (4).
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

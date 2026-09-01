@@ -1,4 +1,28 @@
-use super::dsp::{DspSettings, DspSource};
+//! The playback engine, shared by every app.
+//!
+//! Born in `apps/desktop/src-tauri/src/audio/engine.rs` and moved here as the
+//! first step of docs/plan-desktop-slint.md, with one structural change on the
+//! way: decoding now happens **out of process**. The desktop engine used to
+//! call `tunante_codec::open_source` in-process; this one spawns
+//! `tunante-decoder` per track and reads PCM through
+//! [`tunante_helper::PipeSource`], the model `tunante-mini` proved on the
+//! phone. What the desktop engine knew and mini's player did not — output
+//! device selection, recovery from a stream that dies under us, the DSP chain
+//! installed over every source — survives unchanged.
+//!
+//! The marriage is one line: `PipeSource` implements `rodio::Source`, and
+//! [`DspSource`] wraps any `rodio::Source`, so the chain simply goes over the
+//! pipe. Nobody had composed the two before this crate.
+//!
+//! What out-of-process buys the engine, compared to its previous life:
+//!
+//! - No 50 ms teardown sleep on track change. The old decoder's C globals die
+//!   with the old decoder's process; there is nothing to wait for.
+//! - A crash in thirty-year-old emulator C kills the helper, not the app.
+//! - The console RAM a core allocates (~43 MB for NDS) comes back to the
+//!   kernel the moment the track changes.
+//! - `tunante-codec`, and with it every vendored core, is not linked here.
+
 use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::path::Path;
@@ -6,6 +30,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use thiserror::Error;
+use tunante_core::dsp::{DspSettings, DspSource};
+use tunante_helper::PipeSource;
 
 #[derive(Error, Debug)]
 pub enum AudioError {
@@ -15,15 +41,6 @@ pub enum AudioError {
     DecoderError(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
-}
-
-impl From<tunante_codec::OpenError> for AudioError {
-    fn from(e: tunante_codec::OpenError) -> Self {
-        match e {
-            tunante_codec::OpenError::Io(e) => AudioError::IoError(e),
-            tunante_codec::OpenError::Decoder(msg) => AudioError::DecoderError(msg),
-        }
-    }
 }
 
 struct PlaybackTimer {
@@ -198,9 +215,16 @@ pub struct AudioEngine {
     play_started_at: Instant,
     fade_on_track_change: bool,
     fade_seconds: f32,
-    /// How many times a looping vgmstream stream repeats. Must match what the
-    /// scanner used, or the progress bar disagrees with what is heard.
-    vgm_loop_count: f64,
+    /// How many times a track with no ending of its own replays its tagged
+    /// length, and the fade that closes it. Handed to the decoder per track;
+    /// the defaults are the decoder's own (two loops, eight-second fade).
+    loop_count: u32,
+    loop_fade_ms: u64,
+    /// How many times a looping vgmstream stream repeats. `None` leaves the
+    /// decoder on its default — which is also what the scanner used. Only a
+    /// user setting puts a number here, and it must match what the scanner
+    /// used, or the progress bar disagrees with what is heard.
+    vgm_loop_count: Option<f64>,
     /// When the last stream rebuild happened. Rebuilding restarts and re-seeks
     /// the current track, so a burst of errors must not be able to do it over
     /// and over -- that turns a glitch into a loop of restarts.
@@ -253,7 +277,9 @@ impl AudioEngine {
             play_started_at: Instant::now(),
             fade_on_track_change: false,
             fade_seconds: 2.0,
-            vgm_loop_count: tunante_codec::DEFAULT_VGM_LOOP_COUNT,
+            loop_count: 2,
+            loop_fade_ms: 8_000,
+            vgm_loop_count: None,
             last_rebuild: Instant::now() - Duration::from_secs(60),
             fade_generation: 0,
             desired_output: OutputSelection::System,
@@ -291,7 +317,7 @@ impl AudioEngine {
         self.current_duration_ms = duration.map(|d| d.as_millis() as u64).unwrap_or(0);
     }
 
-    /// Shared handle to the DSP parameters, for the Tauri commands.
+    /// Shared handle to the DSP parameters, for the UI layer's commands.
     pub fn dsp(&self) -> &DspSettings {
         &self.dsp
     }
@@ -311,28 +337,28 @@ impl AudioEngine {
         // Without this, switching between tracks with different sample rates
         // (e.g. 48kHz PSF2/Opus → 44.1kHz GSF) can corrupt the resampler,
         // causing audio to play at the wrong speed until app restart.
+        //
+        // The in-process engine also slept 50 ms here so the old decoder's C
+        // globals were torn down before the next one came up. Gone: the old
+        // decoder's globals die with the old decoder's process.
         self.player.stop();
-        // Brief pause to let rodio's audio thread drop the old source.
-        // Critical for PSF/PSF2/GSF/2SF: these decoders wrap C libraries with
-        // global state. The old decoder MUST be fully dropped before creating
-        // a new one, or the C globals (sexypsf, VBA-M, DeSmuME, etc.) will conflict.
-        std::thread::sleep(Duration::from_millis(50));
         self.player = Player::connect_new(&self._device.mixer());
         self.player.set_volume(initial_volume.clamp(0.0, 1.0));
 
         log::info!("[play_file] path={}", path.display());
 
-        // Format dispatch lives in tunante-codec, shared with the tunante-decoder
-        // helper process so a format is only ever wired up once.
-        //
-        // The vgmstream loop count travels in the options rather than being
-        // baked in: it is a user setting, and it has to match what the scanner
-        // used or the progress bar disagrees with what is heard.
-        let opts = tunante_codec::PlaybackOptions {
-            vgm_loop_count: self.vgm_loop_count,
-            ..Default::default()
-        };
-        self.append_source(tunante_codec::open_source_with(path, duration_hint_ms, opts)?);
+        // Format dispatch lives in tunante-codec — on the other side of the
+        // pipe, inside tunante-decoder, so a format is only ever wired up once
+        // and none of the vendored cores link into this process.
+        let source = PipeSource::open_with(
+            path,
+            duration_hint_ms,
+            self.loop_count,
+            self.loop_fade_ms,
+            self.vgm_loop_count,
+        )
+        .map_err(AudioError::DecoderError)?;
+        self.append_source(source);
 
         self.timer.start();
         self.was_playing = true;
@@ -389,7 +415,16 @@ impl AudioEngine {
     }
 
     pub fn set_vgm_loop_count(&mut self, count: f64) {
-        self.vgm_loop_count = count.clamp(0.0, 20.0);
+        self.vgm_loop_count = Some(count.clamp(0.0, 20.0));
+    }
+
+    /// How many times a track with no ending replays its tagged length, and the
+    /// closing fade. Applies from the next track on: changing it mid-track
+    /// would mean restarting the decoder, and losing your place to change a
+    /// setting is a worse trade than waiting for the next song.
+    pub fn set_loop_settings(&mut self, loops: u32, fade_ms: u64) {
+        self.loop_count = loops.max(1);
+        self.loop_fade_ms = fade_ms;
     }
 
     pub fn fade_on_track_change(&self) -> bool {
@@ -479,7 +514,6 @@ impl AudioEngine {
 
         // Drop the old stream and connect a fresh player to the new device.
         self.player.stop();
-        std::thread::sleep(Duration::from_millis(50));
         self._device = device;
         self.active_device_name = Some(name);
         self.player = Player::connect_new(&self._device.mixer());
