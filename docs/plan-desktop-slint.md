@@ -140,6 +140,22 @@
 > clasifica al llegar y los eventos sin significado solo refrescan el reloj
 > del debounce (Close(Write) es exactamente «la copia terminó»). El desktop
 > Tauri hereda el arreglo gratis: comparte el módulo desde la fase 1.
+>
+> **3c cerrada: el picker de carátulas, con su hilo worker.** «Buscar
+> carátula…» en el menú contextual abre `CoverSheet`: campo de nombre (la
+> cura de «la carátula está mal porque el *nombre* está mal»), lista de doce
+> candidatas con miniatura, fuente y confianza en castellano, click para
+> elegir. La red va en hilos worker con resultados por canal que el timer
+> drena — la misma forma que el escáner —; Slint no carga URLs, así que el
+> worker baja también las miniaturas y la UI solo decodifica (el patrón de
+> `folder_art`). Elegir llama a `fetch_chosen` con la carpeta como destino:
+> reemplaza, porque elegir es el usuario decidiendo — mismas reglas que el
+> desktop — y el flag `art_dirty` existente repinta rejillas y carátula.
+> `cover_request_for` es el espejo del `request_for` del desktop, orden de
+> candidatos incluido. Un solo `Resolver` para toda la app (gates por host y
+> cachés de archivo compartidos). Con esto los tres diálogos de la 3c
+> existen; quedan como mejoras las sugerencias online de reclasificación
+> (el worker ya da el patrón) y la descarga masiva con preview/undo.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

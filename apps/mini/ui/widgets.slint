@@ -4,7 +4,7 @@
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, ConsoleOption } from "types.slint";
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, ConsoleOption, CoverCandidate } from "types.slint";
 
 export component SwipeRow inherits Rectangle {
     in property <string> action-label;
@@ -1179,6 +1179,7 @@ component EditField inherits VerticalLayout {
     in property <string> label;
     in-out property <string> value;
     callback edited(string);
+    callback accepted(string);
     spacing: 4px;
 
     Text {
@@ -1203,6 +1204,7 @@ component EditField inherits VerticalLayout {
                 single-line: true;
                 text <=> root.value;
                 edited => { root.edited(self.text); }
+                accepted => { root.accepted(self.text); }
             }
         }
     }
@@ -1453,6 +1455,133 @@ export component ReclassifySheet inherits Rectangle {
                         font-size: Theme.font-body;
                     }
                     TouchArea { clicked => { root.accepted(); } }
+                }
+            }
+        }
+    }
+}
+
+
+// The cover picker: every candidate the archives and services offer, with the
+// name each source thinks it matched — the fix for "the cover is wrong
+// because the *name* is wrong" is typing a better name and picking by eye.
+export component CoverSheet inherits Rectangle {
+    in property <string> heading;
+    in property <string> status;
+    in-out property <string> query;
+    in property <[CoverCandidate]> candidates;
+    callback search(string);
+    callback chosen(int);
+    callback cancelled();
+
+    background: #000000bb;
+
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: min(620px, root.width - Theme.gap * 4);
+        height: min(640px, root.height - Theme.gap * 4);
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+
+        TouchArea { }
+
+        VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: root.heading;
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                overflow: elide;
+            }
+
+            HorizontalLayout {
+                spacing: Theme.gap;
+                EditField {
+                    horizontal-stretch: 1;
+                    label: "Buscar por nombre";
+                    value <=> root.query;
+                    accepted(q) => { root.search(q); }
+                }
+                Rectangle {
+                    width: 100px;
+                    height: Theme.touch-target - 8px;
+                    y: 20px;
+                    border-radius: Theme.radius;
+                    background: Theme.accent;
+                    Text {
+                        text: "Buscar";
+                        color: #ffffff;
+                        font-size: Theme.font-body;
+                    }
+                    TouchArea { clicked => { root.search(root.query); } }
+                }
+            }
+
+            if root.status != "": Text {
+                text: root.status;
+                color: Theme.text-muted;
+                font-size: Theme.font-body;
+            }
+
+            ListView {
+                vertical-stretch: 1;
+
+                for c[i] in root.candidates: Rectangle {
+                    height: 112px;
+                    border-radius: Theme.radius;
+                    background: cvt.has-hover ? Theme.bg-hover : transparent;
+
+                    HorizontalLayout {
+                        padding: 6px;
+                        spacing: Theme.gap;
+
+                        Rectangle {
+                            width: 100px;
+                            background: Theme.bg-tertiary;
+                            border-radius: Theme.radius;
+                            Image {
+                                width: 96px;
+                                height: 96px;
+                                source: c.img;
+                                image-fit: contain;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            Text {
+                                text: c.name;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-body;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: c.source + " · " + c.conf;
+                                color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                            }
+                        }
+                    }
+                    cvt := TouchArea { clicked => { root.chosen(i); } }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: cvc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Cancelar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    cvc := TouchArea { clicked => { root.cancelled(); } }
                 }
             }
         }

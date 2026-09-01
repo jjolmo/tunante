@@ -906,6 +906,79 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- The cover picker ----------------------------------------------------
+    //
+    // Network on worker threads, results through a channel the timer drains —
+    // the same shape as the scanner. Slint cannot show a URL, so the worker
+    // downloads the thumbnails too; the UI thread only decodes.
+    let (cover_tx, cover_rx) = std::sync::mpsc::channel::<CoverMsg>();
+    let cover_target: Rc<RefCell<Option<tunante_core::db::models::Track>>> =
+        Rc::new(RefCell::new(None));
+    let cover_urls: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+    let cover_model = Rc::new(VecModel::from(Vec::<CoverCandidate>::new()));
+    ui.set_cover_candidates(ModelRc::from(cover_model.clone()));
+
+    {
+        let (st, target, tx) = (table_state.clone(), cover_target.clone(), cover_tx.clone());
+        let (urls, model) = (cover_urls.clone(), cover_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_cover_requested(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let t = st.borrow().tracks.get(index as usize).cloned();
+            let Some(t) = t else { return };
+            ui.set_cover_heading(SharedString::from(if t.game.is_empty() {
+                t.album.clone()
+            } else {
+                t.game.clone()
+            }));
+            ui.set_cover_query(SharedString::new());
+            ui.set_cover_status(SharedString::from("Buscando…"));
+            urls.borrow_mut().clear();
+            model.set_vec(Vec::new());
+            *target.borrow_mut() = Some(t.clone());
+            ui.set_covering(true);
+            spawn_cover_search(tx.clone(), t, None);
+        });
+    }
+    {
+        let (target, tx) = (cover_target.clone(), cover_tx.clone());
+        let weak = ui.as_weak();
+        ui.on_cover_search(move |q| {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(t) = target.borrow().clone() else { return };
+            ui.set_cover_status(SharedString::from("Buscando…"));
+            let q = q.trim().to_string();
+            spawn_cover_search(tx.clone(), t, (!q.is_empty()).then_some(q));
+        });
+    }
+    {
+        let (target, urls, tx) = (cover_target.clone(), cover_urls.clone(), cover_tx.clone());
+        let weak = ui.as_weak();
+        ui.on_cover_chosen(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(t) = target.borrow().clone() else { return };
+            let Some(url) = urls.borrow().get(index as usize).cloned() else {
+                return;
+            };
+            ui.set_cover_status(SharedString::from("Descargando…"));
+            let tx = tx.clone();
+            std::thread::spawn(move || {
+                // With the folder as destination: choosing is the user
+                // deciding, so this write replaces — same rules as the
+                // desktop's choose_cover.
+                let req = cover_request_for(&t, true);
+                match cover_resolver().fetch_chosen(&req, &url) {
+                    Ok(_) => {
+                        let _ = tx.send(CoverMsg::Saved);
+                    }
+                    Err(e) => {
+                        let _ = tx.send(CoverMsg::Status(format!("No se pudo guardar: {e}")));
+                    }
+                }
+            });
+        });
+    }
+
     // --- The metadata editor ---------------------------------------------
     // Which track the open sheet is about. An id and not a row index: the
     // table can be re-sorted or re-filtered underneath a dialog.
@@ -1807,6 +1880,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (views, library_dirty, sync_watches) =
             (views.clone(), library_dirty.clone(), sync_watches.clone());
         let (table_state, table_model) = (table_state.clone(), table_model.clone());
+        let (cover_model, cover_urls) = (cover_model.clone(), cover_urls.clone());
         let sleep = sleep.clone();
         let mut ticks: u64 = 0;
         let weak = ui.as_weak();
@@ -1832,6 +1906,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     refresh_artwork(&ui, (!path.is_empty()).then_some(path.as_str()), MAX_ART_SIDE);
                     let rows = tree.borrow().rows(&db);
                     rows_model.set_vec(to_ui_rows(&rows));
+                }
+
+                // The cover picker's worker reported in.
+                while let Ok(msg) = cover_rx.try_recv() {
+                    match msg {
+                        CoverMsg::Status(text) => {
+                            ui.set_cover_status(SharedString::from(text));
+                        }
+                        CoverMsg::Options(list) => {
+                            let mut u = cover_urls.borrow_mut();
+                            u.clear();
+                            let rows: Vec<CoverCandidate> = list
+                                .into_iter()
+                                .map(|hit| {
+                                    u.push(hit.url);
+                                    let img = hit
+                                        .bytes
+                                        .and_then(|b| image::load_from_memory(&b).ok())
+                                        .map(|d| d.thumbnail(192, 192).to_rgba8())
+                                        .map(|rgba| {
+                                            let mut buf = slint::SharedPixelBuffer::<
+                                                slint::Rgba8Pixel,
+                                            >::new(
+                                                rgba.width(), rgba.height()
+                                            );
+                                            buf.make_mut_bytes().copy_from_slice(rgba.as_raw());
+                                            slint::Image::from_rgba8(buf)
+                                        })
+                                        .unwrap_or_default();
+                                    CoverCandidate {
+                                        img,
+                                        source: SharedString::from(hit.source),
+                                        name: SharedString::from(hit.name),
+                                        conf: SharedString::from(hit.conf),
+                                    }
+                                })
+                                .collect();
+                            cover_model.set_vec(rows);
+                            ui.set_cover_status(SharedString::new());
+                        }
+                        CoverMsg::Saved => {
+                            ui.set_cover_status(SharedString::new());
+                            ui.set_covering(false);
+                            // The folder-art cache remembers misses too; this
+                            // is the flag that makes the new cover show up.
+                            art_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                    }
                 }
 
                 // The watcher changed rows underneath: re-read whatever view
@@ -2566,6 +2688,105 @@ impl Default for TableState {
             built: false,
         }
     }
+}
+
+/// What one search worker sends back for one candidate.
+struct CoverHit {
+    bytes: Option<Vec<u8>>,
+    source: String,
+    name: String,
+    conf: String,
+    url: String,
+}
+
+enum CoverMsg {
+    Status(String),
+    Options(Vec<CoverHit>),
+    Saved,
+}
+
+/// One resolver for the whole app: it owns the HTTP agent with its per-host
+/// gates and the archive caches, and all of that is worth sharing.
+fn cover_resolver() -> std::sync::Arc<tunante_art::resolver::Resolver> {
+    static R: std::sync::OnceLock<std::sync::Arc<tunante_art::resolver::Resolver>> =
+        std::sync::OnceLock::new();
+    std::sync::Arc::clone(
+        R.get_or_init(|| std::sync::Arc::new(tunante_art::resolver::Resolver::new())),
+    )
+}
+
+/// Turn a track into a lookup — the mirror of the desktop's `request_for`,
+/// candidate order included: the resolved game first, because for a rip that
+/// is the album tag even when the folder is called `ct/`.
+fn cover_request_for(
+    track: &tunante_core::db::models::Track,
+    store_in_folder: bool,
+) -> tunante_art::resolver::CoverRequest {
+    let candidates =
+        tunante_art::resolver::candidates_for(&track.game, &track.album, &track.path);
+    let (real, _) = tunante_core::vgm_path::parse_vgm_path(&track.path);
+    let dir = store_in_folder
+        .then(|| std::path::Path::new(real).parent().map(|p| p.to_path_buf()))
+        .flatten();
+    let all: Vec<(String, String)> = tunante_core::console::CONSOLES
+        .iter()
+        .filter_map(|c| c.libretro.map(|s| (c.id.to_string(), s.to_string())))
+        .collect();
+    tunante_art::resolver::CoverRequest {
+        libretro_system: tunante_core::console::by_id(&track.console_id)
+            .and_then(|c| c.libretro)
+            .map(str::to_string),
+        other_systems: all
+            .into_iter()
+            .filter(|(o, _)| *o != track.console_id)
+            .collect(),
+        console_id: track.console_id.clone(),
+        candidates,
+        dir,
+    }
+}
+
+/// Ask every archive and service, then fetch the thumbnails, all off the UI
+/// thread. Twelve candidates: enough to pick from, few enough that the
+/// downloads finish while the person is still reading the names.
+fn spawn_cover_search(
+    tx: std::sync::mpsc::Sender<CoverMsg>,
+    track: tunante_core::db::models::Track,
+    query: Option<String>,
+) {
+    std::thread::spawn(move || {
+        use tunante_art::http::Http;
+        let req = cover_request_for(&track, false);
+        let hits = cover_resolver().options(&req, query.as_deref(), 12);
+        if hits.is_empty() {
+            let _ = tx.send(CoverMsg::Status(
+                "Sin resultados. Prueba con otro nombre.".to_string(),
+            ));
+            return;
+        }
+        let http = tunante_art::http::UreqHttp::default();
+        let out = hits
+            .into_iter()
+            .map(|h| CoverHit {
+                bytes: http
+                    .get(&h.url, 4 * 1024 * 1024)
+                    .ok()
+                    .filter(|r| r.is_success())
+                    .map(|r| r.body),
+                source: h.source.to_string(),
+                name: h.matched_name,
+                conf: match h.confidence {
+                    tunante_art::Confidence::Exact => "exacta",
+                    tunante_art::Confidence::High => "alta",
+                    tunante_art::Confidence::Medium => "media",
+                    _ => "baja",
+                }
+                .to_string(),
+                url: h.url,
+            })
+            .collect();
+        let _ = tx.send(CoverMsg::Options(out));
+    });
 }
 
 /// Five glyphs, filled up to the rating. Pre-painted here because the UI
