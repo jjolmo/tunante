@@ -160,6 +160,8 @@ export component DesktopShell inherits Rectangle {
     callback add-folder();
     callback cycle-loops();
     callback cycle-fade();
+    in property <int> short-filter-secs;
+    callback cycle-short-filter();
     in property <string> output-label;
     in property <string> ui-mode-label;
     callback cycle-output();
@@ -343,6 +345,8 @@ export component DesktopShell inherits Rectangle {
                     add-folder => { root.add-folder(); }
                     cycle-loops => { root.cycle-loops(); }
                     cycle-fade => { root.cycle-fade(); }
+                    short-filter-secs: root.short-filter-secs;
+                    cycle-short-filter => { root.cycle-short-filter(); }
                     output-label: root.output-label;
                     ui-mode-label: root.ui-mode-label;
                     cycle-output => { root.cycle-output(); }

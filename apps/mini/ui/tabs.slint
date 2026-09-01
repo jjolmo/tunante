@@ -20,6 +20,8 @@ export component SettingsTab inherits Rectangle {
     callback add-folder();
     callback cycle-loops();
     callback cycle-fade();
+    in property <int> short-filter-secs;
+    callback cycle-short-filter();
     in property <string> output-label: "sistema";
     in property <string> ui-mode-label: "auto";
     callback cycle-output();
@@ -131,6 +133,13 @@ export component SettingsTab inherits Rectangle {
             label: "Fundido final";
             value: root.fade-seconds == 0 ? "sin fundido" : root.fade-seconds + " s";
             clicked => { root.cycle-fade(); }
+        }
+        SettingRow {
+            label: "Saltar pistas cortas";
+            value: root.short-filter-secs == 0
+                ? "desactivado" : "< " + root.short-filter-secs + " s";
+            highlighted: root.short-filter-secs != 0;
+            clicked => { root.cycle-short-filter(); }
         }
         // Cycles through system + every device. A dropdown would be the
         // desktop idiom, but this screen's idiom is the cycle row, and the

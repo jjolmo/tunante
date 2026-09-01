@@ -431,6 +431,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|s| s.parse().ok())
             .unwrap_or(2),
     );
+    ui.set_short_filter_secs({
+        let secs: i64 = db
+            .get_setting("mini.short_filter_secs")
+            .ok()
+            .flatten()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        if let Some(p) = player.borrow_mut().as_mut() {
+            p.set_short_filter(secs * 1000);
+        }
+        secs as i32
+    });
     ui.set_fade_seconds(
         db.get_setting("mini.fade_seconds")
             .ok()
@@ -1297,6 +1309,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_ui_mode(next);
             let _ = db.set_setting("mini.ui_mode", &next.to_string());
             ui.set_ui_mode_label(SharedString::from(ui_mode_label(next)));
+        });
+    }
+
+    {
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        ui.on_cycle_short_filter(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // desactivado → 5 → 10 → 30 → desactivado. Five seconds catches
+            // SFX rows; thirty catches jingles without eating real intros.
+            let next = match ui.get_short_filter_secs() {
+                0 => 5,
+                5 => 10,
+                10 => 30,
+                _ => 0,
+            };
+            ui.set_short_filter_secs(next);
+            let _ = db.set_setting("mini.short_filter_secs", &next.to_string());
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.set_short_filter(next as i64 * 1000);
+            }
         });
     }
 
