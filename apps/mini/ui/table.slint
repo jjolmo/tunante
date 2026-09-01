@@ -58,6 +58,8 @@ export component TrackTable inherits Rectangle {
     callback open-folder(int);
     /// Open the metadata editor on this row.
     callback edit-requested(int);
+    /// Open the reclassify sheet on this row.
+    callback reclassify-requested(int);
 
     // Column layout, as fractions of the width. One place, used by header and
     // rows alike, so they cannot drift.
@@ -151,6 +153,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Editar metadatos…";
                             activated => { root.edit-requested(i); }
+                        }
+                        MenuItem {
+                            title: "Reclasificar…";
+                            activated => { root.reclassify-requested(i); }
                         }
                         MenuItem {
                             title: "Abrir carpeta";

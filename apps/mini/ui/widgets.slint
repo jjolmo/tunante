@@ -4,7 +4,7 @@
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry } from "types.slint";
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, ConsoleOption } from "types.slint";
 
 export component SwipeRow inherits Rectangle {
     in property <string> action-label;
@@ -1178,6 +1178,7 @@ export component DbSliderRow inherits Rectangle {
 component EditField inherits VerticalLayout {
     in property <string> label;
     in-out property <string> value;
+    callback edited(string);
     spacing: 4px;
 
     Text {
@@ -1201,6 +1202,7 @@ component EditField inherits VerticalLayout {
                 vertical-alignment: center;
                 single-line: true;
                 text <=> root.value;
+                edited => { root.edited(self.text); }
             }
         }
     }
@@ -1270,6 +1272,175 @@ export component MetadataSheet inherits Rectangle {
                         font-size: Theme.font-body;
                     }
                     tc := TouchArea { clicked => { root.cancelled(); } }
+                }
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: Theme.accent;
+                    Text {
+                        text: "Guardar";
+                        color: #ffffff;
+                        font-size: Theme.font-body;
+                    }
+                    TouchArea { clicked => { root.accepted(); } }
+                }
+            }
+        }
+    }
+}
+
+
+// Correcting what the classification rules got wrong: pick the machine, name
+// the game, choose whether the whole folder or just this track is meant.
+export component ReclassifySheet inherits Rectangle {
+    in property <string> heading;
+    in-out property <bool> scope-folder: true;
+    in property <[ConsoleOption]> consoles;
+    in-out property <string> selected-console;
+    in-out property <string> game-text;
+    in property <[string]> suggestions;
+    callback game-edited(string);
+    callback accepted();
+    callback cancelled();
+
+    background: #000000bb;
+
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: min(560px, root.width - Theme.gap * 4);
+        height: card.preferred-height;
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+
+        TouchArea { }
+
+        card := VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: root.heading;
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                overflow: elide;
+            }
+
+            // The scope. A franchise folder spans machines, so the correction
+            // that is actually true is often one level down — but the folder
+            // is still the case this dialog exists for, and the default.
+            HorizontalLayout {
+                spacing: Theme.gap;
+                for opt[i] in ["Toda la carpeta", "Solo esta pista"]: Rectangle {
+                    height: Theme.touch-target - 12px;
+                    horizontal-stretch: 1;
+                    border-radius: Theme.radius;
+                    background: (i == 0) == root.scope-folder
+                        ? Theme.bg-selected : Theme.bg-tertiary;
+                    Text {
+                        text: opt;
+                        color: (i == 0) == root.scope-folder
+                            ? Theme.accent : Theme.text-secondary;
+                        font-size: Theme.font-small;
+                    }
+                    TouchArea { clicked => { root.scope-folder = i == 0; } }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.gap * 2;
+
+                // The machines, first entry "(automática)" with an empty id.
+                VerticalLayout {
+                    spacing: 4px;
+                    width: 220px;
+                    Text {
+                        text: "Consola";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                    }
+                    Rectangle {
+                        height: 280px;
+                        background: Theme.bg-tertiary;
+                        border-radius: Theme.radius;
+                        ListView {
+                            for c in root.consoles: Rectangle {
+                                height: 30px;
+                                background: c.id == root.selected-console
+                                    ? Theme.bg-selected
+                                    : (ct.has-hover ? Theme.bg-hover : transparent);
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    Text {
+                                        text: c.name;
+                                        color: c.id == root.selected-console
+                                            ? Theme.accent : Theme.text-primary;
+                                        font-size: Theme.font-small;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+                                ct := TouchArea {
+                                    clicked => { root.selected-console = c.id; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // The game, with what the library already calls things.
+                VerticalLayout {
+                    spacing: 4px;
+                    horizontal-stretch: 1;
+                    EditField {
+                        label: "Juego";
+                        value <=> root.game-text;
+                        edited(t) => { root.game-edited(t); }
+                    }
+                    Text {
+                        text: "En la biblioteca:";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        visible: root.suggestions.length > 0;
+                    }
+                    for sug in root.suggestions: Rectangle {
+                        height: 28px;
+                        border-radius: Theme.radius;
+                        background: sgt.has-hover ? Theme.bg-hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            Text {
+                                text: sug;
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        sgt := TouchArea {
+                            clicked => { root.game-text = sug; }
+                        }
+                    }
+                    Rectangle { vertical-stretch: 1; }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.gap;
+                alignment: end;
+
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: rc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Cancelar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    rc := TouchArea { clicked => { root.cancelled(); } }
                 }
                 Rectangle {
                     width: 110px;
