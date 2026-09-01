@@ -38,11 +38,19 @@
 > comportamiento, cero Rust nuevo salvo el flag `--desktop`/`--mini`.
 > Verificado en pantalla con una biblioteca real: ventana ancha → tres
 > paneles, cola poblada y un NSF sonando; ventana estrecha → mini exacto,
-> sesión restaurada incluida. Rejilla a 5 columnas en desktop. Lo que la fase
-> deja abierto a 3b: la tabla ancha de 17 columnas como panel central (hoy el
-> centro es la lista del teléfono con sus ModeTabs, duplicados con el
-> sidebar), interacción de escritorio (hover/click derecho/teclado) y el
-> control de `ui-mode` en Ajustes.
+> sesión restaurada incluida. Rejilla a 5 columnas en desktop.
+>
+> **Y el arranque de la 3b, mismo día: la tabla existe.** `ui/table.slint` +
+> vista «Pistas» en el sidebar (la por defecto del modo desktop): toda la
+> biblioteca en columnas # / Título / Artista / Juego / Consola / Duración,
+> orden por cabecera con flecha, filtro con plegado de acentos, zebra, hover,
+> marca ▶ en la pista sonando, doble click reproduce y el orden visible
+> (filtrado+ordenado) se convierte en la cola. Rust posee orden y filtro
+> (`TableState` en main.rs, modelo perezoso vía `table-needed` para que el
+> teléfono nunca lo pague); verificada en pantalla con metadatos reales.
+> Queda de 3b: más columnas y configurables, click derecho/teclado/
+> multiselección, ratings, watcher en la app nueva, y el control de
+> `ui-mode` en Ajustes.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
