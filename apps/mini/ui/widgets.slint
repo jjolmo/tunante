@@ -1,0 +1,1092 @@
+// The building blocks every screen shares: rows, buttons, the transport,
+// the artwork frame, the long-press sheets. Split out of app.slint in fase 2
+// of docs/plan-desktop-slint.md — bodies verbatim, only the export changed.
+
+import { ListView, ScrollView } from "std-widgets.slint";
+import { Theme, Fmt } from "theme.slint";
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry } from "types.slint";
+
+export component SwipeRow inherits Rectangle {
+    in property <string> action-label;
+    in property <color> action-color: Theme.accent;
+    // The row's own background. Configurable so a list can say "this is the one
+    // playing" without reaching inside; the surface has to be opaque either way
+    // or the swipe action underneath shows through at rest.
+    in property <color> surface-color: Theme.bg-primary;
+    in property <bool> enabled: true;
+    callback swiped();
+    callback tapped();
+    callback held();
+
+    // How far it has to travel to count. Short enough to feel light, long
+    // enough that brushing the glass while scrolling does not fire it.
+    property <length> threshold: 90px;
+    property <length> offset: 0px;
+    /// Puesto por la pulsación larga y leído al soltar. Sin esto el dedo hace
+    /// las dos cosas: sale el menú y, al levantarlo, `clicked` encola la fila
+    /// que hay debajo.
+    property <bool> already-held: false;
+
+    // Only while the row is actually travelling. At rest nothing overflows, and
+    // a clip region costs a scissor change per row — with one SwipeRow per list
+    // row, that was eighteen batch breaks per frame to contain nothing.
+    clip: root.offset != 0px;
+
+    // What shows through from underneath as the row slides away.
+    //
+    // Built on demand. As an always-present child it was a rectangle and a
+    // string laid out on every frame of every row, entirely hidden behind the
+    // surface above it. Hidden is not free: Slint still runs the line breaking,
+    // and `parley::BreakLines::break_remaining` was 2.2% of the whole process
+    // in a profile taken on the phone.
+    if root.offset != 0px: Rectangle {
+        background: root.action-color;
+        opacity: min(1.0, abs(root.offset) / root.threshold);
+
+        HorizontalLayout {
+            padding-left: Theme.gap * 2;
+            padding-right: Theme.gap * 2;
+            alignment: root.offset > 0px ? start : end;
+
+            Text {
+                text: root.action-label;
+                color: #ffffff;
+                font-size: Theme.font-body;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    swipe := SwipeGestureHandler {
+        enabled: root.enabled;
+        handle-swipe-left: true;
+        handle-swipe-right: true;
+
+        moved => {
+            root.offset = self.current-position.x - self.pressed-position.x;
+        }
+        swiped => {
+            if (abs(root.offset) >= root.threshold) {
+                root.swiped();
+            }
+            root.offset = 0px;
+        }
+        cancelled => {
+            root.offset = 0px;
+        }
+
+        surface := Rectangle {
+            x: root.offset;
+            background: root.surface-color;
+
+            // El objetivo del toque va DEBAJO del contenido, no encima.
+            //
+            // En Slint el hermano declarado después queda encima y se lleva los
+            // eventos. Con este TouchArea detrás de @children tapaba por
+            // completo cualquier cosa que el contenido pusiera dentro —el asa de
+            // reordenar, sin ir más lejos, que no recibía un solo evento y
+            // parecía que el gesto lo robaba el Flickable.
+            tap := TouchArea {
+                clicked => {
+                    if (!root.already-held) {
+                        root.tapped();
+                    }
+                }
+
+                // Long press. Slint has no such gesture, so it is a timer armed
+                // on the way down and disarmed by anything else: lifting the
+                // finger, or the swipe handler above claiming the gesture and
+                // moving the row.
+                // Only up and cancel disarm it. Not move: a finger resting on
+                // glass jitters, and disarming on movement would mean the
+                // gesture almost never fires.
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.already-held = false;
+                        hold.running = true;
+                    } else if (e.kind == PointerEventKind.up
+                            || e.kind == PointerEventKind.cancel) {
+                        hold.running = false;
+                    }
+                }
+            }
+
+            hold := Timer {
+                interval: 500ms;
+                running: false;
+                triggered => {
+                    self.running = false;
+                    // Two things have to still be true, and neither is
+                    // redundant.
+                    //
+                    // `pressed` catches the vertical case: when the list's
+                    // Flickable decides a drag is a scroll it takes the grab,
+                    // and this TouchArea never sees an `up`. What it does see is
+                    // a `MouseEvent::Exit`, which `TouchArea` turns into
+                    // `pressed = false` and a `Cancel` pointer event
+                    // (i-slint-core input_items.rs:140-146). Without this guard,
+                    // flinging the list would pop a menu half a second later.
+                    //
+                    // Anything that latches state on `moved` has to handle that
+                    // `Cancel` explicitly, or it stays latched for good — see the
+                    // drag handles.
+                    //
+                    // The offset catches the horizontal case: the row is being
+                    // swiped, which is a different gesture with its own answer.
+                    if (tap.pressed && abs(root.offset) < 8px) {
+                        root.already-held = true;
+                        root.held();
+                    }
+                }
+            }
+
+            @children
+        }
+    }
+
+    animate offset { duration: 120ms; easing: ease-out; }
+}
+
+// One tab of the bottom bar / side rail.
+export component TabButton inherits Rectangle {
+    in property <string> label;
+    in property <string> glyph;
+    in property <bool> selected;
+    callback clicked();
+
+    background: root.selected ? Theme.bg-selected : transparent;
+    border-radius: Theme.radius;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 2px;
+
+        Text {
+            text: root.glyph;
+            font-size: 18px;
+            horizontal-alignment: center;
+            color: root.selected ? Theme.text-primary : Theme.text-secondary;
+        }
+
+        Text {
+            text: root.label;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            color: root.selected ? Theme.text-primary : Theme.text-secondary;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
+// Inherits Rectangle on purpose. A bare `component Foo { }` has no geometry of
+// its own in Slint, so it collapses to zero size and every button inside it
+// becomes invisible — which is exactly what happened on the phone: the bar was
+// there, painted, and empty. Inheriting Rectangle also means the conditional
+// layouts below are direct children of a Rectangle, so they fill it.
+export component TabSwitcher inherits Rectangle {
+    in property <bool> vertical;
+    in-out property <int> tab;
+
+    background: Theme.bg-secondary;
+
+    if root.vertical: VerticalLayout {
+        padding: 6px;
+        spacing: 6px;
+        alignment: start;
+
+        TabButton {
+            height: 60px;
+            glyph: "▶";
+            label: "Sonando";
+            selected: root.tab == 0;
+            clicked => { root.tab = 0; }
+        }
+        TabButton {
+            height: 60px;
+            glyph: "≡";
+            label: "Cola";
+            selected: root.tab == 1;
+            clicked => { root.tab = 1; }
+        }
+        TabButton {
+            height: 60px;
+            glyph: "🗀";
+            label: "Biblioteca";
+            selected: root.tab == 2;
+            clicked => { root.tab = 2; }
+        }
+        TabButton {
+            height: 60px;
+            glyph: "⚙";
+            label: "Ajustes";
+            selected: root.tab == 3;
+            clicked => { root.tab = 3; }
+        }
+    }
+
+    if !root.vertical: HorizontalLayout {
+        padding: 4px;
+        spacing: 4px;
+
+        TabButton {
+            glyph: "▶";
+            label: "Sonando";
+            selected: root.tab == 0;
+            clicked => { root.tab = 0; }
+        }
+        TabButton {
+            glyph: "≡";
+            label: "Cola";
+            selected: root.tab == 1;
+            clicked => { root.tab = 1; }
+        }
+        TabButton {
+            glyph: "🗀";
+            label: "Biblioteca";
+            selected: root.tab == 2;
+            clicked => { root.tab = 2; }
+        }
+        TabButton {
+            glyph: "⚙";
+            label: "Ajustes";
+            selected: root.tab == 3;
+            clicked => { root.tab = 3; }
+        }
+    }
+}
+
+// The cover art. Square, and told how big to be by whoever places it — working
+// its own size out from the parent would drag it into the layout's size
+// calculation, which is the binding loop this file already had once.
+export component Artwork inherits Rectangle {
+    in property <length> side;
+    in property <image> art;
+
+    height: root.side;
+    width: root.side;
+    background: Theme.bg-tertiary;
+    border-radius: Theme.radius;
+    clip: true;
+
+    Image {
+        source: root.art;
+        width: 100%;
+        height: 100%;
+        // Fill the square and crop, rather than letterboxing a non-square cover
+        // into a grey frame.
+        image-fit: cover;
+        visible: root.art.width > 0;
+    }
+
+    Text {
+        text: "♪";
+        color: Theme.text-muted;
+        // Relative, because the same component now serves the full-bleed cover
+        // on the Playing tab and a 44px thumbnail in the mini-player. Capped so
+        // a very large cover area does not turn the note into wallpaper.
+        font-size: min(64px, root.side / 3);
+        visible: root.art.width == 0;
+    }
+}
+
+// The strip above the tab bar: what is playing, and the transport.
+export component MiniPlayer inherits Rectangle {
+    in property <image> art;
+    in property <string> title;
+    in property <string> artist;
+    in property <bool> playing;
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    callback toggle-play();
+    callback next-track();
+    callback prev-track();
+
+    height: 68px;
+    background: Theme.bg-secondary;
+
+    Rectangle {
+        height: 1px;
+        y: 0;
+        background: Theme.border;
+    }
+
+    // Progress along the top edge. A hairline rather than a slider: the mini
+    // player is a status strip, and seeking belongs on the Playing tab where
+    // there is room for a target a finger can hit.
+    Rectangle {
+        y: 1px;
+        x: 0;
+        height: 2px;
+        width: root.duration-ms > 0
+            ? parent.width * min(1.0, root.position-ms / root.duration-ms)
+            : 0px;
+        background: Theme.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        spacing: Theme.gap;
+
+        // The same Artwork the Playing tab uses, at strip size. It was a
+        // hardcoded placeholder here since the first day: the cover loaded and
+        // filled the tab above while this went on drawing a grey note.
+        Rectangle {
+            width: 44px;
+            Artwork { side: 44px; art: root.art; }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+
+            Text {
+                text: root.title;
+                color: Theme.text-primary;
+                font-size: Theme.font-body;
+                overflow: elide;
+            }
+
+            Text {
+                text: root.artist;
+                color: Theme.text-secondary;
+                font-size: Theme.font-small;
+                overflow: elide;
+            }
+        }
+
+        Rectangle {
+            width: Theme.touch-target;
+            Text { text: "◀◀"; color: Theme.text-secondary; font-size: 14px; }
+            TouchArea { clicked => { root.prev-track(); } }
+        }
+
+        Rectangle {
+            width: Theme.touch-target;
+
+            // Play is a glyph the phone's fonts do have; pause (U+23F8) is not,
+            // so it is drawn. Two rectangles cannot go missing.
+            Text {
+                text: "▶";
+                color: Theme.text-primary;
+                font-size: 22px;
+                visible: !root.playing;
+            }
+
+            // Centred in both directions. A HorizontalLayout on its own only
+            // centres across; the bars would sit at the top of the strip, which
+            // is exactly how this looked on the phone the first time.
+            VerticalLayout {
+                alignment: center;
+                visible: root.playing;
+
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 5px;
+
+                    Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
+                    Rectangle { width: 5px; height: 20px; background: Theme.text-primary; }
+                }
+            }
+
+            TouchArea {
+                clicked => { root.toggle-play(); }
+            }
+        }
+
+        Rectangle {
+            width: Theme.touch-target;
+            Text { text: "▶▶"; color: Theme.text-secondary; font-size: 14px; }
+            TouchArea { clicked => { root.next-track(); } }
+        }
+    }
+}
+
+// Draggable position bar.
+//
+// The whole strip is the target, not the little knob: a 6px handle is a mouse
+// affordance, and on glass it is unhittable. Height is a finger's worth even
+// though the bar itself is thin.
+export component SeekBar inherits Rectangle {
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    callback seek(int);
+
+    height: Theme.touch-target;
+
+    property <float> fraction: root.duration-ms > 0
+        ? clamp(root.position-ms / root.duration-ms, 0.0, 1.0)
+        : 0.0;
+
+    HorizontalLayout {
+        padding-left: Theme.gap * 1.5;
+        padding-right: Theme.gap * 1.5;
+
+        Rectangle {
+            track := Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.bg-tertiary;
+
+                Rectangle {
+                    x: 0;
+                    width: parent.width * root.fraction;
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                }
+            }
+
+            Rectangle {
+                x: track.width * root.fraction - self.width / 2;
+                width: touch.pressed ? 18px : 13px;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: Theme.accent;
+                animate width { duration: 90ms; }
+            }
+
+            touch := TouchArea {
+                // Both a tap anywhere on the bar and a drag along it land the
+                // same way: wherever the finger is.
+                moved => {
+                    if (root.duration-ms > 0) {
+                        root.seek((clamp(self.mouse-x / track.width, 0.0, 1.0)
+                            * root.duration-ms));
+                    }
+                }
+                clicked => {
+                    if (root.duration-ms > 0) {
+                        root.seek((clamp(self.mouse-x / track.width, 0.0, 1.0)
+                            * root.duration-ms));
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component TimeRow inherits HorizontalLayout {
+    in property <int> position-ms;
+    in property <int> duration-ms;
+
+    padding-left: Theme.gap * 1.5;
+    padding-right: Theme.gap * 1.5;
+
+    Text {
+        text: Fmt.mmss(root.position-ms);
+        color: Theme.text-muted;
+        font-size: Theme.font-small;
+    }
+    Rectangle { horizontal-stretch: 1; }
+    Text {
+        text: root.duration-ms > 0 ? Fmt.mmss(root.duration-ms) : "--:--";
+        color: Theme.text-muted;
+        font-size: Theme.font-small;
+    }
+}
+
+// One round transport button.
+export component RoundButton inherits Rectangle {
+    in property <string> glyph;
+    in property <bool> active;
+    in property <length> size: 52px;
+    callback clicked();
+
+    width: root.size;
+    height: root.size;
+    border-radius: root.size / 2;
+    background: root.active ? Theme.bg-selected : (t.has-hover ? Theme.bg-hover : transparent);
+
+    Text {
+        text: root.glyph;
+        color: root.active ? Theme.accent : Theme.text-primary;
+        font-size: root.size * 0.38;
+    }
+
+    t := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component TrackInfo {
+    in property <string> title;
+    in property <string> artist;
+    in property <string> album;
+    in property <bool> centered;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+
+        Text {
+            text: root.title;
+            color: Theme.text-primary;
+            font-size: Theme.font-title;
+            horizontal-alignment: root.centered ? center : left;
+            overflow: elide;
+        }
+        Text {
+            text: root.artist;
+            color: Theme.text-secondary;
+            font-size: Theme.font-body;
+            horizontal-alignment: root.centered ? center : left;
+            overflow: elide;
+        }
+        Text {
+            text: root.album;
+            color: Theme.text-muted;
+            font-size: Theme.font-small;
+            horizontal-alignment: root.centered ? center : left;
+            overflow: elide;
+        }
+    }
+}
+
+export component Transport inherits VerticalLayout {
+    // Landscape hands this row about 1600 physical pixels. `space-around` over
+    // that leaves the five buttons floating a finger's width apart each, which
+    // reads as five unrelated controls rather than one transport. Wide mode
+    // keeps them together in the middle and lets the seek bar have the width,
+    // which is the part that actually benefits from it.
+    in property <bool> wide;
+    in property <bool> playing;
+    in property <bool> shuffle;
+    in property <int> repeat;          // 0 off · 1 all · 2 one
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    callback toggle-play();
+    callback next-track();
+    callback prev-track();
+    callback cycle-repeat();
+    callback toggle-shuffle();
+    callback seek(int);
+
+    spacing: 4px;
+
+    SeekBar {
+        position-ms: root.position-ms;
+        duration-ms: root.duration-ms;
+        seek(ms) => { root.seek(ms); }
+    }
+
+    TimeRow {
+        position-ms: root.position-ms;
+        duration-ms: root.duration-ms;
+    }
+
+    HorizontalLayout {
+        padding: Theme.gap;
+        alignment: root.wide ? center : space-around;
+        spacing: root.wide ? Theme.gap * 2 : 0px;
+
+        RoundButton {
+            glyph: "⤨";
+            active: root.shuffle;
+            size: 46px;
+            clicked => { root.toggle-shuffle(); }
+        }
+
+        RoundButton {
+            glyph: "◀◀";
+            size: 52px;
+            clicked => { root.prev-track(); }
+        }
+
+        // The big one, dead centre, where a thumb lands.
+        Rectangle {
+            width: 68px;
+            height: 68px;
+            border-radius: 34px;
+            background: Theme.accent;
+
+            Text {
+                text: "▶";
+                color: #ffffff;
+                font-size: 26px;
+                visible: !root.playing;
+            }
+            VerticalLayout {
+                alignment: center;
+                visible: root.playing;
+                HorizontalLayout {
+                    alignment: center;
+                    spacing: 6px;
+                    Rectangle { width: 6px; height: 24px; background: #ffffff; }
+                    Rectangle { width: 6px; height: 24px; background: #ffffff; }
+                }
+            }
+            TouchArea { clicked => { root.toggle-play(); } }
+        }
+
+        RoundButton {
+            glyph: "▶▶";
+            size: 52px;
+            clicked => { root.next-track(); }
+        }
+
+        // One glyph per mode, rather than a badge on a shared icon: at this size
+        // a "1" pinned to a corner is unreadable.
+        RoundButton {
+            glyph: root.repeat == 2 ? "↻¹" : "↻";
+            active: root.repeat != 0;
+            size: 46px;
+            clicked => { root.cycle-repeat(); }
+        }
+    }
+}
+
+// A labelled row that does one thing when tapped.
+export component SettingRow inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> highlighted;
+    callback clicked();
+
+    height: Theme.touch-target + 12px;
+    background: t.has-hover ? Theme.bg-hover : transparent;
+
+    HorizontalLayout {
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        spacing: Theme.gap;
+
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Text {
+            text: root.value;
+            color: root.highlighted ? Theme.accent : Theme.text-muted;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+        }
+    }
+
+    t := TouchArea { clicked => { root.clicked(); } }
+}
+
+export component MenuAction inherits Rectangle {
+    in property <string> glyph;
+    in property <string> label;
+    callback clicked();
+
+    height: Theme.touch-target + 8px;
+    background: touch.pressed ? Theme.bg-selected : (touch.has-hover ? Theme.bg-hover : transparent);
+    border-radius: Theme.radius;
+
+    HorizontalLayout {
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        spacing: Theme.gap;
+
+        Text {
+            text: root.glyph;
+            color: Theme.text-secondary;
+            font-size: Theme.font-body;
+            width: 20px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    touch := TouchArea { clicked => { root.clicked(); } }
+}
+
+// El mando o la consola, dibujados.
+//
+// Dibujados y no imágenes: no hay que empaquetar ficheros, no se toca ningún
+// logo ajeno, escalan igual a tres columnas que a ocho y no cuestan un byte de
+// memoria de imagen. Se reconocen por la silueta, que a este tamaño es lo único
+// que se llega a ver.
+//
+// Todo va en proporción al lado de la tarjeta, que es lo que cambia al girar.
+export component ConsoleArt inherits Rectangle {
+    in property <string> console;
+    property <length> u: root.width / 100;   // unidad: la centésima del ancho
+
+    // Qué ids de consola tienen dibujo propio. Ordenados como aparecen abajo.
+    property <bool> tiene-silueta:
+           root.console == "nes"       || root.console == "snes"
+        || root.console == "gameboy"   || root.console == "gbc"
+        || root.console == "gba"
+        || root.console == "nds"       || root.console == "n3ds"
+        || root.console == "n64"
+        || root.console == "ps1"       || root.console == "ps2"
+        || root.console == "ps3"       || root.console == "ps4"
+        || root.console == "psp"       || root.console == "psvita"
+        || root.console == "genesis"   || root.console == "mastersystem"
+        || root.console == "gamegear"  || root.console == "saturn"
+        || root.console == "dreamcast"
+        || root.console == "gamecube"  || root.console == "wii"
+        || root.console == "wiiu";
+
+    // --- Piezas comunes -----------------------------------------------------
+    // Una cruceta: dos barras cruzadas.
+    // Un botón: un círculo.
+    // Se repiten lo justo; hacer componentes de esto costaría más de lo que ahorra.
+
+    // NES: el mando rectangular, cruceta y dos botones rojos.
+    if root.console == "nes": Rectangle {
+        width: 74 * root.u; height: 34 * root.u;
+        background: #3a3a3c; border-radius: 3 * root.u;
+        Rectangle { x: 10 * root.u; y: 13 * root.u; width: 20 * root.u; height: 7 * root.u; background: #17171a; }
+        Rectangle { x: 16.5 * root.u; y: 6.5 * root.u; width: 7 * root.u; height: 20 * root.u; background: #17171a; }
+        Rectangle { x: 44 * root.u; y: 13 * root.u; width: 9 * root.u; height: 9 * root.u; border-radius: 4.5 * root.u; background: #c0392b; }
+        Rectangle { x: 57 * root.u; y: 13 * root.u; width: 9 * root.u; height: 9 * root.u; border-radius: 4.5 * root.u; background: #c0392b; }
+    }
+
+    // Super Nintendo: mando redondeado y los cuatro botones en rombo.
+    if root.console == "snes": Rectangle {
+        width: 76 * root.u; height: 32 * root.u;
+        background: #cfcfd6; border-radius: 16 * root.u;
+        Rectangle { x: 9 * root.u; y: 12 * root.u; width: 19 * root.u; height: 7 * root.u; background: #4a4a55; }
+        Rectangle { x: 15 * root.u; y: 6 * root.u; width: 7 * root.u; height: 19 * root.u; background: #4a4a55; }
+        Rectangle { x: 55 * root.u; y: 5 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #8e79c4; }
+        Rectangle { x: 55 * root.u; y: 19 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #6f5aa8; }
+        Rectangle { x: 48 * root.u; y: 12 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #6f5aa8; }
+        Rectangle { x: 62 * root.u; y: 12 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #8e79c4; }
+    }
+
+    // Game Boy: de pie, con su pantalla verde.
+    if root.console == "gameboy" || root.console == "gbc": Rectangle {
+        width: 42 * root.u; height: 66 * root.u;
+        background: #b9b7a6; border-radius: 4 * root.u;
+        Rectangle { x: 7 * root.u; y: 6 * root.u; width: 28 * root.u; height: 25 * root.u; background: #6d7b3f; border-radius: 2 * root.u; }
+        Rectangle { x: 8 * root.u; y: 40 * root.u; width: 14 * root.u; height: 5 * root.u; background: #3b3b40; }
+        Rectangle { x: 12.5 * root.u; y: 35.5 * root.u; width: 5 * root.u; height: 14 * root.u; background: #3b3b40; }
+        Rectangle { x: 26 * root.u; y: 42 * root.u; width: 7 * root.u; height: 7 * root.u; border-radius: 3.5 * root.u; background: #93285f; }
+    }
+
+    // Game Boy Advance: tumbada, pantalla al centro.
+    if root.console == "gba": Rectangle {
+        width: 76 * root.u; height: 38 * root.u;
+        background: #4b3f9e; border-radius: 12 * root.u;
+        Rectangle { x: 24 * root.u; y: 8 * root.u; width: 28 * root.u; height: 22 * root.u; background: #6d7b3f; border-radius: 2 * root.u; }
+        Rectangle { x: 6 * root.u; y: 16 * root.u; width: 13 * root.u; height: 5 * root.u; background: #2c245e; }
+        Rectangle { x: 10 * root.u; y: 12 * root.u; width: 5 * root.u; height: 13 * root.u; background: #2c245e; }
+        Rectangle { x: 58 * root.u; y: 18 * root.u; width: 7 * root.u; height: 7 * root.u; border-radius: 3.5 * root.u; background: #2c245e; }
+        Rectangle { x: 66 * root.u; y: 12 * root.u; width: 7 * root.u; height: 7 * root.u; border-radius: 3.5 * root.u; background: #2c245e; }
+    }
+
+    // Nintendo DS: las dos pantallas y la bisagra.
+    if root.console == "nds" || root.console == "n3ds": Rectangle {
+        width: 52 * root.u; height: 64 * root.u;
+        Rectangle { y: 0; width: 52 * root.u; height: 29 * root.u; background: #b8bcc4; border-radius: 3 * root.u;
+            Rectangle { x: 6 * root.u; y: 4 * root.u; width: 40 * root.u; height: 21 * root.u; background: #23262e; border-radius: 1 * root.u; }
+        }
+        Rectangle { y: 31 * root.u; width: 52 * root.u; height: 4 * root.u; background: #7f838b; }
+        Rectangle { y: 35 * root.u; width: 52 * root.u; height: 29 * root.u; background: #b8bcc4; border-radius: 3 * root.u;
+            Rectangle { x: 6 * root.u; y: 4 * root.u; width: 40 * root.u; height: 21 * root.u; background: #23262e; border-radius: 1 * root.u; }
+        }
+    }
+
+    // Nintendo 64: los tres brazos. Con Path, que es lo único que dibuja ángulos.
+    if root.console == "n64": Path {
+        width: 78 * root.u; height: 56 * root.u;
+        viewbox-width: 100; viewbox-height: 72;
+        fill: #d8d8de;
+        commands: "M 42 0 L 58 0 L 62 26 L 38 26 Z"
+                + "M 30 22 L 46 30 L 34 68 L 16 62 Z"
+                + "M 70 22 L 84 62 L 66 68 L 54 30 Z";
+    }
+
+    // PlayStation: sus cuatro símbolos. Es lo que cualquiera reconoce de lejos.
+    if root.console == "ps1" || root.console == "ps2" || root.console == "ps3"
+        || root.console == "ps4" || root.console == "psp" || root.console == "psvita": Rectangle {
+        property <color> tinte: root.console == "ps1" ? #d5d5dd : #6ea8ff;
+        width: 60 * root.u; height: 60 * root.u;
+        Text { x: 22 * root.u; y: 0; text: "△"; color: tinte; font-size: 20 * root.u; }
+        Text { x: 0; y: 20 * root.u; text: "□"; color: tinte; font-size: 20 * root.u; }
+        Text { x: 42 * root.u; y: 20 * root.u; text: "○"; color: tinte; font-size: 20 * root.u; }
+        Text { x: 22 * root.u; y: 40 * root.u; text: "✕"; color: tinte; font-size: 20 * root.u; }
+    }
+
+    // Sega: el mando negro de tres botones del Mega Drive.
+    if root.console == "genesis" || root.console == "mastersystem"
+        || root.console == "gamegear" || root.console == "saturn"
+        || root.console == "dreamcast": Rectangle {
+        width: 74 * root.u; height: 32 * root.u;
+        background: #1f1f22; border-radius: 14 * root.u;
+        Rectangle { x: 9 * root.u; y: 12 * root.u; width: 19 * root.u; height: 7 * root.u; background: #4f4f57; }
+        Rectangle { x: 15 * root.u; y: 6 * root.u; width: 7 * root.u; height: 19 * root.u; background: #4f4f57; }
+        Rectangle { x: 42 * root.u; y: 13 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
+        Rectangle { x: 52 * root.u; y: 11 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
+        Rectangle { x: 62 * root.u; y: 9 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
+    }
+
+    // Consolas de disco: un disco.
+    if root.console == "gamecube" || root.console == "wii" || root.console == "wiiu": Rectangle {
+        width: 60 * root.u; height: 60 * root.u;
+        border-radius: 30 * root.u; background: #8f9bb3;
+        Rectangle { x: 22 * root.u; y: 22 * root.u; width: 16 * root.u; height: 16 * root.u;
+                    border-radius: 8 * root.u; background: Theme.bg-tertiary; }
+    }
+
+    // Lo que no tiene silueta propia: unas barras de sonido.
+    //
+    // La condición es la negación de todas las de arriba, y no una igualdad con
+    // "otros", porque la tabla de consolas tiene ya treinta y una entradas y
+    // sólo doce se dibujan. Comparar con un sólo valor dejaría a Switch, PC,
+    // MSX y compañía sin ningún icono en vez de con el genérico.
+    if !root.tiene-silueta: Rectangle {
+        width: 56 * root.u; height: 46 * root.u;
+        Rectangle { x: 0;             y: 14 * root.u; width: 8 * root.u; height: 18 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 12 * root.u;   y: 4 * root.u;  width: 8 * root.u; height: 38 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 24 * root.u;   y: 18 * root.u; width: 8 * root.u; height: 10 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 36 * root.u;   y: 9 * root.u;  width: 8 * root.u; height: 28 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+        Rectangle { x: 48 * root.u;   y: 16 * root.u; width: 8 * root.u; height: 14 * root.u; background: #7f8896; border-radius: 4 * root.u; }
+    }
+}
+
+// Una tarjeta de la rejilla: un disco o una consola.
+export component GridItem inherits Rectangle {
+    in property <GridCell> cell;
+    in property <bool> current;
+    callback tapped();
+    callback held();
+
+    property <bool> already-held: false;
+
+    background: root.current
+        ? Theme.bg-selected
+        : (touch.pressed ? Theme.bg-hover : Theme.bg-tertiary);
+    border-radius: Theme.radius;
+    // Las celdas de relleno de la última línea no se pintan ni reciben toques.
+    visible: root.cell.path != "";
+
+    clip: true;
+
+    // Arte arriba, texto abajo, sin pisarse.
+    //
+    // Centrar el texto sobre la imagen funciona con una portada —un velo y se
+    // lee— pero sobre un dibujo de línea queda "Game Boy" escrito encima de la
+    // Game Boy. Separados, cada cosa se ve entera.
+    VerticalLayout {
+        padding: 5px;
+        spacing: 2px;
+
+        Rectangle {
+            vertical-stretch: 1;
+            clip: true;
+
+            Image {
+                source: root.cell.art;
+                width: 100%;
+                height: 100%;
+                image-fit: cover;
+                visible: root.cell.art.width > 0;
+            }
+            if root.cell.console != "": ConsoleArt {
+                console: root.cell.console;
+                width: 100%;
+                height: 100%;
+            }
+        }
+
+        Text {
+            text: root.cell.title;
+            color: Theme.text-primary;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            overflow: elide;
+            height: 15px;
+        }
+        Text {
+            text: root.cell.subtitle;
+            color: Theme.text-muted;
+            font-size: Theme.font-small;
+            horizontal-alignment: center;
+            overflow: elide;
+            // 16 y no 14: con 14 la caja corta los rasgos que bajan y "36
+            // pistas" aparecía descabezado por abajo.
+            height: 16px;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.cell.path != "";
+        clicked => {
+            if (!root.already-held) {
+                root.tapped();
+            }
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                root.already-held = false;
+                hold.running = true;
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                hold.running = false;
+            }
+        }
+    }
+
+    // Igual que en las filas: el Flickable se queda los arrastres verticales sin
+    // avisar, así que `pressed` es lo que distingue mantener de desplazar.
+    hold := Timer {
+        interval: 500ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            if (touch.pressed) {
+                root.already-held = true;
+                root.held();
+            }
+        }
+    }
+}
+
+// Una pestaña del conmutador de vistas de la biblioteca.
+export component ModeTab inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback clicked();
+
+    background: root.selected ? Theme.bg-selected : Theme.bg-tertiary;
+    border-radius: Theme.radius;
+
+    Text {
+        text: root.label;
+        color: root.selected ? Theme.text-primary : Theme.text-secondary;
+        font-size: Theme.font-small;
+        // Four chips share the width now. They fit on this phone, but eliding
+        // beats a label spilling over the chip next to it on a narrower one.
+        overflow: elide;
+    }
+
+    TouchArea { clicked => { root.clicked(); } }
+}
+
+
+// Pedir un nombre, para crear una lista o renombrarla.
+//
+// Anclada abajo como las demás hojas, y por la misma razón práctica: el teclado
+// en pantalla encoge la ventana en vez de taparla, así que lo que está pegado al
+// borde inferior sube solo cuando aparece.
+export component NameSheet inherits Rectangle {
+    in property <string> heading;
+    in property <string> confirm-label: "Crear";
+    in property <string> initial;
+    callback accepted(string);
+    callback cancelled();
+
+    background: #000000bb;
+
+    // Tocar fuera cancela. Va antes que la hoja para quedar debajo de ella.
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        y: parent.height - self.height;
+        height: hoja.preferred-height;
+        background: Theme.bg-secondary;
+
+        // Se come los toques que caen en la hoja, para que no lleguen al fondo.
+        TouchArea { }
+
+        hoja := VerticalLayout {
+            padding: Theme.gap;
+            spacing: Theme.gap;
+
+            Text {
+                text: root.heading;
+                color: Theme.text-primary;
+                font-size: Theme.font-body;
+                height: Theme.touch-target;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                height: Theme.touch-target;
+                background: Theme.bg-tertiary;
+                border-radius: Theme.radius;
+                border-width: campo.has-focus ? 1px : 0px;
+                border-color: Theme.accent;
+
+                HorizontalLayout {
+                    padding-left: Theme.gap;
+                    padding-right: Theme.gap;
+
+                    Rectangle {
+                        Text {
+                            x: 0;
+                            text: "Nombre de la lista";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            visible: campo.text == "";
+                        }
+
+                        // TextInput crudo y no un LineEdit de std-widgets: es el
+                        // primitivo desde el que Slint pide el teclado, igual que
+                        // en el campo de búsqueda de arriba.
+                        campo := TextInput {
+                            x: 0;
+                            width: parent.width;
+                            text: root.initial;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            single-line: true;
+                            accepted => { root.accepted(self.text); }
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.gap;
+
+                // Botón visible además de la tecla de aceptar: Maliit no entrega
+                // Return de forma fiable en un campo de una línea, y una hoja sin
+                // manera visible de confirmar es un callejón sin salida.
+                Rectangle {
+                    height: Theme.touch-target;
+                    background: cancelar.pressed ? Theme.bg-selected : Theme.bg-tertiary;
+                    border-radius: Theme.radius;
+                    Text {
+                        text: "Cancelar";
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-body;
+                    }
+                    cancelar := TouchArea { clicked => { root.cancelled(); } }
+                }
+                Rectangle {
+                    height: Theme.touch-target;
+                    background: campo.text == ""
+                        ? Theme.bg-tertiary
+                        : (aceptar.pressed ? Theme.accent-hover : Theme.accent);
+                    border-radius: Theme.radius;
+                    Text {
+                        text: root.confirm-label;
+                        color: campo.text == "" ? Theme.text-muted : #ffffff;
+                        font-size: Theme.font-body;
+                    }
+                    aceptar := TouchArea {
+                        // Un nombre vacío deja la lista sin migas, y la tira de
+                        // volver sólo existe si hay migas: te quedarías dentro.
+                        enabled: campo.text != "";
+                        clicked => { root.accepted(campo.text); }
+                    }
+                }
+            }
+        }
+
+        init => {
+            campo.focus();
+            // Al renombrar, escribir sustituye en vez de añadir al final.
+            campo.select-all();
+        }
+    }
+}
+

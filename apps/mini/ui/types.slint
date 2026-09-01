@@ -1,0 +1,59 @@
+// The data structs the UI and Rust share. `slint::include_modules!()` turns
+// these into Rust types; they are re-exported from app.slint so the names
+// the Rust side imports do not move when the UI files do.
+
+/// Una celda de la rejilla de Discos o Consolas.
+export struct GridCell {
+    title: string,
+    subtitle: string,
+    art: image,
+    /// No vacío cuando la celda es una consola: entonces la tarjeta dibuja el
+    /// aparato en vez de una portada.
+    console: string,
+    /// La ruta real, o una sintética (`consola:NES`). Vacía en las celdas de
+    /// relleno de la última línea, que existen sólo para que la fila mida igual
+    /// que las demás y el ListView pueda virtualizar.
+    path: string,
+    playing: bool,
+}
+
+/// Una línea de la rejilla.
+///
+/// Rust reparte las celdas en líneas y el ListView virtualiza sobre líneas, no
+/// sobre celdas. Es lo que permite una rejilla sin renunciar a que sólo existan
+/// las filas visibles — que es la regla que sostiene toda esta interfaz.
+export struct GridLine {
+    cells: [GridCell],
+}
+
+export struct LibraryRow {
+    title: string,
+    subtitle: string,
+    depth: int,
+    is-folder: bool,
+    expanded: bool,
+    // The file or folder this row stands for, so Rust can act on a tap without
+    // the UI having to keep a parallel index.
+    path: string,
+}
+
+export struct QueueRow {
+    title: string,
+    subtitle: string,
+    playing: bool,
+}
+
+export struct PlaylistRow {
+    // The id and not the row index, for the same reason the long-press sheet is
+    // keyed on a path: the model is rebuilt whenever a playlist is created,
+    // renamed or deleted, and an index would go stale under the finger.
+    id: string,
+    name: string,
+    subtitle: string,
+}
+
+export struct FolderEntry {
+    name: string,
+    path: string,
+    chosen: bool,
+}
