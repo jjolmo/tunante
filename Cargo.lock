@@ -8725,7 +8725,6 @@ dependencies = [
  "gtk",
  "libc",
  "log",
- "notify",
  "objc2 0.6.4",
  "objc2-foundation 0.3.2",
  "open",
@@ -8748,6 +8747,7 @@ dependencies = [
  "tunante-audio",
  "tunante-codec",
  "tunante-core",
+ "tunante-helper",
  "urlencoding",
  "uuid",
  "walkdir",
@@ -8842,6 +8842,7 @@ name = "tunante-helper"
 version = "0.1.0"
 dependencies = [
  "log",
+ "notify",
  "rodio",
  "serde_json",
  "tunante-core",
