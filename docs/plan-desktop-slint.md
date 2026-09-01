@@ -108,6 +108,18 @@
 > Encolar (al contexto, el encolar de mini) · Abrir carpeta (xdg-open).
 > Compilado en ambas configuraciones; el click derecho queda por probar con
 > humano delante (el compositor rechaza clicks sintéticos).
+>
+> **3c, primer diálogo: el editor de metadatos.** «Editar metadatos…» en el
+> menú contextual de la tabla abre `MetadataSheet` (widgets.slint): modal
+> centrado — idioma de puntero, no la hoja inferior del pulgar — con Título /
+> Artista / Álbum / Nº de pista, cabecera con el fichero y detalle con
+> consola y ruta. El estado es de Rust: el objetivo se guarda por id (no por
+> índice de fila — la tabla puede reordenarse bajo el diálogo), Guardar
+> escribe con `db.update_track_metadata`, actualiza las cachés de la tabla en
+> el sitio y re-lee el árbol (`refresh_library`). El número vacío limpia; el
+> no parseable no toca. Solo BD, como los ratings: escribir el tag en el
+> fichero pide los writers de codec. Pendiente 3c: reclasificación y picker
+> de carátulas — ambos con su lógica ya en crates que mini enlaza.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,

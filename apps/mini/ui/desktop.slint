@@ -10,7 +10,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { GridLine, LibraryRow, QueueRow, PlaylistRow, TableRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar } from "widgets.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 
@@ -120,6 +120,17 @@ export component DesktopShell inherits Rectangle {
     callback table-rated(int, int);
     callback table-enqueued(int);
     callback table-open-folder(int);
+    callback table-edit-requested(int);
+    // The metadata editor's state, owned by Rust like everything else.
+    in-out property <bool> editing-metadata;
+    in property <string> meta-heading;
+    in property <string> meta-detail;
+    in-out property <string> meta-title;
+    in-out property <string> meta-artist;
+    in-out property <string> meta-album;
+    in-out property <string> meta-track;
+    callback metadata-accepted();
+    callback metadata-cancelled();
     /// Whether the table is narrowed to rating > 0 — Rust's state, so the
     /// sidebar marks the entry that is actually in force.
     in property <bool> table-faved;
@@ -293,6 +304,7 @@ export component DesktopShell inherits Rectangle {
                     rated(i, stars) => { root.table-rated(i, stars); }
                     enqueued(i) => { root.table-enqueued(i); }
                     open-folder(i) => { root.table-open-folder(i); }
+                    edit-requested(i) => { root.table-edit-requested(i); }
                 }
 
                 if root.centre == 1: LibraryTab {
@@ -515,5 +527,16 @@ export component DesktopShell inherits Rectangle {
                 }
             }
         }
+    }
+
+    if root.editing-metadata: MetadataSheet {
+        heading: root.meta-heading;
+        detail: root.meta-detail;
+        title-text <=> root.meta-title;
+        artist-text <=> root.meta-artist;
+        album-text <=> root.meta-album;
+        track-text <=> root.meta-track;
+        accepted => { root.metadata-accepted(); }
+        cancelled => { root.metadata-cancelled(); }
     }
 }

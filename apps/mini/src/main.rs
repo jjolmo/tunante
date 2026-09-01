@@ -708,6 +708,113 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // --- The metadata editor ---------------------------------------------
+    // Which track the open sheet is about. An id and not a row index: the
+    // table can be re-sorted or re-filtered underneath a dialog.
+    let edit_target: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    {
+        let (st, target) = (table_state.clone(), edit_target.clone());
+        let weak = ui.as_weak();
+        ui.on_table_edit_requested(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let st = st.borrow();
+            let Some(t) = st.tracks.get(index as usize) else { return };
+            *target.borrow_mut() = Some(t.id.clone());
+            let name = std::path::Path::new(
+                tunante_core::vgm_path::parse_vgm_path(&t.path).0,
+            )
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+            ui.set_meta_heading(SharedString::from(name));
+            ui.set_meta_detail(SharedString::from(format!(
+                "{} · {}",
+                table_console_label(t),
+                t.path
+            )));
+            ui.set_meta_title(SharedString::from(t.title.as_str()));
+            ui.set_meta_artist(SharedString::from(t.artist.as_str()));
+            ui.set_meta_album(SharedString::from(t.album.as_str()));
+            ui.set_meta_track(SharedString::from(
+                t.track_number.map(|n| n.to_string()).unwrap_or_default(),
+            ));
+            ui.set_editing_metadata(true);
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        ui.on_metadata_cancelled(move || {
+            if let Some(ui) = weak.upgrade() {
+                ui.set_editing_metadata(false);
+            }
+        });
+    }
+    {
+        let (db_m, st, model, target) = (
+            db.clone(),
+            table_state.clone(),
+            table_model.clone(),
+            edit_target.clone(),
+        );
+        let (tree_m, views_m) = (tree.clone(), views.clone());
+        let weak = ui.as_weak();
+        ui.on_metadata_accepted(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(id) = target.borrow_mut().take() else {
+                ui.set_editing_metadata(false);
+                return;
+            };
+            let title = ui.get_meta_title().to_string();
+            let artist = ui.get_meta_artist().to_string();
+            let album = ui.get_meta_album().to_string();
+            let track_raw = ui.get_meta_track().to_string();
+            // Empty clears the number; anything unparseable leaves it alone
+            // rather than guessing.
+            let track_number = if track_raw.trim().is_empty() {
+                Some(None)
+            } else {
+                match track_raw.trim().parse::<i32>() {
+                    Ok(n) => Some(Some(n)),
+                    Err(_) => None,
+                }
+            };
+
+            if let Err(e) = db_m.update_track_metadata(
+                &id,
+                Some(&title),
+                Some(&artist),
+                Some(&album),
+                None,
+                track_number,
+                None,
+            ) {
+                eprintln!("no se pudieron guardar los metadatos: {e}");
+                ui.set_editing_metadata(false);
+                return;
+            }
+
+            // The caches the table sorts and filters from, kept in step so
+            // the row repaints without a database round trip.
+            {
+                let mut st = st.borrow_mut();
+                let apply = |t: &mut tunante_core::db::models::Track| {
+                    t.title = title.clone();
+                    t.artist = artist.clone();
+                    t.album = album.clone();
+                    if let Some(tn) = track_number {
+                        t.track_number = tn;
+                    }
+                };
+                st.all.iter_mut().filter(|t| t.id == id).for_each(apply);
+                st.tracks.iter_mut().filter(|t| t.id == id).for_each(apply);
+                rebuild_table(&mut st, &model);
+            }
+            // The tree and grids read the database, so they just re-read.
+            refresh_library(&ui, &tree_m, &db_m, &views_m);
+            ui.set_editing_metadata(false);
+        });
+    }
+
     {
         let (db_t, st, model) = (db.clone(), table_state.clone(), table_model.clone());
         let weak = ui.as_weak();
