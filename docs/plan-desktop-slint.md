@@ -127,6 +127,19 @@
 > re-deriva las filas él solo (`reclassify_under`); mini recarga cachés y
 > árbol. Las sugerencias online (Libretro/Steam) esperan a un hilo worker —
 > bloquean en red. Pendiente 3c: el picker de carátulas.
+>
+> **El watcher, conectado a mini — y un bug heredado cazado.** Mini enchufa
+> `tunante_helper::watch` con sus dos opiniones: la lista estática de
+> extensiones y `probe` como relector (fuera de proceso, con conexión SQLite
+> propia en el hilo del watcher; el timer drena un flag y re-lee vista, árbol
+> y tabla). `sync_watches` re-engancha tras cada escaneo. El primer test de
+> integración del módulo descubrió que el watcher del desktop llevaba un bug
+> latente desde siempre: el último evento de toda copia es
+> `Access(Close(Write))`, que pisaba el kind pendiente en el debounce y caía
+> por el brazo `_` — los ficheros nuevos se tragaban en silencio. Ahora se
+> clasifica al llegar y los eventos sin significado solo refrescan el reloj
+> del debounce (Close(Write) es exactamente «la copia terminó»). El desktop
+> Tauri hereda el arreglo gratis: comparte el módulo desde la fase 1.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
