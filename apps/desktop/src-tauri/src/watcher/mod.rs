@@ -8,7 +8,7 @@
 //! process, with the same scan options the scanner uses), and how the
 //! frontend hears about it (a Tauri event).
 
-use crate::commands::library::is_audio_file;
+use crate::services::library::is_audio_file;
 use crate::metadata;
 use crate::AppState;
 use std::sync::Arc;
@@ -34,7 +34,7 @@ pub fn spawn(state: Arc<AppState>, app: AppHandle) -> FolderWatcher {
                 FileChange::Modified => {
                     // Same endless-track limit the scanner uses, so a file picked up
                     // by the watcher doesn't get a different length than one scanned.
-                    let opts = crate::commands::library::scan_opts(&state);
+                    let opts = crate::services::library::scan_opts(&state);
                     match metadata::read_metadata_all_with_opts(path, opts) {
                         Ok(tracks) => {
                             let db = state.db.lock();

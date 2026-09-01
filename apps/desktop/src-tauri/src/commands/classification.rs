@@ -5,13 +5,15 @@
 //! so renaming "SNES" in a `.ts` file silently disabled box-art lookups for the
 //! SNES. There is one table now, in `tunante_core::console`, and this is how the
 //! frontend reads it.
+//!
+//! The bodies live in `services::classification`; these are the Tauri shells.
 
+use crate::services::classification as svc;
 use crate::AppState;
 use std::sync::Arc;
 use tauri::State;
 use tunante_core::console::{Console, CONSOLES};
 use tunante_core::db::{ClassificationOverride, UnclassifiedFolder};
-use uuid::Uuid;
 
 /// One console, as the frontend sees it.
 ///
@@ -55,7 +57,7 @@ pub fn get_console_catalog() -> Vec<ConsoleDto> {
 pub fn get_classification_overrides(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<ClassificationOverride>, String> {
-    state.db.lock().get_overrides().map_err(|e| e.to_string())
+    svc::get_overrides(&state)
 }
 
 /// Flag a whole folder — the case this exists for. A franchise folder like
@@ -68,7 +70,7 @@ pub fn set_folder_classification(
     game_name: Option<String>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    set(state, "folder", &folder, console_id, game_name)
+    svc::set_classification(&state, "folder", &folder, console_id, game_name)
 }
 
 #[tauri::command]
@@ -78,32 +80,7 @@ pub fn set_track_classification(
     game_name: Option<String>,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    set(state, "track", &track_path, console_id, game_name)
-}
-
-fn set(
-    state: State<'_, Arc<AppState>>,
-    scope: &str,
-    target: &str,
-    console_id: Option<String>,
-    game_name: Option<String>,
-) -> Result<(), String> {
-    // Refuse a console the table does not know rather than storing a
-    // correction that silently resolves to nothing.
-    if let Some(id) = console_id.as_deref().filter(|s| !s.trim().is_empty()) {
-        if tunante_core::console::by_id(id.trim()).is_none() {
-            return Err(format!("unknown console id: {id}"));
-        }
-    }
-    let db = state.db.lock();
-    db.set_override(
-        &Uuid::new_v4().to_string(),
-        scope,
-        target,
-        console_id.as_deref(),
-        game_name.as_deref(),
-    )
-    .map_err(|e| e.to_string())
+    svc::set_classification(&state, "track", &track_path, console_id, game_name)
 }
 
 #[tauri::command]
@@ -112,11 +89,7 @@ pub fn clear_classification(
     target: String,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
-    state
-        .db
-        .lock()
-        .clear_override(&scope, &target)
-        .map_err(|e| e.to_string())
+    svc::clear_classification(&state, &scope, &target)
 }
 
 /// The worklist for flagging: folders whose tracks nothing could classify,
@@ -125,12 +98,12 @@ pub fn clear_classification(
 pub fn get_unclassified_folders(
     state: State<'_, Arc<AppState>>,
 ) -> Result<Vec<UnclassifiedFolder>, String> {
-    state.db.lock().unclassified_folders().map_err(|e| e.to_string())
+    svc::unclassified_folders(&state)
 }
 
 /// Rebuild every derived console/game row. An escape hatch — the rules run
 /// themselves on scan, on insert and after any correction.
 #[tauri::command]
 pub fn reclassify_library(state: State<'_, Arc<AppState>>) -> Result<usize, String> {
-    state.db.lock().reclassify_all().map_err(|e| e.to_string())
+    svc::reclassify_library(&state)
 }
