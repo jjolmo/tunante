@@ -10,10 +10,14 @@
 use crate::image::ImageInfo;
 use std::path::{Path, PathBuf};
 
+/// What counts as an image here. Shared by the reader below and by the write
+/// path, which has to recognise its own earlier output to replace it.
+const IMAGE_EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
+
 /// The image that best represents `dir`, if any.
 pub fn folder_image(dir: &Path) -> Option<PathBuf> {
     const NAMES: &[&str] = &["cover", "folder", "front", "album", "albumart", "art", "thumb"];
-    const EXTS: &[&str] = &["jpg", "jpeg", "png", "webp", "bmp"];
+    const EXTS: &[&str] = IMAGE_EXTS;
 
     let entries: Vec<PathBuf> = std::fs::read_dir(dir).ok()?.flatten().map(|e| e.path()).collect();
 
@@ -96,11 +100,44 @@ pub fn store_cover(
     let tmp = dir.join(format!(".tunante-cover-{}.part", std::process::id()));
 
     std::fs::write(&tmp, bytes)?;
-    match std::fs::rename(&tmp, &target) {
-        Ok(()) => Ok(Stored::Written(target)),
-        Err(e) => {
-            let _ = std::fs::remove_file(&tmp);
-            Err(e)
+    std::fs::rename(&tmp, &target).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })?;
+    if overwrite == Overwrite::Replace {
+        supersede(dir, &target);
+    }
+    Ok(Stored::Written(target))
+}
+
+/// Delete the covers this app wrote before, now that a new one is in place.
+///
+/// Rule 2 above is why this is needed: the extension follows the bytes, so
+/// replacing a Libretro PNG with an iTunes JPEG writes a *second* file rather
+/// than replacing the first. Both readers then pick by their own extension
+/// order — `metadata`'s tries `.jpg` before `.png` — so "replace this cover"
+/// could leave the old one on screen, which is exactly what it was asked not to
+/// do.
+///
+/// Only `cover.*`, which is the name this app writes and no one else's choice.
+/// A `front.png` somebody put there themselves is left alone: it loses to
+/// `cover.*` in every reader in this project anyway, so deleting it would be
+/// destroying a file for no gain.
+fn supersede(dir: &Path, keep: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for path in entries.flatten().map(|e| e.path()) {
+        if path == keep {
+            continue;
+        }
+        let is_ours = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| s.eq_ignore_ascii_case("cover"));
+        let is_image = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| IMAGE_EXTS.contains(&e.to_ascii_lowercase().as_str()));
+        if is_ours && is_image {
+            let _ = std::fs::remove_file(&path);
         }
     }
 }
@@ -199,6 +236,34 @@ mod tests {
     }
 
     #[test]
+    /// A replaced cover has to *leave*, not sit next to its replacement.
+    ///
+    /// The extension follows the bytes, so swapping a Libretro PNG for an
+    /// iTunes JPEG writes a second file. Both readers in this project then pick
+    /// by their own extension order — `metadata`'s tries `.jpg` first — so the
+    /// folder decided which cover won, and "replace this one" could leave the
+    /// old one on screen.
+    #[test]
+    fn the_replaced_cover_does_not_survive_under_another_extension() {
+        let d = tmpdir("store-supersede");
+        std::fs::write(d.join("cover.jpg"), b"old").unwrap();
+        let got = store_cover(&d, b"new", &info(Format::Png), Overwrite::Replace).unwrap();
+        assert_eq!(got, Stored::Written(d.join("cover.png")));
+        assert!(!d.join("cover.jpg").exists(), "the cover it replaced is still there");
+        assert_eq!(folder_image(&d), Some(d.join("cover.png")));
+    }
+
+    /// ...but only this app's own name. Somebody else's `front.png` is their
+    /// file, and it loses to `cover.*` in every reader here anyway.
+    #[test]
+    fn a_cover_the_user_named_themselves_is_not_deleted() {
+        let d = tmpdir("store-keeps-theirs");
+        std::fs::write(d.join("front.png"), b"mine").unwrap();
+        store_cover(&d, b"new", &info(Format::Jpeg), Overwrite::Replace).unwrap();
+        assert!(d.join("front.png").exists(), "deleted a file nobody asked us to touch");
+        assert_eq!(folder_image(&d), Some(d.join("cover.jpg")));
+    }
+
     fn replacing_is_possible_when_asked_for_explicitly() {
         let d = tmpdir("store-replace");
         std::fs::write(d.join("cover.jpg"), b"old").unwrap();
