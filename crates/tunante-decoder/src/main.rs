@@ -38,6 +38,12 @@
 //! tunante-decoder art <path>
 //!     stdout: one line of JSON — {"ok":true,"art":"data:image/jpeg;base64,…"}
 //!             or {"ok":true,"art":null} when the file carries none
+//!
+//! tunante-decoder rate <path> <rating> [--order db,file,folder]
+//!     stdout: one line of JSON — {"ok":true,"stored_in":"file","skipped":[…]}
+//!     Writes the rating to disk following the priority order (the caller's
+//!     database half is the caller's business; an order starting with db
+//!     means "don't touch the disk", same as everywhere else).
 //! ```
 //!
 //! The header is a text line so the stream can be inspected with `head -1`; the
@@ -61,6 +67,7 @@ fn main() -> ExitCode {
         eprintln!("usage: tunante-decoder probe <path> [--fast]");
         eprintln!("       tunante-decoder play  <path> [hint_ms] [--loops N] [--fade MS] [--vgm-loops F]");
         eprintln!("       tunante-decoder art   <path>");
+        eprintln!("       tunante-decoder rate  <path> <rating> [--order db,file,folder]");
     };
 
     let Some(mode) = args.get(1) else {
@@ -76,6 +83,21 @@ fn main() -> ExitCode {
     let result = match mode.as_str() {
         "probe" => probe(path, args.iter().any(|a| a == "--fast")),
         "art" => art(path),
+        "rate" => {
+            let rating = args
+                .get(3)
+                .and_then(|s| s.parse::<i32>().ok())
+                .filter(|r| (0..=5).contains(r));
+            let order = args
+                .iter()
+                .skip_while(|a| *a != "--order")
+                .nth(1)
+                .map(String::as_str);
+            match rating {
+                Some(r) => rate(path, r, order),
+                None => Err("rate needs a rating between 0 and 5".to_string()),
+            }
+        }
         "play" => {
             let hint = args
                 .get(3)
@@ -176,6 +198,26 @@ fn art(path: &str) -> Result<(), String> {
             Err(msg)
         }
     }
+}
+
+/// Write a rating to disk following the priority order, and report where it
+/// landed. Lives here rather than in the apps because the writers are
+/// tunante-codec's, and only this binary and the desktop link that crate —
+/// this is how the pipe-based apps store a rating in the file or the folder's
+/// `_ratings.m3u` without linking every vendored core.
+fn rate(path: &str, rating: i32, order: Option<&str>) -> Result<(), String> {
+    let stdout = io::stdout();
+    let mut out = stdout.lock();
+
+    let order = tunante_codec::metadata::rating_source::parse_order(order);
+    let outcome = tunante_codec::metadata::rating_source::write_rating(path, rating, &order);
+
+    let payload = serde_json::json!({
+        "ok": true,
+        "stored_in": outcome.stored_in.map(|s| s.as_key()),
+        "skipped": outcome.skipped.iter().map(|s| s.as_key()).collect::<Vec<_>>(),
+    });
+    writeln!(out, "{payload}").map_err(|e| e.to_string())
 }
 
 /// Seek requests arriving on stdin, in milliseconds. -1 means nothing pending.

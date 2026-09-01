@@ -193,6 +193,39 @@ pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_jso
     Ok(parsed["tracks"].as_array().cloned().unwrap_or_default())
 }
 
+/// Write a rating to disk through the helper, following the priority order
+/// (`"file,folder"`, or the persisted `rating_source_priority` value).
+///
+/// The database half is the caller's: this only covers the destinations that
+/// need tunante-codec's writers, which the pipe-based apps do not link.
+/// Returns where it landed (`"db"` means the order said not to touch disk).
+pub fn rate(
+    path: &Path,
+    rating: i32,
+    order: Option<&str>,
+    timeout: Duration,
+) -> Result<String, String> {
+    let mut cmd = decoder_command();
+    cmd.arg("rate").arg(path).arg(rating.to_string());
+    if let Some(order) = order {
+        cmd.arg("--order").arg(order);
+    }
+
+    let child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawning the decoder: {e}"))?;
+
+    let out = capture(child, timeout)?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(out.trim()).map_err(|e| format!("decoder said: {e}"))?;
+    if parsed["ok"] != true {
+        return Err(parsed["error"].as_str().unwrap_or("unknown").to_string());
+    }
+    Ok(parsed["stored_in"].as_str().unwrap_or("").to_string())
+}
+
 /// The cover art a file carries, as a `data:` URI, by asking the helper.
 ///
 /// Asked for once per playing track rather than folded into `probe`, which runs

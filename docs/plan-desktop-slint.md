@@ -169,6 +169,18 @@
 > — la tabla con las pistas reales, las playlists reales en el sidebar, 7
 > ajustes importados. El binario de mini ya ES la app de escritorio sobre
 > los datos de verdad.
+>
+> **Segundo bloqueador caído: los writers, por la tubería.** El decoder ganó
+> el subcomando `rate <path> <n> [--order db,file,folder]`: la maquinaria de
+> prioridad de `rating_source` (tag del fichero → `_ratings.m3u` de la
+> carpeta, con el fallthrough de siempre) ejecutada donde los writers de
+> codec ya viven. `tunante_helper::rate()` es el cliente, y mini lo llama al
+> puntuar — la mitad BD sigue siendo del llamador, el orden sale del mismo
+> ajuste `rating_source_priority` que honra el desktop. Tres tests de
+> integración corriendo el binario real: FLAC guarda en el tag, NSF cae al
+> m3u de la carpeta, y un orden que empieza por db no toca el disco. La
+> escritura de tags de *metadatos* no es un gap: el desktop también escribe
+> solo BD ahí. Bloqueadores restantes del vuelco: updater y CI/empaquetado.
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
