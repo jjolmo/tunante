@@ -20,6 +20,10 @@ export component SettingsTab inherits Rectangle {
     callback add-folder();
     callback cycle-loops();
     callback cycle-fade();
+    in property <string> output-label: "sistema";
+    in property <string> ui-mode-label: "auto";
+    callback cycle-output();
+    callback cycle-ui-mode();
 
     // Desplazable, y no es un detalle: en apaisado la ventana deja unos 288
     // puntos y estas filas suman bastante más. Sin esto, tumbado el móvil, el
@@ -116,6 +120,14 @@ export component SettingsTab inherits Rectangle {
             value: root.fade-seconds == 0 ? "sin fundido" : root.fade-seconds + " s";
             clicked => { root.cycle-fade(); }
         }
+        // Cycles through system + every device. A dropdown would be the
+        // desktop idiom, but this screen's idiom is the cycle row, and the
+        // list is short: a laptop has two or three outputs, a phone has one.
+        SettingRow {
+            label: "Salida de audio";
+            value: root.output-label;
+            clicked => { root.cycle-output(); }
+        }
 
         Rectangle { height: 1px; background: Theme.border; }
 
@@ -153,6 +165,16 @@ export component SettingsTab inherits Rectangle {
             value: root.sleep-running ? root.sleep-minutes + " min" : "desactivado";
             highlighted: root.sleep-running;
             clicked => { root.cycle-sleep(); }
+        }
+
+        Rectangle { height: 1px; background: Theme.border; }
+
+        // The manual override docs/plan-desktop-slint.md promised: auto picks
+        // by window width, the other two force a shell.
+        SettingRow {
+            label: "Modo de interfaz";
+            value: root.ui-mode-label;
+            clicked => { root.cycle-ui-mode(); }
         }
 
         Rectangle { vertical-stretch: 1; }
