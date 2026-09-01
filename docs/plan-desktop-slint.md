@@ -1,7 +1,27 @@
 # Tunante desktop sobre el stack de mini — plan de migración
 
-> Estado: **plan, nada ejecutado.** Escrito el 2026-09-01 tras inventariar las
-> dos apps completas.
+> Estado: **Fase 0 casi cerrada el mismo día de escribirlo (2026-09-01).**
+> Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
+>
+> - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
+>   30.000 filas × 17 columnas. femtovg 75 fps clavados y renderer software
+>   69–74 fps — ambos al techo del panel con toda la ventana sucia por frame.
+>   Ordenar una columna con el patrón real (sort + reconstruir el modelo
+>   entero) cuesta 11–21 ms. Construir los 30k modelos de fila, ~30 ms.
+> - **Spike 2 (tray): pasa.** `tray-icon` parcheado construido en un hilo GTK
+>   dedicado (`gtk::init` + `gtk::main` fuera del hilo winit): el item SNI
+>   queda registrado en el StatusNotifierWatcher y los canales del crate llegan
+>   al hilo principal. Falta probar click de menú con un humano delante y el
+>   scroll-volumen, pero la arquitectura vale.
+> - **Spike 3 (DnD externo): resuelto por lectura de código.** El escape hatch
+>   existe (`slint::winit_030::WinitWindowAccessor::on_winit_window_event`,
+>   feature `unstable-winit-030`), y winit 0.30 entrega `DroppedFile` en X11,
+>   macOS y Windows — **pero no en Wayland** (no está implementado en winit).
+>   En Wayland el fallback es el botón «añadir carpeta» que ya existe, o
+>   implementar el data_device de Wayland a mano (no lo vale de entrada).
+> - **Spike 4 (atajos globales/ratón): pendiente**, riesgo bajo — evdev y
+>   CGEventTap no dependen de ningún loop, y `global-hotkey` es lo que el
+>   plugin de Tauri usa por debajo.
 >
 > Objetivo final: **una sola app de escritorio en Slint**. El desktop actual
 > (Tauri v2 + SvelteKit) desaparece, `tunante-mini` desaparece como app
