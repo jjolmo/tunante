@@ -181,15 +181,40 @@ impl FolderWatcher {
         is_interesting: impl Fn(&Path) -> bool,
         on_change: &mut impl FnMut(FileChange, &Path),
     ) {
-        let mut pending: HashMap<PathBuf, (EventKind, Instant)> = HashMap::new();
+        let mut pending: HashMap<PathBuf, (FileChange, Instant)> = HashMap::new();
         let debounce_duration = Duration::from_secs(2);
 
         loop {
             match rx.recv_timeout(Duration::from_millis(500)) {
                 Ok(Ok(event)) => {
+                    // Classified on arrival, not at flush time. The last event
+                    // of every file copy is Access(Close(Write)); letting it
+                    // overwrite the pending kind and fall through a `_` arm is
+                    // how the desktop's watcher silently swallowed every new
+                    // file — the bug this module's test caught on day one.
+                    let change = match event.kind {
+                        EventKind::Create(_) | EventKind::Modify(_) => {
+                            Some(FileChange::Modified)
+                        }
+                        EventKind::Remove(_) => Some(FileChange::Removed),
+                        // No meaning of its own, but it is activity: refresh
+                        // the debounce clock of whatever is already pending —
+                        // Close(Write) is precisely "the copy just finished".
+                        _ => None,
+                    };
                     for path in event.paths {
-                        if is_interesting(&path) {
-                            pending.insert(path, (event.kind, Instant::now()));
+                        if !is_interesting(&path) {
+                            continue;
+                        }
+                        match change {
+                            Some(c) => {
+                                pending.insert(path, (c, Instant::now()));
+                            }
+                            None => {
+                                if let Some(entry) = pending.get_mut(&path) {
+                                    entry.1 = Instant::now();
+                                }
+                            }
                         }
                     }
                 }
@@ -203,21 +228,75 @@ impl FolderWatcher {
             }
 
             let now = Instant::now();
-            let ready: Vec<(PathBuf, EventKind)> = pending
+            let ready: Vec<(PathBuf, FileChange)> = pending
                 .iter()
                 .filter(|(_, (_, timestamp))| now.duration_since(*timestamp) >= debounce_duration)
-                .map(|(path, (kind, _))| (path.clone(), *kind))
+                .map(|(path, (change, _))| (path.clone(), *change))
                 .collect();
 
-            for (path, kind) in ready {
+            for (path, change) in ready {
                 pending.remove(&path);
-                let change = match kind {
-                    EventKind::Create(_) | EventKind::Modify(_) => FileChange::Modified,
-                    EventKind::Remove(_) => FileChange::Removed,
-                    _ => continue,
-                };
                 on_change(change, &path);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+
+    /// The whole promise in one test: a file created under a watched folder
+    /// reaches the handler as Modified, after the debounce, on the processing
+    /// thread. Real filesystem, real inotify, real clock — the debounce is
+    /// the feature, so the test has to wait it out.
+    #[test]
+    fn a_created_file_reaches_the_handler_debounced() {
+        let dir = std::env::temp_dir().join(format!("tunante-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let hits: Arc<Mutex<Vec<(FileChange, std::path::PathBuf)>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let sink = hits.clone();
+        let mut w = FolderWatcher::new(
+            |p| p.extension().is_some_and(|e| e == "mp3"),
+            move |change, path| {
+                sink.lock().unwrap().push((change, path.to_path_buf()));
+            },
+        );
+        w.start_watching(&dir.to_string_lossy()).unwrap();
+        // Let the backend establish its watch before producing events.
+        std::thread::sleep(Duration::from_millis(300));
+
+        std::fs::write(dir.join("song.mp3"), b"not really audio").unwrap();
+        // Filtered out: never worth a probe, must never reach the handler.
+        std::fs::write(dir.join("cover.jpg"), b"not audio either").unwrap();
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            {
+                let got = hits.lock().unwrap();
+                if !got.is_empty() {
+                    assert!(
+                        got.iter().all(|(c, p)| {
+                            *c == FileChange::Modified
+                                && p.file_name().is_some_and(|n| n == "song.mp3")
+                        }),
+                        "unexpected events: {got:?}"
+                    );
+                    break;
+                }
+            }
+            assert!(
+                Instant::now() < deadline,
+                "the created file never reached the handler"
+            );
+            std::thread::sleep(Duration::from_millis(250));
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

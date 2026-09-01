@@ -256,6 +256,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // selector de listas estaría vacío hasta el primer toque.
     refresh_playlists(&db, &views, "");
 
+    // --- The watcher: the scan that never ends -------------------------------
+    //
+    // The machinery lives in `tunante_helper::watch`; this app plugs in its
+    // two opinions: the shared static extension list, and a probe-based
+    // re-read — out of process, like everything else it decodes. The handler
+    // runs on the watcher's thread with its own connection (WAL lets the two
+    // coexist); the UI hears about it through a flag the timer drains.
+    let library_dirty = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watcher = {
+        let dirty = library_dirty.clone();
+        let dbfile_w = dbfile.clone();
+        let mut wdb: Option<Database> = None;
+        Rc::new(RefCell::new(tunante_helper::watch::FolderWatcher::new(
+            |p| tunante_core::vgm_path::is_audio_file(p),
+            move |change, path| {
+                if wdb.is_none() {
+                    wdb = Database::new(&dbfile_w).ok();
+                }
+                let Some(db) = wdb.as_ref() else { return };
+                let path_str = path.to_string_lossy().to_string();
+                match change {
+                    tunante_helper::watch::FileChange::Modified => {
+                        // Probe first: a read that fails must not cost the
+                        // rows we already had.
+                        let Ok(values) = tunante_helper::probe(
+                            path,
+                            tunante_helper::scan::PROBE_TIMEOUT,
+                            true,
+                        ) else {
+                            return;
+                        };
+                        let _ = db.remove_tracks_by_base_path(&path_str);
+                        for v in values {
+                            if let Ok(track) =
+                                serde_json::from_value::<tunante_core::db::models::Track>(v)
+                            {
+                                let _ = db.insert_track(&track);
+                            }
+                        }
+                    }
+                    tunante_helper::watch::FileChange::Removed => {
+                        let _ = db.remove_tracks_by_base_path(&path_str);
+                    }
+                }
+                dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+            },
+        )))
+    };
+    // Watch every monitored folder that asks for it. Re-run after any scan:
+    // start_watching an already-watched path is a cheap re-watch, and a scan
+    // is exactly when the folder list can have grown.
+    let sync_watches = {
+        let (db, watcher) = (db.clone(), watcher.clone());
+        Rc::new(move || {
+            let mut w = watcher.borrow_mut();
+            for f in db.get_monitored_folders().unwrap_or_default() {
+                if f.watching_enabled {
+                    if let Err(e) = w.start_watching(&f.path) {
+                        eprintln!("no se pudo vigilar {}: {e}", f.path);
+                    }
+                }
+            }
+        })
+    };
+    sync_watches();
+
     // Instruments: land on a view directly instead of tapping to reach it.
     if start_mode.is_some() || open_playlist.is_some() || open_game.is_some() {
         let mode = if open_game.is_some() { 3 } else { start_mode.unwrap_or(3) };
@@ -1738,6 +1804,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let player = player.clone();
         let queue_model = queue_model.clone();
         let (db, tree, rows_model) = (db.clone(), tree.clone(), rows_model.clone());
+        let (views, library_dirty, sync_watches) =
+            (views.clone(), library_dirty.clone(), sync_watches.clone());
+        let (table_state, table_model) = (table_state.clone(), table_model.clone());
         let sleep = sleep.clone();
         let mut ticks: u64 = 0;
         let weak = ui.as_weak();
@@ -1765,6 +1834,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     rows_model.set_vec(to_ui_rows(&rows));
                 }
 
+                // The watcher changed rows underneath: re-read whatever view
+                // is on screen, and the table's caches with it.
+                if library_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    refresh_library(&ui, &tree, &db, &views);
+                    let mut st = table_state.borrow_mut();
+                    if st.built {
+                        st.all = db.get_all_tracks().unwrap_or_default();
+                        rebuild_table(&mut st, &table_model);
+                    }
+                }
+
                 if scan_done {
                     ui.set_scan_status(SharedString::new());
                     // The roots only exist once the scan has been asked for, so
@@ -1780,6 +1860,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.set_library_total(rows.len() as i32);
                     rows_model.set_vec(to_ui_rows(&rows));
                     ui.set_tab(2);
+                    // The folder list can have just grown; watch the newcomers.
+                    sync_watches();
                 }
 
                 // A second launch knocked: bring the window up, and if it
