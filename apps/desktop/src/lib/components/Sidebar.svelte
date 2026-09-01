@@ -20,6 +20,14 @@
 	let pendingCreateTrackIds = $state<string[]>([]);
 	let artworkSrc = $state<string | null>(null);
 	let lastArtworkTrackPath = $state<string | null>(null);
+	/// Up while the artwork for the current track is being looked for.
+	///
+	/// A cover that is not on disk is fetched from an archive on the other side
+	/// of the world, which regularly takes seconds and occasionally takes
+	/// thirty. Without this the panel shows the "no artwork" note for all of
+	/// it, which is not what is happening and reads as a track that simply has
+	/// no cover.
+	let artworkLoading = $state(false);
 
 	// Playlist reorder drag state
 	let draggingPlaylistId = $state<string | null>(null);
@@ -53,6 +61,8 @@
 		lastArtworkTrackPath = track.path;
 		// Immediately reset to placeholder while loading
 		artworkSrc = null;
+		artworkLoading = true;
+		const wanted = track.path;
 		invoke<string | null>('get_artwork', { trackPath: track.path })
 			.then(async (data) => {
 				if (data) {
@@ -83,6 +93,11 @@
 			})
 			.catch(() => {
 				artworkSrc = null;
+			})
+			.finally(() => {
+				// A slow lookup for a track we have already left must not take
+				// down the spinner the current one just put up.
+				if (lastArtworkTrackPath === wanted) artworkLoading = false;
 			});
 	});
 
@@ -753,6 +768,12 @@
 							alt="Album art"
 							class="artwork-image fit-{settingsStore.coverFit}"
 						/>
+					{:else if artworkLoading}
+						<div class="artwork-placeholder">
+							<svg width="28" height="28" viewBox="0 0 16 16" fill="currentColor" class="spin">
+								<path d="M8 1a7 7 0 00-7 7h2a5 5 0 015-5V1z" />
+							</svg>
+						</div>
 					{:else}
 						<div class="artwork-placeholder">
 							<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
