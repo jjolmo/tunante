@@ -740,6 +740,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 eprintln!("no se pudo guardar la puntuación: {e}");
                 return;
             }
+            // The disk half, through the helper — the same priority order the
+            // desktop honours, read from the same setting. Off this thread:
+            // writing a tag can mean rewriting the file.
+            let order = db_t
+                .get_setting("rating_source_priority")
+                .ok()
+                .flatten();
+            {
+                let path = path.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = tunante_helper::rate(
+                        std::path::Path::new(&path),
+                        new,
+                        order.as_deref(),
+                        std::time::Duration::from_secs(20),
+                    ) {
+                        eprintln!("no se pudo escribir la puntuación en disco: {e}");
+                    }
+                });
+            }
             for t in st.all.iter_mut().filter(|t| t.path == path) {
                 t.rating = new;
             }
