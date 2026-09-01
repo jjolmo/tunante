@@ -724,8 +724,7 @@ pub fn run() {
 
             // Initialize file watcher
             {
-                let fw =
-                    watcher::FolderWatcher::new(state.clone(), app.handle().clone());
+                let fw = watcher::spawn(state.clone(), app.handle().clone());
                 *state.watcher.lock() = Some(fw);
 
                 let db = state.db.lock();

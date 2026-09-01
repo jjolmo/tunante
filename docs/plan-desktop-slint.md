@@ -10,8 +10,13 @@
 > `--vgm-loops`, el único mando que no podía viajar por la tubería. Verificado:
 > workspace y Android en verde, smoke test de formatos en release, y ogg + NSF
 > sonando de verdad por la cadena nueva (4,5 MB de pico de RAM en el proceso
-> del player con el core NDS-class fuera). Pendiente de la fase: watcher a
-> canal (2), extracción de commands/ (3) y el crate de soporte (4).
+> del player con el core NDS-class fuera). El punto 2 también: la maquinaria
+> del watcher (backend por plataforma, fallback a polling, debounce) vive en
+> `tunante_helper::watch` con el filtro y el manejador inyectados; en el
+> desktop queda solo lo que es suyo — releer en proceso con sus scan opts y
+> el emit de Tauri — así que hoy no cambia ningún comportamiento y la app
+> Slint enchufará `probe` en ese mismo hueco. Pendiente de la fase:
+> extracción de commands/ (3) y el crate de soporte (4).
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
