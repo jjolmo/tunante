@@ -1,7 +1,13 @@
 # Tunante en postmarketOS (Poco X3 NFC) — plan de proyecto futuro
 
-> Estado: **investigación, sin empezar.** Escrito el 2026-08-15 tras medir el
-> acoplamiento del código actual. No se ha tocado nada del proyecto para esto.
+> Estado: **histórico, superado (2026-09-02).** Escrito el 2026-08-15 tras
+> medir el acoplamiento del código de entonces. Lo que aquí se llama «Si
+> Tauri no encaja» es exactamente lo que acabó pasando, y no solo en el
+> teléfono: `tunante-mini` (Slint) se construyó, creció hasta ser la app de
+> escritorio completa, y la app Tauri fue borrada — véase
+> `plan-desktop-slint.md`. Las rutas `src-tauri/` que se citan ya no existen;
+> el reparto núcleo/UI que este documento pedía es hoy `crates/`. Se conserva
+> como registro de la investigación.
 
 ## Objetivo
 
