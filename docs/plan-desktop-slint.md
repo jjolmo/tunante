@@ -43,6 +43,21 @@
 > placeholder con binario 0.1.999 acabó siendo byte a byte el AppImage
 > publicado).
 >
+> **Revisión visual contra v0.1.283 (2026-09-02, pedida por el usuario):**
+> los seis huecos que salieron del lado-a-lado, cerrados cinco: contadores
+> en el sidebar (Pistas/Favoritos por COUNT en una pasada, carpetas
+> pinneadas por subárbol, listas con su subtítulo — los números clavan con
+> los del viejo), la carátula grande del rincón inferior del sidebar
+> (respeta el encaje, solo si hay arte), botón stop en el transporte,
+> estrellas de lo-que-suena en el transporte (mismo toggle que la tabla,
+> sincronizadas en ambos sentidos, con la mitad de disco por el helper), y
+> el salto rápido al EQ (∿ → Ajustes). El sexto — consolas y carpetas raíz
+> como entradas de primera clase del sidebar — queda como mejora de
+> navegación, no de paridad: las vistas Consolas/Árbol cubren la función a
+> un click. También de esa revisión: el panel de cola solo existe cuando
+> tiene contenido (la regla del viejo), y la tabla de la cosecha pasó de
+> folklore a banco medido.
+>
 > **2026-09-02, cierre:** la lista de paridad de abajo está molida — lo que
 > queda sin marcar está aparcado con motivo escrito (teclas globales custom
 > a la espera de una conexión D-Bus real; scroll/estilos del tray a la
