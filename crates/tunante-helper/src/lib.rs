@@ -234,6 +234,63 @@ pub fn probe_with(
 /// The database half is the caller's: this only covers the destinations that
 /// need tunante-codec's writers, which the pipe-based apps do not link.
 /// Returns where it landed (`"db"` means the order said not to touch disk).
+/// The whole library's ratings through the decoder's resolver in one pipe:
+/// send `(db_rating, path)` pairs, get back only the ones the disk overrules
+/// (a `_ratings.m3u` from another machine, a tag from another player).
+pub fn resolve_ratings(
+    items: &[(i32, String)],
+    order: Option<&str>,
+) -> Result<Vec<(i32, String)>, String> {
+    let mut cmd = decoder_command();
+    cmd.arg("resolve-ratings");
+    if let Some(order) = order {
+        cmd.arg("--order").arg(order);
+    }
+    let mut child = cmd
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("spawning the decoder: {e}"))?;
+
+    // Feed from a thread while reading here — a full stdout pipe with a
+    // blocked writer on the same thread is the classic deadlock.
+    let mut stdin = child.stdin.take().ok_or("no stdin")?;
+    let feed: Vec<String> = items
+        .iter()
+        .map(|(r, p)| format!("{r}\t{p}"))
+        .collect();
+    let writer = std::thread::spawn(move || {
+        use std::io::Write;
+        for line in feed {
+            if writeln!(stdin, "{line}").is_err() {
+                return;
+            }
+        }
+    });
+
+    let mut out = String::new();
+    {
+        use std::io::Read;
+        child
+            .stdout
+            .take()
+            .ok_or("no stdout")?
+            .read_to_string(&mut out)
+            .map_err(|e| e.to_string())?;
+    }
+    let _ = writer.join();
+    let _ = child.wait();
+
+    Ok(out
+        .lines()
+        .filter_map(|l| {
+            let (r, p) = l.split_once('\t')?;
+            Some((r.parse().ok()?, p.to_string()))
+        })
+        .collect())
+}
+
 pub fn rate(
     path: &Path,
     rating: i32,

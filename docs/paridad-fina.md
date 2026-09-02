@@ -129,9 +129,12 @@
 - [x] Loops de formatos streamed (ver A).
 
 **Arranque / sesión**
-- [ ] Reconciliación de ratings al arrancar (el viejo pasaba disco→BD en
-      segundo plano: 29.530 en ~1,5 s; sin ella un `_ratings.m3u` editado
-      fuera no se refleja hasta re-escanear).
+- [x] Reconciliación de ratings al arrancar — por el pipe, no in-process
+      (la regla del decoder): subcomando `resolve-ratings` que recibe
+      `rating\tpath` por stdin y devuelve solo los que el disco desmiente,
+      con el mismo orden de prioridad; mini aplica el diff en un hilo y
+      library_dirty repinta. Medido en vivo: 29.530 en 0,48 s (el viejo,
+      1,5 s in-process).
 - [x] Texto de búsqueda persistido (search_query), flush por el timer.
 - [~] Auto-reanudación <5 min: cubierto distinto a propósito — mini
       restaura pista y posición SIEMPRE pero en pausa; nunca suelta sonido

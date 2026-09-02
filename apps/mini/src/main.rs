@@ -2990,6 +2990,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- Startup rating reconciliation ----------------------------------------
+    //
+    // The old desktop's pass, through the pipe instead of in-process: a
+    // _ratings.m3u edited on another machine or a tag written by another
+    // player wins by the same priority order, and the diff lands in the
+    // database with library_dirty repainting everything.
+    {
+        let (dbfile, dirty) = (dbfile.clone(), library_dirty.clone());
+        let order = db.get_setting("rating_source_priority").ok().flatten();
+        let items: Vec<(i32, String, String)> = db
+            .get_all_tracks()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| (t.rating, t.path, t.id))
+            .collect();
+        if !items.is_empty() {
+            std::thread::spawn(move || {
+                let started = std::time::Instant::now();
+                let total = items.len();
+                let by_path: std::collections::HashMap<&str, &str> = items
+                    .iter()
+                    .map(|(_, p, id)| (p.as_str(), id.as_str()))
+                    .collect();
+                let pairs: Vec<(i32, String)> =
+                    items.iter().map(|(r, p, _)| (*r, p.clone())).collect();
+                match tunante_helper::resolve_ratings(&pairs, order.as_deref()) {
+                    Ok(diff) if diff.is_empty() => {
+                        log::info!(
+                            "ratings: {total} pistas revisadas en {:?}, nada que cambiar",
+                            started.elapsed()
+                        );
+                    }
+                    Ok(diff) => {
+                        let Ok(db) = Database::new(&dbfile) else { return };
+                        let mut n = 0;
+                        for (rating, path) in &diff {
+                            if let Some(id) = by_path.get(path.as_str()) {
+                                if db.set_track_rating(id, *rating).is_ok() {
+                                    n += 1;
+                                }
+                            }
+                        }
+                        log::info!(
+                            "ratings: {n} de {total} actualizadas desde disco en {:?}",
+                            started.elapsed()
+                        );
+                        dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    Err(e) => log::warn!("ratings: la pasada falló: {e}"),
+                }
+            });
+        }
+    }
+
     // --- Loose files -------------------------------------------------------
     //
     // No file dialog of our own: kdialog or zenity, whichever this desktop
