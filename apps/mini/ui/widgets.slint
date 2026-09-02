@@ -1871,3 +1871,66 @@ export component TrackNamesSheet inherits Rectangle {
         }
     }
 }
+
+
+// The in-app log, newest first. On the phone there is no terminal behind the
+// window; this is the only pair of eyes there is.
+export component LogSheet inherits Rectangle {
+    in property <[string]> lines;
+    callback cancelled();
+
+    background: #000000bb;
+
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: min(700px, root.width - Theme.gap * 4);
+        height: min(600px, root.height - Theme.gap * 4);
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+        TouchArea { }
+
+        VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: "Registro";
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+            }
+
+            ListView {
+                vertical-stretch: 1;
+                for line in root.lines: Rectangle {
+                    height: 20px;
+                    HorizontalLayout {
+                        Text {
+                            text: line;
+                            color: Theme.text-secondary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: lgc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Cerrar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    lgc := TouchArea { clicked => { root.cancelled(); } }
+                }
+            }
+        }
+    }
+}

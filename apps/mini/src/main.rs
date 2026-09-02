@@ -44,6 +44,8 @@
 //! not answerable by clicking from a script — only by starting there.
 
 mod boost;
+mod debuglog;
+mod theme_watch;
 // logind, reached over D-Bus, and only `mpris` uses it.
 #[cfg(target_os = "linux")]
 mod inhibit;
@@ -69,6 +71,8 @@ use tunante_core::db::Database;
 slint::include_modules!();
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    debuglog::install();
+
     // Before anything else, and on this thread: `main` is where the Slint event
     // loop runs, and the clamp is per-thread. See boost.rs for the measurements
     // — this is the difference between 68 fps and 112 on the phone.
@@ -189,14 +193,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The palette always had both values; this is just the switch. Persisted
     // under the desktop's key, so the unified database keeps one opinion.
-    let dark = db
-        .get_setting("theme")
-        .ok()
-        .flatten()
-        .map(|v| v != "light")
-        .unwrap_or(true);
+    // Three states now: dark, light, or follow the system through the portal.
+    theme_watch::start();
+    let theme_mode = Rc::new(std::cell::Cell::new(
+        match db.get_setting("theme").ok().flatten().as_deref() {
+            Some("light") => 1u8,
+            Some("system") => 2,
+            _ => 0,
+        },
+    ));
+    let dark = match theme_mode.get() {
+        1 => false,
+        2 => theme_watch::prefers_dark().unwrap_or(true),
+        _ => true,
+    };
     ui.global::<Theme>().set_dark(dark);
-    ui.set_theme_label(SharedString::from(if dark { "oscuro" } else { "claro" }));
+    ui.set_theme_label(SharedString::from(theme_mode_label(theme_mode.get())));
 
     // The tray runs its own GTK thread; clicks come back through tray::poll()
     // in the UI timer, beside the MPRIS commands they resemble.
@@ -2309,12 +2321,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db, weak) = (db.clone(), ui.as_weak());
+        let theme_mode = theme_mode.clone();
         ui.on_cycle_theme(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let dark = !ui.global::<Theme>().get_dark();
+            let next = (theme_mode.get() + 1) % 3;
+            theme_mode.set(next);
+            let _ = db.set_setting(
+                "theme",
+                match next {
+                    1 => "light",
+                    2 => "system",
+                    _ => "dark",
+                },
+            );
+            let dark = match next {
+                1 => false,
+                2 => theme_watch::prefers_dark().unwrap_or(true),
+                _ => true,
+            };
             ui.global::<Theme>().set_dark(dark);
-            let _ = db.set_setting("theme", if dark { "dark" } else { "light" });
-            ui.set_theme_label(SharedString::from(if dark { "oscuro" } else { "claro" }));
+            ui.set_theme_label(SharedString::from(theme_mode_label(next)));
         });
     }
     {
@@ -2412,6 +2438,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     engine.set_fade_seconds(next as f32);
                 }
             }
+        });
+    }
+
+    // Close-to-tray: the close button hides instead of quitting, so the
+    // tray's Mostrar/Ocultar (and its left-click on KDE) becomes the way
+    // back. Off by default — surprising quits are worse than surprising
+    // survivals, but only just.
+    let close_to_tray = Rc::new(std::cell::Cell::new(
+        db.get_setting("close_to_tray")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false),
+    ));
+    ui.set_close_to_tray(close_to_tray.get());
+    {
+        let flag = close_to_tray.clone();
+        ui.window().on_close_requested(move || {
+            if cfg!(all(target_os = "linux", feature = "tray")) && flag.get() {
+                slint::CloseRequestResponse::HideWindow
+            } else {
+                let _ = slint::quit_event_loop();
+                slint::CloseRequestResponse::HideWindow
+            }
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        let flag = close_to_tray.clone();
+        ui.on_toggle_close_to_tray(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !flag.get();
+            flag.set(next);
+            ui.set_close_to_tray(next);
+            let _ = db.set_setting("close_to_tray", if next { "true" } else { "false" });
+        });
+    }
+
+    let log_model = Rc::new(VecModel::from(Vec::<SharedString>::new()));
+    ui.set_log_lines(ModelRc::from(log_model.clone()));
+    {
+        let model = log_model.clone();
+        let weak = ui.as_weak();
+        ui.on_show_log(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            model.set_vec(
+                debuglog::lines()
+                    .into_iter()
+                    .map(SharedString::from)
+                    .collect::<Vec<_>>(),
+            );
+            ui.set_showing_log(true);
         });
     }
 
@@ -2675,6 +2753,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (names_pending, names_rows_model) =
             (names_pending.clone(), names_rows_model.clone());
         let (reclass_gen, sugg_model) = (reclass_gen.clone(), sugg_model.clone());
+        let log_model = log_model.clone();
+        let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
         let mut ticks: u64 = 0;
@@ -2701,6 +2781,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     refresh_artwork(&ui, (!path.is_empty()).then_some(path.as_str()), MAX_ART_SIDE);
                     let rows = tree.borrow().rows(&db);
                     rows_model.set_vec(to_ui_rows(&rows));
+                }
+
+                // Following the system: the watcher thread refreshed its
+                // atomic; apply only on an actual flip so the binding does
+                // not churn every half second.
+                if theme_mode.get() == 2 {
+                    if let Some(dark) = theme_watch::prefers_dark() {
+                        if ui.global::<Theme>().get_dark() != dark {
+                            ui.global::<Theme>().set_dark(dark);
+                        }
+                    }
+                }
+
+                if ui.get_showing_log() {
+                    log_model.set_vec(
+                        debuglog::lines()
+                            .into_iter()
+                            .map(SharedString::from)
+                            .collect::<Vec<_>>(),
+                    );
                 }
 
                 // The updater's worker reported in.
@@ -3539,6 +3639,14 @@ fn rating_priority_label(raw: Option<&str>) -> &'static str {
         Some("file,folder,db") => "fichero primero",
         Some("folder,file,db") => "carpeta primero",
         _ => "BD manda",
+    }
+}
+
+fn theme_mode_label(mode: u8) -> &'static str {
+    match mode {
+        1 => "claro",
+        2 => "sistema",
+        _ => "oscuro",
     }
 }
 
