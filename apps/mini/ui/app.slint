@@ -91,6 +91,7 @@ export component AppWindow inherits Window {
     /// be granted from inside slint).
     in property <int> focus-filter-tick;
     in property <int> open-settings-tick;
+    in property <bool> cover-busy;
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     // Empty unless the sound has nowhere to go. See output.rs.
@@ -630,6 +631,7 @@ export component AppWindow inherits Window {
         library-reclassify-path(p) => { root.library-reclassify-path(p); }
         library-pin-path(p) => { root.library-pin-path(p); }
         library-reveal-path(p) => { root.library-reveal-path(p); }
+        cover-busy: root.cover-busy;
             library-mode-changed(i) => { root.library-mode-changed(i); }
             library-grid-tapped(p) => { root.library-grid-tapped(p); }
             library-back => { root.library-back(); }

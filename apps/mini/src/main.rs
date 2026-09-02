@@ -4125,6 +4125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Covers arrived: drop what we remember about folder art —
                 // including the misses — and redraw whatever is on screen.
                 if art_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    ui.set_cover_busy(false);
                     art_cache.borrow_mut().clear();
                     let path = ui.get_now_path().to_string();
                     refresh_artwork(&ui, (!path.is_empty()).then_some(path.as_str()), MAX_ART_SIDE);
@@ -4434,6 +4435,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         {
                             let store = ui.get_covers_in_folder();
                             let dirty = std::sync::Arc::clone(&art_dirty);
+                            ui.set_cover_busy(true);
                             std::thread::spawn(move || {
                                 let opts = tunante_art::resolver::BulkOptions {
                                     min_confidence: tunante_art::Confidence::High,
