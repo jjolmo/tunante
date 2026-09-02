@@ -52,9 +52,10 @@
       timer; solo repinta filas cuyo badge cambió).
 - [x] «Quitar de la cola» en el menú contextual (mismo toggle que el click
       central).
-- [ ] Tooltips por celda con el valor completo (todo elidido hoy es ilegible).
-- [ ] Menú contextual de la cabecera (click derecho = toggles de columnas sin
-      cerrar el menú; hoy solo existe el ⚙).
+- [x] Tooltip de fila con retardo de SO (700 ms): título completo, artista ·
+      juego · álbum y la ruta — todo lo que la elipsis esconde.
+- [x] Menú contextual de la cabecera: click derecho lista columnas con ✓
+      (el multi-tick sin cerrar del viejo lo conserva el ⚙).
 - [ ] «Quitar de la cola» / «Quitar de la lista» contextuales según contexto.
 - [ ] Scroll automático a la pista sonando al restaurar la ventana.
 
@@ -100,13 +101,18 @@
       toggle «Título en la barra de la ventana» (show_track_in_titlebar).
 
 **Atajos y teclado**
-- [ ] Pestaña Shortcuts entera: 11 acciones reconfigurables (badge de tecla,
-      grabar pulsación, botón de ratón por acción con modificador, ámbito
-      global/app, Reset all). Mini hoy: 3 atajos fijos por portal + botones
-      de ratón fijos.
-- [ ] Ctrl+P abre Ajustes; atajo para enfocar la búsqueda.
-- [ ] Teclas peladas configurables in-app (volume up/down, mute, shuffle,
-      repeat, fav…).
+- [x] 11 acciones con tecla grabable en Ajustes (click en la fila → la
+      siguiente pulsación queda; Escape cancela, Supr desvincula). Claves
+      `shortcut.<id>`; despacho por FocusScope a nivel de shell con
+      burbujeo desde la tabla, y los inputs de texto conservan sus teclas.
+      El viejo tampoco traía defaults: todo se graba. Quedan de su pestaña:
+      botón de ratón POR ACCIÓN con modificador (los botones del pulgar son
+      fijos next/prev vía evdev) y el ámbito global por tecla (lo global va
+      por los 3 atajos del portal).
+- [x] Ctrl+P abre Ajustes (fijo, como el viejo); enfocar búsqueda es la
+      acción `focus_search`, grabable.
+- [x] Teclas peladas configurables in-app (volumen ±, mute, shuffle,
+      repeat, favorito…).
 
 **Ajustes que faltan como filas**
 - [x] «Descarga automática de carátulas» (off por defecto, como el viejo) —
@@ -119,8 +125,8 @@
 - [x] Toggles de secciones del sidebar: carátula, Favoritos, Carpetas y
       Listas, bajo las claves show_* del desktop. (Consolas/árbol no son
       secciones del sidebar nuevo.)
-- [ ] Watch on/off por carpeta.
-- [ ] Loops de formatos streamed (ver A).
+- [x] Watch on/off por carpeta (entró con la lista de raíces del bloque A).
+- [x] Loops de formatos streamed (ver A).
 
 **Arranque / sesión**
 - [ ] Reconciliación de ratings al arrancar (el viejo pasaba disco→BD en

@@ -3,7 +3,7 @@
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderRow } from "types.slint";
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderRow, ShortcutRow } from "types.slint";
 import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow } from "widgets.slint";
 
 export component SettingsTab inherits Rectangle {
@@ -32,6 +32,8 @@ export component SettingsTab inherits Rectangle {
     callback toggle-show-playlists();
     in property <string> about-label;
     callback open-repo();
+    in property <[ShortcutRow]> shortcut-rows;
+    callback shortcut-capture(string);
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -565,6 +567,15 @@ export component SettingsTab inherits Rectangle {
             label: "Integrar en el escritorio";
             value: root.desktop-entry-label;
             clicked => { root.make-desktop-entry(); }
+        }
+        // In-app keys, recorded per action like the old Shortcuts tab: click
+        // a row, press the combo (Escape cancels, Supr clears). Media keys
+        // stay always-on via MPRIS; the three portal globals live above.
+        for sr in root.shortcut-rows: SettingRow {
+            label: sr.label;
+            value: sr.key == "" ? "—" : sr.key;
+            highlighted: sr.key != "" && sr.key != "pulsa una tecla…";
+            clicked => { root.shortcut-capture(sr.id); }
         }
         SettingRow {
             label: "Registro";

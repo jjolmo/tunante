@@ -152,6 +152,10 @@ export component TrackTable inherits Rectangle {
     in property <int> cursor: -1;
 
     property <bool> choosing-columns: false;
+    /// Rust bumps this to land focus in the filter box — the focus_search
+    /// action; granting focus is slint-only business.
+    in property <int> focus-filter-tick;
+    changed focus-filter-tick => { filter-input.focus(); }
     /// The row under the pointer, for the tooltip below; -1 is nobody.
     property <int> tip-row: -1;
 

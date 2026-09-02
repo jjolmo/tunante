@@ -66,6 +66,14 @@ export struct FolderEntry {
 // A pinned folder in the desktop sidebar: id from the database, name is the
 // last path component — enough to recognise it, short enough to fit.
 // A monitored library root in Ajustes: removable, watchable.
+// One configurable in-app shortcut: action id, human label, and the key
+// combo it answers to ("" = unbound; "pulsa…" while recording).
+export struct ShortcutRow {
+    id: string,
+    label: string,
+    key: string,
+}
+
 export struct FolderRow {
     id: string,
     path: string,
