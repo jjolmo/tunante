@@ -17,7 +17,6 @@ use tunante_core::vgm_path;
 
 // The scan moved to `tunante-helper::scan`, which tunante-android needs too.
 // Re-exported so the rest of this module and its callers read unchanged.
-pub use tunante_helper::scan::scan_folder;
 
 /// One line of the library tab: a folder or a track, with how deep it sits.
 #[derive(Clone, Debug)]

@@ -194,7 +194,7 @@ pub fn spawn(style: u8) {
                 // second of lag on a tooltip is beneath noticing.
                 let cell = tooltip_cell();
                 let mut last = String::new();
-                let mut tray = tray;
+                let tray = tray;
                 let mut current = (style, dark);
                 gtk::glib::timeout_add_seconds_local(1, move || {
                     if let Ok(text) = cell.lock() {

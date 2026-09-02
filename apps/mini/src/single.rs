@@ -56,7 +56,7 @@ mod imp {
     impl Instance {
         /// One queued message from a second launch, if any arrived.
         pub fn poll(&self) -> Option<String> {
-            let (mut s, _) = self.0.as_ref()?.accept().ok()?;
+            let (s, _) = self.0.as_ref()?.accept().ok()?;
             // The writer sends its line and closes; a bounded blocking read
             // keeps a malicious slow writer from stalling the UI timer.
             let _ = s.set_read_timeout(Some(std::time::Duration::from_millis(100)));

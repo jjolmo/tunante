@@ -115,7 +115,7 @@ fn run(
             .can_pause(true)
             .can_go_next(true)
             .can_go_previous(true)
-            .can_seek(false)
+            .can_seek(true)
             .can_control(true)
             .build()
             .await?;
