@@ -22,6 +22,16 @@ export component SettingsTab inherits Rectangle {
     callback toggle-titlebar-track();
     in property <string> album-game-label;
     callback toggle-album-game();
+    in property <bool> show-cover;
+    callback toggle-show-cover();
+    in property <bool> show-faved;
+    callback toggle-show-faved();
+    in property <bool> show-folders;
+    callback toggle-show-folders();
+    in property <bool> show-playlists;
+    callback toggle-show-playlists();
+    in property <string> about-label;
+    callback open-repo();
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -465,6 +475,31 @@ export component SettingsTab inherits Rectangle {
 
         Rectangle { height: 1px; background: Theme.border; }
 
+        // Which sidebar sections earn their pixels — the old Appearance tab.
+        SettingRow {
+            label: "Carátula en el sidebar";
+            value: root.show-cover ? "sí" : "no";
+            highlighted: root.show-cover;
+            clicked => { root.toggle-show-cover(); }
+        }
+        SettingRow {
+            label: "Favoritos en el sidebar";
+            value: root.show-faved ? "sí" : "no";
+            highlighted: root.show-faved;
+            clicked => { root.toggle-show-faved(); }
+        }
+        SettingRow {
+            label: "Carpetas en el sidebar";
+            value: root.show-folders ? "sí" : "no";
+            highlighted: root.show-folders;
+            clicked => { root.toggle-show-folders(); }
+        }
+        SettingRow {
+            label: "Listas en el sidebar";
+            value: root.show-playlists ? "sí" : "no";
+            highlighted: root.show-playlists;
+            clicked => { root.toggle-show-playlists(); }
+        }
         SettingRow {
             label: "Título en la barra de la ventana";
             value: root.titlebar-track ? "sí" : "no";
@@ -535,6 +570,11 @@ export component SettingsTab inherits Rectangle {
             label: "Registro";
             value: "≡";
             clicked => { root.show-log(); }
+        }
+        SettingRow {
+            label: "Acerca de Tunante";
+            value: root.about-label;
+            clicked => { root.open-repo(); }
         }
 
         Rectangle { vertical-stretch: 1; }

@@ -76,6 +76,37 @@ slint::include_modules!();
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     debuglog::install();
 
+    // The old desktop's crash courtesy: a panic writes crash.log next to the
+    // database and says so out loud, instead of a window that just vanishes.
+    {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let msg = format!("{info}");
+            let log = std::env::var_os("XDG_DATA_HOME")
+                .map(std::path::PathBuf::from)
+                .or_else(|| {
+                    std::env::var_os("HOME")
+                        .map(|h| std::path::PathBuf::from(h).join(".local/share"))
+                })
+                .unwrap_or_else(std::env::temp_dir)
+                .join("tunante-crash.log");
+            let _ = std::fs::write(&log, &msg);
+            #[cfg(target_os = "linux")]
+            {
+                let text = format!("Tunante se ha caído.\n\n{msg}\n\nDetalles en {}", log.display());
+                let _ = std::process::Command::new("zenity")
+                    .args(["--error", "--no-markup", "--text", &text])
+                    .spawn()
+                    .or_else(|_| {
+                        std::process::Command::new("kdialog")
+                            .args(["--error", &text])
+                            .spawn()
+                    });
+            }
+            default_hook(info);
+        }));
+    }
+
     // Before anything else, and on this thread: `main` is where the Slint event
     // loop runs, and the clamp is per-thread. See boost.rs for the measurements
     // — this is the difference between 68 fps and 112 on the phone.
@@ -3210,7 +3241,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_auto_covers(get_bool("auto_download_cover_art", false));
         ui.set_covers_in_folder(get_bool("store_covers_in_folder", false));
         ui.set_titlebar_track(get_bool("show_track_in_titlebar", true));
+        ui.set_show_cover(get_bool("show_cover_art", true));
+        ui.set_show_faved(get_bool("show_faved", true));
+        ui.set_show_folders(get_bool("show_folders_list", true));
+        ui.set_show_playlists(get_bool("show_playlists", true));
     }
+    // Four section toggles, one shape.
+    macro_rules! sidebar_toggle {
+        ($on:ident, $get:ident, $set:ident, $key:literal) => {{
+            let (db, weak) = (db.clone(), ui.as_weak());
+            ui.$on(move || {
+                let Some(ui) = weak.upgrade() else { return };
+                let next = !ui.$get();
+                ui.$set(next);
+                let _ = db.set_setting($key, if next { "true" } else { "false" });
+            });
+        }};
+    }
+    sidebar_toggle!(on_toggle_show_cover, get_show_cover, set_show_cover, "show_cover_art");
+    sidebar_toggle!(on_toggle_show_faved, get_show_faved, set_show_faved, "show_faved");
+    sidebar_toggle!(on_toggle_show_folders, get_show_folders, set_show_folders, "show_folders_list");
+    sidebar_toggle!(on_toggle_show_playlists, get_show_playlists, set_show_playlists, "show_playlists");
+
+    ui.set_about_label(SharedString::from(format!("v{} — jjolmo", update::CURRENT_VERSION)));
+    ui.on_open_repo(|| {
+        let _ = std::process::Command::new("xdg-open")
+            .arg("https://github.com/jjolmo/tunante")
+            .spawn();
+    });
     {
         let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_toggle_auto_covers(move || {
