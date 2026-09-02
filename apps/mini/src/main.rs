@@ -2028,6 +2028,93 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    {
+        let (player, weak) = (player.clone(), ui.as_weak());
+        let last_vol = Rc::new(std::cell::Cell::new(0.8f32));
+        ui.on_toggle_mute(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(p) = player.borrow_mut().as_mut() {
+                if p.volume() > 0.001 {
+                    last_vol.set(p.volume());
+                    p.set_volume(0.0);
+                } else {
+                    // Back to where it was — or the old desktop's 0.8 when
+                    // nobody remembers.
+                    p.set_volume(last_vol.get().max(0.05));
+                }
+                ui.set_volume(p.volume());
+            }
+        });
+    }
+    {
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        let last_fade = Rc::new(std::cell::Cell::new(4i32));
+        ui.on_toggle_crossfade(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let current = ui.get_crossfade_secs();
+            let next = if current > 0 {
+                last_fade.set(current);
+                0
+            } else {
+                last_fade.get()
+            };
+            ui.set_crossfade_secs(next);
+            let _ = db.set_setting(
+                "fade_on_track_change",
+                if next > 0 { "true" } else { "false" },
+            );
+            if next > 0 {
+                let _ = db.set_setting("fade_seconds", &next.to_string());
+            }
+            if let Some(p) = player.borrow_mut().as_mut() {
+                let engine = p.engine_mut();
+                engine.set_fade_on_track_change(next > 0);
+                if next > 0 {
+                    engine.set_fade_seconds(next as f32);
+                }
+            }
+        });
+    }
+    {
+        let (st, player, model) = (table_state.clone(), player.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_now_clicked(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let path = player
+                .borrow()
+                .as_ref()
+                .and_then(|p| p.current().map(|t| t.path.clone()));
+            let Some(path) = path else { return };
+            let mut st = st.borrow_mut();
+            // The row scrolls into view through the cursor — the table's
+            // changed-cursor handler already does the maths.
+            if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
+                st.selected = std::iter::once(i).collect();
+                st.anchor = i;
+                repaint_selection(&st, &model);
+                ui.set_table_cursor(-1);
+                ui.set_table_cursor(i as i32);
+            } else if !st.filter.is_empty() || st.faved || st.folder.is_some() {
+                // Not in the current narrowing: widen to the whole library
+                // and try again — the old app's fallback chain, first rung.
+                st.filter.clear();
+                st.faved = false;
+                st.folder = None;
+                ui.set_table_filter(SharedString::new());
+                ui.set_table_faved(false);
+                ui.set_table_folder_id(SharedString::from(""));
+                rebuild_table(&mut st, &model);
+                if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
+                    st.selected = std::iter::once(i).collect();
+                    st.anchor = i;
+                    repaint_selection(&st, &model);
+                    ui.set_table_cursor(-1);
+                    ui.set_table_cursor(i as i32);
+                }
+            }
+        });
+    }
+
     // --- Pinned folders ------------------------------------------------------
     //
     // The database supported them from day one; this is the sidebar finally
@@ -5535,6 +5622,17 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
         tunante_core::RepeatMode::One => 2,
     });
 
+    ui.set_window_title(SharedString::from(match p.current() {
+        Some(t) => {
+            let title = if t.title.is_empty() { t.path.as_str() } else { t.title.as_str() };
+            if t.artist.is_empty() {
+                format!("{title} — Tunante")
+            } else {
+                format!("{title} - {} — Tunante", t.artist)
+            }
+        }
+        None => String::new(),
+    }));
     ui.set_now_rating(p.current().map(|t| t.rating).unwrap_or(0));
     ui.set_now_stars(SharedString::from(
         p.current().map(|t| stars_for(t.rating)).unwrap_or_default(),
