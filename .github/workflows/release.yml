@@ -8,8 +8,15 @@ name: Release
 #     gh workflow run release.yml
 #
 # The bump and the tag stay inside this workflow, so that one command still
-# does the whole thing: it tags, and the tag push is what starts the phone
-# builds, which then attach themselves to it.
+# does the whole thing: it tags, creates the release, and the tag push is
+# what starts the real builds — mini.yml (Linux tarballs, the Windows zip,
+# the Alpine package) and android.yml — which then attach themselves to it.
+#
+# The Tauri desktop jobs that used to live here are gone with the app they
+# built (fase 4 of docs/plan-desktop-slint.md): the Slint player *is* the
+# desktop app now, and its builds were always mini.yml's. The last Tauri
+# release remains v0.1.283; anyone on an AppImage moves to the tarball by
+# hand once — the release notes say so.
 on:
   workflow_dispatch:
 
@@ -53,197 +60,19 @@ jobs:
           echo "version=${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
           echo "should_release=true" >> "$GITHUB_OUTPUT"
 
-  build-linux:
-    needs: version
-    if: needs.version.outputs.should_release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-22.04
-          - arch: arm64
-            runner: ubuntu-22.04-arm
-    runs-on: ${{ matrix.runner }}
-    name: Linux ${{ matrix.arch }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Stamp version
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" apps/desktop/src-tauri/tauri.conf.json
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" apps/desktop/package.json
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" apps/desktop/src-tauri/Cargo.toml
-          # The phone app and its Alpine package, which were left out and so
-          # still claimed 0.1.0 while the tags had reached 0.1.246.
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" \
-            apps/mini/Cargo.toml
-          sed -i "s/^pkgver=.*/pkgver=$VERSION/" \
-            apps/mini/dist/APKBUILD
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential pkg-config cmake \
-            libgtk-3-dev libwebkit2gtk-4.1-dev libssl-dev libsoup-3.0-dev \
-            libappindicator3-dev librsvg2-dev libasound2-dev libfuse2
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: .
-          cache-on-failure: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-      - run: npm ci
-        working-directory: apps/desktop
-      - run: npm install -g @tauri-apps/cli
-      - name: Music format smoke test
-        run: cargo test -p tunante-codec -p tunante-decoder --release -- --nocapture
-      - name: Build
-        run: npm run tauri build
-        working-directory: apps/desktop
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tunante-linux-${{ matrix.arch }}
-          path: |
-            target/release/bundle/appimage/*.AppImage
-            target/release/bundle/deb/*.deb
-
-  build-windows:
-    needs: version
-    if: needs.version.outputs.should_release == 'true'
-    runs-on: windows-latest
-    name: Windows
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Stamp version
-        shell: bash
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" apps/desktop/src-tauri/tauri.conf.json
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" apps/desktop/package.json
-          sed -i "s/^version = \".*\"/version = \"$VERSION\"/" apps/desktop/src-tauri/Cargo.toml
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: .
-          cache-on-failure: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-      - run: npm ci
-        working-directory: apps/desktop
-      - run: npm install -g @tauri-apps/cli
-      - name: Music format smoke test
-        run: cargo test -p tunante-codec -p tunante-decoder --release -- --nocapture
-      - name: Build
-        run: npm run tauri build
-        working-directory: apps/desktop
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tunante-windows
-          path: |
-            target/release/bundle/msi/*.msi
-            target/release/bundle/nsis/*.exe
-
-  build-macos:
-    needs: version
-    if: needs.version.outputs.should_release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # macos-latest is Apple Silicon. For Intel the label is
-          # `macos-15-intel`, and getting this wrong is invisible rather than
-          # loud: `macos-13` was retired on 4 December 2025, and a job asking
-          # for a label that does not exist does not fail — it queues, forever.
-          # That is exactly what this job did every time until someone went
-          # looking for why it had never once finished.
-          #
-          # GitHub drops x86_64 macOS entirely when the macOS 15 image retires
-          # in autumn 2027, so this line has a known expiry date.
-          #
-          # Native on each rather than cross-compiling or a universal binary:
-          # the vendored emulator cores are C and cmake, and a universal build
-          # would double the size of every download for one architecture.
-          - arch: aarch64
-            runner: macos-latest
-          - arch: x86_64
-            runner: macos-15-intel
-    runs-on: ${{ matrix.runner }}
-    name: macOS ${{ matrix.arch }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Stamp version
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" apps/desktop/src-tauri/tauri.conf.json
-          sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" apps/desktop/package.json
-          sed -i '' "s/^version = \".*\"/version = \"$VERSION\"/" apps/desktop/src-tauri/Cargo.toml
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: .
-          cache-on-failure: true
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-      - run: npm ci
-        working-directory: apps/desktop
-      - run: npm install -g @tauri-apps/cli
-      - name: Music format smoke test
-        run: cargo test -p tunante-codec -p tunante-decoder --release -- --nocapture
-      - name: Build
-        run: npm run tauri build
-        working-directory: apps/desktop
-        env:
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tunante-macos-${{ matrix.arch }}
-          path: target/release/bundle/dmg/*.dmg
-
+  # The release has to exist before the builds go looking for it: mini.yml
+  # and android.yml fire on the tag and poll `gh release view` until this
+  # job has done its part.
   release:
-    needs: [version, build-linux, build-windows, build-macos]
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: Determine tag
-        id: tag
-        run: echo "tag=${{ needs.version.outputs.tag }}" >> "$GITHUB_OUTPUT"
-
-      - name: Collect the release files
-        run: |
-          mkdir -p release
-          find artifacts -type f \
-            \( -name "*.AppImage" -o -name "*.deb" -o -name "*.msi" \
-               -o -name "*.exe" -o -name "*.dmg" \) -exec cp {} release/ \;
-          cp apps/desktop/update_mac.sh release/
-          ls -la release/
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: Tunante ${{ steps.tag.outputs.tag }}
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: Tunante ${{ needs.version.outputs.tag }}
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -255,18 +84,26 @@ jobs:
           # warned about that confusion since it was written; the person it
           # confuses is the one reading this page, so it belongs here.
           #
-          # Both phone builds are attached by their own workflows, which are
-          # path filtered, so a given release may carry neither. Said plainly
-          # rather than left to be discovered.
+          # Every build is attached by its own workflow, which may be path
+          # filtered, so a given release can arrive before its assets do —
+          # or, for the phones, without them. Said plainly rather than left
+          # to be discovered.
           body: |
             | Asset | What it is |
             |---|---|
-            | `.AppImage` / `.deb` | Linux desktop |
-            | `.dmg` | macOS desktop (unsigned — see the README) |
-            | `.msi` / `-setup.exe` | Windows desktop |
+            | `tunante-mini-*-linux-gnu.tar.gz` | **Linux desktop.** Unpack, run `tunante-mini`; it self-updates from here on (`--update`, or Ajustes) |
+            | `tunante-mini-*-windows.zip` | Windows desktop |
             | `tunante-android-*.apk` | **Android phone.** Sideload; not on Play |
             | `tunante-mini-*-r0.apk` | postmarketOS package, *not* an Android app |
 
-            The two phone builds ship only when their own code changed, so a
-            release may not have them. Take the newest release that does.
-          files: release/*
+            One player, every screen: wide window (or `--desktop`) is the
+            desktop shell, narrow is the phone one.
+
+            Coming from the old Tauri desktop (`.AppImage`/`.deb`/`.dmg`/`.msi`,
+            last shipped in v0.1.283)? Move once by hand to the tarball — it
+            opens the same library and settings — and updates take care of
+            themselves afterwards.
+
+            Assets are attached by their own workflows and can take a few
+            minutes to appear; the phone builds ship only when their code
+            changed, so take the newest release that has them.

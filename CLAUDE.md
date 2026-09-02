@@ -1,43 +1,48 @@
 # Tunante - Development Conventions
 
 ## Architecture
-- **Framework**: Tauri v2 (Rust backend) + SvelteKit 2 (Svelte 5 frontend)
+- **UI**: Slint 1.17 (`backend-winit`), one binary for every screen: a wide
+  window (or `--desktop`) is the desktop shell, a narrow one is the phone
+  shell. The old Tauri v2 + SvelteKit desktop app was retired in fase 4 of
+  `docs/plan-desktop-slint.md`; its last release is v0.1.283.
 - **Audio**: decoded out of process by `tunante-decoder` (PCM over a pipe),
   mixed and output by rodio via `tunante-audio` — no app process links the codecs
-- **Database**: SQLite via rusqlite (bundled)
-- **Metadata**: lofty crate for reading audio tags
-- **Styling**: Tailwind CSS v4
+- **Database**: SQLite via rusqlite (bundled). One library: the app adopts the
+  old Tauri desktop's database when it exists (`apps/mini/src/store.rs`)
+- **Metadata**: lofty crate for reading audio tags (linked only by the decoder)
 
 ## Project Structure
 
-Three apps sit side by side under `apps/`, everything they share is under
+Two apps sit side by side under `apps/`, everything they share is under
 `crates/`, and every line of third-party C is under `vendor/`. The Cargo
 workspace root is the repository root, so `cargo` commands need no
-`--manifest-path` and `target/` is shared by all three.
+`--manifest-path` and `target/` is shared.
 
 ```
 apps/
-  desktop/              # Tauri v2 + SvelteKit
-    src/                #   Frontend: lib/components, lib/stores (runes),
-                        #   lib/types, routes/
-    static/
-    package.json        #   npm lives here, not at the repository root
-    src-tauri/          #   The Tauri half — the one place the name is accurate
-      src/audio/        #     Playback engine (rodio) + output device selection
-      src/commands/     #     Tauri IPC commands (player, library, playlists)
-      src/watcher/      #     Folder watching (notify)
-  mini/                 # The small player (Slint). Not phone-only: backend-winit
-                        # covers Wayland and X11, so the same binary runs on a
-                        # phone and on a desktop. Alpine/musl is one build of it.
+  mini/                 # THE player (Slint). One binary, three presentations:
+                        # desktop shell (wide window / --desktop), phone shell
+                        # (narrow / --mini), and the landscape variants between.
+                        # Alpine/musl is one build of it; Windows is another.
+    src/                #   main.rs (event loop + models), player.rs (queue over
+                        #   tunante-audio), tray.rs, single.rs, update.rs,
+                        #   store.rs (which DB to open), library.rs (tree/grids)
+    ui/                 #   app.slint (window/router), desktop.slint (wide
+                        #   shell), table.slint, tabs.slint, widgets.slint,
+                        #   picker.slint, types.slint, theme.slint
+    dist/               #   APKBUILD, .desktop, icons (generated)
   android/              # Gradle, Kotlin, Compose
     rust/               #   JNI bridge: the Rust half of the same app (cdylib)
 crates/                 # Shared by every app
   tunante-core/         #   UI-agnostic: db/ (SQLite), queue, session, vgm_path, dsp/
   tunante-audio/        #   The playback engine: device selection + recovery,
                         #   DSP chain, decoding via tunante-decoder (PipeSource)
-  tunante-codec/        #   Every decoder + metadata reader
-  tunante-decoder/      #   The out-of-process helper binary: a file in, PCM out
-  tunante-helper/       #   Client for that helper: probe, artwork, scan, PipeSource
+  tunante-codec/        #   Every decoder + metadata reader/writer. Linked ONLY
+                        #   by tunante-decoder — that is the point of the pipe.
+  tunante-decoder/      #   The out-of-process helper binary: probe, play (PCM
+                        #   out), art, rate
+  tunante-helper/       #   Client for that helper: probe, artwork, rate, scan,
+                        #   watch (folder watching), PipeSource
   tunante-art/          #   Cover art: matching, download, validation, storage
 assets/
   logo.png              # The only drawing anyone edits. Every icon in the tree
@@ -55,28 +60,28 @@ Keep `vendor/` flat. `viogsf-rs/CMakeLists.txt` reaches for `../viogsf/vbam` and
 sibling lookups, and moving one of them alone breaks a CMake configure step with
 an error that names a header rather than a directory.
 
-`tunante-core`, `tunante-codec` and `tunante-helper` are shared by every app.
-**None of them may depend on Tauri or on any GUI toolkit.**
-`apps/desktop/src-tauri/src/lib.rs` re-exports the first two
-(`pub use tunante_core::db;`, `pub use tunante_codec::metadata;`) so
-`crate::db::…` and `crate::metadata::…` keep resolving inside the desktop app.
+`tunante-core`, `tunante-audio`, `tunante-codec` and `tunante-helper` are shared.
+**None of them may depend on any GUI toolkit.** `tunante-mini` gates its desktop
+niceties behind cargo features (`tray`, `updater`, both default-on); the phone
+builds pass `--no-default-features`, which keeps GTK and ureq out of that image.
 
 Where something belongs, when in doubt: **`tunante-core` if it only needs the
 database or pure logic** (that is why `session.rs` and the queue live there);
 **`tunante-helper` if it spawns or talks to the decoder process** (probe,
-artwork, the library scan); **the app** if it is about a screen.
+artwork, the library scan, the folder watcher); **the app** if it is about a
+screen.
 
 The rule this repository keeps learning the hard way: the moment a second app
 needs the same thing, move it down rather than copy it. `decoder.rs`,
-`scan_folder`, `folder_image` and `session.rs` all started in `tunante-mini`.
+`scan_folder`, `folder_image`, `session.rs`, `DspConfig` and the whole
+`AudioEngine` all made that trip.
 
 ## Icons
 
 `assets/logo.png` is the source and the only file to edit. Everything under
-`apps/desktop/src-tauri/icons/`, `apps/mini/dist/icons/` and
-`apps/android/.../res/mipmap-*/` is **output** — 30 files, regenerated by
-`scripts/gen-icons.py`, and an edit to one of them survives exactly until the
-next run.
+`apps/mini/dist/icons/` and `apps/android/.../res/mipmap-*/` is **output** —
+20 files, regenerated by `scripts/gen-icons.py`, and an edit to one of them
+survives exactly until the next run.
 
 The logo is pixel art, so integer multiples are scaled with nearest-neighbour:
 that is the correct filter here, not a compromise. Sizes that are not a multiple
@@ -89,26 +94,36 @@ install it once with `scripts/install-hooks.sh`. That hook cannot be relied on �
 `.github/workflows/icons.yml` runs `gen-icons.py --check` as the part that
 cannot be skipped.
 
-## Frontend Conventions
-- Svelte 5 runes: `$state`, `$derived`, `$effect`, `$props`
-- Stores: class-based pattern in `.svelte.ts` files
-- No SSR (adapter-static, `ssr = false`)
-- Dark theme (foobar2000-inspired color palette)
+## UI Conventions (Slint)
+
+- Built from primitives (Rectangle, Text, TextInput, TouchArea), not
+  std-widgets — the look is Tunante's own. The exception is ListView, for its
+  virtualization; every list and the track table live on it.
+- Layout flags (`portrait`, `cramped`, `desktop`) are **snapshotted from
+  `changed width/height` handlers, never written as derived bindings** — as
+  bindings they join the layout's own size calculation and Slint rejects the
+  cycle. See the comments on `AppWindow`.
+- Models are rebuilt whole from Rust (`VecModel::set_vec`); state lives in
+  Rust, the UI reports touches through callbacks with primitive arguments.
+- Worker threads never touch the UI: they report through `mpsc` channels and
+  `AtomicBool` flags that the 500 ms timer in `main.rs` drains (scan, MPRIS,
+  tray, single-instance, covers, updater — all the same shape).
+- Dark theme (foobar2000-inspired palette) in `ui/theme.slint`.
 
 ## Backend Conventions
-- Error handling: `thiserror` for error types, `Result<T, String>` for Tauri commands
-- Concurrency: `parking_lot::Mutex` for shared state
-- IPC: Tauri commands for request/response, events for streaming updates
+- Error handling: `thiserror` in crates, `Result<T, String>` at app boundaries
+- Concurrency: `parking_lot::Mutex` for shared state in crates; the app itself
+  is single-threaded `Rc<RefCell<…>>` plus worker threads behind channels
 - UUIDs for all entity IDs
 
 ## Commands
 
-Cargo commands run from the repository root, which is the workspace root. The
-npm ones run from `apps/desktop/`, where `package.json` lives.
+Cargo commands run from the repository root, which is the workspace root.
 
-- `cd apps/desktop && npm run tauri dev` - Start full Tauri dev mode
-- `cd apps/desktop && npm run dev` / `npm run build` - Frontend only
-- `cd apps/desktop && npm run tauri build` - Build the production desktop app
+- `cargo run --release -p tunante-mini -- --desktop` - Run the player in the
+  desktop shell (`--mini` forces the phone shell; a bare run sizes by window).
+  Release matters for playback: the decoder must exist as a sibling or via
+  `TUNANTE_DECODER`, so build `-p tunante-decoder` too.
 - `cargo check --workspace --all-targets --exclude tunante-android` - Check Rust code.
   Use `--workspace --all-targets`: without them the test and example targets of
   `tunante-core`/`tunante-codec` are never compiled, and breakage there goes unseen.
@@ -125,14 +140,17 @@ npm ones run from `apps/desktop/`, where `package.json` lives.
   only if somebody compiles it. Plain `--target aarch64-linux-android` is not
   enough; `ring` and `libsqlite3-sys` build C and need the NDK toolchain that
   `cargo ndk` sets up.
-- `cargo run -p tunante-mini` - Run the Slint player. It is a desktop app too,
-  not only a phone one — CI ships glibc x86_64 and aarch64 tarballs beside the
-  Alpine/musl .apk.
+- `cargo build --release --no-default-features -p tunante-mini` - The phone
+  configuration (no tray, no updater, no GTK/ureq). CI builds both; breakage in
+  either is breakage.
 - `cd apps/android && ./build.sh` - Build the Android APK. Compiles the Rust for
   both ABIs with cargo-ndk, stages the `.so` files into `jniLibs`, then runs Gradle.
   `ABIS="arm64-v8a" ./build.sh` skips the emulator build when only a phone matters.
   Needs `ANDROID_NDK_HOME` (defaults to the r27 in `~/Android/Sdk`) and a JDK 17+.
-- `cargo test -p tunante-codec --release` - Format smoke test. Decodes a real
-  fixture through every emulator backend and asserts the PCM is not silence. This
-  is the bar for "no regression" — CI runs it before every build. Release mode is
-  required; the cores are far too slow in debug.
+- `cargo test -p tunante-codec -p tunante-decoder --release` - Format smoke test.
+  Decodes a real fixture through every emulator backend and asserts the PCM is
+  not silence, and round-trips the decoder's `rate` subcommand. This is the bar
+  for "no regression" — CI runs it before every build. Release mode is required;
+  the cores are far too slow in debug.
+- `gh workflow run release.yml` - Publish: bumps the patch version, tags,
+  creates the release; mini.yml and android.yml attach their builds to the tag.

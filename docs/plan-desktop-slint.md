@@ -1,5 +1,22 @@
 # Tunante desktop sobre el stack de mini — plan de migración
 
+> **EL VUELCO ESTÁ EJECUTADO (2026-09-02).** `apps/desktop` — Tauri, SvelteKit,
+> npm, 19.600 líneas — ya no existe; el reproductor Slint es *la* app de
+> escritorio, y «tunante mini» como app aparte ha dejado de existir: es la
+> misma ventana, estrecha. `release.yml` quedó en versionar + taggear + crear
+> la release (mini.yml y android.yml adjuntan sus builds al tag, con su propio
+> smoke test); `gen-icons.py` genera 20 iconos (mini + Android) y perdió los
+> del bundle Tauri; CLAUDE.md y README cuentan la verdad nueva. La última
+> release Tauri es v0.1.283 y las notas de release explican el salto manual
+> único al tarball (misma BD, misma configuración — store.rs la adopta).
+> Decisión de plataformas: Linux + Windows-zip ya salen de mini.yml; macOS
+> queda para después (v0.1.283 sigue sirviendo allí). Lo que sigue vivo del
+> plan: la cosecha de la Fase 5 y la lista de paridad pendiente (multiselección,
+> columnas configurables, crossfade, tema claro, atajos globales, tooltip del
+> tray) — mejoras de la app única, ya no bloqueadores de nada.
+>
+> Estado histórico de las fases, tal como se fue escribiendo:
+>
 > Estado: **Fase 0 casi cerrada y el punto 1 de la Fase 1 ejecutado el mismo
 > día de escribirlo (2026-09-01).** `crates/tunante-audio` existe: el
 > `AudioEngine` del desktop decodificando por `DspSource<PipeSource>` — el

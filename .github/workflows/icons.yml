@@ -10,7 +10,6 @@ on:
     paths:
       - 'assets/logo.png'
       - 'scripts/gen-icons.py'
-      - 'apps/desktop/src-tauri/icons/**'
       - 'apps/mini/dist/icons/**'
       - 'apps/android/app/src/main/res/mipmap-**'
       - '.github/workflows/icons.yml'
