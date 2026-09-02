@@ -14,6 +14,12 @@ export component SettingsTab inherits Rectangle {
     in property <[FolderRow]> library-folders;
     in property <string> vgm-loops-label;
     callback cycle-vgm-loops();
+    in property <bool> auto-covers;
+    callback toggle-auto-covers();
+    in property <bool> covers-in-folder;
+    callback toggle-covers-in-folder();
+    in property <bool> titlebar-track;
+    callback toggle-titlebar-track();
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -410,6 +416,20 @@ export component SettingsTab inherits Rectangle {
             value: "⬇";
             clicked => { root.descargar-caratulas(); }
         }
+        // The old General tab's pair: fetch what's missing as it plays, and
+        // keep the prize next to the music instead of only in the cache.
+        SettingRow {
+            label: "Descarga automática de carátulas";
+            value: root.auto-covers ? "sí" : "no";
+            highlighted: root.auto-covers;
+            clicked => { root.toggle-auto-covers(); }
+        }
+        SettingRow {
+            label: "Guardar carátula en la carpeta";
+            value: root.covers-in-folder ? "sí" : "no";
+            highlighted: root.covers-in-folder;
+            clicked => { root.toggle-covers-in-folder(); }
+        }
         SettingRow {
             label: "Deshacer última descarga";
             value: root.undo-covers-label;
@@ -437,6 +457,12 @@ export component SettingsTab inherits Rectangle {
 
         Rectangle { height: 1px; background: Theme.border; }
 
+        SettingRow {
+            label: "Título en la barra de la ventana";
+            value: root.titlebar-track ? "sí" : "no";
+            highlighted: root.titlebar-track;
+            clicked => { root.toggle-titlebar-track(); }
+        }
         SettingRow {
             label: "Tema";
             value: root.theme-label;

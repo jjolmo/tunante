@@ -837,6 +837,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table_model = Rc::new(VecModel::from(Vec::<TableRow>::new()));
     ui.set_table_rows(ModelRc::from(table_model.clone()));
     let table_state = Rc::new(RefCell::new(TableState::default()));
+    // The search box's latest text, flushed to the database by the timer —
+    // a write per keystroke would be noise, the old app debounced too.
+    let pending_search: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
     let columns_model = Rc::new(VecModel::from(Vec::<TableColumn>::new()));
     let choices_model = Rc::new(VecModel::from(Vec::<ColumnChoice>::new()));
     ui.set_table_columns(ModelRc::from(columns_model.clone()));
@@ -863,6 +866,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             if !keys.is_empty() {
                 st.visible = keys;
+            }
+        }
+        // The search text survives too, under the desktop's key.
+        if let Ok(Some(q)) = db.get_setting("search_query") {
+            if !q.is_empty() {
+                st.filter = q.clone();
+                ui.set_table_filter(SharedString::from(q));
             }
         }
         // The sort survives the restart too — the desktop's session keys.
@@ -1074,7 +1084,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (st, model) = (table_state.clone(), table_model.clone());
+        let pending = pending_search.clone();
         ui.on_table_filter_changed(move |s| {
+            *pending.borrow_mut() = Some(s.to_string());
             let mut st = st.borrow_mut();
             st.filter = s.to_string();
             rebuild_table(&mut st, &model);
@@ -3182,6 +3194,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     {
+        let get_bool = |k: &str, def: bool| {
+            db.get_setting(k)
+                .ok()
+                .flatten()
+                .map(|v| v == "true")
+                .unwrap_or(def)
+        };
+        ui.set_auto_covers(get_bool("auto_download_cover_art", false));
+        ui.set_covers_in_folder(get_bool("store_covers_in_folder", false));
+        ui.set_titlebar_track(get_bool("show_track_in_titlebar", true));
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_auto_covers(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_auto_covers();
+            ui.set_auto_covers(next);
+            let _ = db.set_setting("auto_download_cover_art", if next { "true" } else { "false" });
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_covers_in_folder(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_covers_in_folder();
+            ui.set_covers_in_folder(next);
+            let _ = db.set_setting("store_covers_in_folder", if next { "true" } else { "false" });
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_titlebar_track(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_titlebar_track();
+            ui.set_titlebar_track(next);
+            let _ = db.set_setting("show_track_in_titlebar", if next { "true" } else { "false" });
+            if !next {
+                ui.set_window_title(SharedString::new());
+            }
+        });
+    }
+    {
         let stored = db
             .get_setting("vgm_loop_count")
             .ok()
@@ -3612,6 +3666,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let pinned_model = pinned_model.clone();
         let folders_model = folders_model.clone();
         let badge_fp = badge_fp.clone();
+        let pending_search = pending_search.clone();
+        let art_try: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
@@ -3926,6 +3982,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
+                }
+
+                if let Some(q) = pending_search.borrow_mut().take() {
+                    let _ = db.set_setting("search_query", &q);
+                }
+
+                // A fresh track with no art, and permission to go get it:
+                // one request through the same resolver the bulk run uses,
+                // art_dirty repaints when it lands. Tried once per track
+                // per session — a miss is not a reason to hammer.
+                if ui.get_auto_covers() {
+                    let path = ui.get_now_path().to_string();
+                    if !path.is_empty()
+                        && *art_try.borrow() != path
+                        && ui.get_now_art().size().width == 0
+                    {
+                        *art_try.borrow_mut() = path.clone();
+                        if let Some(track) =
+                            p.current().filter(|t| t.path == path).cloned()
+                        {
+                            let store = ui.get_covers_in_folder();
+                            let dirty = std::sync::Arc::clone(&art_dirty);
+                            std::thread::spawn(move || {
+                                let opts = tunante_art::resolver::BulkOptions {
+                                    min_confidence: tunante_art::Confidence::High,
+                                    ..Default::default()
+                                };
+                                let req = cover_request_for(&track, store);
+                                let _ = cover_resolver().resolve_many(
+                                    vec![req],
+                                    &opts,
+                                    |_| {},
+                                );
+                                dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                            });
+                        }
+                    }
                 }
 
                 // The queue badges in the table: »N on rows waiting in the
@@ -5653,7 +5746,7 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
         tunante_core::RepeatMode::One => 2,
     });
 
-    ui.set_window_title(SharedString::from(match p.current() {
+    ui.set_window_title(SharedString::from(match p.current().filter(|_| ui.get_titlebar_track()) {
         Some(t) => {
             let title = if t.title.is_empty() { t.path.as_str() } else { t.title.as_str() };
             if t.artist.is_empty() {
