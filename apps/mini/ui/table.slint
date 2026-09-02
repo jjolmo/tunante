@@ -59,6 +59,8 @@ export component TrackTable inherits Rectangle {
     callback enqueued(int);
     /// "Y *justo* después": the priority queue next() consumes first.
     callback play-next(int);
+    /// Open the playlist picker on this row (or the selection it sits in).
+    callback add-to-playlist(int);
     /// Reveal the row's file in the system file manager.
     callback open-folder(int);
     /// Open the metadata editor on this row.
@@ -237,6 +239,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Encolar";
                             activated => { root.enqueued(i); }
+                        }
+                        MenuItem {
+                            title: "Añadir a lista…";
+                            activated => { root.add-to-playlist(i); }
                         }
                         MenuItem {
                             title: "Editar metadatos…";

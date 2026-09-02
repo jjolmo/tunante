@@ -60,8 +60,16 @@
 >       claves `fade_on_track_change`/`fade_seconds` — las del desktop).
 >       Verificado en vivo: PSF sonando, NSF entregado por el socket, y MPRIS
 >       mostró la conmutación completada tras la rampa.
-> - [ ] **Arrastrar pistas a listas** y **soltar carpetas del SO** (spike 3:
->       X11 sí, Wayland no).
+> - [x] **Añadir a listas desde la tabla** — el arrastre del desktop era el
+>       gesto; la intención está cubierta con «Añadir a lista…» en el menú
+>       contextual (respeta la selección): picker con todas las listas + campo
+>       de lista nueva. El arrastre físico y el drop de carpetas del SO quedan
+>       como gesto pendiente (spike 3: X11 sí, Wayland no).
+> - [x] **Tooltip del tray** — buzón de string + glib timeout a 1 Hz en el
+>       hilo del tray; los objetos GTK no cruzan hilos, el string sí.
+> - [x] **Tema claro** — la paleta llevaba ambos valores desde el día uno;
+>       fila «Tema», persistido bajo la clave `theme` del desktop, y una línea
+>       de Rust conmutando el global. Verificado en pantalla.
 >
 > **Ajustes que el desktop tenía y mini no expone** (la maquinaria existe;
 > son filas de Ajustes):
@@ -79,13 +87,13 @@
 > - [ ] Carpetas pinneadas (la BD las soporta desde siempre).
 >
 > **Integración de escritorio:**
-> - [ ] Tray: tooltip con la pista, scroll-volumen, click izquierdo
->       mostrar/ocultar (el parche SNI está enlazado sin cablear),
->       close-to-tray, estilos de icono.
+> - [ ] Tray: scroll-volumen, click izquierdo mostrar/ocultar (el parche SNI
+>       está enlazado sin cablear), close-to-tray, estilos de icono (el
+>       tooltip ya sigue a la pista).
 > - [ ] Atajos globales configurables + botones de ratón (evdev) — las teclas
 >       multimedia YA funcionan vía MPRIS en Linux; esto es lo custom.
 >       Spike 4, el único sin ejecutar.
-> - [ ] Tema claro / seguir al sistema (Theme.dark existe, nunca se conmuta).
+> - [ ] Seguir al sistema en el tema (el toggle manual ya está).
 > - [ ] Ventana de debug (ring buffer de logs).
 > - [ ] Entrada .desktop desde la app y el reveal fino en el gestor de
 >       ficheros (Dolphin/Nautilus vía FileManager1; hoy xdg-open a secas).
