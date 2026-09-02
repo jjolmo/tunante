@@ -226,6 +226,16 @@ export component DesktopShell inherits Rectangle {
     callback cycle-theme();
     in property <string> undo-covers-label;
     callback undo-covers();
+    in-out property <bool> continue-queue;
+    callback toggle-continue-queue();
+    in property <int> loop-max-mins;
+    callback cycle-loop-max();
+    in-out property <bool> slow-scan;
+    callback toggle-slow-scan();
+    in property <bool> dsp-mono-compensate;
+    in property <bool> dsp-mono-phase;
+    callback toggle-mono-compensate();
+    callback toggle-mono-phase();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -443,6 +453,16 @@ export component DesktopShell inherits Rectangle {
                     cycle-theme => { root.cycle-theme(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
+                    continue-queue <=> root.continue-queue;
+                    toggle-continue-queue => { root.toggle-continue-queue(); }
+                    loop-max-mins: root.loop-max-mins;
+                    cycle-loop-max => { root.cycle-loop-max(); }
+                    slow-scan <=> root.slow-scan;
+                    toggle-slow-scan => { root.toggle-slow-scan(); }
+                    dsp-mono-compensate: root.dsp-mono-compensate;
+                    dsp-mono-phase: root.dsp-mono-phase;
+                    toggle-mono-compensate => { root.toggle-mono-compensate(); }
+                    toggle-mono-phase => { root.toggle-mono-phase(); }
                     eq-enabled: root.eq-enabled;
                     eq-low: root.eq-low;
                     eq-mid: root.eq-mid;
