@@ -1600,3 +1600,83 @@ export component CoverSheet inherits Rectangle {
         }
     }
 }
+
+
+// "Add N tracks to…": every playlist, plus a name field for a new one. The
+// drag the desktop had is a gesture; this is the intent, pointer-sized.
+export component PlaylistPickSheet inherits Rectangle {
+    in property <string> heading;
+    in property <[PlaylistRow]> playlists;
+    callback picked(string);
+    callback created(string);
+    callback cancelled();
+
+    background: #000000bb;
+
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: 320px;
+        height: min(560px, card.preferred-height);
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+        TouchArea { }
+
+        card := VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: root.heading;
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                overflow: elide;
+            }
+
+            ListView {
+                height: min(300px, root.playlists.length * 36px + 4px);
+                for pl in root.playlists: Rectangle {
+                    height: 36px;
+                    border-radius: Theme.radius;
+                    background: plt.has-hover ? Theme.bg-hover : transparent;
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        Text {
+                            text: pl.name;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    plt := TouchArea { clicked => { root.picked(pl.id); } }
+                }
+            }
+
+            EditField {
+                label: "…o una lista nueva";
+                accepted(name) => {
+                    if (name != "") {
+                        root.created(name);
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: plc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Cancelar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    plc := TouchArea { clicked => { root.cancelled(); } }
+                }
+            }
+        }
+    }
+}

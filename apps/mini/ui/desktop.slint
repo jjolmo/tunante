@@ -10,7 +10,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet } from "widgets.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 
@@ -123,6 +123,11 @@ export component DesktopShell inherits Rectangle {
     callback table-rated(int, int);
     callback table-enqueued(int);
     callback table-play-next(int);
+    callback table-add-to-playlist(int);
+    in-out property <bool> picking-playlist;
+    in property <string> pick-heading;
+    callback playlist-picked(string);
+    callback playlist-created-for-add(string);
     callback table-open-folder(int);
     callback table-edit-requested(int);
     callback table-row-clicked(int, bool, bool);
@@ -348,6 +353,7 @@ export component DesktopShell inherits Rectangle {
                     rated(i, stars) => { root.table-rated(i, stars); }
                     enqueued(i) => { root.table-enqueued(i); }
                     play-next(i) => { root.table-play-next(i); }
+                    add-to-playlist(i) => { root.table-add-to-playlist(i); }
                     open-folder(i) => { root.table-open-folder(i); }
                     edit-requested(i) => { root.table-edit-requested(i); }
                     cursor: root.table-cursor;
@@ -591,6 +597,14 @@ export component DesktopShell inherits Rectangle {
                 }
             }
         }
+    }
+
+    if root.picking-playlist: PlaylistPickSheet {
+        heading: root.pick-heading;
+        playlists: root.all-playlists;
+        picked(id) => { root.playlist-picked(id); }
+        created(name) => { root.playlist-created-for-add(name); }
+        cancelled => { root.picking-playlist = false; }
     }
 
     if root.covering: CoverSheet {

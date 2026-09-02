@@ -1209,6 +1209,69 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- Add to playlist from the table --------------------------------------
+    let add_targets: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+    {
+        let (st, targets) = (table_state.clone(), add_targets.clone());
+        let weak = ui.as_weak();
+        ui.on_table_add_to_playlist(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let st = st.borrow();
+            let i = index as usize;
+            let (ids, heading) = if st.selected.len() > 1 && st.selected.contains(&i) {
+                let mut idx: Vec<usize> = st.selected.iter().copied().collect();
+                idx.sort_unstable();
+                let ids: Vec<String> =
+                    idx.iter().filter_map(|&j| st.tracks.get(j).map(|t| t.id.clone())).collect();
+                let heading = format!("Añadir {} pistas a…", ids.len());
+                (ids, heading)
+            } else {
+                let Some(t) = st.tracks.get(i) else { return };
+                let name = if t.title.is_empty() { t.path.clone() } else { t.title.clone() };
+                (vec![t.id.clone()], format!("Añadir «{}» a…", name))
+            };
+            if ids.is_empty() {
+                return;
+            }
+            *targets.borrow_mut() = ids;
+            ui.set_pick_heading(SharedString::from(heading));
+            ui.set_picking_playlist(true);
+        });
+    }
+    {
+        let (db_p, targets, views_p) = (db.clone(), add_targets.clone(), views.clone());
+        let weak = ui.as_weak();
+        ui.on_playlist_picked(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let ids = std::mem::take(&mut *targets.borrow_mut());
+            if !ids.is_empty() {
+                if let Err(e) = db_p.add_tracks_to_playlist(&id, &ids) {
+                    eprintln!("no se pudo añadir a la lista: {e}");
+                }
+                refresh_playlists(&db_p, &views_p, "");
+            }
+            ui.set_picking_playlist(false);
+        });
+    }
+    {
+        let (db_p, targets, views_p) = (db.clone(), add_targets.clone(), views.clone());
+        let weak = ui.as_weak();
+        ui.on_playlist_created_for_add(move |name| {
+            let Some(ui) = weak.upgrade() else { return };
+            let ids = std::mem::take(&mut *targets.borrow_mut());
+            let id = uuid::Uuid::new_v4().to_string();
+            if let Err(e) = db_p.create_playlist(&id, &name) {
+                eprintln!("no se pudo crear la lista: {e}");
+            } else if !ids.is_empty() {
+                if let Err(e) = db_p.add_tracks_to_playlist(&id, &ids) {
+                    eprintln!("no se pudo añadir a la lista: {e}");
+                }
+            }
+            refresh_playlists(&db_p, &views_p, "");
+            ui.set_picking_playlist(false);
+        });
+    }
+
     // --- Selection and keyboard in the table --------------------------------
     {
         let (st, model) = (table_state.clone(), table_model.clone());
