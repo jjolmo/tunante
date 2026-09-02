@@ -183,6 +183,8 @@ export component AppWindow inherits Window {
     callback toggle-global-shortcuts();
     in property <string> tray-style-label;
     callback cycle-tray-style();
+    in property <string> tray-click-label;
+    callback cycle-tray-click();
     in property <bool> update-skippable;
     callback skip-update();
     in property <string> desktop-entry-label;
@@ -872,6 +874,8 @@ export component AppWindow inherits Window {
                     toggle-global-shortcuts => { root.toggle-global-shortcuts(); }
                     tray-style-label: root.tray-style-label;
                     cycle-tray-style => { root.cycle-tray-style(); }
+                    tray-click-label: root.tray-click-label;
+                    cycle-tray-click => { root.cycle-tray-click(); }
                     update-skippable: root.update-skippable;
                     skip-update => { root.skip-update(); }
                     desktop-entry-label: root.desktop-entry-label;

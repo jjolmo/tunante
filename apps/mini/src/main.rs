@@ -3245,6 +3245,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = db.set_setting("mini.sidebar_width", &w.clamp(150, 500).to_string());
         });
     }
+    let tray_click: Rc<RefCell<String>> = Rc::new(RefCell::new(
+        db.get_setting("tray_middle_click_action")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "toggle".to_string()),
+    ));
+    ui.set_tray_click_label(SharedString::from(tray_click_label(&tray_click.borrow())));
+    {
+        let (db, weak, click) = (db.clone(), ui.as_weak(), tray_click.clone());
+        ui.on_cycle_tray_click(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = match click.borrow().as_str() {
+                "toggle" => "play_pause",
+                "play_pause" => "stop",
+                "stop" => "next_track",
+                "next_track" => "next_track_with_fade",
+                _ => "toggle",
+            }
+            .to_string();
+            let _ = db.set_setting("tray_middle_click_action", &next);
+            ui.set_tray_click_label(SharedString::from(tray_click_label(&next)));
+            *click.borrow_mut() = next;
+        });
+    }
     {
         let (db, weak) = (db.clone(), ui.as_weak());
         let style = Rc::new(std::cell::Cell::new(tray_style));
@@ -4101,6 +4125,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let pinned_model = pinned_model.clone();
         let folders_model = folders_model.clone();
         let badge_fp = badge_fp.clone();
+        let tray_click = tray_click.clone();
         let pending_search = pending_search.clone();
         let art_try: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
         let theme_mode = theme_mode.clone();
@@ -4549,10 +4574,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = p.prev();
                         }
                         tray::TrayAction::ToggleWindow => {
-                            if ui.window().is_visible() {
-                                let _ = ui.window().hide();
-                            } else {
-                                let _ = ui.window().show();
+                            // The configurable click action rides the one
+                            // channel ayatana gives us.
+                            match tray_click.borrow().as_str() {
+                                "play_pause" => p.toggle_play(),
+                                "stop" => p.stop(),
+                                "next_track" => {
+                                    let _ = p.next();
+                                    adopt_pending_context(p, &db);
+                                }
+                                "next_track_with_fade" => {
+                                    // Force the fade even when the setting is
+                                    // off: flip it for this one change — the
+                                    // machine reads it at play time.
+                                    let was = ui.get_crossfade_secs();
+                                    if was == 0 {
+                                        let engine = p.engine_mut();
+                                        engine.set_fade_on_track_change(true);
+                                        engine.set_fade_seconds(4.0);
+                                    }
+                                    let _ = p.next();
+                                    adopt_pending_context(p, &db);
+                                    if was == 0 {
+                                        p.engine_mut().set_fade_on_track_change(false);
+                                    }
+                                }
+                                _ => {
+                                    if ui.window().is_visible() {
+                                        let _ = ui.window().hide();
+                                    } else {
+                                        let _ = ui.window().show();
+                                        // Coming back, land on what plays —
+                                        // the old restore-scroll, on the one
+                                        // event this stack can actually see.
+                                        if !ui.get_now_path().is_empty() {
+                                            ui.invoke_now_clicked();
+                                        }
+                                    }
+                                }
                             }
                         }
                         tray::TrayAction::Quit => {
@@ -5143,6 +5202,16 @@ fn rating_priority_label(raw: Option<&str>) -> &'static str {
         Some("file,folder,db") => "fichero primero",
         Some("folder,file,db") => "carpeta primero",
         _ => "BD manda",
+    }
+}
+
+fn tray_click_label(a: &str) -> &'static str {
+    match a {
+        "play_pause" => "reproducir/pausa",
+        "stop" => "stop",
+        "next_track" => "siguiente",
+        "next_track_with_fade" => "siguiente con fundido",
+        _ => "mostrar/ocultar",
     }
 }
 

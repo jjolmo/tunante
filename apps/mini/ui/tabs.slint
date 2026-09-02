@@ -66,6 +66,8 @@ export component SettingsTab inherits Rectangle {
     callback toggle-global-shortcuts();
     in property <string> tray-style-label;
     callback cycle-tray-style();
+    in property <string> tray-click-label;
+    callback cycle-tray-click();
     in property <bool> update-skippable;
     callback skip-update();
     in property <string> desktop-entry-label;
@@ -531,6 +533,14 @@ export component SettingsTab inherits Rectangle {
             value: root.mouse-buttons-label;
             highlighted: root.mouse-buttons-on;
             clicked => { root.toggle-mouse-buttons(); }
+        }
+        // What a click on the tray icon does. One channel on this stack
+        // (ayatana routes Activate and SecondaryActivate to one target), so
+        // the old middle-click action list rides the click there is.
+        SettingRow {
+            label: "Click en el icono de bandeja";
+            value: root.tray-click-label;
+            clicked => { root.cycle-tray-click(); }
         }
         SettingRow {
             label: "Icono de bandeja";
