@@ -113,8 +113,10 @@
 >       ajeno no se pisa), enseña la lista y Aplicar escribe el .m3u y
 >       re-sella las filas **por probe** — la receta del watcher, conexión
 >       privada incluida — con el flag library_dirty repintándolo todo.
-> - [ ] Sugerencias online en reclasificación (Libretro/Steam) — el worker de
->       carátulas ya da el patrón.
+> - [x] Sugerencias online en reclasificación — la biblioteca contesta al
+>       instante y el archivo Libretro (nombres No-Intro: las mismas cadenas
+>       que luego casará el descargador de carátulas) + Steam llegan por el
+>       canal, sellados por generación para que teclear les gane sin peligro.
 > - [ ] Añadir ficheros sueltos (add_files) y skip-version en el updater.
 >
 > **Comportamiento distinto a conciencia (no bugs):** mini restaura la sesión

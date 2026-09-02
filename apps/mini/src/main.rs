@@ -1004,6 +1004,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // The one channel every art/metadata worker reports through; the timer
+    // drains it. Created here because reclassification's suggestions worker
+    // is the earliest sender.
+    let (cover_tx, cover_rx) = std::sync::mpsc::channel::<CoverMsg>();
+
     // --- Reclassification --------------------------------------------------
     //
     // The catalog, "(automática)" first: an empty id means "let the rules
@@ -1054,30 +1059,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_reclassifying(true);
         });
     }
+    let reclass_gen = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
     {
-        let (st, sugg) = (table_state.clone(), sugg_model.clone());
-        ui.on_reclass_game_edited(move |q| {
-            // What the library already calls things, so a correction lands on
-            // the spelling the rest of the collection uses. The online
-            // sources (Libretro, Steam) come later — they block on the
-            // network and want a worker thread this dialog does not have yet.
-            let q = library::plegar(&q);
+        let (st, sugg, tx, gen) = (
+            table_state.clone(),
+            sugg_model.clone(),
+            cover_tx.clone(),
+            reclass_gen.clone(),
+        );
+        let weak = ui.as_weak();
+        ui.on_reclass_game_edited(move |raw| {
+            let Some(ui) = weak.upgrade() else { return };
+            // The library answers instantly, so a correction lands on the
+            // spelling the collection uses; the archive and Steam answer over
+            // the channel, generation-stamped so typing outruns them safely.
+            let q = library::plegar(&raw);
             let mut out: Vec<SharedString> = Vec::new();
             let mut seen = std::collections::HashSet::new();
+            let mut library_names: Vec<String> = Vec::new();
             if q.len() >= 2 {
                 for t in st.borrow().all.iter() {
-                    if t.game.is_empty() || !library::plegar(&t.game).contains(&q) {
+                    if t.game.is_empty() {
                         continue;
                     }
                     if seen.insert(t.game.to_lowercase()) {
-                        out.push(SharedString::from(t.game.as_str()));
-                        if out.len() >= 8 {
-                            break;
+                        library_names.push(t.game.clone());
+                        if library::plegar(&t.game).contains(&q) && out.len() < 8 {
+                            out.push(SharedString::from(t.game.as_str()));
                         }
                     }
                 }
             }
             sugg.set_vec(out);
+            if q.len() >= 2 {
+                let generation =
+                    gen.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+                spawn_reclass_suggest(
+                    tx.clone(),
+                    generation,
+                    ui.get_reclass_console().to_string(),
+                    raw.to_string(),
+                    library_names,
+                );
+            }
         });
     }
     {
@@ -1141,7 +1165,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Network on worker threads, results through a channel the timer drains —
     // the same shape as the scanner. Slint cannot show a URL, so the worker
     // downloads the thumbnails too; the UI thread only decodes.
-    let (cover_tx, cover_rx) = std::sync::mpsc::channel::<CoverMsg>();
     let cover_target: Rc<RefCell<Option<tunante_core::db::models::Track>>> =
         Rc::new(RefCell::new(None));
     let cover_urls: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
@@ -2555,6 +2578,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let bulk_plans_model = bulk_plans_model.clone();
         let (names_pending, names_rows_model) =
             (names_pending.clone(), names_rows_model.clone());
+        let (reclass_gen, sugg_model) = (reclass_gen.clone(), sugg_model.clone());
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
         let mut ticks: u64 = 0;
@@ -2710,6 +2734,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // The rows changed under every cache; the watcher's
                             // flag re-reads them all.
                             library_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                        CoverMsg::ReclassSuggestions { generation, names } => {
+                            if generation
+                                == reclass_gen.load(std::sync::atomic::Ordering::SeqCst)
+                            {
+                                sugg_model.set_vec(
+                                    names
+                                        .into_iter()
+                                        .map(SharedString::from)
+                                        .collect::<Vec<_>>(),
+                                );
+                            }
                         }
                         CoverMsg::BulkDone { written, stamp } => {
                             ui.set_bulk_status(SharedString::from(format!(
@@ -3496,6 +3532,68 @@ enum CoverMsg {
     },
     NamesProblem(String),
     NamesApplied(usize),
+    /// Generation-stamped: typing outruns the network, and a stale answer
+    /// must never overwrite a fresher one.
+    ReclassSuggestions { generation: u64, names: Vec<String> },
+}
+
+/// The desktop's suggest_game_names, on a worker: what the library already
+/// calls things, the Libretro index for the machine (No-Intro names — the
+/// exact strings the cover downloader will later match), and Steam for what
+/// no console archive carries.
+fn spawn_reclass_suggest(
+    tx: std::sync::mpsc::Sender<CoverMsg>,
+    generation: u64,
+    console_id: String,
+    query: String,
+    library: Vec<String>,
+) {
+    std::thread::spawn(move || {
+        let q = query.trim().to_lowercase();
+        let mut out: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = Default::default();
+        let mut push = |name: String, out: &mut Vec<String>| {
+            if seen.insert(name.to_lowercase()) {
+                out.push(name);
+            }
+        };
+
+        for g in library {
+            if g.to_lowercase().contains(&q) {
+                push(g, &mut out);
+            }
+        }
+
+        let http = tunante_art::http::UreqHttp::default();
+        if let Some(system) = tunante_core::console::by_id(&console_id).and_then(|c| c.libretro) {
+            if let Ok(index) = tunante_art::archive::index_for(&http, system) {
+                for e in &index.entries {
+                    // The stem before the first region group, which is the game.
+                    let base = e.file.split(" (").next().unwrap_or(&e.file).trim();
+                    if base.to_lowercase().contains(&q) {
+                        push(base.to_string(), &mut out);
+                    }
+                    if out.len() > 40 {
+                        break;
+                    }
+                }
+            }
+        }
+        if out.len() < 8 {
+            for name in tunante_art::sources::suggest_names(&http, &query) {
+                push(name, &mut out);
+                if out.len() >= 12 {
+                    break;
+                }
+            }
+        }
+        out.sort_by_key(|n| {
+            let l = n.to_lowercase();
+            (if l.starts_with(&q) { 0 } else { 1 }, n.len(), l)
+        });
+        out.truncate(12);
+        let _ = tx.send(CoverMsg::ReclassSuggestions { generation, names: out });
+    });
 }
 
 /// Ask the archive for the track names of a one-file-per-game rip, off the UI
