@@ -140,9 +140,11 @@
 ## C · Menor / pulido
 
 - [ ] Spinner en el panel de carátula mientras se busca.
-- [ ] Estados vacíos con mensaje («No tracks in library» + pista de qué hacer).
-- [ ] Registro: filtro por nivel, campo de filtro, Copy, Clear, auto-scroll
-      (el viejo DebugWindow tenía todo eso).
+- [x] Estados vacíos de la tabla: «Nada casa con la búsqueda» vs «No hay
+      pistas — añade carpetas desde Ajustes».
+- [x] Registro con toolbar: nivel (todo/aviso+/solo error), filtro de texto,
+      Copiar (wl-copy→xclip) y Limpiar; el refresco del timer respeta ambos
+      filtros.
 - [ ] Popup de feedback de volumen al hacer rueda sobre el tray.
 - [x] Diálogo de crash: panic hook → tunante-crash.log en XDG data +
       zenity/kdialog con el mensaje y la ruta.

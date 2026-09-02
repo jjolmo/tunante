@@ -316,6 +316,28 @@ export component TrackTable inherits Rectangle {
                 reject
             }
 
+        if root.rows.length == 0: Rectangle {
+            vertical-stretch: 1;
+            VerticalLayout {
+                alignment: center;
+                spacing: 6px;
+                Text {
+                    text: root.filter != "" ? "Nada casa con la búsqueda."
+                        : "No hay pistas en la biblioteca.";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-body;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: root.filter != "" ? "Prueba con menos letras."
+                        : "Añade carpetas desde Ajustes.";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+
         lv := ListView {
 
             for row[i] in root.rows: Rectangle {

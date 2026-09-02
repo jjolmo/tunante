@@ -3563,18 +3563,97 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_model = Rc::new(VecModel::from(Vec::<SharedString>::new()));
     ui.set_log_lines(ModelRc::from(log_model.clone()));
+    // 0 todo · 1 error · 2 aviso · 3 info; the filter is a plain substring,
+    // both applied at refresh time so the ring itself stays raw.
+    let log_level = Rc::new(std::cell::Cell::new(0u8));
+    let log_filter: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+    fn log_level_label(l: u8) -> &'static str {
+        match l {
+            1 => "solo error",
+            2 => "aviso+",
+            _ => "todo",
+        }
+    }
+    fn refresh_log(
+        model: &VecModel<SharedString>,
+        level: u8,
+        filter: &str,
+    ) {
+        let needle = filter.to_lowercase();
+        model.set_vec(
+            debuglog::lines()
+                .into_iter()
+                .filter(|l| match level {
+                    1 => l.starts_with("[ERROR]"),
+                    2 => l.starts_with("[ERROR]") || l.starts_with("[WARN]"),
+                    _ => true,
+                })
+                .filter(|l| needle.is_empty() || l.to_lowercase().contains(&needle))
+                .map(SharedString::from)
+                .collect::<Vec<_>>(),
+        );
+    }
     {
-        let model = log_model.clone();
+        let (model, level, filter) = (log_model.clone(), log_level.clone(), log_filter.clone());
         let weak = ui.as_weak();
         ui.on_show_log(move || {
             let Some(ui) = weak.upgrade() else { return };
-            model.set_vec(
-                debuglog::lines()
-                    .into_iter()
-                    .map(SharedString::from)
-                    .collect::<Vec<_>>(),
-            );
+            refresh_log(&model, level.get(), &filter.borrow());
             ui.set_showing_log(true);
+        });
+    }
+    {
+        let (model, level, filter) = (log_model.clone(), log_level.clone(), log_filter.clone());
+        let weak = ui.as_weak();
+        ui.on_cycle_log_level(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = (level.get() + 1) % 3;
+            level.set(next);
+            ui.set_log_level_label(SharedString::from(log_level_label(next)));
+            refresh_log(&model, next, &filter.borrow());
+        });
+    }
+    {
+        let (model, level, filter) = (log_model.clone(), log_level.clone(), log_filter.clone());
+        ui.on_log_filter_changed(move |t| {
+            *filter.borrow_mut() = t.to_string();
+            refresh_log(&model, level.get(), &filter.borrow());
+        });
+    }
+    {
+        let (model, level, filter) = (log_model.clone(), log_level.clone(), log_filter.clone());
+        ui.on_clear_log(move || {
+            debuglog::clear();
+            refresh_log(&model, level.get(), &filter.borrow());
+        });
+    }
+    {
+        let model = log_model.clone();
+        ui.on_copy_log(move || {
+            let text: String = (0..model.row_count())
+                .filter_map(|i| model.row_data(i))
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join("\n");
+            // wl-copy on Wayland, xclip as the fallback; both read stdin.
+            std::thread::spawn(move || {
+                use std::io::Write;
+                let try_cmd = |cmd: &str, args: &[&str]| -> bool {
+                    std::process::Command::new(cmd)
+                        .args(args)
+                        .stdin(std::process::Stdio::piped())
+                        .spawn()
+                        .ok()
+                        .and_then(|mut c| {
+                            c.stdin.take()?.write_all(text.as_bytes()).ok()?;
+                            c.wait().ok()
+                        })
+                        .is_some()
+                };
+                if !try_cmd("wl-copy", &[]) {
+                    let _ = try_cmd("xclip", &["-selection", "clipboard"]);
+                }
+            });
         });
     }
 
@@ -3879,6 +3958,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (names_pending.clone(), names_rows_model.clone());
         let (reclass_gen, sugg_model) = (reclass_gen.clone(), sugg_model.clone());
         let log_model = log_model.clone();
+        let (log_level, log_filter) = (log_level.clone(), log_filter.clone());
         let update_manual = update_manual.clone();
         let pinned_model = pinned_model.clone();
         let folders_model = folders_model.clone();
@@ -3937,12 +4017,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if ui.get_showing_log() {
-                    log_model.set_vec(
-                        debuglog::lines()
-                            .into_iter()
-                            .map(SharedString::from)
-                            .collect::<Vec<_>>(),
-                    );
+                    refresh_log(&log_model, log_level.get(), &log_filter.borrow());
                 }
 
                 while let Ok(label) = loose_rx.try_recv() {

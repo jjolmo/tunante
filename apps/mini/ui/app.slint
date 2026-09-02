@@ -207,6 +207,11 @@ export component AppWindow inherits Window {
     in-out property <string> error-toast;
     in-out property <int> error-toast-age;
     in property <[string]> log-lines;
+    in property <string> log-level-label: "todo";
+    callback cycle-log-level();
+    callback log-filter-changed(string);
+    callback copy-log();
+    callback clear-log();
     in-out property <bool> bulk-covering;
     in property <string> bulk-status;
     in property <[PlanRow]> bulk-plans;
@@ -1028,6 +1033,11 @@ export component AppWindow inherits Window {
 
     if root.showing-log: LogSheet {
         lines: root.log-lines;
+        level-label: root.log-level-label;
+        cycle-level => { root.cycle-log-level(); }
+        filter-changed(t) => { root.log-filter-changed(t); }
+        copy-log => { root.copy-log(); }
+        clear-log => { root.clear-log(); }
         cancelled => { root.showing-log = false; }
     }
 }

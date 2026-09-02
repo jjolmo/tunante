@@ -55,6 +55,13 @@ pub fn install() {
     }
 }
 
+/// Empty the ring — the sheet's Limpiar.
+pub fn clear() {
+    if let Ok(mut ring) = RING.lock() {
+        ring.clear();
+    }
+}
+
 /// The newest lines first — the sheet reads top-down and the fresh entry is
 /// what somebody opened it for.
 pub fn lines() -> Vec<String> {
