@@ -138,7 +138,11 @@
 >       instante y el archivo Libretro (nombres No-Intro: las mismas cadenas
 >       que luego casará el descargador de carátulas) + Steam llegan por el
 >       canal, sellados por generación para que teclear les gane sin peligro.
-> - [ ] Añadir ficheros sueltos (add_files).
+> - [x] Añadir ficheros sueltos — fila en Ajustes que abre el picker del
+>       sistema (kdialog en KDE, zenity si no; ambos por subproceso, como
+>       todo lo externo en mini), filtra por `is_audio_file`, sondea con los
+>       knobs de la biblioteca e inserta como cualquier pista escaneada. La
+>       etiqueta de la fila es el informe («3 añadidas»).
 > - [x] Skip-version en el updater — y con él el chequeo silencioso al
 >       arrancar (solo builds con `updater`): si hay versión nueva la fila
 >       lo dice sola; «Omitir esta versión» la calla para siempre. Un check

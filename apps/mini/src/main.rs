@@ -2255,6 +2255,66 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_setup_mode(true);
         });
     }
+    // --- Loose files -------------------------------------------------------
+    //
+    // No file dialog of our own: kdialog or zenity, whichever this desktop
+    // has, on a worker thread (a dialog can sit open for minutes). The picks
+    // are probed with the library's own knobs and inserted like any scanned
+    // track; the row's label is the whole report.
+    let (loose_tx, loose_rx) = std::sync::mpsc::channel::<String>();
+    ui.set_add_files_label(SharedString::from("＋"));
+    {
+        let (dbfile, dirty) = (dbfile.clone(), library_dirty.clone());
+        let tx = loose_tx.clone();
+        let weak = ui.as_weak();
+        ui.on_add_files(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_add_files_label(SharedString::from("eligiendo…"));
+            let (dbfile, dirty, tx) = (dbfile.clone(), dirty.clone(), tx.clone());
+            std::thread::spawn(move || {
+                let picked = pick_files();
+                let paths: Vec<_> = picked
+                    .iter()
+                    .filter(|p| tunante_core::vgm_path::is_audio_file(std::path::Path::new(p)))
+                    .collect();
+                if picked.is_empty() {
+                    let _ = tx.send("＋".to_string());
+                    return;
+                }
+                if paths.is_empty() {
+                    let _ = tx.send("nada reconocible".to_string());
+                    return;
+                }
+                let Ok(db) = Database::new(&dbfile) else {
+                    let _ = tx.send("sin base de datos".to_string());
+                    return;
+                };
+                let opts = probe_opts(&db);
+                let mut n = 0usize;
+                for path in paths {
+                    let Ok(values) = tunante_helper::probe_with(
+                        std::path::Path::new(path),
+                        tunante_helper::scan::PROBE_TIMEOUT,
+                        &opts,
+                    ) else {
+                        continue;
+                    };
+                    for v in values {
+                        if let Ok(track) =
+                            serde_json::from_value::<tunante_core::db::models::Track>(v)
+                        {
+                            if db.insert_track(&track).is_ok() {
+                                n += 1;
+                            }
+                        }
+                    }
+                }
+                dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                let _ = tx.send(format!("{n} añadidas"));
+            });
+        });
+    }
+
     {
         let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
         ui.on_cycle_loops(move || {
@@ -2840,6 +2900,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .map(SharedString::from)
                             .collect::<Vec<_>>(),
                     );
+                }
+
+                while let Ok(label) = loose_rx.try_recv() {
+                    ui.set_add_files_label(SharedString::from(label));
                 }
 
                 // The updater's worker reported in.
@@ -4365,6 +4429,49 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
 
 /// Play a file by path, with its folder as the queue context — or, when the
 /// library has never seen it, whatever the decoder says the file contains.
+/// Ask the desktop for files, with whichever picker it ships. Returns empty
+/// on cancel and on desktops with neither tool — the row says so.
+fn pick_files() -> Vec<String> {
+    let parse = |out: std::process::Output| -> Option<Vec<String>> {
+        if !out.status.success() {
+            return None;
+        }
+        Some(
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect(),
+        )
+    };
+    // kdialog first when the session is KDE; zenity otherwise. Both print
+    // one path per line with these flags.
+    let kde = std::env::var("XDG_CURRENT_DESKTOP")
+        .map(|d| d.to_uppercase().contains("KDE"))
+        .unwrap_or(false);
+    let kdialog = || {
+        std::process::Command::new("kdialog")
+            .args(["--getopenfilename", ".", "", "--multiple", "--separate-output"])
+            .output()
+            .ok()
+            .and_then(parse)
+    };
+    let zenity = || {
+        std::process::Command::new("zenity")
+            .args(["--file-selection", "--multiple", "--separator=\n"])
+            .output()
+            .ok()
+            .and_then(parse)
+    };
+    let picked = if kde {
+        kdialog().or_else(zenity)
+    } else {
+        zenity().or_else(kdialog)
+    };
+    picked.unwrap_or_default()
+}
+
 fn play_from_path(
     ui: &AppWindow,
     db: &Database,

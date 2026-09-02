@@ -37,6 +37,8 @@ export component SettingsTab inherits Rectangle {
     callback skip-update();
     in property <string> desktop-entry-label;
     callback make-desktop-entry();
+    in property <string> add-files-label;
+    callback add-files();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -307,6 +309,14 @@ export component SettingsTab inherits Rectangle {
             label: "Volver a analizar";
             value: "↻";
             clicked => { root.rescan(); }
+        }
+        // Loose files, outside any library folder: a system picker (kdialog
+        // or zenity, whichever is installed), probed and inserted like any
+        // scanned track.
+        SettingRow {
+            label: "Añadir ficheros sueltos";
+            value: root.add-files-label;
+            clicked => { root.add-files(); }
         }
         // Full silence detection for GME rips with no declared lengths:
         // accurate, and over a second per file.

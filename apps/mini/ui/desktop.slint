@@ -231,6 +231,8 @@ export component DesktopShell inherits Rectangle {
     callback skip-update();
     in property <string> desktop-entry-label;
     callback make-desktop-entry();
+    in property <string> add-files-label;
+    callback add-files();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -465,6 +467,8 @@ export component DesktopShell inherits Rectangle {
                     skip-update => { root.skip-update(); }
                     desktop-entry-label: root.desktop-entry-label;
                     make-desktop-entry => { root.make-desktop-entry(); }
+                    add-files-label: root.add-files-label;
+                    add-files => { root.add-files(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
                     continue-queue <=> root.continue-queue;
