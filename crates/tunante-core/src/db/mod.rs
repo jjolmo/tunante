@@ -842,6 +842,26 @@ impl Database {
         Ok(())
     }
 
+    /// How many tracks the library holds, and how many carry a rating —
+    /// the sidebar's numbers, in one pass.
+    pub fn count_tracks(&self) -> Result<(i64, i64), DbError> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*), COUNT(CASE WHEN rating > 0 THEN 1 END) FROM tracks",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?)
+    }
+
+    /// Tracks under one folder's subtree. The boundary comes free: every
+    /// child path continues with '/', so /a/b never counts /a/bc.
+    pub fn count_tracks_under(&self, folder: &str) -> Result<i64, DbError> {
+        Ok(self.conn.query_row(
+            "SELECT COUNT(*) FROM tracks WHERE path LIKE ?1 || '/%'",
+            params![folder],
+            |r| r.get(0),
+        )?)
+    }
+
     pub fn set_track_rating(&self, track_id: &str, rating: i32) -> Result<(), DbError> {
         self.conn.execute(
             "UPDATE tracks SET rating = ?2 WHERE id = ?1",

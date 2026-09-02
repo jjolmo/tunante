@@ -961,7 +961,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     {
         let (db_t, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
         ui.on_table_rated(move |index, stars| {
+            let Some(ui) = weak.upgrade() else { return };
             let mut st = st.borrow_mut();
             let Some(track) = st.tracks.get(index as usize) else { return };
             // Clicking the star it already has clears it — the second tap on a
@@ -996,6 +998,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 t.rating = new;
             }
             rebuild_table(&mut st, &model);
+            // The transport's stars follow when the rated row is the one
+            // playing, and Favoritos' number moves either way.
+            if ui.get_now_path() == path.as_str() {
+                ui.set_now_rating(new);
+                ui.set_now_stars(SharedString::from(stars_for(new)));
+            }
+            refresh_counts(&db_t, &ui);
         });
     }
     {
@@ -1698,6 +1707,70 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    {
+        let (player, queue_model) = (player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_stop_playback(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.stop();
+                push_now_playing(&ui, p);
+                sync_queue_marker(p, &queue_model);
+            }
+        });
+    }
+    {
+        let (db_r, st, model, player) = (
+            db.clone(),
+            table_state.clone(),
+            table_model.clone(),
+            player.clone(),
+        );
+        let weak = ui.as_weak();
+        ui.on_rate_now(move |stars| {
+            let Some(ui) = weak.upgrade() else { return };
+            let track = player
+                .borrow()
+                .as_ref()
+                .and_then(|p| p.current().cloned());
+            let Some(track) = track else { return };
+            // Same toggle rule as the table: the star it already has clears.
+            let current = ui.get_now_rating();
+            let new = if current == stars { 0 } else { stars };
+            if let Err(e) = db_r.set_track_rating(&track.id, new) {
+                eprintln!("no se pudo guardar la puntuación: {e}");
+                return;
+            }
+            let order = db_r
+                .get_setting("rating_source_priority")
+                .ok()
+                .flatten();
+            {
+                let path = track.path.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = tunante_helper::rate(
+                        std::path::Path::new(&path),
+                        new,
+                        order.as_deref(),
+                        std::time::Duration::from_secs(20),
+                    ) {
+                        eprintln!("no se pudo escribir la puntuación en disco: {e}");
+                    }
+                });
+            }
+            ui.set_now_rating(new);
+            ui.set_now_stars(SharedString::from(stars_for(new)));
+            refresh_counts(&db_r, &ui);
+            let mut st = st.borrow_mut();
+            if st.built {
+                for t in st.all.iter_mut().filter(|t| t.path == track.path) {
+                    t.rating = new;
+                }
+                rebuild_table(&mut st, &model);
+            }
+        });
+    }
+
     // --- Pinned folders ------------------------------------------------------
     //
     // The database supported them from day one; this is the sidebar finally
@@ -1706,6 +1779,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pinned_model = Rc::new(VecModel::from(Vec::<PinnedRow>::new()));
     ui.set_pinned_folders(ModelRc::from(pinned_model.clone()));
     refresh_pinned(&db, &pinned_model);
+    refresh_counts(&db, &ui);
     {
         let (db_p, st) = (db.clone(), table_state.clone());
         let model = pinned_model.clone();
@@ -3094,6 +3168,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (reclass_gen, sugg_model) = (reclass_gen.clone(), sugg_model.clone());
         let log_model = log_model.clone();
         let update_manual = update_manual.clone();
+        let pinned_model = pinned_model.clone();
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
@@ -3317,6 +3392,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // The watcher changed rows underneath: re-read whatever view
                 // is on screen, and the table's caches with it.
                 if library_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    refresh_counts(&db, &ui);
+                    refresh_pinned(&db, &pinned_model);
                     refresh_library(&ui, &tree, &db, &views);
                     let mut st = table_state.borrow_mut();
                     if st.built {
@@ -4694,10 +4771,23 @@ fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| f.path.clone()),
                 ),
+                count: SharedString::from(
+                    db.count_tracks_under(&f.path)
+                        .map(|n| n.to_string())
+                        .unwrap_or_default(),
+                ),
                 id: SharedString::from(f.id),
             })
             .collect::<Vec<_>>(),
     );
+}
+
+/// The sidebar's numbers: every entry that is a set says how big it is.
+fn refresh_counts(db: &Database, ui: &AppWindow) {
+    if let Ok((total, faved)) = db.count_tracks() {
+        ui.set_total_count(SharedString::from(total.to_string()));
+        ui.set_faved_count(SharedString::from(faved.to_string()));
+    }
 }
 
 /// Apply the filter and the sort, and hand the result to the UI model.
@@ -4955,6 +5045,11 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
         tunante_core::RepeatMode::All => 1,
         tunante_core::RepeatMode::One => 2,
     });
+
+    ui.set_now_rating(p.current().map(|t| t.rating).unwrap_or(0));
+    ui.set_now_stars(SharedString::from(
+        p.current().map(|t| stars_for(t.rating)).unwrap_or_default(),
+    ));
 
     match p.current() {
         Some(t) => {

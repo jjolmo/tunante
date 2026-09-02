@@ -17,6 +17,9 @@ import { TrackTable } from "table.slint";
 component SidebarEntry inherits Rectangle {
     in property <string> label;
     in property <bool> active;
+    /// The old desktop put a number beside every entry; the answer to
+    /// "how big is my library" should not need a click.
+    in property <string> count;
     callback clicked();
 
     height: 34px;
@@ -32,6 +35,12 @@ component SidebarEntry inherits Rectangle {
             font-size: Theme.font-body;
             vertical-alignment: center;
             overflow: elide;
+        }
+        if root.count != "": Text {
+            text: root.count;
+            color: Theme.text-muted;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
         }
     }
     t := TouchArea { clicked => { root.clicked(); } }
@@ -131,6 +140,12 @@ export component DesktopShell inherits Rectangle {
     callback table-open-folder(int);
     callback table-pin-folder(int);
     in property <[PinnedRow]> pinned-folders;
+    in property <string> total-count;
+    in property <string> faved-count;
+    in property <string> now-stars;
+    in property <int> cover-fit;
+    callback stop-playback();
+    callback rate-now(int);
     /// Which pinned folder narrows the table right now; "" means none.
     in property <string> table-folder-id;
     callback folder-opened(string);
@@ -311,6 +326,7 @@ export component DesktopShell inherits Rectangle {
                     }
                     SidebarEntry {
                         label: "Pistas";
+                        count: root.total-count;
                         active: root.centre == 0 && !root.table-faved;
                         clicked => {
                             root.centre = 0;
@@ -319,6 +335,7 @@ export component DesktopShell inherits Rectangle {
                     }
                     SidebarEntry {
                         label: "Favoritos";
+                        count: root.faved-count;
                         active: root.centre == 0 && root.table-faved;
                         clicked => {
                             root.centre = 0;
@@ -367,6 +384,12 @@ export component DesktopShell inherits Rectangle {
                                 overflow: elide;
                                 horizontal-stretch: 1;
                             }
+                            if !pft.has-hover && pf.count != "": Text {
+                                text: pf.count;
+                                color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                            }
                             // The unpin, only under the pointer: a row of
                             // permanent ✕ reads as a warning, not a control.
                             if pft.has-hover: Rectangle {
@@ -402,12 +425,20 @@ export component DesktopShell inherits Rectangle {
                             HorizontalLayout {
                                 padding-left: 12px;
                                 padding-right: 8px;
+                                spacing: 6px;
                                 Text {
                                     text: pl.name;
                                     color: Theme.text-primary;
                                     font-size: Theme.font-body;
                                     vertical-alignment: center;
                                     overflow: elide;
+                                    horizontal-stretch: 1;
+                                }
+                                Text {
+                                    text: pl.subtitle;
+                                    color: Theme.text-muted;
+                                    font-size: Theme.font-small;
+                                    vertical-alignment: center;
                                 }
                             }
                             pt := TouchArea {
@@ -416,6 +447,20 @@ export component DesktopShell inherits Rectangle {
                                     root.playlist-open-requested(pl.id);
                                 }
                             }
+                        }
+                    }
+
+                    // The old desktop gave its bottom-left corner to the
+                    // playing cover; the 68px thumb in the transport was the
+                    // one thing people missed most on the side-by-side.
+                    if root.now-art.width > 0: HorizontalLayout {
+                        alignment: center;
+                        padding-top: Theme.gap;
+                        padding-bottom: Theme.gap;
+                        Artwork {
+                            side: 178px;
+                            art: root.now-art;
+                            fit: root.cover-fit;
                         }
                     }
 
@@ -682,6 +727,11 @@ export component DesktopShell inherits Rectangle {
                             TouchArea { clicked => { root.toggle-play(); } }
                         }
                         RoundButton {
+                            glyph: "■";
+                            size: 40px;
+                            clicked => { root.stop-playback(); }
+                        }
+                        RoundButton {
                             glyph: "▶▶";
                             size: 40px;
                             clicked => { root.next-track(); }
@@ -716,6 +766,35 @@ export component DesktopShell inherits Rectangle {
                             vertical-alignment: center;
                         }
                     }
+                }
+
+                // Rate what is playing without hunting it down in the
+                // table, and one tap to the EQ — both straight off the old
+                // transport bar.
+                if root.now-title != "": Rectangle {
+                    width: 92px;
+                    Text {
+                        x: 0;
+                        width: parent.width;
+                        height: 100%;
+                        text: root.now-stars;
+                        color: Theme.accent;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => {
+                            root.rate-now(clamp(
+                                floor(self.mouse-x / (parent.width / 5)) + 1,
+                                1, 5));
+                        }
+                    }
+                }
+                RoundButton {
+                    glyph: "∿";
+                    size: 36px;
+                    active: root.centre == 2;
+                    clicked => { root.centre = 2; }
                 }
 
                 HorizontalLayout {

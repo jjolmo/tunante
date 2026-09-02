@@ -217,6 +217,12 @@ export component AppWindow inherits Window {
     callback table-open-folder(int);
     callback table-pin-folder(int);
     in property <[PinnedRow]> pinned-folders;
+    in property <string> total-count;
+    in property <string> faved-count;
+    in property <string> now-stars;
+    in-out property <int> now-rating;
+    callback stop-playback();
+    callback rate-now(int);
     in property <string> table-folder-id;
     callback folder-opened(string);
     callback folder-unpinned(string);
@@ -434,6 +440,12 @@ export component AppWindow inherits Window {
         table-open-folder(i) => { root.table-open-folder(i); }
         table-pin-folder(i) => { root.table-pin-folder(i); }
         pinned-folders: root.pinned-folders;
+        total-count: root.total-count;
+        faved-count: root.faved-count;
+        now-stars: root.now-stars;
+        cover-fit: root.cover-fit;
+        stop-playback => { root.stop-playback(); }
+        rate-now(n) => { root.rate-now(n); }
         table-folder-id: root.table-folder-id;
         folder-opened(id) => { root.folder-opened(id); }
         folder-unpinned(id) => { root.folder-unpinned(id); }
