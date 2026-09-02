@@ -264,6 +264,9 @@ export component TabSwitcher inherits Rectangle {
 export component Artwork inherits Rectangle {
     in property <length> side;
     in property <image> art;
+    // 0 recortada (cover) · 1 entera (contain) · 2 con fondo · 3 estirada
+    // (fill) · 4 original (preserve). Thumbnails leave it at 0.
+    in property <int> fit: 0;
 
     height: root.side;
     width: root.side;
@@ -271,13 +274,27 @@ export component Artwork inherits Rectangle {
     border-radius: Theme.radius;
     clip: true;
 
+    // "Con fondo": Slint has no blur filter, so the backdrop is the same
+    // cover cropped to fill and dimmed, with the whole image on top — the
+    // effect blur mode is after, minus the blur itself.
+    if root.fit == 2 && root.art.width > 0: Image {
+        source: root.art;
+        width: 100%;
+        height: 100%;
+        image-fit: cover;
+        opacity: 0.25;
+    }
+
     Image {
         source: root.art;
         width: 100%;
         height: 100%;
-        // Fill the square and crop, rather than letterboxing a non-square cover
-        // into a grey frame.
-        image-fit: cover;
+        // Fill the square and crop by default, rather than letterboxing a
+        // non-square cover into a grey frame.
+        image-fit: root.fit == 1 || root.fit == 2 ? ImageFit.contain
+            : root.fit == 3 ? ImageFit.fill
+            : root.fit == 4 ? ImageFit.preserve
+            : ImageFit.cover;
         visible: root.art.width > 0;
     }
 

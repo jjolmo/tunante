@@ -2255,6 +2255,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_setup_mode(true);
         });
     }
+    // --- Cover fit and cache ------------------------------------------------
+    //
+    // Five ways to sit a non-square cover in a square, under the desktop's
+    // `cover_fit` key and with its five values.
+    {
+        let stored = db.get_setting("cover_fit").ok().flatten();
+        let fit = cover_fit_from_key(stored.as_deref().unwrap_or("cover"));
+        ui.set_cover_fit(fit);
+        ui.set_cover_fit_label(SharedString::from(cover_fit_label(fit)));
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_cover_fit(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = (ui.get_cover_fit() + 1) % 5;
+            ui.set_cover_fit(next);
+            ui.set_cover_fit_label(SharedString::from(cover_fit_label(next)));
+            let _ = db.set_setting("cover_fit", cover_fit_key(next));
+        });
+    }
+    ui.set_clear_cache_label(SharedString::from("🗑"));
+    {
+        let weak = ui.as_weak();
+        ui.on_clear_cover_cache(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_clear_cache_label(SharedString::from(
+                match tunante_art::cache::clear() {
+                    Ok(n) => format!("{n} fuera"),
+                    Err(e) => format!("falló: {e}"),
+                },
+            ));
+        });
+    }
+
     // --- Loose files -------------------------------------------------------
     //
     // No file dialog of our own: kdialog or zenity, whichever this desktop
@@ -4429,6 +4463,38 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
 
 /// Play a file by path, with its folder as the queue context — or, when the
 /// library has never seen it, whatever the decoder says the file contains.
+/// The five cover-fit modes, as the desktop stored them. The ints are what
+/// the UI switches on; the keys are what the database keeps.
+fn cover_fit_from_key(key: &str) -> i32 {
+    match key {
+        "contain" => 1,
+        "blur" => 2,
+        "fill" => 3,
+        "none" => 4,
+        _ => 0,
+    }
+}
+
+fn cover_fit_key(fit: i32) -> &'static str {
+    match fit {
+        1 => "contain",
+        2 => "blur",
+        3 => "fill",
+        4 => "none",
+        _ => "cover",
+    }
+}
+
+fn cover_fit_label(fit: i32) -> &'static str {
+    match fit {
+        1 => "entera",
+        2 => "con fondo",
+        3 => "estirada",
+        4 => "original",
+        _ => "recortada",
+    }
+}
+
 /// Ask the desktop for files, with whichever picker it ships. Returns empty
 /// on cancel and on desktops with neither tool — the row says so.
 fn pick_files() -> Vec<String> {

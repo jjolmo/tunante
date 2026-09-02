@@ -233,6 +233,10 @@ export component DesktopShell inherits Rectangle {
     callback make-desktop-entry();
     in property <string> add-files-label;
     callback add-files();
+    in property <string> cover-fit-label;
+    callback cycle-cover-fit();
+    in property <string> clear-cache-label;
+    callback clear-cover-cache();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -469,6 +473,10 @@ export component DesktopShell inherits Rectangle {
                     make-desktop-entry => { root.make-desktop-entry(); }
                     add-files-label: root.add-files-label;
                     add-files => { root.add-files(); }
+                    cover-fit-label: root.cover-fit-label;
+                    cycle-cover-fit => { root.cycle-cover-fit(); }
+                    clear-cache-label: root.clear-cache-label;
+                    clear-cover-cache => { root.clear-cover-cache(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
                     continue-queue <=> root.continue-queue;
