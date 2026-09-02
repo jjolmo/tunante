@@ -1678,8 +1678,79 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.all = db_t.get_all_tracks().unwrap_or_default();
             }
             st.faved = faved;
+            st.folder = None;
             rebuild_table(&mut st, &model);
             ui.set_table_faved(faved);
+            ui.set_table_folder_id(SharedString::from(""));
+        });
+    }
+
+    // --- Pinned folders ------------------------------------------------------
+    //
+    // The database supported them from day one; this is the sidebar finally
+    // asking. Pin from the table's context menu, open from the sidebar
+    // (narrows the table to that subtree), unpin from the hover ✕.
+    let pinned_model = Rc::new(VecModel::from(Vec::<PinnedRow>::new()));
+    ui.set_pinned_folders(ModelRc::from(pinned_model.clone()));
+    refresh_pinned(&db, &pinned_model);
+    {
+        let (db_p, st) = (db.clone(), table_state.clone());
+        let model = pinned_model.clone();
+        ui.on_table_pin_folder(move |index| {
+            let path = {
+                let st = st.borrow();
+                st.tracks.get(index as usize).map(|t| t.path.clone())
+            };
+            let Some(path) = path else { return };
+            let (real, _) = tunante_core::vgm_path::parse_vgm_path(&path);
+            let Some(folder) = std::path::Path::new(real).parent() else { return };
+            let _ = db_p.add_pinned_folder(
+                &uuid::Uuid::new_v4().to_string(),
+                &folder.to_string_lossy(),
+            );
+            refresh_pinned(&db_p, &model);
+        });
+    }
+    {
+        let (db_p, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_folder_opened(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let folder = db_p
+                .get_pinned_folders()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|f| f.id == id.as_str())
+                .map(|f| f.path);
+            let mut st = st.borrow_mut();
+            if !st.built {
+                st.built = true;
+                st.all = db_p.get_all_tracks().unwrap_or_default();
+            }
+            st.folder = folder;
+            rebuild_table(&mut st, &model);
+            ui.set_table_folder_id(if st.folder.is_some() {
+                id
+            } else {
+                SharedString::from("")
+            });
+        });
+    }
+    {
+        let (db_p, st, tmodel) = (db.clone(), table_state.clone(), table_model.clone());
+        let model = pinned_model.clone();
+        let weak = ui.as_weak();
+        ui.on_folder_unpinned(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let _ = db_p.remove_pinned_folder(&id);
+            refresh_pinned(&db_p, &model);
+            // Unpinning the folder that narrows the table widens it back.
+            if ui.get_table_folder_id() == id {
+                let mut st = st.borrow_mut();
+                st.folder = None;
+                rebuild_table(&mut st, &tmodel);
+                ui.set_table_folder_id(SharedString::from(""));
+            }
         });
     }
 
@@ -3839,6 +3910,8 @@ struct TableState {
     visible: Vec<String>,
     /// Narrowed to rating > 0 — the sidebar's Favoritos entry.
     faved: bool,
+    /// Narrowed to one pinned folder's subtree; None is the whole library.
+    folder: Option<String>,
     built: bool,
     /// Indices into `tracks`. Cleared on every rebuild: a sort or a filter
     /// reshuffles what the indices mean, and a stale selection pointing at
@@ -3860,6 +3933,7 @@ impl Default for TableState {
             filter: String::new(),
             visible: DEFAULT_COLUMNS.split(',').map(str::to_string).collect(),
             faved: false,
+            folder: None,
             built: false,
             selected: std::collections::HashSet::new(),
             anchor: 0,
@@ -4408,6 +4482,26 @@ fn table_console_label(t: &tunante_core::db::models::Track) -> &'static str {
     tunante_core::console::label_es(tunante_core::console::key_of(t))
 }
 
+/// The sidebar's pinned folders, re-read whole: the list is short and the
+/// database is the one truth about it.
+fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
+    model.set_vec(
+        db.get_pinned_folders()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| PinnedRow {
+                name: SharedString::from(
+                    std::path::Path::new(&f.path)
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| f.path.clone()),
+                ),
+                id: SharedString::from(f.id),
+            })
+            .collect::<Vec<_>>(),
+    );
+}
+
 /// Apply the filter and the sort, and hand the result to the UI model.
 fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
     st.selected.clear();
@@ -4416,6 +4510,16 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         .all
         .iter()
         .filter(|t| !st.faved || t.rating > 0)
+        .filter(|t| match &st.folder {
+            // Boundary-aware: pinning /a/b must not catch /a/bc. The real
+            // path matters, not the #n suffix a multi-track rip carries.
+            Some(f) => {
+                let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
+                real.strip_prefix(f.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+            }
+            None => true,
+        })
         .filter(|t| {
             needle.is_empty()
                 || library::plegar(&t.title).contains(&needle)
@@ -4832,5 +4936,53 @@ mod tests {
         let roots = vec![std::path::PathBuf::from("/m")];
         assert!(tracks_for_path(&db, &roots, "Final Fantasy VII", true).is_empty());
         let _ = std::fs::remove_file(file);
+    }
+
+    /// Pinning /a/b must narrow to that subtree and nothing else: not /a/bc,
+    /// and the #n suffix of a multi-track rip must not confuse the boundary.
+    #[test]
+    fn a_pinned_folder_narrows_to_its_subtree_only() {
+        let mk = |path: &str| Track {
+            id: path.to_string(),
+            path: path.to_string(),
+            title: path.to_string(),
+            artist: String::new(),
+            album: String::new(),
+            album_artist: String::new(),
+            track_number: None,
+            disc_number: None,
+            duration_ms: 1000,
+            sample_rate: None,
+            channels: None,
+            bitrate: None,
+            codec: "test".into(),
+            file_size: 0,
+            has_artwork: false,
+            rating: 0,
+            modified_at: 0,
+            game: String::new(),
+            header_game: String::new(),
+            console_id: String::new(),
+        };
+        let mut st = TableState {
+            all: vec![
+                mk("/a/b/inside.nsf"),
+                mk("/a/b/deeper/also.nsf"),
+                mk("/a/b/set.nsf#3"),
+                mk("/a/bc/outside.nsf"),
+                mk("/a/elsewhere.nsf"),
+            ],
+            folder: Some("/a/b".to_string()),
+            built: true,
+            ..TableState::default()
+        };
+        let model = VecModel::from(Vec::<TableRow>::new());
+        rebuild_table(&mut st, &model);
+        let kept: Vec<_> = st.tracks.iter().map(|t| t.path.as_str()).collect();
+        assert_eq!(
+            kept,
+            ["/a/b/deeper/also.nsf", "/a/b/inside.nsf", "/a/b/set.nsf#3"],
+            "boundary or vgm-suffix handling broke"
+        );
     }
 }

@@ -9,7 +9,7 @@
 
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow } from "types.slint";
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow } from "types.slint";
 import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
@@ -129,6 +129,12 @@ export component DesktopShell inherits Rectangle {
     callback playlist-picked(string);
     callback playlist-created-for-add(string);
     callback table-open-folder(int);
+    callback table-pin-folder(int);
+    in property <[PinnedRow]> pinned-folders;
+    /// Which pinned folder narrows the table right now; "" means none.
+    in property <string> table-folder-id;
+    callback folder-opened(string);
+    callback folder-unpinned(string);
     callback table-edit-requested(int);
     callback table-row-clicked(int, bool, bool);
     callback table-cursor-moved(int, bool);
@@ -320,6 +326,56 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
+                    if root.pinned-folders.length > 0: Rectangle { height: Theme.gap; }
+                    if root.pinned-folders.length > 0: Text {
+                        text: "Carpetas";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        height: 26px;
+                        vertical-alignment: center;
+                    }
+                    for pf in root.pinned-folders: Rectangle {
+                        height: 34px;
+                        background: root.centre == 0 && root.table-folder-id == pf.id
+                            ? Theme.bg-selected
+                            : (pft.has-hover ? Theme.bg-hover : transparent);
+                        border-radius: 6px;
+                        // Whole-row first so the unpin, declared after,
+                        // stays clickable on top of it.
+                        pft := TouchArea {
+                            clicked => {
+                                root.centre = 0;
+                                root.folder-opened(pf.id);
+                            }
+                        }
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 8px;
+                            Text {
+                                text: pf.name;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-body;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                            // The unpin, only under the pointer: a row of
+                            // permanent ✕ reads as a warning, not a control.
+                            if pft.has-hover: Rectangle {
+                                width: 18px;
+                                Text {
+                                    text: "✕";
+                                    color: pfx.has-hover ? Theme.text-primary : Theme.text-muted;
+                                    font-size: Theme.font-small;
+                                    vertical-alignment: center;
+                                }
+                                pfx := TouchArea {
+                                    clicked => { root.folder-unpinned(pf.id); }
+                                }
+                            }
+                        }
+                    }
+
                     Rectangle { height: Theme.gap; }
                     Text {
                         text: "Listas";
@@ -387,6 +443,7 @@ export component DesktopShell inherits Rectangle {
                     play-next(i) => { root.table-play-next(i); }
                     add-to-playlist(i) => { root.table-add-to-playlist(i); }
                     open-folder(i) => { root.table-open-folder(i); }
+                    pin-folder(i) => { root.table-pin-folder(i); }
                     edit-requested(i) => { root.table-edit-requested(i); }
                     cursor: root.table-cursor;
                     row-clicked(i, c, sh) => { root.table-row-clicked(i, c, sh); }

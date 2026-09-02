@@ -63,6 +63,13 @@ export struct FolderEntry {
 /// raw values back.
 /// One visible column of the track table. Rust owns the catalog and the
 /// visible subset; fractions arrive already normalised to sum 1.
+// A pinned folder in the desktop sidebar: id from the database, name is the
+// last path component — enough to recognise it, short enough to fit.
+export struct PinnedRow {
+    id: string,
+    name: string,
+}
+
 export struct TableColumn {
     key: string,
     label: string,
