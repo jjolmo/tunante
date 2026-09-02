@@ -96,8 +96,8 @@
 - [x] Botón mute (0 ↔ último volumen, 0.8 si nadie recuerda) con glifo por
       nivel 🔇/🔉/🔊.
 - [x] Toggle de crossfade en la barra (∵∴, recuerda la última duración).
-- [x] Título de ventana dinámico «Título - Artista — Tunante». (El toggle
-      del viejo para apagarlo, pendiente en la tanda de Ajustes.)
+- [x] Título de ventana dinámico «Título - Artista — Tunante», con su
+      toggle «Título en la barra de la ventana» (show_track_in_titlebar).
 
 **Atajos y teclado**
 - [ ] Pestaña Shortcuts entera: 11 acciones reconfigurables (badge de tecla,
@@ -109,8 +109,12 @@
       repeat, fav…).
 
 **Ajustes que faltan como filas**
-- [ ] Toggle auto-descarga de carátulas (hoy siempre activa al reproducir).
-- [ ] «Store covers in folder».
+- [x] «Descarga automática de carátulas» (off por defecto, como el viejo) —
+      al sonar una pista sin arte lanza UNA búsqueda por el resolver del
+      bulk (confianza High), un intento por pista y sesión. Corrección de
+      diagnóstico: mini NO descargaba nada al reproducir — el hueco era la
+      función entera, no el toggle.
+- [x] «Guardar carátula en la carpeta» (store_covers_in_folder).
 - [ ] Acción del click central del tray (5 opciones en el viejo).
 - [ ] Toggles de secciones del sidebar (Appearance → show faved/playlists/
       consoles/files/folders/cover).
@@ -121,9 +125,10 @@
 - [ ] Reconciliación de ratings al arrancar (el viejo pasaba disco→BD en
       segundo plano: 29.530 en ~1,5 s; sin ella un `_ratings.m3u` editado
       fuera no se refleja hasta re-escanear).
-- [ ] Persistir texto de búsqueda.
-- [ ] Auto-reanudación condicionada a <5 min desde el cierre (mini reanuda
-      siempre en pausa; el viejo solo si cerró sonando hace poco).
+- [x] Texto de búsqueda persistido (search_query), flush por el timer.
+- [~] Auto-reanudación <5 min: cubierto distinto a propósito — mini
+      restaura pista y posición SIEMPRE pero en pausa; nunca suelta sonido
+      solo por abrirse, que es lo que la regla de 5 min acotaba.
 
 ## C · Menor / pulido
 
