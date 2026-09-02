@@ -85,11 +85,15 @@
 - [ ] Compactación de cadenas de un solo hijo (A/B/C estilo VS Code).
 
 **Transporte**
-- [ ] Click en el bloque now-playing = navegación inteligente a la pista
-      (vista actual → su consola → su carpeta → All Tracks) con scroll.
-- [ ] Botón mute (volumen 0 ↔ 0.8) con icono según nivel.
-- [ ] Toggle de fade/crossfade en la barra (hoy enterrado en Ajustes).
-- [ ] Título de ventana dinámico «Título - Artista — Tunante» (+ su toggle).
+- [x] Click en el bloque now-playing = saltar a la pista: selecciona,
+      cursor y scroll-into-view; si un filtro/Favoritos/carpeta la tapa,
+      ensancha a la biblioteca entera y repite (los peldaños consola→carpeta
+      del viejo quedan sin replicar — el ensanche cubre el caso).
+- [x] Botón mute (0 ↔ último volumen, 0.8 si nadie recuerda) con glifo por
+      nivel 🔇/🔉/🔊.
+- [x] Toggle de crossfade en la barra (∵∴, recuerda la última duración).
+- [x] Título de ventana dinámico «Título - Artista — Tunante». (El toggle
+      del viejo para apagarlo, pendiente en la tanda de Ajustes.)
 
 **Atajos y teclado**
 - [ ] Pestaña Shortcuts entera: 11 acciones reconfigurables (badge de tecla,

@@ -25,7 +25,10 @@ export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, Librar
 export { Theme }
 
 export component AppWindow inherits Window {
-    title: "Tunante";
+    // «Título - Artista — Tunante» while something plays: the taskbar and
+    // alt-tab tell you what is on without a glance inside.
+    title: root.window-title == "" ? "Tunante" : root.window-title;
+    in property <string> window-title;
     background: Theme.bg-primary;
     // A sensible size for development — phone-shaped, unless the desktop shell
     // was forced from the command line before the window mapped. On the phone
@@ -241,6 +244,9 @@ export component AppWindow inherits Window {
     callback sidebar-play-all();
     callback playlist-played(string);
     callback folder-played(string);
+    callback now-clicked();
+    callback toggle-mute();
+    callback toggle-crossfade();
     callback stop-playback();
     callback rate-now(int);
     in property <string> table-folder-id;
@@ -474,6 +480,9 @@ export component AppWindow inherits Window {
         sidebar-play-all => { root.sidebar-play-all(); }
         playlist-played(id) => { root.playlist-played(id); }
         folder-played(id) => { root.folder-played(id); }
+        now-clicked => { root.now-clicked(); }
+        toggle-mute => { root.toggle-mute(); }
+        toggle-crossfade => { root.toggle-crossfade(); }
         cover-fit: root.cover-fit;
         stop-playback => { root.stop-playback(); }
         rate-now(n) => { root.rate-now(n); }

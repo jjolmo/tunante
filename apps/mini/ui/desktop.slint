@@ -165,6 +165,10 @@ export component DesktopShell inherits Rectangle {
     callback sidebar-play-all();
     callback playlist-played(string);
     callback folder-played(string);
+    /// Click on the now-playing block: take me to that track.
+    callback now-clicked();
+    callback toggle-mute();
+    callback toggle-crossfade();
     in property <int> cover-fit;
     callback stop-playback();
     callback rate-now(int);
@@ -753,6 +757,16 @@ export component DesktopShell inherits Rectangle {
 
                 Rectangle {
                     width: 240px;
+                    background: npt.has-hover && root.now-title != "" ? Theme.bg-hover : transparent;
+                    border-radius: Theme.radius;
+                    npt := TouchArea {
+                        clicked => {
+                            if (root.now-title != "") {
+                                root.centre = 0;
+                                root.now-clicked();
+                            }
+                        }
+                    }
                     TrackInfo {
                         title: root.now-title;
                         artist: root.now-artist;
@@ -807,6 +821,14 @@ export component DesktopShell inherits Rectangle {
                             active: root.repeat != 0;
                             size: 36px;
                             clicked => { root.cycle-repeat(); }
+                        }
+                        // Crossfade on/off without a trip to Ajustes — the
+                        // old transport's fade button.
+                        RoundButton {
+                            glyph: "∵∴";
+                            active: root.crossfade-secs > 0;
+                            size: 36px;
+                            clicked => { root.toggle-crossfade(); }
                         }
                     }
 
@@ -865,6 +887,14 @@ export component DesktopShell inherits Rectangle {
                             size: 36px;
                             active: root.centre == 2;
                             clicked => { root.centre = 2; }
+                        }
+                        // Mute toggles 0 ↔ 0.8, the old desktop's numbers;
+                        // the glyph tells the level at a glance.
+                        RoundButton {
+                            glyph: root.volume <= 0.001 ? "🔇"
+                                : (root.volume < 0.5 ? "🔉" : "🔊");
+                            size: 36px;
+                            clicked => { root.toggle-mute(); }
                         }
                         VolumeBar {
                             width: 120px;
