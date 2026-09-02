@@ -18,8 +18,8 @@ import { DesktopShell } from "desktop.slint";
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
 // has, wherever the structs live now.
-import { ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow } from "types.slint";
-export { ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableRow }
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow } from "types.slint";
+export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow }
 
 export component AppWindow inherits Window {
     title: "Tunante";
@@ -150,6 +150,9 @@ export component AppWindow inherits Window {
 
     // The desktop shell's track table. Sort and filter live in Rust.
     in property <[TableRow]> table-rows;
+    in property <[TableColumn]> table-columns;
+    in property <[ColumnChoice]> table-column-choices;
+    callback table-column-toggled(string);
     in property <int> table-sort-col: 1;
     in property <bool> table-sort-asc: true;
     in-out property <string> table-filter;
@@ -347,6 +350,9 @@ export component AppWindow inherits Window {
         library-crumb: root.library-crumb;
         library-columns: root.library-columns;
         table-rows: root.table-rows;
+        table-columns: root.table-columns;
+        table-column-choices: root.table-column-choices;
+        table-column-toggled(k) => { root.table-column-toggled(k); }
         table-sort-col: root.table-sort-col;
         table-sort-asc: root.table-sort-asc;
         table-filter <=> root.table-filter;
