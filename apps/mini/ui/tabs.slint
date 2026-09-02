@@ -39,6 +39,10 @@ export component SettingsTab inherits Rectangle {
     callback make-desktop-entry();
     in property <string> add-files-label;
     callback add-files();
+    in property <string> cover-fit-label;
+    callback cycle-cover-fit();
+    in property <string> clear-cache-label;
+    callback clear-cover-cache();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -343,6 +347,16 @@ export component SettingsTab inherits Rectangle {
             value: root.undo-covers-label;
             clicked => { root.undo-covers(); }
         }
+        SettingRow {
+            label: "Encaje de carátula";
+            value: root.cover-fit-label;
+            clicked => { root.cycle-cover-fit(); }
+        }
+        SettingRow {
+            label: "Limpiar caché de carátulas";
+            value: root.clear-cache-label;
+            clicked => { root.clear-cover-cache(); }
+        }
 
         Rectangle { height: 1px; background: Theme.border; }
 
@@ -409,6 +423,7 @@ export component NowPlayingTab inherits Rectangle {
     in property <string> album;
     in property <bool> portrait;
     in property <image> art;
+    in property <int> art-fit;
     in property <bool> playing;
     in property <bool> shuffle;
     in property <int> repeat;
@@ -435,7 +450,7 @@ export component NowPlayingTab inherits Rectangle {
 
         HorizontalLayout {
             alignment: center;
-            Artwork { side: root.art-portrait; art: root.art; }
+            Artwork { side: root.art-portrait; art: root.art; fit: root.art-fit; }
         }
 
         TrackInfo {
@@ -474,7 +489,7 @@ export component NowPlayingTab inherits Rectangle {
         // the middle. The default is stretch, and the cover keeps its size
         // regardless because Artwork binds its own width.
 
-        Artwork { side: root.art-landscape; art: root.art; }
+        Artwork { side: root.art-landscape; art: root.art; fit: root.art-fit; }
 
         VerticalLayout {
             horizontal-stretch: 1;

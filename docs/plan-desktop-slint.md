@@ -88,7 +88,13 @@
 >       y un balance de 0.03 es un altavoz roto), el flag de width sigue al
 >       valor como el preamp. Los matices de mono (compensación/phase-safe)
 >       quedan: son dos toggles de nicho.
-> - [ ] Modos de encaje de carátula (5) y limpiar caché.
+> - [x] Modos de encaje de carátula (5) y limpiar caché — `Artwork` aprendió
+>       `fit` (recortada/entera/con fondo/estirada/original, clave y valores
+>       `cover_fit` del desktop; «con fondo» aproxima el blur con la copia
+>       recortada atenuada detrás — Slint no tiene filtro de desenfoque).
+>       Solo el Sonando grande lo respeta; las miniaturas siguen recortadas.
+>       «Limpiar caché de carátulas» llama al `cache::clear()` que
+>       tunante-art ya traía y reporta cuántos ficheros se fueron.
 > - [ ] Carpetas pinneadas (la BD las soporta desde siempre).
 >
 > **Integración de escritorio:**
