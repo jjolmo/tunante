@@ -1781,3 +1781,93 @@ export component CoversPlanSheet inherits Rectangle {
         }
     }
 }
+
+
+// Track names for the one-file-per-game formats, fetched from the archive.
+// It never writes on its own: position is the entire mapping, so the person
+// reads the list and decides.
+export component TrackNamesSheet inherits Rectangle {
+    in property <string> heading;
+    in property <string> status;
+    in property <[string]> names;
+    in property <bool> can-apply;
+    callback apply();
+    callback cancelled();
+
+    background: #000000bb;
+
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: min(520px, root.width - Theme.gap * 4);
+        height: min(600px, root.height - Theme.gap * 4);
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+        TouchArea { }
+
+        VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: root.heading;
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                overflow: elide;
+            }
+            if root.status != "": Text {
+                text: root.status;
+                color: Theme.text-muted;
+                font-size: Theme.font-body;
+                wrap: word-wrap;
+            }
+
+            ListView {
+                vertical-stretch: 1;
+                for line in root.names: Rectangle {
+                    height: 26px;
+                    HorizontalLayout {
+                        padding-left: 4px;
+                        Text {
+                            text: line;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.gap;
+                alignment: end;
+
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: tnc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Cerrar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    tnc := TouchArea { clicked => { root.cancelled(); } }
+                }
+                if root.can-apply: Rectangle {
+                    width: 130px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: Theme.accent;
+                    Text {
+                        text: "Aplicar";
+                        color: #ffffff;
+                        font-size: Theme.font-body;
+                    }
+                    TouchArea { clicked => { root.apply(); } }
+                }
+            }
+        }
+    }
+}

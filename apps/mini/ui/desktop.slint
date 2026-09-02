@@ -10,7 +10,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet } from "widgets.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 
@@ -165,6 +165,13 @@ export component DesktopShell inherits Rectangle {
     in property <[CoverCandidate]> cover-candidates;
     callback cover-search(string);
     callback cover-chosen(int);
+    callback table-names-requested(int);
+    in-out property <bool> naming;
+    in property <string> names-heading;
+    in property <string> names-status;
+    in property <[string]> names-rows;
+    in property <bool> names-can-apply;
+    callback names-apply();
     /// Whether the table is narrowed to rating > 0 — Rust's state, so the
     /// sidebar marks the entry that is actually in force.
     in property <bool> table-faved;
@@ -365,6 +372,7 @@ export component DesktopShell inherits Rectangle {
                     activate-cursor => { root.table-activate-cursor(); }
                     reclassify-requested(i) => { root.table-reclassify-requested(i); }
                     cover-requested(i) => { root.table-cover-requested(i); }
+                    names-requested(i) => { root.table-names-requested(i); }
                 }
 
                 if root.centre == 1: LibraryTab {
@@ -609,6 +617,15 @@ export component DesktopShell inherits Rectangle {
         picked(id) => { root.playlist-picked(id); }
         created(name) => { root.playlist-created-for-add(name); }
         cancelled => { root.picking-playlist = false; }
+    }
+
+    if root.naming: TrackNamesSheet {
+        heading: root.names-heading;
+        status: root.names-status;
+        names: root.names-rows;
+        can-apply: root.names-can-apply;
+        apply => { root.names-apply(); }
+        cancelled => { root.naming = false; }
     }
 
     if root.covering: CoverSheet {

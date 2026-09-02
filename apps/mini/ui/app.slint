@@ -216,6 +216,13 @@ export component AppWindow inherits Window {
     in property <[CoverCandidate]> cover-candidates;
     callback cover-search(string);
     callback cover-chosen(int);
+    callback table-names-requested(int);
+    in-out property <bool> naming;
+    in property <string> names-heading;
+    in property <string> names-status;
+    in property <[string]> names-rows;
+    in property <bool> names-can-apply;
+    callback names-apply();
     in property <bool> table-faved;
     callback table-faved-changed(bool);
     callback table-needed();
@@ -421,6 +428,13 @@ export component AppWindow inherits Window {
         cover-candidates: root.cover-candidates;
         cover-search(q) => { root.cover-search(q); }
         cover-chosen(i) => { root.cover-chosen(i); }
+        table-names-requested(i) => { root.table-names-requested(i); }
+        naming <=> root.naming;
+        names-heading: root.names-heading;
+        names-status: root.names-status;
+        names-rows: root.names-rows;
+        names-can-apply: root.names-can-apply;
+        names-apply => { root.names-apply(); }
         table-faved: root.table-faved;
         table-faved-changed(f) => { root.table-faved-changed(f); }
         table-needed => { root.table-needed(); }
