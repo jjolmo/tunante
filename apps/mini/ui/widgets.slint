@@ -1096,13 +1096,17 @@ export component NameSheet inherits Rectangle {
 // tick, the fill growing from the middle towards the value.
 export component DbSliderRow inherits Rectangle {
     in property <string> label;
-    in property <float> db;          // -12 .. +12
+    in property <float> db;
     in property <bool> active: true;
+    // dB by default; Balance and Width reuse the row with their own ranges.
+    in property <float> range-min: -12;
+    in property <float> range-max: 12;
+    in property <string> unit: " dB";
     callback changed(float);
 
     height: Theme.touch-target;
 
-    property <float> fraction: clamp((root.db + 12) / 24, 0.0, 1.0);
+    property <float> fraction: clamp((root.db - root.range-min) / (root.range-max - root.range-min), 0.0, 1.0);
 
     HorizontalLayout {
         padding-left: Theme.gap;
@@ -1124,19 +1128,22 @@ export component DbSliderRow inherits Rectangle {
                 border-radius: 2px;
                 background: Theme.bg-tertiary;
 
-                // The zero tick, so flat is findable by eye and by finger.
+                // The neutral tick, so flat is findable by eye and by finger.
                 Rectangle {
-                    x: parent.width / 2;
+                    x: parent.width * clamp((0 - root.range-min) / (root.range-max - root.range-min), 0.0, 1.0)
+                        + (root.range-min >= 0 ? parent.width / 2 - parent.width * clamp((0 - root.range-min) / (root.range-max - root.range-min), 0.0, 1.0) : 0);
                     y: -3px;
                     width: 1px;
                     height: 10px;
                     background: Theme.text-muted;
                 }
 
-                // Fill from the centre towards the value, either direction.
+                // Fill from the neutral point towards the value.
                 Rectangle {
-                    x: min(bar.width / 2, bar.width * root.fraction);
-                    width: abs(bar.width * root.fraction - bar.width / 2);
+                    property <float> zero: root.range-min >= 0 ? 0.5
+                        : clamp((0 - root.range-min) / (root.range-max - root.range-min), 0.0, 1.0);
+                    x: min(bar.width * self.zero, bar.width * root.fraction);
+                    width: abs(bar.width * root.fraction - bar.width * self.zero);
                     height: parent.height;
                     border-radius: parent.border-radius;
                     background: root.active ? Theme.accent : Theme.text-muted;
@@ -1154,16 +1161,19 @@ export component DbSliderRow inherits Rectangle {
 
             touch := TouchArea {
                 moved => {
-                    root.changed(clamp(self.mouse-x / bar.width, 0.0, 1.0) * 24 - 12);
+                    root.changed(root.range-min
+                        + clamp(self.mouse-x / bar.width, 0.0, 1.0) * (root.range-max - root.range-min));
                 }
                 clicked => {
-                    root.changed(clamp(self.mouse-x / bar.width, 0.0, 1.0) * 24 - 12);
+                    root.changed(root.range-min
+                        + clamp(self.mouse-x / bar.width, 0.0, 1.0) * (root.range-max - root.range-min));
                 }
             }
         }
 
         Text {
-            text: (root.db >= 0.5 ? "+" : "") + round(root.db) + " dB";
+            text: (root.db >= 0.05 && root.range-min < 0 ? "+" : "")
+                + (round(root.db * 10) / 10) + root.unit;
             color: root.active ? Theme.text-secondary : Theme.text-muted;
             font-size: Theme.font-small;
             vertical-alignment: center;

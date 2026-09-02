@@ -221,6 +221,12 @@ export component DesktopShell inherits Rectangle {
     callback set-preamp(float);
     callback toggle-mono();
     callback toggle-limiter();
+    in property <float> dsp-balance;
+    in property <float> dsp-width;
+    callback set-balance(float);
+    callback set-width(float);
+    in property <string> rating-priority-label;
+    callback cycle-rating-priority();
 
     // The one piece of state the shell owns: which pane the centre shows.
     // 0 = the track table · 1 = the phone's library views · 2 = settings.
@@ -421,6 +427,12 @@ export component DesktopShell inherits Rectangle {
                     set-preamp(v) => { root.set-preamp(v); }
                     toggle-mono => { root.toggle-mono(); }
                     toggle-limiter => { root.toggle-limiter(); }
+                    dsp-balance: root.dsp-balance;
+                    dsp-width: root.dsp-width;
+                    set-balance(v) => { root.set-balance(v); }
+                    set-width(v) => { root.set-width(v); }
+                    rating-priority-label: root.rating-priority-label;
+                    cycle-rating-priority => { root.cycle-rating-priority(); }
                 }
             }
 

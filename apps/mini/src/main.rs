@@ -580,7 +580,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_preamp_db(c.preamp_db);
         ui.set_dsp_mono(c.mono);
         ui.set_dsp_limiter(c.limiter);
+        ui.set_dsp_balance(c.balance);
+        ui.set_dsp_width(c.width);
     }
+    ui.set_rating_priority_label(SharedString::from(rating_priority_label(
+        db.get_setting("rating_source_priority")
+            .ok()
+            .flatten()
+            .as_deref(),
+    )));
 
     let queue_model = Rc::new(VecModel::from(Vec::<QueueRow>::new()));
     ui.set_queue_rows(ModelRc::from(queue_model.clone()));
@@ -2160,6 +2168,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             store_dsp(&db, &player, &c);
         });
     }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_set_balance(move |v| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            // Snap the middle: nobody can drop a finger on exactly 0.0, and a
+            // balance of 0.03 is indistinguishable from a broken speaker.
+            c.balance = if v.abs() < 0.05 { 0.0 } else { v.clamp(-1.0, 1.0) };
+            ui.set_dsp_balance(c.balance);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_set_width(move |v| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            // Same snap at 1.0, and the enable flag follows the value — a
+            // slider with no separate switch, like the preamp.
+            c.width = if (v - 1.0).abs() < 0.05 { 1.0 } else { v.clamp(0.0, 2.0) };
+            c.width_enabled = (c.width - 1.0).abs() > 0.01;
+            ui.set_dsp_width(c.width);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_rating_priority(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let current = db
+                .get_setting("rating_source_priority")
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+            // Three sensible presets rather than a reorderable list: who
+            // wins — the database, the file's tag, or the folder's m3u.
+            let next = match current.as_str() {
+                "file,folder,db" => "folder,file,db",
+                "folder,file,db" => "db,file,folder",
+                _ => "file,folder,db",
+            };
+            let _ = db.set_setting("rating_source_priority", next);
+            ui.set_rating_priority_label(SharedString::from(rating_priority_label(
+                Some(next),
+            )));
+        });
+    }
 
     // --- Search --------------------------------------------------------------
     {
@@ -3007,6 +3064,14 @@ fn store_dsp(
     }
     if let Ok(json) = serde_json::to_string(cfg) {
         let _ = db.set_setting("dsp_config", &json);
+    }
+}
+
+fn rating_priority_label(raw: Option<&str>) -> &'static str {
+    match raw {
+        Some("file,folder,db") => "fichero primero",
+        Some("folder,file,db") => "carpeta primero",
+        _ => "BD manda",
     }
 }
 
