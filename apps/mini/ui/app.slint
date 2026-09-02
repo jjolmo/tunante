@@ -19,7 +19,7 @@ import { DesktopShell } from "desktop.slint";
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
 // has, wherever the structs live now.
-import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow, PinnedRow, FolderRow } from "types.slint";
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow, PinnedRow, FolderRow, ShortcutRow } from "types.slint";
 export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow }
 // So Rust can flip the palette: ui.global::<Theme>().set_dark(false).
 export { Theme }
@@ -83,6 +83,14 @@ export component AppWindow inherits Window {
     callback toggle-show-playlists();
     in property <string> about-label;
     callback open-repo();
+    in property <[ShortcutRow]> shortcut-rows;
+    callback shortcut-capture(string);
+    /// A key hit at shell level; Rust answers whether it was consumed.
+    pure callback shortcut-key(string, bool, bool, bool) -> bool;
+    /// Bumped by Rust to drop focus into the table filter (focus can only
+    /// be granted from inside slint).
+    in property <int> focus-filter-tick;
+    in property <int> open-settings-tick;
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     // Empty unless the sound has nowhere to go. See output.rs.
@@ -443,252 +451,269 @@ export component AppWindow inherits Window {
 
     // The desktop shell replaces the whole tabbed layout, not a tab of it: the
     // four screens exist inside it as panes.
-    if !root.setup-mode && root.desktop: DesktopShell {
-        scan-status: root.scan-status;
-        library-rows: root.library-rows;
-        library-total: root.library-total;
-        now-title: root.now-title;
-        now-artist: root.now-artist;
-        now-album: root.now-album;
-        now-path: root.now-path;
-        now-art: root.now-art;
-        playing: root.playing;
-        shuffle: root.shuffle;
-        repeat: root.repeat;
-        position-ms: root.position-ms;
-        duration-ms: root.duration-ms;
-        volume: root.volume;
-        search <=> root.search;
-        autofocus-search: root.autofocus-search;
-        library-mode <=> root.library-mode;
-        library-grid-lines: root.library-grid-lines;
-        library-grid: root.library-grid;
-        library-crumb: root.library-crumb;
-        library-columns: root.library-columns;
-        table-rows: root.table-rows;
-        table-columns: root.table-columns;
-        table-column-choices: root.table-column-choices;
-        table-column-toggled(k) => { root.table-column-toggled(k); }
-        table-sort-col: root.table-sort-col;
-        table-sort-asc: root.table-sort-asc;
-        table-filter <=> root.table-filter;
-        table-activated(i) => { root.table-activated(i); }
-        table-sorted(col) => { root.table-sorted(col); }
-        table-filter-changed(s) => { root.table-filter-changed(s); }
-        table-rated(i, stars) => { root.table-rated(i, stars); }
-        table-enqueued(i) => { root.table-enqueued(i); }
-        table-play-next(i) => { root.table-play-next(i); }
-        table-add-to-playlist(i) => { root.table-add-to-playlist(i); }
-        picking-playlist <=> root.picking-playlist;
-        pick-heading: root.pick-heading;
-        playlist-picked(id) => { root.playlist-picked(id); }
-        playlist-created-for-add(name) => { root.playlist-created-for-add(name); }
-        table-open-folder(i) => { root.table-open-folder(i); }
-        table-pin-folder(i) => { root.table-pin-folder(i); }
-        table-column-moved(de, a) => { root.table-column-moved(de, a); }
-        table-row-middle-clicked(i) => { root.table-row-middle-clicked(i); }
-        table-column-resize-started(i) => { root.table-column-resize-started(i); }
-        table-column-resized(i, dx, total) => { root.table-column-resized(i, dx, total); }
-        table-column-resize-done => { root.table-column-resize-done(); }
-        pinned-folders: root.pinned-folders;
-        total-count: root.total-count;
-        faved-count: root.faved-count;
-        now-stars: root.now-stars;
-        sidebar-width <=> root.sidebar-width;
-        sidebar-resized(w) => { root.sidebar-resized(w); }
-        sidebar-play-all => { root.sidebar-play-all(); }
-        playlist-played(id) => { root.playlist-played(id); }
-        folder-played(id) => { root.folder-played(id); }
-        now-clicked => { root.now-clicked(); }
-        toggle-mute => { root.toggle-mute(); }
-        toggle-crossfade => { root.toggle-crossfade(); }
-        cover-fit: root.cover-fit;
-        stop-playback => { root.stop-playback(); }
-        rate-now(n) => { root.rate-now(n); }
-        table-folder-id: root.table-folder-id;
-        folder-opened(id) => { root.folder-opened(id); }
-        folder-unpinned(id) => { root.folder-unpinned(id); }
-        folder-revealed(id) => { root.folder-revealed(id); }
-        table-edit-requested(i) => { root.table-edit-requested(i); }
-        table-cursor: root.table-cursor;
-        table-row-clicked(i, c, sh) => { root.table-row-clicked(i, c, sh); }
-        table-cursor-moved(d, sh) => { root.table-cursor-moved(d, sh); }
-        table-select-all => { root.table-select-all(); }
-        table-activate-cursor => { root.table-activate-cursor(); }
-        meta-batch: root.meta-batch;
-        editing-metadata <=> root.editing-metadata;
-        meta-heading: root.meta-heading;
-        meta-detail: root.meta-detail;
-        meta-title <=> root.meta-title;
-        meta-artist <=> root.meta-artist;
-        meta-album <=> root.meta-album;
-        meta-track <=> root.meta-track;
-        metadata-accepted => { root.metadata-accepted(); }
-        metadata-cancelled => { root.metadata-cancelled(); }
-        table-reclassify-requested(i) => { root.table-reclassify-requested(i); }
-        reclassifying <=> root.reclassifying;
-        reclass-heading: root.reclass-heading;
-        consoles: root.consoles;
-        reclass-console <=> root.reclass-console;
-        reclass-game <=> root.reclass-game;
-        reclass-scope-folder <=> root.reclass-scope-folder;
-        reclass-suggestions: root.reclass-suggestions;
-        reclass-game-edited(t) => { root.reclass-game-edited(t); }
-        reclass-accepted => { root.reclass-accepted(); }
-        reclass-cancelled => { root.reclass-cancelled(); }
-        table-cover-requested(i) => { root.table-cover-requested(i); }
-        covering <=> root.covering;
-        cover-heading: root.cover-heading;
-        cover-status: root.cover-status;
-        cover-query <=> root.cover-query;
-        cover-candidates: root.cover-candidates;
-        cover-search(q) => { root.cover-search(q); }
-        cover-chosen(i) => { root.cover-chosen(i); }
-        table-names-requested(i) => { root.table-names-requested(i); }
-        naming <=> root.naming;
-        names-heading: root.names-heading;
-        names-status: root.names-status;
-        names-rows: root.names-rows;
-        names-can-apply: root.names-can-apply;
-        names-apply => { root.names-apply(); }
-        table-faved: root.table-faved;
-        table-faved-changed(f) => { root.table-faved-changed(f); }
-        table-needed => { root.table-needed(); }
-        queue-rows: root.queue-rows;
-        playlists: root.playlists;
-        all-playlists: root.all-playlists;
-        showing-playlists: root.showing-playlists;
-        playlist-open: root.playlist-open;
-        playlist-count: root.playlist-count;
-        output-warning: root.output-warning;
-        sleep-running: root.sleep-running;
-        sleep-minutes: root.sleep-minutes;
-        library-summary: root.library-summary;
-                    library-folders: root.library-folders;
-                    vgm-loops-label: root.vgm-loops-label;
-                    cycle-vgm-loops => { root.cycle-vgm-loops(); }
-                    auto-covers: root.auto-covers;
-                    toggle-auto-covers => { root.toggle-auto-covers(); }
-                    covers-in-folder: root.covers-in-folder;
-                    toggle-covers-in-folder => { root.toggle-covers-in-folder(); }
-                    titlebar-track: root.titlebar-track;
-                    toggle-titlebar-track => { root.toggle-titlebar-track(); }
-                    album-game-label: root.album-game-label;
-                    toggle-album-game => { root.toggle-album-game(); }
-                    show-cover: root.show-cover;
-                    toggle-show-cover => { root.toggle-show-cover(); }
-                    show-faved: root.show-faved;
-                    toggle-show-faved => { root.toggle-show-faved(); }
-                    show-folders: root.show-folders;
-                    toggle-show-folders => { root.toggle-show-folders(); }
-                    show-playlists: root.show-playlists;
-                    toggle-show-playlists => { root.toggle-show-playlists(); }
-                    about-label: root.about-label;
-                    open-repo => { root.open-repo(); }
-                    folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
-                    folder-removed(id) => { root.folder-removed(id); }
-        loop-count: root.loop-count;
-        fade-seconds: root.fade-seconds;
-
-        library-activated(i) => { root.library-activated(i); }
-        library-enqueued(i) => { root.library-enqueued(i); }
-        library-enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
-        library-mode-changed(i) => { root.library-mode-changed(i); }
-        library-grid-tapped(p) => { root.library-grid-tapped(p); }
-        library-back => { root.library-back(); }
-        playlist-open-requested(id) => { root.playlist-open-requested(id); }
-        playlist-enqueue-all => { root.playlist-enqueue-all(); }
-        playlist-create(nombre) => { root.playlist-create(nombre); }
-        add-path-to-playlist(p, hondo, id) => { root.add-path-to-playlist(p, hondo, id); }
-        add-path-to-new-playlist(p, hondo, nombre) => {
-            root.add-path-to-new-playlist(p, hondo, nombre);
+    // Bare in-app shortcuts land here: this scope wraps the whole desktop
+    // shell, holds focus by default (forward-focus below), and receives
+    // whatever the table's own FocusScope rejects — while a TextInput with
+    // focus keeps its keys, exactly like the old app ignored inputs.
+    if !root.setup-mode && root.desktop: FocusScope {
+        init => { self.focus(); }
+        key-pressed(ev) => {
+            if (root.shortcut-key(ev.text, ev.modifiers.control, ev.modifiers.alt, ev.modifiers.shift)) {
+                return accept;
+            }
+            reject
         }
-        playlist-track-removed(p) => { root.playlist-track-removed(p); }
-        playlist-reordered(de, a) => { root.playlist-reordered(de, a); }
-        playlist-rename(id, nombre) => { root.playlist-rename(id, nombre); }
-        playlist-delete(id) => { root.playlist-delete(id); }
-        playlist-enqueue-id(id) => { root.playlist-enqueue-id(id); }
-        queue-activated(i) => { root.queue-activated(i); }
-        queue-removed(i) => { root.queue-removed(i); }
-        queue-reordered(from, to) => { root.queue-reordered(from, to); }
-        queue-cleared => { root.queue-cleared(); }
-        search-changed(s) => { root.search-changed(s); }
-        toggle-play => { root.toggle-play(); }
-        next-track => { root.next-track(); }
-        prev-track => { root.prev-track(); }
-        cycle-repeat => { root.cycle-repeat(); }
-        toggle-shuffle => { root.toggle-shuffle(); }
-        seek-to(ms) => { root.seek-to(ms); }
-        set-volume(v) => { root.set-volume(v); }
-        cycle-sleep => { root.cycle-sleep(); }
-        rescan => { root.rescan(); }
-        descargar-caratulas => { root.descargar-caratulas(); }
-        add-folder => { root.add-folder(); }
-        cycle-loops => { root.cycle-loops(); }
-        cycle-fade => { root.cycle-fade(); }
-        short-filter-secs: root.short-filter-secs;
-        cycle-short-filter => { root.cycle-short-filter(); }
-        crossfade-secs: root.crossfade-secs;
-        cycle-crossfade => { root.cycle-crossfade(); }
-        output-label: root.output-label;
-        ui-mode-label: root.ui-mode-label;
-        cycle-output => { root.cycle-output(); }
-        cycle-ui-mode => { root.cycle-ui-mode(); }
-                    update-status: root.update-status;
-                    check-update => { root.check-update(); }
-                    theme-label: root.theme-label;
-                    cycle-theme => { root.cycle-theme(); }
-                    show-log => { root.show-log(); }
-                    close-to-tray <=> root.close-to-tray;
-                    toggle-close-to-tray => { root.toggle-close-to-tray(); }
-                    mouse-buttons-label: root.mouse-buttons-label;
-                    mouse-buttons-on: root.mouse-buttons-on;
-                    toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
-                    global-shortcuts-label: root.global-shortcuts-label;
-                    global-shortcuts-on: root.global-shortcuts-on;
-                    toggle-global-shortcuts => { root.toggle-global-shortcuts(); }
-                    tray-style-label: root.tray-style-label;
-                    cycle-tray-style => { root.cycle-tray-style(); }
-                    update-skippable: root.update-skippable;
-                    skip-update => { root.skip-update(); }
-                    desktop-entry-label: root.desktop-entry-label;
-                    make-desktop-entry => { root.make-desktop-entry(); }
-                    add-files-label: root.add-files-label;
-                    add-files => { root.add-files(); }
-                    cover-fit-label: root.cover-fit-label;
-                    cycle-cover-fit => { root.cycle-cover-fit(); }
-                    clear-cache-label: root.clear-cache-label;
-                    clear-cover-cache => { root.clear-cover-cache(); }
-                    undo-covers-label: root.undo-covers-label;
-                    undo-covers => { root.undo-covers(); }
-                    continue-queue <=> root.continue-queue;
-                    toggle-continue-queue => { root.toggle-continue-queue(); }
-                    loop-max-mins: root.loop-max-mins;
-                    cycle-loop-max => { root.cycle-loop-max(); }
-                    slow-scan <=> root.slow-scan;
-                    toggle-slow-scan => { root.toggle-slow-scan(); }
-                    dsp-mono-compensate: root.dsp-mono-compensate;
-                    dsp-mono-phase: root.dsp-mono-phase;
-                    toggle-mono-compensate => { root.toggle-mono-compensate(); }
-                    toggle-mono-phase => { root.toggle-mono-phase(); }
-        eq-enabled: root.eq-enabled;
-        eq-low: root.eq-low;
-        eq-mid: root.eq-mid;
-        eq-high: root.eq-high;
-        preamp-db: root.preamp-db;
-        dsp-mono: root.dsp-mono;
-        dsp-limiter: root.dsp-limiter;
-        toggle-eq => { root.toggle-eq(); }
-        set-eq-band(b, v) => { root.set-eq-band(b, v); }
-        set-preamp(v) => { root.set-preamp(v); }
-        toggle-mono => { root.toggle-mono(); }
-        toggle-limiter => { root.toggle-limiter(); }
-        dsp-balance: root.dsp-balance;
-        dsp-width: root.dsp-width;
-        set-balance(v) => { root.set-balance(v); }
-        set-width(v) => { root.set-width(v); }
-        rating-priority-label: root.rating-priority-label;
-        cycle-rating-priority => { root.cycle-rating-priority(); }
+        DesktopShell {
+            scan-status: root.scan-status;
+            library-rows: root.library-rows;
+            library-total: root.library-total;
+            now-title: root.now-title;
+            now-artist: root.now-artist;
+            now-album: root.now-album;
+            now-path: root.now-path;
+            now-art: root.now-art;
+            playing: root.playing;
+            shuffle: root.shuffle;
+            repeat: root.repeat;
+            position-ms: root.position-ms;
+            duration-ms: root.duration-ms;
+            volume: root.volume;
+            search <=> root.search;
+            autofocus-search: root.autofocus-search;
+            library-mode <=> root.library-mode;
+            library-grid-lines: root.library-grid-lines;
+            library-grid: root.library-grid;
+            library-crumb: root.library-crumb;
+            library-columns: root.library-columns;
+            table-rows: root.table-rows;
+            table-columns: root.table-columns;
+            table-column-choices: root.table-column-choices;
+            table-column-toggled(k) => { root.table-column-toggled(k); }
+            table-sort-col: root.table-sort-col;
+            table-sort-asc: root.table-sort-asc;
+            table-filter <=> root.table-filter;
+            table-activated(i) => { root.table-activated(i); }
+            table-sorted(col) => { root.table-sorted(col); }
+            table-filter-changed(s) => { root.table-filter-changed(s); }
+            table-rated(i, stars) => { root.table-rated(i, stars); }
+            table-enqueued(i) => { root.table-enqueued(i); }
+            table-play-next(i) => { root.table-play-next(i); }
+            table-add-to-playlist(i) => { root.table-add-to-playlist(i); }
+            picking-playlist <=> root.picking-playlist;
+            pick-heading: root.pick-heading;
+            playlist-picked(id) => { root.playlist-picked(id); }
+            playlist-created-for-add(name) => { root.playlist-created-for-add(name); }
+            table-open-folder(i) => { root.table-open-folder(i); }
+            table-pin-folder(i) => { root.table-pin-folder(i); }
+            table-column-moved(de, a) => { root.table-column-moved(de, a); }
+            table-row-middle-clicked(i) => { root.table-row-middle-clicked(i); }
+            table-column-resize-started(i) => { root.table-column-resize-started(i); }
+            table-column-resized(i, dx, total) => { root.table-column-resized(i, dx, total); }
+            table-column-resize-done => { root.table-column-resize-done(); }
+            pinned-folders: root.pinned-folders;
+            total-count: root.total-count;
+            faved-count: root.faved-count;
+            now-stars: root.now-stars;
+            sidebar-width <=> root.sidebar-width;
+            sidebar-resized(w) => { root.sidebar-resized(w); }
+            sidebar-play-all => { root.sidebar-play-all(); }
+            playlist-played(id) => { root.playlist-played(id); }
+            folder-played(id) => { root.folder-played(id); }
+            now-clicked => { root.now-clicked(); }
+            toggle-mute => { root.toggle-mute(); }
+            toggle-crossfade => { root.toggle-crossfade(); }
+            cover-fit: root.cover-fit;
+            stop-playback => { root.stop-playback(); }
+            rate-now(n) => { root.rate-now(n); }
+            table-folder-id: root.table-folder-id;
+            folder-opened(id) => { root.folder-opened(id); }
+            folder-unpinned(id) => { root.folder-unpinned(id); }
+            folder-revealed(id) => { root.folder-revealed(id); }
+            table-edit-requested(i) => { root.table-edit-requested(i); }
+            table-cursor: root.table-cursor;
+            table-row-clicked(i, c, sh) => { root.table-row-clicked(i, c, sh); }
+            table-cursor-moved(d, sh) => { root.table-cursor-moved(d, sh); }
+            table-select-all => { root.table-select-all(); }
+            table-activate-cursor => { root.table-activate-cursor(); }
+            meta-batch: root.meta-batch;
+            editing-metadata <=> root.editing-metadata;
+            meta-heading: root.meta-heading;
+            meta-detail: root.meta-detail;
+            meta-title <=> root.meta-title;
+            meta-artist <=> root.meta-artist;
+            meta-album <=> root.meta-album;
+            meta-track <=> root.meta-track;
+            metadata-accepted => { root.metadata-accepted(); }
+            metadata-cancelled => { root.metadata-cancelled(); }
+            table-reclassify-requested(i) => { root.table-reclassify-requested(i); }
+            reclassifying <=> root.reclassifying;
+            reclass-heading: root.reclass-heading;
+            consoles: root.consoles;
+            reclass-console <=> root.reclass-console;
+            reclass-game <=> root.reclass-game;
+            reclass-scope-folder <=> root.reclass-scope-folder;
+            reclass-suggestions: root.reclass-suggestions;
+            reclass-game-edited(t) => { root.reclass-game-edited(t); }
+            reclass-accepted => { root.reclass-accepted(); }
+            reclass-cancelled => { root.reclass-cancelled(); }
+            table-cover-requested(i) => { root.table-cover-requested(i); }
+            covering <=> root.covering;
+            cover-heading: root.cover-heading;
+            cover-status: root.cover-status;
+            cover-query <=> root.cover-query;
+            cover-candidates: root.cover-candidates;
+            cover-search(q) => { root.cover-search(q); }
+            cover-chosen(i) => { root.cover-chosen(i); }
+            table-names-requested(i) => { root.table-names-requested(i); }
+            naming <=> root.naming;
+            names-heading: root.names-heading;
+            names-status: root.names-status;
+            names-rows: root.names-rows;
+            names-can-apply: root.names-can-apply;
+            names-apply => { root.names-apply(); }
+            table-faved: root.table-faved;
+            table-faved-changed(f) => { root.table-faved-changed(f); }
+            table-needed => { root.table-needed(); }
+            queue-rows: root.queue-rows;
+            playlists: root.playlists;
+            all-playlists: root.all-playlists;
+            showing-playlists: root.showing-playlists;
+            playlist-open: root.playlist-open;
+            playlist-count: root.playlist-count;
+            output-warning: root.output-warning;
+            sleep-running: root.sleep-running;
+            sleep-minutes: root.sleep-minutes;
+            library-summary: root.library-summary;
+                        library-folders: root.library-folders;
+                        vgm-loops-label: root.vgm-loops-label;
+                        cycle-vgm-loops => { root.cycle-vgm-loops(); }
+                        auto-covers: root.auto-covers;
+                        toggle-auto-covers => { root.toggle-auto-covers(); }
+                        covers-in-folder: root.covers-in-folder;
+                        toggle-covers-in-folder => { root.toggle-covers-in-folder(); }
+                        titlebar-track: root.titlebar-track;
+                        toggle-titlebar-track => { root.toggle-titlebar-track(); }
+                        album-game-label: root.album-game-label;
+                        toggle-album-game => { root.toggle-album-game(); }
+                        show-cover: root.show-cover;
+                        toggle-show-cover => { root.toggle-show-cover(); }
+                        show-faved: root.show-faved;
+                        toggle-show-faved => { root.toggle-show-faved(); }
+                        show-folders: root.show-folders;
+                        toggle-show-folders => { root.toggle-show-folders(); }
+                        show-playlists: root.show-playlists;
+                        toggle-show-playlists => { root.toggle-show-playlists(); }
+                        about-label: root.about-label;
+                        open-repo => { root.open-repo(); }
+                        shortcut-rows: root.shortcut-rows;
+                        shortcut-capture(id) => { root.shortcut-capture(id); }
+                        focus-filter-tick: root.focus-filter-tick;
+                        open-settings-tick: root.open-settings-tick;
+                        folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
+                        folder-removed(id) => { root.folder-removed(id); }
+            loop-count: root.loop-count;
+            fade-seconds: root.fade-seconds;
+
+            library-activated(i) => { root.library-activated(i); }
+            library-enqueued(i) => { root.library-enqueued(i); }
+            library-enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
+            library-mode-changed(i) => { root.library-mode-changed(i); }
+            library-grid-tapped(p) => { root.library-grid-tapped(p); }
+            library-back => { root.library-back(); }
+            playlist-open-requested(id) => { root.playlist-open-requested(id); }
+            playlist-enqueue-all => { root.playlist-enqueue-all(); }
+            playlist-create(nombre) => { root.playlist-create(nombre); }
+            add-path-to-playlist(p, hondo, id) => { root.add-path-to-playlist(p, hondo, id); }
+            add-path-to-new-playlist(p, hondo, nombre) => {
+                root.add-path-to-new-playlist(p, hondo, nombre);
+            }
+            playlist-track-removed(p) => { root.playlist-track-removed(p); }
+            playlist-reordered(de, a) => { root.playlist-reordered(de, a); }
+            playlist-rename(id, nombre) => { root.playlist-rename(id, nombre); }
+            playlist-delete(id) => { root.playlist-delete(id); }
+            playlist-enqueue-id(id) => { root.playlist-enqueue-id(id); }
+            queue-activated(i) => { root.queue-activated(i); }
+            queue-removed(i) => { root.queue-removed(i); }
+            queue-reordered(from, to) => { root.queue-reordered(from, to); }
+            queue-cleared => { root.queue-cleared(); }
+            search-changed(s) => { root.search-changed(s); }
+            toggle-play => { root.toggle-play(); }
+            next-track => { root.next-track(); }
+            prev-track => { root.prev-track(); }
+            cycle-repeat => { root.cycle-repeat(); }
+            toggle-shuffle => { root.toggle-shuffle(); }
+            seek-to(ms) => { root.seek-to(ms); }
+            set-volume(v) => { root.set-volume(v); }
+            cycle-sleep => { root.cycle-sleep(); }
+            rescan => { root.rescan(); }
+            descargar-caratulas => { root.descargar-caratulas(); }
+            add-folder => { root.add-folder(); }
+            cycle-loops => { root.cycle-loops(); }
+            cycle-fade => { root.cycle-fade(); }
+            short-filter-secs: root.short-filter-secs;
+            cycle-short-filter => { root.cycle-short-filter(); }
+            crossfade-secs: root.crossfade-secs;
+            cycle-crossfade => { root.cycle-crossfade(); }
+            output-label: root.output-label;
+            ui-mode-label: root.ui-mode-label;
+            cycle-output => { root.cycle-output(); }
+            cycle-ui-mode => { root.cycle-ui-mode(); }
+                        update-status: root.update-status;
+                        check-update => { root.check-update(); }
+                        theme-label: root.theme-label;
+                        cycle-theme => { root.cycle-theme(); }
+                        show-log => { root.show-log(); }
+                        close-to-tray <=> root.close-to-tray;
+                        toggle-close-to-tray => { root.toggle-close-to-tray(); }
+                        mouse-buttons-label: root.mouse-buttons-label;
+                        mouse-buttons-on: root.mouse-buttons-on;
+                        toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
+                        global-shortcuts-label: root.global-shortcuts-label;
+                        global-shortcuts-on: root.global-shortcuts-on;
+                        toggle-global-shortcuts => { root.toggle-global-shortcuts(); }
+                        tray-style-label: root.tray-style-label;
+                        cycle-tray-style => { root.cycle-tray-style(); }
+                        update-skippable: root.update-skippable;
+                        skip-update => { root.skip-update(); }
+                        desktop-entry-label: root.desktop-entry-label;
+                        make-desktop-entry => { root.make-desktop-entry(); }
+                        add-files-label: root.add-files-label;
+                        add-files => { root.add-files(); }
+                        cover-fit-label: root.cover-fit-label;
+                        cycle-cover-fit => { root.cycle-cover-fit(); }
+                        clear-cache-label: root.clear-cache-label;
+                        clear-cover-cache => { root.clear-cover-cache(); }
+                        undo-covers-label: root.undo-covers-label;
+                        undo-covers => { root.undo-covers(); }
+                        continue-queue <=> root.continue-queue;
+                        toggle-continue-queue => { root.toggle-continue-queue(); }
+                        loop-max-mins: root.loop-max-mins;
+                        cycle-loop-max => { root.cycle-loop-max(); }
+                        slow-scan <=> root.slow-scan;
+                        toggle-slow-scan => { root.toggle-slow-scan(); }
+                        dsp-mono-compensate: root.dsp-mono-compensate;
+                        dsp-mono-phase: root.dsp-mono-phase;
+                        toggle-mono-compensate => { root.toggle-mono-compensate(); }
+                        toggle-mono-phase => { root.toggle-mono-phase(); }
+            eq-enabled: root.eq-enabled;
+            eq-low: root.eq-low;
+            eq-mid: root.eq-mid;
+            eq-high: root.eq-high;
+            preamp-db: root.preamp-db;
+            dsp-mono: root.dsp-mono;
+            dsp-limiter: root.dsp-limiter;
+            toggle-eq => { root.toggle-eq(); }
+            set-eq-band(b, v) => { root.set-eq-band(b, v); }
+            set-preamp(v) => { root.set-preamp(v); }
+            toggle-mono => { root.toggle-mono(); }
+            toggle-limiter => { root.toggle-limiter(); }
+            dsp-balance: root.dsp-balance;
+            dsp-width: root.dsp-width;
+            set-balance(v) => { root.set-balance(v); }
+            set-width(v) => { root.set-width(v); }
+            rating-priority-label: root.rating-priority-label;
+            cycle-rating-priority => { root.cycle-rating-priority(); }
+        }
     }
 
     if !root.setup-mode && root.scan-status == "" && !root.desktop: VerticalLayout {
@@ -796,6 +821,8 @@ export component AppWindow inherits Window {
                     toggle-show-playlists => { root.toggle-show-playlists(); }
                     about-label: root.about-label;
                     open-repo => { root.open-repo(); }
+                    shortcut-rows: root.shortcut-rows;
+                    shortcut-capture(id) => { root.shortcut-capture(id); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
                         loop-count: root.loop-count;

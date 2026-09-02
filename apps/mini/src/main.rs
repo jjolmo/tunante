@@ -3263,6 +3263,137 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     sidebar_toggle!(on_toggle_show_folders, get_show_folders, set_show_folders, "show_folders_list");
     sidebar_toggle!(on_toggle_show_playlists, get_show_playlists, set_show_playlists, "show_playlists");
 
+    // --- In-app shortcuts ----------------------------------------------------
+    //
+    // The old Shortcuts tab's soul: every action records whatever combo the
+    // user presses next. Bindings live one per setting (shortcut.<id>), the
+    // map inverts them for dispatch, and the shell-level FocusScope hands
+    // every unclaimed key through shortcut-key below.
+    let shortcut_rows = Rc::new(VecModel::from(Vec::<ShortcutRow>::new()));
+    ui.set_shortcut_rows(ModelRc::from(shortcut_rows.clone()));
+    let shortcut_capturing: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    let shortcut_map: Rc<RefCell<std::collections::HashMap<String, String>>> =
+        Rc::new(RefCell::new(std::collections::HashMap::new()));
+    let rebuild_shortcuts = {
+        let (db, rows, map, capturing) = (
+            db.clone(),
+            shortcut_rows.clone(),
+            shortcut_map.clone(),
+            shortcut_capturing.clone(),
+        );
+        Rc::new(move || {
+            let mut m = map.borrow_mut();
+            m.clear();
+            let capturing = capturing.borrow();
+            rows.set_vec(
+                SHORTCUT_ACTIONS
+                    .iter()
+                    .map(|(id, label)| {
+                        let key = db
+                            .get_setting(&format!("shortcut.{id}"))
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default();
+                        if !key.is_empty() {
+                            m.insert(key.clone(), id.to_string());
+                        }
+                        ShortcutRow {
+                            id: SharedString::from(*id),
+                            label: SharedString::from(*label),
+                            key: SharedString::from(
+                                if capturing.as_deref() == Some(*id) {
+                                    "pulsa una tecla…".to_string()
+                                } else {
+                                    key
+                                },
+                            ),
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            );
+        })
+    };
+    rebuild_shortcuts();
+    {
+        let (capturing, rebuild) = (shortcut_capturing.clone(), rebuild_shortcuts.clone());
+        ui.on_shortcut_capture(move |id| {
+            *capturing.borrow_mut() = Some(id.to_string());
+            rebuild();
+        });
+    }
+    {
+        let (db, capturing, map, rebuild) = (
+            db.clone(),
+            shortcut_capturing.clone(),
+            shortcut_map.clone(),
+            rebuild_shortcuts.clone(),
+        );
+        let (player, weak) = (player.clone(), ui.as_weak());
+        ui.on_shortcut_key(move |text, ctrl, alt, shift| {
+            let Some(ui) = weak.upgrade() else { return false };
+            // Recording: the next key becomes the binding. Escape cancels,
+            // Supr/Backspace unbinds.
+            let armed = capturing.borrow().clone();
+            if let Some(id) = armed {
+                let c = text.chars().next().unwrap_or('\0');
+                if c == '\u{1b}' {
+                    *capturing.borrow_mut() = None;
+                    rebuild();
+                    return true;
+                }
+                if c == '\u{7f}' || c == '\u{8}' {
+                    let _ = db.set_setting(&format!("shortcut.{id}"), "");
+                    *capturing.borrow_mut() = None;
+                    rebuild();
+                    return true;
+                }
+                let Some(combo) = shortcut_combo(&text, ctrl, alt, shift) else {
+                    return true;
+                };
+                let _ = db.set_setting(&format!("shortcut.{id}"), &combo);
+                *capturing.borrow_mut() = None;
+                rebuild();
+                return true;
+            }
+            let Some(combo) = shortcut_combo(&text, ctrl, alt, shift) else {
+                return false;
+            };
+            // Ctrl+P is the house key, not a binding: Ajustes, like the old
+            // desktop.
+            if combo == "Ctrl+P" {
+                ui.set_open_settings_tick(ui.get_open_settings_tick() + 1);
+                return true;
+            }
+            let action = map.borrow().get(&combo).cloned();
+            let Some(action) = action else { return false };
+            match action.as_str() {
+                "play_pause" => ui.invoke_toggle_play(),
+                "stop" => ui.invoke_stop_playback(),
+                "prev_track" => ui.invoke_prev_track(),
+                "next_track" => ui.invoke_next_track(),
+                "volume_up" | "volume_down" => {
+                    if let Some(p) = player.borrow_mut().as_mut() {
+                        let d = if action == "volume_up" { 0.05 } else { -0.05 };
+                        p.set_volume((p.volume() + d).clamp(0.0, 1.0));
+                        ui.set_volume(p.volume());
+                    }
+                }
+                "mute" => ui.invoke_toggle_mute(),
+                "toggle_shuffle" => ui.invoke_toggle_shuffle(),
+                "cycle_repeat" => ui.invoke_cycle_repeat(),
+                "focus_search" => {
+                    ui.set_focus_filter_tick(ui.get_focus_filter_tick() + 1)
+                }
+                "toggle_fav" => {
+                    let r = ui.get_now_rating();
+                    ui.invoke_rate_now(if r > 0 { r } else { 5 });
+                }
+                _ => return false,
+            }
+            true
+        });
+    }
+
     ui.set_about_label(SharedString::from(format!("v{} — jjolmo", update::CURRENT_VERSION)));
     ui.on_open_repo(|| {
         let _ = std::process::Command::new("xdg-open")
@@ -5669,6 +5800,56 @@ fn show_play_error(ui: &AppWindow, e: &str) {
     eprintln!("no se pudo reproducir: {e}");
     ui.set_error_toast(SharedString::from(format!("No se pudo reproducir: {e}")));
     ui.set_error_toast_age(0);
+}
+
+/// The in-app shortcut catalog: id, settings key suffix, row label.
+const SHORTCUT_ACTIONS: &[(&str, &str)] = &[
+    ("play_pause", "Tecla · Reproducir/Pausa"),
+    ("stop", "Tecla · Stop"),
+    ("prev_track", "Tecla · Anterior"),
+    ("next_track", "Tecla · Siguiente"),
+    ("volume_up", "Tecla · Subir volumen"),
+    ("volume_down", "Tecla · Bajar volumen"),
+    ("mute", "Tecla · Silenciar"),
+    ("toggle_shuffle", "Tecla · Aleatorio"),
+    ("cycle_repeat", "Tecla · Repetir"),
+    ("focus_search", "Tecla · Buscar"),
+    ("toggle_fav", "Tecla · Favorito"),
+];
+
+/// A key event as the display/storage combo ("Ctrl+Alt+P", "Espacio", "F5").
+/// None for keys that make no binding (bare modifiers, control chars).
+fn shortcut_combo(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<String> {
+    let c = text.chars().next()?;
+    // Slint delivers special keys as macOS-style private-use codepoints.
+    let name = match c {
+        ' ' => "Espacio".to_string(),
+        '\u{f700}' => "Arriba".to_string(),
+        '\u{f701}' => "Abajo".to_string(),
+        '\u{f702}' => "Izquierda".to_string(),
+        '\u{f703}' => "Derecha".to_string(),
+        '\u{f729}' => "Inicio".to_string(),
+        '\u{f72b}' => "Fin".to_string(),
+        '\u{f72c}' => "RePág".to_string(),
+        '\u{f72d}' => "AvPág".to_string(),
+        c @ '\u{f704}'..='\u{f726}' => format!("F{}", c as u32 - 0xf703),
+        c if c.is_control() => return None,
+        c => c.to_uppercase().to_string(),
+    };
+    let mut combo = String::new();
+    if ctrl {
+        combo.push_str("Ctrl+");
+    }
+    if alt {
+        combo.push_str("Alt+");
+    }
+    if shift && name.chars().count() > 1 {
+        // Shift only matters for named keys; a letter already arrived
+        // uppercase and "Shift+A" would just be a second spelling of it.
+        combo.push_str("Shift+");
+    }
+    combo.push_str(&name);
+    Some(combo)
 }
 
 fn vgm_loops_label(v: Option<f64>) -> String {

@@ -9,7 +9,7 @@
 
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow, FolderRow } from "types.slint";
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow, FolderRow, ShortcutRow } from "types.slint";
 import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
@@ -175,6 +175,12 @@ export component DesktopShell inherits Rectangle {
     callback toggle-show-playlists();
     in property <string> about-label;
     callback open-repo();
+    in property <[ShortcutRow]> shortcut-rows;
+    callback shortcut-capture(string);
+    in property <int> focus-filter-tick;
+    /// Rust bumps this for Ctrl+P: land in Ajustes.
+    in property <int> open-settings-tick;
+    changed open-settings-tick => { root.centre = 2; }
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -653,6 +659,7 @@ export component DesktopShell inherits Rectangle {
 
                 if root.centre == 0: TrackTable {
                     init => { root.table-needed(); }
+                    focus-filter-tick: root.focus-filter-tick;
                     rows: root.table-rows;
                     columns: root.table-columns;
                     column-choices: root.table-column-choices;
@@ -752,6 +759,8 @@ export component DesktopShell inherits Rectangle {
                     toggle-show-playlists => { root.toggle-show-playlists(); }
                     about-label: root.about-label;
                     open-repo => { root.open-repo(); }
+                    shortcut-rows: root.shortcut-rows;
+                    shortcut-capture(id) => { root.shortcut-capture(id); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
                     loop-count: root.loop-count;
