@@ -868,6 +868,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.visible = keys;
             }
         }
+        st.album_game_prefers_game = db
+            .get_setting("album_game_prefers")
+            .ok()
+            .flatten()
+            .map(|v| v == "game")
+            .unwrap_or(false);
         // The search text survives too, under the desktop's key.
         if let Ok(Some(q)) = db.get_setting("search_query") {
             if !q.is_empty() {
@@ -4781,6 +4787,9 @@ struct TableState {
     selected: std::collections::HashSet<usize>,
     /// Where a Shift-range grows from.
     anchor: usize,
+    /// «Álbum / Juego» shows which of the two first — the old desktop's
+    /// `album_game_prefers` setting; the other is the fallback.
+    album_game_prefers_game: bool,
     /// Bumped by every rebuild, so the queue-badge pass in the timer knows
     /// the rows are fresh (and badge-less) even when the queue is not.
     stamp: u64,
@@ -4803,6 +4812,7 @@ impl Default for TableState {
             built: false,
             selected: std::collections::HashSet::new(),
             anchor: 0,
+            album_game_prefers_game: false,
             stamp: 0,
         }
     }
@@ -5246,6 +5256,7 @@ const TABLE_COLUMNS: &[ColumnDef] = &[
     ColumnDef { key: "album", label: "Álbum", fraction: 2.4, right: false },
     ColumnDef { key: "game", label: "Juego", fraction: 2.4, right: false },
     ColumnDef { key: "console", label: "Consola", fraction: 1.3, right: false },
+    ColumnDef { key: "albumgame", label: "Álbum / Juego", fraction: 2.4, right: false },
     ColumnDef { key: "albumartist", label: "Artista del álbum", fraction: 2.0, right: false },
     ColumnDef { key: "disc", label: "Disco", fraction: 0.6, right: true },
     ColumnDef { key: "stars", label: "★", fraction: 1.4, right: false },
@@ -5261,8 +5272,16 @@ const TABLE_COLUMNS: &[ColumnDef] = &[
 const DEFAULT_COLUMNS: &str = "n,title,artist,game,console,stars,duration";
 
 /// One cell, painted. The UI never computes a cell — the GridLine rule.
-fn cell_for(t: &tunante_core::db::models::Track, key: &str) -> String {
+fn cell_for(t: &tunante_core::db::models::Track, key: &str, prefers_game: bool) -> String {
     match key {
+        "albumgame" => {
+            let (first, second) = if prefers_game {
+                (&t.game, &t.album)
+            } else {
+                (&t.album, &t.game)
+            };
+            if first.is_empty() { second.clone() } else { first.clone() }
+        }
         "n" => t.track_number.map(|n| n.to_string()).unwrap_or_default(),
         "title" => {
             if t.title.is_empty() { t.path.clone() } else { t.title.clone() }
@@ -5499,6 +5518,16 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         "album" => tracks.sort_by(|a, b| library::plegar(&a.album).cmp(&library::plegar(&b.album))),
         "game" => tracks.sort_by(|a, b| library::plegar(&a.game).cmp(&library::plegar(&b.game))),
         "console" => tracks.sort_by(|a, b| table_console_label(a).cmp(table_console_label(b))),
+        "albumgame" => {
+            let g = st.album_game_prefers_game;
+            tracks.sort_by(|a, b| {
+                let pick = |t: &tunante_core::db::models::Track| {
+                    let (first, second) = if g { (&t.game, &t.album) } else { (&t.album, &t.game) };
+                    library::plegar(if first.is_empty() { second } else { first })
+                };
+                pick(a).cmp(&pick(b))
+            });
+        }
         "albumartist" => {
             tracks.sort_by(|a, b| library::plegar(&a.album_artist).cmp(&library::plegar(&b.album_artist)))
         }
@@ -5524,7 +5553,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                 cells: ModelRc::new(VecModel::from(
                     st.visible
                         .iter()
-                        .map(|k| SharedString::from(cell_for(t, k)))
+                        .map(|k| SharedString::from(cell_for(t, k, st.album_game_prefers_game)))
                         .collect::<Vec<_>>(),
                 )),
                 path: SharedString::from(t.path.as_str()),
