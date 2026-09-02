@@ -46,6 +46,7 @@
 mod boost;
 mod debuglog;
 mod theme_watch;
+mod integrate;
 // logind, reached over D-Bus, and only `mpris` uses it.
 #[cfg(target_os = "linux")]
 mod inhibit;
@@ -1043,11 +1044,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             let Some(path) = path else { return };
             let (real, _) = tunante_core::vgm_path::parse_vgm_path(&path);
-            if let Some(folder) = std::path::Path::new(real).parent() {
-                // xdg-open respects the default file manager; spawn-and-forget
-                // because a file manager that fails says so on its own.
-                let _ = std::process::Command::new("xdg-open").arg(folder).spawn();
-            }
+            // FileManager1 selects the file itself; the xdg-open fallback
+            // inside only opens the folder when nobody answers the bus.
+            integrate::reveal(std::path::Path::new(real));
         });
     }
     // The one channel every art/metadata worker reports through; the timer
@@ -2504,24 +2503,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "v{} — toca para comprobar",
         update::CURRENT_VERSION
     )));
+    // A tapped check must show everything; only the silent startup check
+    // honours the skipped version.
+    let update_manual = Rc::new(std::cell::Cell::new(false));
+    let update_skipped: Option<String> = db.get_setting("update.skip_version").ok().flatten();
+    if cfg!(all(target_os = "linux", feature = "updater")) {
+        update::spawn_check(update_tx.clone());
+    }
     {
         let (pending, tx) = (update_pending.clone(), update_tx.clone());
-        let weak = ui.as_weak();
+        let (weak, manual) = (ui.as_weak(), update_manual.clone());
         ui.on_check_update(move || {
             let Some(ui) = weak.upgrade() else { return };
             let offered = pending.borrow_mut().take();
             match offered {
                 Some((version, url)) => {
+                    ui.set_update_skippable(false);
                     ui.set_update_status(SharedString::from(format!(
                         "Descargando v{version}…"
                     )));
                     update::spawn_install(tx.clone(), version, url);
                 }
                 None => {
+                    manual.set(true);
                     ui.set_update_status(SharedString::from("Comprobando…"));
                     update::spawn_check(tx.clone());
                 }
             }
+        });
+    }
+
+    {
+        let (db, pending) = (db.clone(), update_pending.clone());
+        let weak = ui.as_weak();
+        ui.on_skip_update(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some((version, _)) = pending.borrow_mut().take() {
+                let _ = db.set_setting("update.skip_version", &version);
+            }
+            ui.set_update_skippable(false);
+            ui.set_update_status(SharedString::from(format!(
+                "v{} — toca para comprobar",
+                update::CURRENT_VERSION
+            )));
+        });
+    }
+
+    ui.set_desktop_entry_label(SharedString::from("＋"));
+    {
+        let weak = ui.as_weak();
+        ui.on_make_desktop_entry(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_desktop_entry_label(SharedString::from(
+                match integrate::make_desktop_entry() {
+                    Ok(()) => "hecho ✓".to_string(),
+                    Err(e) => e,
+                },
+            ));
         });
     }
 
@@ -2754,6 +2792,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (names_pending.clone(), names_rows_model.clone());
         let (reclass_gen, sugg_model) = (reclass_gen.clone(), sugg_model.clone());
         let log_model = log_model.clone();
+        let update_manual = update_manual.clone();
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
@@ -2813,9 +2852,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )));
                         }
                         update::UpdateMsg::Available { version, url } => {
+                            if !update_manual.get()
+                                && update_skipped.as_deref() == Some(version.as_str())
+                            {
+                                // The startup check found the one version the
+                                // user asked not to hear about again.
+                                continue;
+                            }
+                            update_manual.set(false);
                             ui.set_update_status(SharedString::from(format!(
                                 "v{version} disponible — toca para instalar"
                             )));
+                            ui.set_update_skippable(true);
                             *update_pending.borrow_mut() = Some((version, url));
                         }
                         update::UpdateMsg::Installed(version) => {
@@ -2824,7 +2872,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )));
                         }
                         update::UpdateMsg::Error(e) => {
-                            ui.set_update_status(SharedString::from(e));
+                            // The silent startup check failing (no network,
+                            // package-managed build) is not worth a row of
+                            // red text nobody asked for.
+                            if update_manual.get() {
+                                ui.set_update_status(SharedString::from(e));
+                            }
+                            update_manual.set(false);
                         }
                     }
                 }

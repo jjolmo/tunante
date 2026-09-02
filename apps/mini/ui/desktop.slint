@@ -227,6 +227,10 @@ export component DesktopShell inherits Rectangle {
     callback show-log();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
+    in property <bool> update-skippable;
+    callback skip-update();
+    in property <string> desktop-entry-label;
+    callback make-desktop-entry();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -457,6 +461,10 @@ export component DesktopShell inherits Rectangle {
                     show-log => { root.show-log(); }
                     close-to-tray <=> root.close-to-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
+                    update-skippable: root.update-skippable;
+                    skip-update => { root.skip-update(); }
+                    desktop-entry-label: root.desktop-entry-label;
+                    make-desktop-entry => { root.make-desktop-entry(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
                     continue-queue <=> root.continue-queue;

@@ -33,6 +33,10 @@ export component SettingsTab inherits Rectangle {
     callback show-log();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
+    in property <bool> update-skippable;
+    callback skip-update();
+    in property <string> desktop-entry-label;
+    callback make-desktop-entry();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -365,6 +369,18 @@ export component SettingsTab inherits Rectangle {
             label: "Buscar actualizaciones";
             value: root.update-status;
             clicked => { root.check-update(); }
+        }
+        // Only while an update is on offer: skipping stores the version and
+        // the startup check stays quiet about it.
+        if root.update-skippable: SettingRow {
+            label: "Omitir esta versión";
+            value: "×";
+            clicked => { root.skip-update(); }
+        }
+        SettingRow {
+            label: "Integrar en el escritorio";
+            value: root.desktop-entry-label;
+            clicked => { root.make-desktop-entry(); }
         }
         SettingRow {
             label: "Registro";

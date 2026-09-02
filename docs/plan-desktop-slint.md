@@ -111,8 +111,13 @@
 >       Ahora un ring de 500 líneas (+ eco a stderr) detrás de la fachada
 >       `log`, y la fila «Registro» en Ajustes abre la hoja, que se
 >       refresca sola mientras está abierta.
-> - [ ] Entrada .desktop desde la app y el reveal fino en el gestor de
->       ficheros (Dolphin/Nautilus vía FileManager1; hoy xdg-open a secas).
+> - [x] Entrada .desktop desde la app — fila «Integrar en el escritorio»:
+>       escribe el launcher y el icono bajo XDG apuntando al binario que
+>       corre ahora mismo (idempotente: se re-toca tras mover la instalación
+>       y sigue). Y el reveal fino: «Abrir carpeta» pasa por
+>       `FileManager1.ShowItems` (el fichero queda seleccionado en Dolphin/
+>       Nautilus/Thunar), con xdg-open de la carpeta como red cuando nadie
+>       contesta al bus. URI con su encoding testeado.
 >
 > **Herramientas:**
 > - [x] Descarga masiva con preview → apply → cancel → **undo** — la hoja
@@ -133,7 +138,12 @@
 >       instante y el archivo Libretro (nombres No-Intro: las mismas cadenas
 >       que luego casará el descargador de carátulas) + Steam llegan por el
 >       canal, sellados por generación para que teclear les gane sin peligro.
-> - [ ] Añadir ficheros sueltos (add_files) y skip-version en el updater.
+> - [ ] Añadir ficheros sueltos (add_files).
+> - [x] Skip-version en el updater — y con él el chequeo silencioso al
+>       arrancar (solo builds con `updater`): si hay versión nueva la fila
+>       lo dice sola; «Omitir esta versión» la calla para siempre. Un check
+>       tocado a mano lo enseña todo igualmente, y los errores del chequeo
+>       silencioso (sin red) no pintan la fila de rojo.
 >
 > - [x] Matices de mono (compensación y seguro de fase) — dos filas bajo
 >       Mono, encendidas solo cuando Mono lo está.
