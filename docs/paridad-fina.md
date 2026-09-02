@@ -116,8 +116,9 @@
       función entera, no el toggle.
 - [x] «Guardar carátula en la carpeta» (store_covers_in_folder).
 - [ ] Acción del click central del tray (5 opciones en el viejo).
-- [ ] Toggles de secciones del sidebar (Appearance → show faved/playlists/
-      consoles/files/folders/cover).
+- [x] Toggles de secciones del sidebar: carátula, Favoritos, Carpetas y
+      Listas, bajo las claves show_* del desktop. (Consolas/árbol no son
+      secciones del sidebar nuevo.)
 - [ ] Watch on/off por carpeta.
 - [ ] Loops de formatos streamed (ver A).
 
@@ -137,10 +138,11 @@
 - [ ] Registro: filtro por nivel, campo de filtro, Copy, Clear, auto-scroll
       (el viejo DebugWindow tenía todo eso).
 - [ ] Popup de feedback de volumen al hacer rueda sobre el tray.
-- [ ] Diálogo de crash (panic hook → crash.log + zenity/kdialog).
+- [x] Diálogo de crash: panic hook → tunante-crash.log en XDG data +
+      zenity/kdialog con el mensaje y la ruta.
 - [ ] «Fix the lengths too» y ámbito «solo esta pista» en nombres de pistas.
 - [ ] Type-ahead de consola rankeado por codec (escribir `spc` → SNES).
-- [ ] About: versión visible, créditos, enlace al repo.
+- [x] «Acerca de Tunante»: fila con versión y autor; click abre el repo.
 
 ## D · Cubierto distinto (no es deuda)
 

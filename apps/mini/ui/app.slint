@@ -73,6 +73,16 @@ export component AppWindow inherits Window {
     callback toggle-titlebar-track();
     in property <string> album-game-label;
     callback toggle-album-game();
+    in property <bool> show-cover;
+    callback toggle-show-cover();
+    in property <bool> show-faved;
+    callback toggle-show-faved();
+    in property <bool> show-folders;
+    callback toggle-show-folders();
+    in property <bool> show-playlists;
+    callback toggle-show-playlists();
+    in property <string> about-label;
+    callback open-repo();
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     // Empty unless the sound has nowhere to go. See output.rs.
@@ -565,6 +575,16 @@ export component AppWindow inherits Window {
                     toggle-titlebar-track => { root.toggle-titlebar-track(); }
                     album-game-label: root.album-game-label;
                     toggle-album-game => { root.toggle-album-game(); }
+                    show-cover: root.show-cover;
+                    toggle-show-cover => { root.toggle-show-cover(); }
+                    show-faved: root.show-faved;
+                    toggle-show-faved => { root.toggle-show-faved(); }
+                    show-folders: root.show-folders;
+                    toggle-show-folders => { root.toggle-show-folders(); }
+                    show-playlists: root.show-playlists;
+                    toggle-show-playlists => { root.toggle-show-playlists(); }
+                    about-label: root.about-label;
+                    open-repo => { root.open-repo(); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
         loop-count: root.loop-count;
@@ -766,6 +786,16 @@ export component AppWindow inherits Window {
                     toggle-titlebar-track => { root.toggle-titlebar-track(); }
                     album-game-label: root.album-game-label;
                     toggle-album-game => { root.toggle-album-game(); }
+                    show-cover: root.show-cover;
+                    toggle-show-cover => { root.toggle-show-cover(); }
+                    show-faved: root.show-faved;
+                    toggle-show-faved => { root.toggle-show-faved(); }
+                    show-folders: root.show-folders;
+                    toggle-show-folders => { root.toggle-show-folders(); }
+                    show-playlists: root.show-playlists;
+                    toggle-show-playlists => { root.toggle-show-playlists(); }
+                    about-label: root.about-label;
+                    open-repo => { root.open-repo(); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
                         loop-count: root.loop-count;

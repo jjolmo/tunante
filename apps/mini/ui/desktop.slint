@@ -165,6 +165,16 @@ export component DesktopShell inherits Rectangle {
     callback toggle-titlebar-track();
     in property <string> album-game-label;
     callback toggle-album-game();
+    in property <bool> show-cover;
+    callback toggle-show-cover();
+    in property <bool> show-faved;
+    callback toggle-show-faved();
+    in property <bool> show-folders;
+    callback toggle-show-folders();
+    in property <bool> show-playlists;
+    callback toggle-show-playlists();
+    in property <string> about-label;
+    callback open-repo();
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -404,7 +414,7 @@ export component DesktopShell inherits Rectangle {
                         }
                         played => { root.sidebar-play-all(); }
                     }
-                    SidebarEntry {
+                    if root.show-faved: SidebarEntry {
                         label: "Favoritos";
                         count: root.faved-count;
                         active: root.centre == 0 && root.table-faved;
@@ -422,15 +432,15 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.pinned-folders.length > 0: Rectangle { height: Theme.gap; }
-                    if root.pinned-folders.length > 0: Text {
+                    if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.gap; }
+                    if root.show-folders && root.pinned-folders.length > 0: Text {
                         text: "Carpetas";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                         height: 26px;
                         vertical-alignment: center;
                     }
-                    for pf in root.pinned-folders: Rectangle {
+                    for pf in root.show-folders ? root.pinned-folders : []: Rectangle {
                         height: 34px;
                         background: root.centre == 0 && root.table-folder-id == pf.id
                             ? Theme.bg-selected
@@ -495,8 +505,8 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    Rectangle { height: Theme.gap; }
-                    HorizontalLayout {
+                    if root.show-playlists: Rectangle { height: Theme.gap; }
+                    if root.show-playlists: HorizontalLayout {
                         height: 26px;
                         Text {
                             text: "Listas";
@@ -526,7 +536,7 @@ export component DesktopShell inherits Rectangle {
                     // The playlists themselves, one tap from anywhere.
                     lists := ListView {
                         vertical-stretch: 1;
-                        for pl in root.all-playlists: Rectangle {
+                        for pl in root.show-playlists ? root.all-playlists : []: Rectangle {
                             height: 34px;
                             background: pt.has-hover ? Theme.bg-hover : transparent;
                             border-radius: 6px;
@@ -595,7 +605,7 @@ export component DesktopShell inherits Rectangle {
                     // The old desktop gave its bottom-left corner to the
                     // playing cover; the 68px thumb in the transport was the
                     // one thing people missed most on the side-by-side.
-                    if root.now-art.width > 0: HorizontalLayout {
+                    if root.show-cover && root.now-art.width > 0: HorizontalLayout {
                         alignment: center;
                         padding-top: Theme.gap;
                         padding-bottom: Theme.gap;
@@ -732,6 +742,16 @@ export component DesktopShell inherits Rectangle {
                     toggle-titlebar-track => { root.toggle-titlebar-track(); }
                     album-game-label: root.album-game-label;
                     toggle-album-game => { root.toggle-album-game(); }
+                    show-cover: root.show-cover;
+                    toggle-show-cover => { root.toggle-show-cover(); }
+                    show-faved: root.show-faved;
+                    toggle-show-faved => { root.toggle-show-faved(); }
+                    show-folders: root.show-folders;
+                    toggle-show-folders => { root.toggle-show-folders(); }
+                    show-playlists: root.show-playlists;
+                    toggle-show-playlists => { root.toggle-show-playlists(); }
+                    about-label: root.about-label;
+                    open-repo => { root.open-repo(); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
                     loop-count: root.loop-count;
