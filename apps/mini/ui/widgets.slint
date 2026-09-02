@@ -1216,6 +1216,9 @@ component EditField inherits VerticalLayout {
 export component MetadataSheet inherits Rectangle {
     in property <string> heading;
     in property <string> detail;
+    /// Editing a whole selection: per-track fields hide, and an empty field
+    /// means "leave it alone" rather than "clear it".
+    in property <bool> batch;
     in-out property <string> title-text;
     in-out property <string> artist-text;
     in-out property <string> album-text;
@@ -1254,10 +1257,10 @@ export component MetadataSheet inherits Rectangle {
                 overflow: elide;
             }
 
-            EditField { label: "Título"; value <=> root.title-text; }
+            if !root.batch: EditField { label: "Título"; value <=> root.title-text; }
             EditField { label: "Artista"; value <=> root.artist-text; }
             EditField { label: "Álbum"; value <=> root.album-text; }
-            EditField { label: "Nº de pista"; value <=> root.track-text; }
+            if !root.batch: EditField { label: "Nº de pista"; value <=> root.track-text; }
 
             HorizontalLayout {
                 spacing: Theme.gap;

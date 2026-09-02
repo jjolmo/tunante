@@ -121,6 +121,12 @@ export component DesktopShell inherits Rectangle {
     callback table-enqueued(int);
     callback table-open-folder(int);
     callback table-edit-requested(int);
+    callback table-row-clicked(int, bool, bool);
+    callback table-cursor-moved(int, bool);
+    callback table-select-all();
+    callback table-activate-cursor();
+    in property <int> table-cursor: -1;
+    in property <bool> meta-batch;
     // The metadata editor's state, owned by Rust like everything else.
     in-out property <bool> editing-metadata;
     in property <string> meta-heading;
@@ -326,6 +332,11 @@ export component DesktopShell inherits Rectangle {
                     enqueued(i) => { root.table-enqueued(i); }
                     open-folder(i) => { root.table-open-folder(i); }
                     edit-requested(i) => { root.table-edit-requested(i); }
+                    cursor: root.table-cursor;
+                    row-clicked(i, c, sh) => { root.table-row-clicked(i, c, sh); }
+                    cursor-moved(d, sh) => { root.table-cursor-moved(d, sh); }
+                    select-all => { root.table-select-all(); }
+                    activate-cursor => { root.table-activate-cursor(); }
                     reclassify-requested(i) => { root.table-reclassify-requested(i); }
                     cover-requested(i) => { root.table-cover-requested(i); }
                 }
@@ -579,6 +590,7 @@ export component DesktopShell inherits Rectangle {
     if root.editing-metadata: MetadataSheet {
         heading: root.meta-heading;
         detail: root.meta-detail;
+        batch: root.meta-batch;
         title-text <=> root.meta-title;
         artist-text <=> root.meta-artist;
         album-text <=> root.meta-album;

@@ -11,6 +11,7 @@ import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { TableRow } from "types.slint";
 
+
 component HeaderCell inherits Rectangle {
     in property <string> label;
     in property <bool> active;
@@ -62,12 +63,33 @@ export component TrackTable inherits Rectangle {
     callback reclassify-requested(int);
     /// Open the cover picker on this row.
     callback cover-requested(int);
+    /// One click, with its modifiers: plain replaces the selection, Ctrl
+    /// toggles, Shift extends from the anchor. Rust owns the set.
+    callback row-clicked(int, bool, bool);
+    /// Arrow keys: delta and whether Shift extends the range.
+    callback cursor-moved(int, bool);
+    callback select-all();
+    /// Enter on the keyboard cursor.
+    callback activate-cursor();
+    /// Where the keyboard cursor sits, for the scroll-into-view below.
+    in property <int> cursor: -1;
 
     // Column layout, as fractions of the width. One place, used by header and
     // rows alike, so they cannot drift.
     property <[float]> widths: [0.04, 0.28, 0.17, 0.20, 0.10, 0.12, 0.09];
 
-    property <int> selected: -1;
+    // Keep the keyboard cursor on screen. 28px is the row height below; the
+    // maths runs only when the cursor moves, not per frame.
+    changed cursor => {
+        if (root.cursor >= 0) {
+            if (root.cursor * 28px < -lv.viewport-y) {
+                lv.viewport-y = -root.cursor * 28px;
+            }
+            if ((root.cursor + 1) * 28px > -lv.viewport-y + lv.visible-height) {
+                lv.viewport-y = -((root.cursor + 1) * 28px - lv.visible-height);
+            }
+        }
+    }
 
     VerticalLayout {
         // --- Filter box ---
@@ -125,18 +147,61 @@ export component TrackTable inherits Rectangle {
         Rectangle { height: 1px; background: Theme.bg-tertiary; }
 
         // --- Rows ---
-        ListView {
+        //
+        // The FocusScope is what makes the keyboard work: clicking a row
+        // focuses it (the filter's TextInput keeps its own focus when it is
+        // the thing clicked), and from then on arrows, Enter and Ctrl+A land
+        // here.
+        keys := FocusScope {
             vertical-stretch: 1;
+
+            key-pressed(event) => {
+                if (event.text == Key.UpArrow) {
+                    root.cursor-moved(-1, event.modifiers.shift);
+                    return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                    root.cursor-moved(1, event.modifiers.shift);
+                    return accept;
+                }
+                if (event.text == Key.Return) {
+                    root.activate-cursor();
+                    return accept;
+                }
+                if (event.text == "a" && event.modifiers.control) {
+                    root.select-all();
+                    return accept;
+                }
+                reject
+            }
+
+        lv := ListView {
 
             for row[i] in root.rows: Rectangle {
                 property <bool> playing: row.path == root.now-path;
                 height: 28px;
-                background: i == root.selected ? Theme.bg-selected
+                background: row.selected ? Theme.bg-selected
                     : (rt.has-hover ? Theme.bg-hover
                     : (mod(i, 2) == 0 ? Theme.bg-primary : Theme.bg-secondary));
 
+                // The keyboard cursor, distinct from the selection it drives.
+                border-width: i == root.cursor ? 1px : 0px;
+                border-color: Theme.accent;
+
                 rt := TouchArea {
-                    clicked => { root.selected = i; }
+                    pointer-event(ev) => {
+                        if (ev.kind == PointerEventKind.down) {
+                            if (ev.button == PointerEventButton.left) {
+                                root.row-clicked(i,
+                                    ev.modifiers.control, ev.modifiers.shift);
+                            }
+                            // Right-click on something outside the selection
+                            // retargets it, like every desktop list.
+                            if (ev.button == PointerEventButton.right && !row.selected) {
+                                root.row-clicked(i, false, false);
+                            }
+                        }
+                    }
                     double-clicked => { root.activated(i); }
                 }
 
@@ -245,6 +310,7 @@ export component TrackTable inherits Rectangle {
                     }
                 }
             }
+        }
         }
     }
 }

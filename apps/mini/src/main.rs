@@ -801,13 +801,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (st, player_t) = (table_state.clone(), player.clone());
         ui.on_table_enqueued(move |index| {
-            let track = {
+            let batch = {
                 let st = st.borrow();
-                st.tracks.get(index as usize).cloned()
+                let i = index as usize;
+                if st.selected.len() > 1 && st.selected.contains(&i) {
+                    // The visible order, not click order: "and then these".
+                    let mut idx: Vec<usize> = st.selected.iter().copied().collect();
+                    idx.sort_unstable();
+                    idx.iter().filter_map(|&j| st.tracks.get(j).cloned()).collect()
+                } else {
+                    st.tracks.get(i).cloned().into_iter().collect::<Vec<_>>()
+                }
             };
-            let Some(track) = track else { return };
+            if batch.is_empty() {
+                return;
+            }
             if let Some(p) = player_t.borrow_mut().as_mut() {
-                p.enqueue(track);
+                p.enqueue_many(batch);
             }
         });
     }
@@ -1032,24 +1042,134 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- Selection and keyboard in the table --------------------------------
+    {
+        let (st, model) = (table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_row_clicked(move |i, ctrl, shift| {
+            let Some(ui) = weak.upgrade() else { return };
+            let i = i as usize;
+            let mut st = st.borrow_mut();
+            if i >= st.tracks.len() {
+                return;
+            }
+            if shift {
+                let (a, b) = (st.anchor.min(i), st.anchor.max(i));
+                st.selected = (a..=b).collect();
+            } else if ctrl {
+                if !st.selected.insert(i) {
+                    st.selected.remove(&i);
+                }
+                st.anchor = i;
+            } else {
+                st.selected = std::iter::once(i).collect();
+                st.anchor = i;
+            }
+            repaint_selection(&st, &model);
+            ui.set_table_cursor(i as i32);
+        });
+    }
+    {
+        let (st, model) = (table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_cursor_moved(move |delta, shift| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            if st.tracks.is_empty() {
+                return;
+            }
+            let last = st.tracks.len() as i32 - 1;
+            let cur = ui.get_table_cursor();
+            let next = if cur < 0 {
+                if delta > 0 { 0 } else { last }
+            } else {
+                (cur + delta).clamp(0, last)
+            } as usize;
+            if shift {
+                let (a, b) = (st.anchor.min(next), st.anchor.max(next));
+                st.selected = (a..=b).collect();
+            } else {
+                st.selected = std::iter::once(next).collect();
+                st.anchor = next;
+            }
+            repaint_selection(&st, &model);
+            ui.set_table_cursor(next as i32);
+        });
+    }
+    {
+        let (st, model) = (table_state.clone(), table_model.clone());
+        ui.on_table_select_all(move || {
+            let mut st = st.borrow_mut();
+            st.selected = (0..st.tracks.len()).collect();
+            repaint_selection(&st, &model);
+        });
+    }
+    {
+        let weak = ui.as_weak();
+        ui.on_table_activate_cursor(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let cursor = ui.get_table_cursor();
+            if cursor >= 0 {
+                ui.invoke_table_activated(cursor);
+            }
+        });
+    }
+
     // --- The metadata editor ---------------------------------------------
-    // Which track the open sheet is about. An id and not a row index: the
-    // table can be re-sorted or re-filtered underneath a dialog.
-    let edit_target: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    // Which tracks the open sheet is about. Ids and not row indices: the
+    // table can be re-sorted or re-filtered underneath a dialog. One id is
+    // the single editor, several is the batch one.
+    let edit_target: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
     {
         let (st, target) = (table_state.clone(), edit_target.clone());
         let weak = ui.as_weak();
         ui.on_table_edit_requested(move |index| {
             let Some(ui) = weak.upgrade() else { return };
             let st = st.borrow();
-            let Some(t) = st.tracks.get(index as usize) else { return };
-            *target.borrow_mut() = Some(t.id.clone());
+            let i = index as usize;
+            let Some(t) = st.tracks.get(i) else { return };
+
+            if st.selected.len() > 1 && st.selected.contains(&i) {
+                // The batch editor: per-track fields hide, an empty field
+                // leaves that column alone on every selected track.
+                let mut idx: Vec<usize> = st.selected.iter().copied().collect();
+                idx.sort_unstable();
+                let picked: Vec<&tunante_core::db::models::Track> =
+                    idx.iter().filter_map(|&j| st.tracks.get(j)).collect();
+                *target.borrow_mut() = picked.iter().map(|t| t.id.clone()).collect();
+
+                let uniform = |get: fn(&tunante_core::db::models::Track) -> &str| {
+                    let first = get(picked[0]);
+                    picked.iter().all(|t| get(t) == first).then(|| first.to_string())
+                };
+                ui.set_meta_batch(true);
+                ui.set_meta_heading(SharedString::from(format!(
+                    "{} pistas seleccionadas",
+                    picked.len()
+                )));
+                ui.set_meta_detail(SharedString::from(
+                    "Un campo vacío no toca nada.",
+                ));
+                ui.set_meta_title(SharedString::new());
+                ui.set_meta_artist(SharedString::from(
+                    uniform(|t| t.artist.as_str()).unwrap_or_default(),
+                ));
+                ui.set_meta_album(SharedString::from(
+                    uniform(|t| t.album.as_str()).unwrap_or_default(),
+                ));
+                ui.set_meta_track(SharedString::new());
+                ui.set_editing_metadata(true);
+                return;
+            }
+
+            *target.borrow_mut() = vec![t.id.clone()];
             let name = std::path::Path::new(
                 tunante_core::vgm_path::parse_vgm_path(&t.path).0,
             )
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
+            ui.set_meta_batch(false);
             ui.set_meta_heading(SharedString::from(name));
             ui.set_meta_detail(SharedString::from(format!(
                 "{} · {}",
@@ -1084,53 +1204,82 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_metadata_accepted(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let Some(id) = target.borrow_mut().take() else {
+            let ids = std::mem::take(&mut *target.borrow_mut());
+            if ids.is_empty() {
                 ui.set_editing_metadata(false);
                 return;
-            };
+            }
+            let batch = ids.len() > 1;
             let title = ui.get_meta_title().to_string();
             let artist = ui.get_meta_artist().to_string();
             let album = ui.get_meta_album().to_string();
             let track_raw = ui.get_meta_track().to_string();
-            // Empty clears the number; anything unparseable leaves it alone
-            // rather than guessing.
-            let track_number = if track_raw.trim().is_empty() {
-                Some(None)
+            // Single editor: empty clears the number, unparseable leaves it.
+            // Batch: numbers are per-track and never touched.
+            let track_number = if batch || !track_raw.trim().is_empty() {
+                track_raw.trim().parse::<i32>().ok().map(Some)
             } else {
-                match track_raw.trim().parse::<i32>() {
-                    Ok(n) => Some(Some(n)),
-                    Err(_) => None,
-                }
+                Some(None)
             };
 
-            if let Err(e) = db_m.update_track_metadata(
-                &id,
-                Some(&title),
-                Some(&artist),
-                Some(&album),
-                None,
-                track_number,
-                None,
-            ) {
-                eprintln!("no se pudieron guardar los metadatos: {e}");
-                ui.set_editing_metadata(false);
-                return;
+            // In batch, None means "this column stays as it is" — exactly
+            // what update_track_metadata's Options already say.
+            let (title_arg, artist_arg, album_arg) = if batch {
+                (
+                    None,
+                    (!artist.trim().is_empty()).then_some(artist.as_str()),
+                    (!album.trim().is_empty()).then_some(album.as_str()),
+                )
+            } else {
+                (
+                    Some(title.as_str()),
+                    Some(artist.as_str()),
+                    Some(album.as_str()),
+                )
+            };
+
+            for id in &ids {
+                if let Err(e) = db_m.update_track_metadata(
+                    id,
+                    title_arg,
+                    artist_arg,
+                    album_arg,
+                    None,
+                    if batch { None } else { track_number },
+                    None,
+                ) {
+                    eprintln!("no se pudieron guardar los metadatos: {e}");
+                }
             }
 
             // The caches the table sorts and filters from, kept in step so
-            // the row repaints without a database round trip.
+            // the rows repaint without a database round trip.
             {
                 let mut st = st.borrow_mut();
                 let apply = |t: &mut tunante_core::db::models::Track| {
-                    t.title = title.clone();
-                    t.artist = artist.clone();
-                    t.album = album.clone();
-                    if let Some(tn) = track_number {
-                        t.track_number = tn;
+                    if let Some(v) = title_arg {
+                        t.title = v.to_string();
+                    }
+                    if let Some(v) = artist_arg {
+                        t.artist = v.to_string();
+                    }
+                    if let Some(v) = album_arg {
+                        t.album = v.to_string();
+                    }
+                    if !batch {
+                        if let Some(tn) = track_number {
+                            t.track_number = tn;
+                        }
                     }
                 };
-                st.all.iter_mut().filter(|t| t.id == id).for_each(apply);
-                st.tracks.iter_mut().filter(|t| t.id == id).for_each(apply);
+                st.all
+                    .iter_mut()
+                    .filter(|t| ids.contains(&t.id))
+                    .for_each(apply);
+                st.tracks
+                    .iter_mut()
+                    .filter(|t| ids.contains(&t.id))
+                    .for_each(apply);
                 rebuild_table(&mut st, &model);
             }
             // The tree and grids read the database, so they just re-read.
@@ -2772,6 +2921,12 @@ struct TableState {
     /// Narrowed to rating > 0 — the sidebar's Favoritos entry.
     faved: bool,
     built: bool,
+    /// Indices into `tracks`. Cleared on every rebuild: a sort or a filter
+    /// reshuffles what the indices mean, and a stale selection pointing at
+    /// different songs is worse than an empty one.
+    selected: std::collections::HashSet<usize>,
+    /// Where a Shift-range grows from.
+    anchor: usize,
 }
 
 impl Default for TableState {
@@ -2786,6 +2941,8 @@ impl Default for TableState {
             filter: String::new(),
             faved: false,
             built: false,
+            selected: std::collections::HashSet::new(),
+            anchor: 0,
         }
     }
 }
@@ -2889,6 +3046,20 @@ fn spawn_cover_search(
     });
 }
 
+/// Push the selection set back into the rows. A full pass with one set_vec:
+/// selection changes happen at click speed, and the spike put a whole-model
+/// swap at 11–21 ms over 30k rows — simpler than bookkeeping point updates.
+fn repaint_selection(st: &TableState, model: &VecModel<TableRow>) {
+    let rows: Vec<TableRow> = (0..model.row_count())
+        .filter_map(|i| {
+            let mut r = model.row_data(i)?;
+            r.selected = st.selected.contains(&i);
+            Some(r)
+        })
+        .collect();
+    model.set_vec(rows);
+}
+
 /// Five glyphs, filled up to the rating. Pre-painted here because the UI
 /// never needs the number back — a click reports which star was hit.
 fn stars_for(rating: i32) -> String {
@@ -2902,6 +3073,7 @@ fn table_console_label(t: &tunante_core::db::models::Track) -> &'static str {
 
 /// Apply the filter and the sort, and hand the result to the UI model.
 fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
+    st.selected.clear();
     let needle = library::plegar(&st.filter);
     let mut tracks: Vec<_> = st
         .all
@@ -2951,6 +3123,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                 )),
                 path: SharedString::from(t.path.as_str()),
                 stars: SharedString::from(stars_for(t.rating)),
+                selected: false,
             })
             .collect::<Vec<_>>(),
     );

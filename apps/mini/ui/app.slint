@@ -152,6 +152,12 @@ export component AppWindow inherits Window {
     callback table-enqueued(int);
     callback table-open-folder(int);
     callback table-edit-requested(int);
+    callback table-row-clicked(int, bool, bool);
+    callback table-cursor-moved(int, bool);
+    callback table-select-all();
+    callback table-activate-cursor();
+    in property <int> table-cursor: -1;
+    in property <bool> meta-batch;
     in-out property <bool> editing-metadata;
     in property <string> meta-heading;
     in property <string> meta-detail;
@@ -342,6 +348,12 @@ export component AppWindow inherits Window {
         table-enqueued(i) => { root.table-enqueued(i); }
         table-open-folder(i) => { root.table-open-folder(i); }
         table-edit-requested(i) => { root.table-edit-requested(i); }
+        table-cursor: root.table-cursor;
+        table-row-clicked(i, c, sh) => { root.table-row-clicked(i, c, sh); }
+        table-cursor-moved(d, sh) => { root.table-cursor-moved(d, sh); }
+        table-select-all => { root.table-select-all(); }
+        table-activate-cursor => { root.table-activate-cursor(); }
+        meta-batch: root.meta-batch;
         editing-metadata <=> root.editing-metadata;
         meta-heading: root.meta-heading;
         meta-detail: root.meta-detail;

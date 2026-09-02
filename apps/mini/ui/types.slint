@@ -72,6 +72,8 @@ export struct TableRow {
     /// Five glyphs, pre-painted ("★★★☆☆"): the UI never needs the number
     /// back, and a click reports which star was under the pointer.
     stars: string,
+    /// Rust owns the selection set; the row only paints it.
+    selected: bool,
 }
 
 /// One console the reclassify sheet can offer.
