@@ -69,8 +69,13 @@ it draws straight to the GPU through GLES2.
   audible on the track already playing
 - **Output device selection** with recovery when the device dies (Bluetooth,
   unplugs) or the system default moves
-- **System tray** (Linux), **MPRIS** lock-screen/headset controls, sleep timer,
-  logind sleep inhibitor while playing
+- **System tray** (Linux) with scroll-to-volume, left-click show/hide,
+  close-to-tray and three icon styles (the "system" glyph follows the panel's
+  light/dark theme through the portal), **MPRIS** lock-screen/headset
+  controls, sleep timer, logind sleep inhibitor while playing
+- **Global shortcuts** through the XDG portal (rebindable in the desktop's own
+  shortcut settings) and optional mouse thumb-button transport via evdev
+- **Crossfade** between tracks, and a theme that can follow the system
 - **Single instance**: a second launch focuses the first; opening a file from a
   file manager hands it to the running player
 - **Metadata editor** from the context menu
