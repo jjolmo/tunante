@@ -98,6 +98,9 @@ export struct TableRow {
     selected: bool,
     // "»N" while the row waits in the user queue; "" otherwise.
     queue-pos: string,
+    /// The whole story for the hover tooltip — every cell ends up elided at
+    /// some width, and re-deriving this in slint is exactly what rows never do.
+    tip: string,
 }
 
 /// A row of the column chooser: every column the catalog knows, ticked or not.

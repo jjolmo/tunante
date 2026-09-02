@@ -71,6 +71,8 @@ export component AppWindow inherits Window {
     callback toggle-covers-in-folder();
     in property <bool> titlebar-track;
     callback toggle-titlebar-track();
+    in property <string> album-game-label;
+    callback toggle-album-game();
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     // Empty unless the sound has nowhere to go. See output.rs.
@@ -561,6 +563,8 @@ export component AppWindow inherits Window {
                     toggle-covers-in-folder => { root.toggle-covers-in-folder(); }
                     titlebar-track: root.titlebar-track;
                     toggle-titlebar-track => { root.toggle-titlebar-track(); }
+                    album-game-label: root.album-game-label;
+                    toggle-album-game => { root.toggle-album-game(); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
         loop-count: root.loop-count;
@@ -760,6 +764,8 @@ export component AppWindow inherits Window {
                     toggle-covers-in-folder => { root.toggle-covers-in-folder(); }
                     titlebar-track: root.titlebar-track;
                     toggle-titlebar-track => { root.toggle-titlebar-track(); }
+                    album-game-label: root.album-game-label;
+                    toggle-album-game => { root.toggle-album-game(); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
                         loop-count: root.loop-count;

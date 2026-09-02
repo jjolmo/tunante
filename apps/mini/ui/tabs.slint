@@ -20,6 +20,8 @@ export component SettingsTab inherits Rectangle {
     callback toggle-covers-in-folder();
     in property <bool> titlebar-track;
     callback toggle-titlebar-track();
+    in property <string> album-game-label;
+    callback toggle-album-game();
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -406,6 +408,12 @@ export component SettingsTab inherits Rectangle {
         }
         // Where a star lands besides the database: the file's own tag, or the
         // folder's _ratings.m3u. The same order the desktop honoured.
+        // Which half leads the combined column; the other is the fallback.
+        SettingRow {
+            label: "La columna Álbum/Juego enseña";
+            value: root.album-game-label;
+            clicked => { root.toggle-album-game(); }
+        }
         SettingRow {
             label: "Prioridad de puntuaciones";
             value: root.rating-priority-label;
