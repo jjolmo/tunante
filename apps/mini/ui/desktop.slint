@@ -14,6 +14,41 @@ import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifyShee
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 
+// A transport button drawn with the app's own SVG icons — the glyphs the
+// old desktop shipped, tinted by state. Text glyphs came from whatever font
+// the system had and landed on whatever baseline it felt like; these do not.
+component IconButton inherits Rectangle {
+    in property <image> icon;
+    in property <bool> active;
+    in property <length> icon-size: 16px;
+    /// Tiny superscript, e.g. repeat-one's "1".
+    in property <string> badge;
+    callback clicked();
+
+    width: 34px;
+    height: 34px;
+    border-radius: 17px;
+    background: ta.has-hover ? Theme.bg-hover : transparent;
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: root.icon-size;
+        height: root.icon-size;
+        source: root.icon;
+        colorize: root.active ? Theme.accent
+            : (ta.has-hover ? Theme.text-primary : Theme.text-secondary);
+    }
+    if root.badge != "": Text {
+        x: parent.width - 11px;
+        y: 1px;
+        text: root.badge;
+        color: Theme.accent;
+        font-size: 9px;
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
 component SidebarEntry inherits Rectangle {
     in property <string> label;
     in property <bool> active;
@@ -821,28 +856,34 @@ export component DesktopShell inherits Rectangle {
                 padding: Theme.gap;
                 spacing: Theme.gap * 1.5;
 
-                Artwork {
-                    width: 68px;
-                    height: 68px;
-                    art: root.now-art;
+                VerticalLayout {
+                    alignment: center;
+                    Artwork {
+                        side: 68px;
+                        art: root.now-art;
+                    }
                 }
 
-                Rectangle {
-                    width: 240px;
-                    background: npt.has-hover && root.now-title != "" ? Theme.bg-hover : transparent;
-                    border-radius: Theme.radius;
-                    npt := TouchArea {
-                        clicked => {
-                            if (root.now-title != "") {
-                                root.centre = 0;
-                                root.now-clicked();
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 240px;
+                        height: 68px;
+                        background: npt.has-hover && root.now-title != "" ? Theme.bg-hover : transparent;
+                        border-radius: Theme.radius;
+                        npt := TouchArea {
+                            clicked => {
+                                if (root.now-title != "") {
+                                    root.centre = 0;
+                                    root.now-clicked();
+                                }
                             }
                         }
-                    }
-                    TrackInfo {
-                        title: root.now-title;
-                        artist: root.now-artist;
-                        album: root.now-album;
+                        TrackInfo {
+                            title: root.now-title;
+                            artist: root.now-artist;
+                            album: root.now-album;
+                        }
                     }
                 }
 
@@ -853,53 +894,57 @@ export component DesktopShell inherits Rectangle {
 
                     HorizontalLayout {
                         alignment: center;
-                        spacing: Theme.gap * 2;
+                        spacing: 6px;
 
-                        RoundButton {
-                            glyph: "⤨";
+                        IconButton {
+                            icon: @image-url("icons/shuffle.svg");
+                            icon-size: 15px;
                             active: root.shuffle;
-                            size: 36px;
                             clicked => { root.toggle-shuffle(); }
                         }
-                        RoundButton {
-                            glyph: "◀◀";
-                            size: 40px;
+                        IconButton {
+                            icon: @image-url("icons/prev.svg");
+                            icon-size: 18px;
                             clicked => { root.prev-track(); }
                         }
                         Rectangle {
                             width: 44px;
                             height: 44px;
                             border-radius: 22px;
-                            background: Theme.accent;
-                            Text {
-                                text: root.playing ? "❚❚" : "▶";
-                                color: #ffffff;
-                                font-size: 15px;
+                            background: pta.has-hover ? Theme.accent-hover : Theme.accent;
+                            Image {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                width: 20px;
+                                height: 20px;
+                                source: root.playing
+                                    ? @image-url("icons/pause.svg")
+                                    : @image-url("icons/play.svg");
+                                colorize: #ffffff;
                             }
-                            TouchArea { clicked => { root.toggle-play(); } }
+                            pta := TouchArea { clicked => { root.toggle-play(); } }
                         }
-                        RoundButton {
-                            glyph: "■";
-                            size: 40px;
+                        IconButton {
+                            icon: @image-url("icons/stop.svg");
+                            icon-size: 16px;
                             clicked => { root.stop-playback(); }
                         }
-                        RoundButton {
-                            glyph: "▶▶";
-                            size: 40px;
+                        IconButton {
+                            icon: @image-url("icons/next.svg");
+                            icon-size: 18px;
                             clicked => { root.next-track(); }
                         }
-                        RoundButton {
-                            glyph: root.repeat == 2 ? "↻¹" : "↻";
+                        IconButton {
+                            icon: @image-url("icons/repeat.svg");
+                            icon-size: 16px;
                             active: root.repeat != 0;
-                            size: 36px;
+                            badge: root.repeat == 2 ? "1" : "";
                             clicked => { root.cycle-repeat(); }
                         }
-                        // Crossfade on/off without a trip to Ajustes — the
-                        // old transport's fade button.
-                        RoundButton {
-                            glyph: "∵∴";
+                        IconButton {
+                            icon: @image-url("icons/fade.svg");
+                            icon-size: 16px;
                             active: root.crossfade-secs > 0;
-                            size: 36px;
                             clicked => { root.toggle-crossfade(); }
                         }
                     }
@@ -928,23 +973,24 @@ export component DesktopShell inherits Rectangle {
                     }
                 }
 
-                // Rate what is playing without hunting it down in the
-                // table, one tap to the EQ, and the volume — one tight
-                // cluster, vertically centred, no orphaned widgets.
+                // Stars for what plays, the settings gear (the old bar's),
+                // mute and the volume — one row, one baseline.
                 VerticalLayout {
                     alignment: center;
                     HorizontalLayout {
-                        spacing: 10px;
+                        spacing: 6px;
                         if root.now-title != "": Rectangle {
-                            width: 92px;
+                            width: 96px;
+                            height: 34px;
                             Text {
                                 x: 0;
                                 width: parent.width;
                                 height: 100%;
                                 text: root.now-stars;
                                 color: Theme.accent;
-                                font-size: Theme.font-small;
+                                font-size: Theme.font-body;
                                 vertical-alignment: center;
+                                horizontal-alignment: center;
                             }
                             TouchArea {
                                 clicked => {
@@ -954,24 +1000,28 @@ export component DesktopShell inherits Rectangle {
                                 }
                             }
                         }
-                        RoundButton {
-                            glyph: "∿";
-                            size: 36px;
+                        IconButton {
+                            icon: @image-url("icons/settings.svg");
+                            icon-size: 16px;
                             active: root.centre == 2;
                             clicked => { root.centre = 2; }
                         }
-                        // Mute toggles 0 ↔ 0.8, the old desktop's numbers;
-                        // the glyph tells the level at a glance.
-                        RoundButton {
-                            glyph: root.volume <= 0.001 ? "🔇"
-                                : (root.volume < 0.5 ? "🔉" : "🔊");
-                            size: 36px;
+                        IconButton {
+                            icon: root.volume <= 0.001
+                                ? @image-url("icons/vol-mute.svg")
+                                : (root.volume < 0.5
+                                    ? @image-url("icons/vol-low.svg")
+                                    : @image-url("icons/vol-high.svg"));
+                            icon-size: 16px;
                             clicked => { root.toggle-mute(); }
                         }
-                        VolumeBar {
-                            width: 120px;
-                            value: root.volume;
-                            changed(v) => { root.set-volume(v); }
+                        VerticalLayout {
+                            alignment: center;
+                            VolumeBar {
+                                width: 120px;
+                                value: root.volume;
+                                changed(v) => { root.set-volume(v); }
+                            }
                         }
                     }
                 }
