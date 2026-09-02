@@ -152,6 +152,8 @@ export component TrackTable inherits Rectangle {
     in property <int> cursor: -1;
 
     property <bool> choosing-columns: false;
+    /// The row under the pointer, for the tooltip below; -1 is nobody.
+    property <int> tip-row: -1;
 
     // Keep the keyboard cursor on screen. 28px is the row height below; the
     // maths runs only when the cursor moves, not per frame.
@@ -208,6 +210,19 @@ export component TrackTable inherits Rectangle {
         header := Rectangle {
             height: 30px;
             background: Theme.bg-primary;
+
+            // Right-click lists every column, ticked when visible — the old
+            // desktop's header menu. (Its trick of staying open between
+            // ticks is not a thing a native menu does; the ⚙ chooser keeps
+            // that job.)
+            ContextMenuArea {
+                Menu {
+                    for c in root.column-choices: MenuItem {
+                        title: (c.shown ? "✓ " : "\u{2003} ") + c.label;
+                        activated => { root.column-toggled(c.key); }
+                    }
+                }
+            }
 
             HorizontalLayout {
                 for col[ci] in root.columns: HeaderCell {
@@ -311,6 +326,13 @@ export component TrackTable inherits Rectangle {
                 border-color: Theme.accent;
 
                 rt := TouchArea {
+                    changed has-hover => {
+                        if (self.has-hover) {
+                            root.tip-row = i;
+                        } else if (root.tip-row == i) {
+                            root.tip-row = -1;
+                        }
+                    }
                     pointer-event(ev) => {
                         if (ev.kind == PointerEventKind.down) {
                             if (ev.button == PointerEventButton.left) {
@@ -434,6 +456,42 @@ export component TrackTable inherits Rectangle {
     cells-width := Rectangle {
         width: parent.width - 30px;
         height: 0;
+    }
+
+    // --- The tooltip ---------------------------------------------------------
+    //
+    // Every elided cell's full story, on hover with an OS-style delay: the
+    // state's `in` transition holds the fade until the pointer has settled,
+    // and moving between rows keeps it up without re-waiting.
+    tip := Rectangle {
+        visible: root.tip-row >= 0 && root.tip-row < root.rows.length
+            && self.opacity > 0.01;
+        x: 46px;
+        y: min(71px + (root.tip-row + 1) * 28px + lv.viewport-y,
+               root.height - self.height - 8px);
+        width: min(tip-l.preferred-width + 20px, root.width - 92px);
+        height: tip-l.preferred-height + 14px;
+        background: Theme.bg-tertiary;
+        border-radius: Theme.radius;
+        border-width: 1px;
+        border-color: Theme.bg-hover;
+        opacity: 0;
+        states [
+            shown when root.tip-row >= 0 : {
+                opacity: 0.97;
+                in { animate opacity { duration: 100ms; delay: 700ms; } }
+            }
+        ]
+        tip-l := Text {
+            x: 10px;
+            y: 7px;
+            width: parent.width - 20px;
+            text: root.tip-row >= 0 && root.tip-row < root.rows.length
+                ? root.rows[root.tip-row].tip : "";
+            color: Theme.text-primary;
+            font-size: Theme.font-small;
+            wrap: word-wrap;
+        }
     }
 
     // --- The column chooser ------------------------------------------------

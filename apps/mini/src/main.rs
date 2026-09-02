@@ -3241,6 +3241,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    ui.set_album_game_label(SharedString::from(
+        if table_state.borrow().album_game_prefers_game { "el juego" } else { "el álbum" },
+    ));
+    {
+        let (db, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_toggle_album_game(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            st.album_game_prefers_game = !st.album_game_prefers_game;
+            let _ = db.set_setting(
+                "album_game_prefers",
+                if st.album_game_prefers_game { "game" } else { "album" },
+            );
+            ui.set_album_game_label(SharedString::from(
+                if st.album_game_prefers_game { "el juego" } else { "el álbum" },
+            ));
+            if st.built {
+                rebuild_table(&mut st, &model);
+            }
+        });
+    }
     {
         let stored = db
             .get_setting("vgm_loop_count")
@@ -5559,6 +5581,19 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                 path: SharedString::from(t.path.as_str()),
                 selected: false,
                 queue_pos: SharedString::new(),
+                tip: SharedString::from({
+                    let title = if t.title.is_empty() { t.path.as_str() } else { t.title.as_str() };
+                    let mut lines = vec![title.to_string()];
+                    let mid: Vec<&str> = [t.artist.as_str(), t.game.as_str(), t.album.as_str()]
+                        .into_iter()
+                        .filter(|v| !v.is_empty())
+                        .collect();
+                    if !mid.is_empty() {
+                        lines.push(mid.join(" · "));
+                    }
+                    lines.push(t.path.clone());
+                    lines.join("\n")
+                }),
             })
             .collect::<Vec<_>>(),
     );
