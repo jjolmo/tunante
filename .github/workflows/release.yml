@@ -19,6 +19,12 @@ name: Release
 # hand once — the release notes say so.
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Which part of the version to bump'
+        type: choice
+        default: patch
+        options: [patch, minor, major]
 
 permissions:
   contents: write
@@ -39,7 +45,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Auto-bump patch version
+      - name: Bump the version
         id: bump
         run: |
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
@@ -50,7 +56,11 @@ jobs:
           fi
           VERSION="${LATEST_TAG#v}"
           IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-          PATCH=$((PATCH + 1))
+          case "${{ inputs.bump || 'patch' }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            *)     PATCH=$((PATCH + 1)) ;;
+          esac
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
