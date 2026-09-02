@@ -42,6 +42,12 @@ export component SettingsTab inherits Rectangle {
     callback set-preamp(float);
     callback toggle-mono();
     callback toggle-limiter();
+    in property <float> dsp-balance;
+    in property <float> dsp-width;
+    callback set-balance(float);
+    callback set-width(float);
+    in property <string> rating-priority-label;
+    callback cycle-rating-priority();
 
     // Desplazable, y no es un detalle: en apaisado la ventana deja unos 288
     // puntos y estas filas suman bastante más. Sin esto, tumbado el móvil, el
@@ -214,6 +220,24 @@ export component SettingsTab inherits Rectangle {
             highlighted: root.dsp-limiter;
             clicked => { root.toggle-limiter(); }
         }
+        DbSliderRow {
+            label: "Balance";
+            db: root.dsp-balance;
+            range-min: -1;
+            range-max: 1;
+            unit: "";
+            changed(v) => { root.set-balance(v); }
+        }
+        // 1.0 is untouched; the row lights up the moment it is not.
+        DbSliderRow {
+            label: "Anchura estéreo";
+            db: root.dsp-width;
+            range-min: 0;
+            range-max: 2;
+            unit: "×";
+            active: root.dsp-width < 0.99 || root.dsp-width > 1.01;
+            changed(v) => { root.set-width(v); }
+        }
 
         Rectangle { height: 1px; background: Theme.border; }
 
@@ -237,6 +261,13 @@ export component SettingsTab inherits Rectangle {
             label: "Volver a analizar";
             value: "↻";
             clicked => { root.rescan(); }
+        }
+        // Where a star lands besides the database: the file's own tag, or the
+        // folder's _ratings.m3u. The same order the desktop honoured.
+        SettingRow {
+            label: "Prioridad de puntuaciones";
+            value: root.rating-priority-label;
+            clicked => { root.cycle-rating-priority(); }
         }
         SettingRow {
             label: "Descargar carátulas";

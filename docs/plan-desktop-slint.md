@@ -59,10 +59,16 @@
 >
 > **Ajustes que el desktop tenía y mini no expone** (la maquinaria existe;
 > son filas de Ajustes):
-> - [ ] Prioridad de ratings (BD/tag/m3u) — se honra, no se edita.
-> - [ ] `loop_max_seconds` (tope de pistas infinitas) y fast-scan.
-> - [ ] Balance, stereo width y los matices de mono (compensación/phase-safe)
->       — el engine los tiene, faltan las filas.
+> - [x] Prioridad de ratings — fila que cicla tres presets (BD manda /
+>       fichero primero / carpeta primero) sobre la clave del desktop.
+> - [ ] `loop_max_seconds` y fast-scan — reagrupados: piden que el `probe`
+>       del decoder aprenda `--loop-max`/`--slow` y que `helper::scan` los
+>       transporte (cambio de protocolo + firma compartida con Android).
+> - [x] Balance y stereo width — `DbSliderRow` generalizado a rangos
+>       (neutral con su marca, snap al centro: nadie clava 0.0 con el dedo,
+>       y un balance de 0.03 es un altavoz roto), el flag de width sigue al
+>       valor como el preamp. Los matices de mono (compensación/phase-safe)
+>       quedan: son dos toggles de nicho.
 > - [ ] Modos de encaje de carátula (5) y limpiar caché.
 > - [ ] Carpetas pinneadas (la BD las soporta desde siempre).
 >
