@@ -59,8 +59,10 @@
 - [~] «Quitar de la lista»: existe donde las listas viven (la hoja de la
       vista Listas); la tabla no muestra listas, así que ahí no significa
       nada. «Quitar de la cola» ya está en su menú.
-- [~] Scroll a la pista al restaurar la ventana: Slint/winit no exponen el
-      evento de visibilidad; el click en lo-que-suena cubre la intención.
+- [x] Scroll a la pista al restaurar: en el único evento de «volver» que
+      este stack ve — reaparecer desde la bandeja — la tabla aterriza en lo
+      que suena (reutiliza el salto de now-clicked). Los demás restores no
+      emiten evento observable en Slint/winit.
 
 **Sidebar**
 - [x] Carpetas monitorizadas (raíces) en el sidebar con contador, delante de
@@ -133,9 +135,12 @@
       diagnóstico: mini NO descargaba nada al reproducir — el hueco era la
       función entera, no el toggle.
 - [x] «Guardar carátula en la carpeta» (store_covers_in_folder).
-- [~] Acción del click central del tray: aparcado — exige un tercer gancho
-      en el parche SNI (distinguir Activate de SecondaryActivate) y prueba
-      manual con panel real; hoy ambos clicks hacen mostrar/ocultar.
+- [x] Acción del click del tray, configurable (5 opciones del viejo:
+      mostrar/ocultar, reproducir/pausa, stop, siguiente, siguiente con
+      fundido — este último fuerza el fade aunque esté apagado, volteando
+      el flag del engine solo para ese cambio). Medido antes: ayatana
+      enruta Activate y SecondaryActivate al MISMO target, así que en este
+      stack hay un canal de click y la acción viaja en él.
 - [x] Toggles de secciones del sidebar: carátula, Favoritos, Carpetas y
       Listas, bajo las claves show_* del desktop. (Consolas/árbol no son
       secciones del sidebar nuevo.)
