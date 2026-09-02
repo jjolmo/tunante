@@ -210,6 +210,8 @@ export component DesktopShell inherits Rectangle {
     in property <string> ui-mode-label;
     in property <string> update-status;
     callback check-update();
+    in property <string> theme-label;
+    callback cycle-theme();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -421,6 +423,8 @@ export component DesktopShell inherits Rectangle {
                     cycle-ui-mode => { root.cycle-ui-mode(); }
                     update-status: root.update-status;
                     check-update => { root.check-update(); }
+                    theme-label: root.theme-label;
+                    cycle-theme => { root.cycle-theme(); }
                     eq-enabled: root.eq-enabled;
                     eq-low: root.eq-low;
                     eq-mid: root.eq-mid;
