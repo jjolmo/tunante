@@ -33,6 +33,9 @@ export component SettingsTab inherits Rectangle {
     callback show-log();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
+    in property <string> mouse-buttons-label;
+    in property <bool> mouse-buttons-on;
+    callback toggle-mouse-buttons();
     in property <bool> update-skippable;
     callback skip-update();
     in property <string> desktop-entry-label;
@@ -375,6 +378,15 @@ export component SettingsTab inherits Rectangle {
             clicked => { root.cycle-theme(); }
         // Only meaningful when the tray is compiled in; without it the row
         // still toggles but the close button keeps quitting.
+        // Thumb buttons on the mouse as next/prev, read from evdev — works
+        // with any window focused, needs the `input` group. The label tells
+        // the truth about both.
+        SettingRow {
+            label: "Botones de ratón";
+            value: root.mouse-buttons-label;
+            highlighted: root.mouse-buttons-on;
+            clicked => { root.toggle-mouse-buttons(); }
+        }
         SettingRow {
             label: "Cerrar a la bandeja";
             value: root.close-to-tray ? "sí" : "no";
