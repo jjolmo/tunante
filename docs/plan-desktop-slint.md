@@ -10,10 +10,15 @@
 > release Tauri es v0.1.283 y las notas de release explican el salto manual
 > único al tarball (misma BD, misma configuración — store.rs la adopta).
 > Decisión de plataformas: Linux + Windows-zip ya salen de mini.yml; macOS
-> queda para después (v0.1.283 sigue sirviendo allí). Lo que sigue vivo del
-> plan: la cosecha de la Fase 5 y la lista de paridad pendiente (multiselección,
-> columnas configurables, crossfade, tema claro, atajos globales, tooltip del
-> tray) — mejoras de la app única, ya no bloqueadores de nada.
+> queda para después (v0.1.283 sigue sirviendo allí).
+>
+> **2026-09-02, cierre:** la lista de paridad de abajo está molida — lo que
+> queda sin marcar está aparcado con motivo escrito (teclas globales custom
+> a la espera de una conexión D-Bus real; scroll/estilos del tray a la
+> espera de otro gancho en el parche; arrastre físico donde Wayland no
+> llega, con la intención cubierta por menús). La cosecha de la Fase 5 está
+> medida y anotada al final. Pendiente humano: una sesión de humo con manos
+> reales y la primera release del mundo nuevo.
 >
 > **Auditoría de paridad tras el vuelco** — contra el inventario completo del
 > desktop Tauri (79 comandos, 21 componentes) del día uno. Lo esencial está;
@@ -653,6 +658,29 @@ scheduler para el teléfono.
   biblioteca de 29.500 cargada, tiempo de compilación sin `tunante-codec` en
   la app.
 - Borrar de `CLAUDE.md` y de los docs todo lo que hablaba de dos apps.
+
+### Cosechado (2026-09-02)
+
+**Auditoría de consumidores.** `tunante-helper` tiene dos (mini y Android);
+`tunante-core` y `tunante-codec`, tres contando el decoder. `tunante-audio`
+tiene hoy uno solo (mini) — se queda como crate igualmente: es la casa del
+engine, y Android es su segundo consumidor natural cuando abandone su
+reproducción JNI propia. El watcher vive en helper con mini como único
+cliente; mismo argumento, y ya tiene su test de integración. Nada que
+devolver a la app: nada de lo bajado estorba abajo.
+
+**Medidas, biblioteca real (29.530 pistas), esta máquina (lumina):**
+
+| Métrica | Valor | El mundo Tauri, de referencia |
+|---|---|---|
+| Binarios | 32 MB player + 8,2 MB decoder | + WebKitGTK del sistema y node_modules de 400 MB en desarrollo |
+| Arranque hasta MPRIS arriba | **0,9 s** (con systemd-run en medio) | varios segundos de WebKit |
+| RAM con la tabla de 29.530 cargada | **~200 MB RSS**, un proceso | WebKit repartía más que eso entre procesos antes de pintar la tabla |
+| Procesos | 1 (+ decoder efímero por pista) | app + WebKit + decoder |
+
+**Docs.** `plan-postmarketos.md` marcado histórico (su «Si Tauri no encaja»
+es lo que pasó); CLAUDE.md y README ya contaban la verdad desde el vuelco;
+las menciones a Tauri que quedan son historia deliberada.
 
 ## Riesgos, con nombre
 

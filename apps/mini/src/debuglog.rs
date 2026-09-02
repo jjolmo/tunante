@@ -18,8 +18,13 @@ struct RingLogger;
 
 impl log::Log for RingLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        // Info and up. Debug would drown the ring in slint/winit chatter.
-        metadata.level() <= log::Level::Info
+        // Warnings from anyone; chatter only from this repository. Setting a
+        // global Info level turned out to wake zbus's tracing, which narrates
+        // every D-Bus dispatch at INFO — 500 lines of that is a ring buffer
+        // remembering nothing.
+        metadata.level() <= log::Level::Warn
+            || (metadata.level() == log::Level::Info
+                && metadata.target().starts_with("tunante"))
     }
 
     fn log(&self, record: &log::Record) {
