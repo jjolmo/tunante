@@ -149,6 +149,39 @@ jobs:
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           ls -l "$NAME.tar.gz"
 
+      # Load-bearing, not a convenience: v0.1.283's updater looks for
+      # Tunante_<v>_<amd64|aarch64>.AppImage by name and REPLACES ITS OWN
+      # FILE with whatever it downloads, without checking what it got. A
+      # release without these assets handed it the release web page and the
+      # old install bricked itself. This is the bridge every old AppImage
+      # crosses to the new player — and the new player's own updater swaps
+      # $APPIMAGE with it from then on (see update.rs).
+      - name: AppImage
+        id: appimage
+        if: github.event_name != 'pull_request'
+        run: |
+          NAME_ARCH=$([ "${{ matrix.arch }}" = "x86_64" ] && echo amd64 || echo "${{ matrix.arch }}")
+          OUT="Tunante_${TUNANTE_VERSION:-dev}_${NAME_ARCH}.AppImage"
+          rm -rf AppDir && mkdir -p AppDir/usr/bin
+          cp target/release/tunante-mini target/release/tunante-decoder AppDir/usr/bin/
+          cp apps/mini/dist/icons/256x256/tunante-mini.png AppDir/tunante.png
+          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Tunante' \
+            'Comment=Game music player' 'Exec=tunante-mini %F' 'Icon=tunante' \
+            'Terminal=false' 'Categories=AudioVideo;Audio;Player;' \
+            'StartupWMClass=tunante-mini' > AppDir/tunante.desktop
+          printf '%s\n' '#!/bin/sh' \
+            '# Both binaries travel together; the player finds its decoder inside the image.' \
+            'HERE="$(dirname "$(readlink -f "$0")")"' \
+            'export TUNANTE_DECODER="$HERE/usr/bin/tunante-decoder"' \
+            'exec "$HERE/usr/bin/tunante-mini" "$@"' > AppDir/AppRun
+          chmod +x AppDir/AppRun
+          curl -fsSL -o appimagetool \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage"
+          chmod +x appimagetool
+          ARCH=${{ matrix.arch }} ./appimagetool --appimage-extract-and-run AppDir "$OUT"
+          echo "name=$OUT" >> "$GITHUB_OUTPUT"
+          ls -l "$OUT"
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.pack.outputs.name }}
@@ -184,6 +217,8 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || {
             echo "release $TAG never appeared; leaving the artifact as the only copy"; exit 0; }
           gh release upload "$TAG" "${{ steps.pack.outputs.name }}.tar.gz" --clobber
+          [ -f "${{ steps.appimage.outputs.name }}" ] && \
+            gh release upload "$TAG" "${{ steps.appimage.outputs.name }}" --clobber
           echo "attached to $TAG"
 
   # Windows. MPRIS and logind are freedesktop, so the lock-screen controls and

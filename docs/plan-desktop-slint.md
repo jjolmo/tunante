@@ -23,6 +23,26 @@
 > updates está a un toque de machacarse a sí mismo. Verificado: build con
 > 9.9.9 responde «al día» al `--update` headless.
 >
+> **El incidente del updater viejo (2026-09-02, post-release):** el updater
+> del 0.1.283 busca `Tunante_<v>_<arch>.AppImage` por nombre y, corriendo
+> como AppImage, REEMPLAZA SU PROPIO FICHERO con lo que descargue — sin
+> comprobar qué es. La v0.2.0 salió sin AppImages, su fallback era la URL
+> de la página web, y el resultado se demostró empíricamente: un AppImage
+> convertido en documento HTML sin que nadie pulsara nada (el autoupdate
+> silencioso corre al arrancar). Arreglo del lado servidor: la release
+> ahora lleva `Tunante_0.2.0_{amd64,aarch64}.AppImage` de verdad —
+> AppDir mínimo sin Tauri (AppRun exporta TUNANTE_DECODER y ejecuta el
+> player; 16 MB frente a los 88 del Tauri) — con lo que el updater viejo
+> casa en el paso estricto y se actualiza limpio al mundo nuevo. Se probó
+> el AppImage (reproduce, decoder embebido), el matcher del 0.1.283
+> replicado contra la API viva (amd64 y aarch64 → estricto; .deb/Windows/
+> macOS solo abren el navegador: inofensivo), y quedó permanente:
+> mini.yml empaqueta AppImages en cada release y update.rs aprende el
+> camino `$APPIMAGE` (dentro del squashfs RO no hay swap de binarios que
+> valga; se reemplaza el fichero exterior — verificado en vivo: un
+> placeholder con binario 0.1.999 acabó siendo byte a byte el AppImage
+> publicado).
+>
 > **2026-09-02, cierre:** la lista de paridad de abajo está molida — lo que
 > queda sin marcar está aparcado con motivo escrito (teclas globales custom
 > a la espera de una conexión D-Bus real; scroll/estilos del tray a la

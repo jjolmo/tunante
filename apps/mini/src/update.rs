@@ -90,10 +90,18 @@ mod imp {
             return Ok(UpdateMsg::UpToDate);
         }
 
-        let wanted = format!(
-            "tunante-mini-{}-linux-gnu.tar.gz",
-            std::env::consts::ARCH
-        );
+        // Inside an AppImage the swap-next-to-current_exe trick is useless:
+        // current_exe lives in a read-only squashfs. What CAN be replaced is
+        // the outer file itself — $APPIMAGE — with the release's AppImage,
+        // which is exactly the move the old Tauri updater proved works.
+        let wanted = match appimage_self() {
+            Some(_) => format!(
+                "Tunante_{}_{}.AppImage",
+                tag.trim_start_matches('v'),
+                appimage_arch()
+            ),
+            None => format!("tunante-mini-{}-linux-gnu.tar.gz", std::env::consts::ARCH),
+        };
         let asset = body["assets"]
             .as_array()
             .into_iter()
@@ -124,6 +132,21 @@ mod imp {
         });
     }
 
+    /// The running AppImage's path, when there is one. The runtime exports
+    /// it; a plain binary never sees the variable.
+    fn appimage_self() -> Option<std::path::PathBuf> {
+        std::env::var_os("APPIMAGE").map(Into::into)
+    }
+
+    /// Tauri's bundler said amd64 where uname says x86_64, and the asset
+    /// names keep that spelling so v0.1.283's updater can find them too.
+    fn appimage_arch() -> &'static str {
+        match std::env::consts::ARCH {
+            "x86_64" => "amd64",
+            other => other,
+        }
+    }
+
     fn install(url: &str) -> Result<(), String> {
         let bytes = agent()
             .get(url)
@@ -136,6 +159,18 @@ mod imp {
             .limit(512 * 1024 * 1024)
             .read_to_vec()
             .map_err(|e| format!("descarga fallida: {e}"))?;
+
+        // The AppImage path: one file, swapped in place. Rename is atomic on
+        // one filesystem and the mounted squashfs keeps the running app alive.
+        if let Some(target) = appimage_self() {
+            use std::os::unix::fs::PermissionsExt;
+            let incoming = target.with_extension("new");
+            std::fs::write(&incoming, &bytes).map_err(|e| e.to_string())?;
+            std::fs::set_permissions(&incoming, std::fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
+            std::fs::rename(&incoming, &target).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
 
         let work = std::env::temp_dir().join(format!("tunante-update-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&work);
