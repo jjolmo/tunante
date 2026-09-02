@@ -35,10 +35,17 @@
 > - [ ] **Cola de usuario «reproducir a continuación»** en la shell desktop
 >       (el encolar de mini va al contexto; core ya trae la cola prioritaria)
 >       + continue-from-queue.
-> - [ ] **Crossfade al cambiar de pista**: el orquestador de fades
->       (`play_with_fade`, ~150 líneas) murió con services/ — recuperable de
->       git; los mandos del engine (`set_player_volume_raw`,
->       `bump_fade_generation`) siguen ahí esperándolo.
+> - [x] **Crossfade al cambiar de pista** — reencarnado, no restaurado: el
+>       hilo+Mutex del desktop no cabía en el `Rc` de mini, así que es una
+>       máquina de estados (Out→In) en el player, pisada por un timer Slint
+>       de 25 ms que solo corre mientras hay fundido (el kick lo arranca,
+>       Idle lo para: cero wakeups en reposo, que en el teléfono es lo que
+>       importa). El gate de should_fade sobrevive: solo funde si algo suena.
+>       Pausa/stop a mitad asientan el estado (la cola y los altavoces nunca
+>       se contradicen). Fila «Crossfade entre pistas» en Ajustes (des./2/4/8,
+>       claves `fade_on_track_change`/`fade_seconds` — las del desktop).
+>       Verificado en vivo: PSF sonando, NSF entregado por el socket, y MPRIS
+>       mostró la conmutación completada tras la rampa.
 > - [ ] **Arrastrar pistas a listas** y **soltar carpetas del SO** (spike 3:
 >       X11 sí, Wayland no).
 >

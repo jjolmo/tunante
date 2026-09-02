@@ -14,6 +14,22 @@ use tunante_audio::AudioEngine;
 use tunante_core::db::models::Track;
 use tunante_core::{PlayQueue, RepeatMode};
 
+/// A crossfade in flight. The desktop ran this on a thread against a Mutex;
+/// here the player lives in an `Rc`, so the fade is a state machine stepped
+/// by a 25 ms Slint timer that only runs while there is one.
+enum Fade {
+    Idle,
+    /// Ramping the old track down; the new one starts when it reaches zero.
+    Out {
+        step: u32,
+        steps: u32,
+        path: String,
+        hint: i64,
+    },
+    /// Ramping the new track up to the user's volume.
+    In { step: u32, steps: u32 },
+}
+
 pub struct Player {
     engine: AudioEngine,
     queue: PlayQueue,
@@ -22,6 +38,10 @@ pub struct Player {
     /// engine; kept here too because the settings screen reads it back.
     loops: u32,
     fade_ms: u64,
+    fade: Fade,
+    /// Wakes the fade timer the moment a crossfade begins — set by main.rs
+    /// once the timer exists, because the player is built first.
+    fade_kick: Option<Box<dyn Fn()>>,
 }
 
 impl Player {
@@ -32,6 +52,8 @@ impl Player {
             queue: PlayQueue::new(),
             loops: 2,
             fade_ms: 8_000,
+            fade: Fade::Idle,
+            fade_kick: None,
         };
         // The engine's default is the desktop's 0.8; this app has always
         // started at full volume and the session restore adjusts it after.
@@ -51,6 +73,73 @@ impl Player {
     /// name when a rebuild happened.
     pub fn reconcile_output(&mut self) -> Option<String> {
         self.engine.reconcile_output()
+    }
+
+    pub fn set_fade_kick(&mut self, kick: impl Fn() + 'static) {
+        self.fade_kick = Some(Box::new(kick));
+    }
+
+    /// One 25 ms step of the crossfade. Returns whether one is still running,
+    /// so the timer that drives it can stop itself.
+    pub fn tick_fade(&mut self) -> bool {
+        let user = self.engine.volume();
+        match &mut self.fade {
+            Fade::Idle => false,
+            Fade::Out { step, steps, path, hint } => {
+                *step += 1;
+                let t = *step as f32 / *steps as f32;
+                self.engine.set_player_volume_raw(user * (1.0 - t));
+                if *step >= *steps {
+                    let (path, hint, steps) = (path.clone(), *hint, *steps);
+                    match self
+                        .engine
+                        .play_file_at_volume(std::path::Path::new(&path), hint, 0.0)
+                    {
+                        Ok(()) => self.fade = Fade::In { step: 0, steps },
+                        Err(e) => {
+                            eprintln!("no se pudo reproducir: {e}");
+                            self.engine.set_player_volume_raw(user);
+                            self.fade = Fade::Idle;
+                            return false;
+                        }
+                    }
+                }
+                true
+            }
+            Fade::In { step, steps } => {
+                *step += 1;
+                let t = *step as f32 / *steps as f32;
+                self.engine.set_player_volume_raw(user * t.min(1.0));
+                if *step >= *steps {
+                    self.engine.set_player_volume_raw(user);
+                    self.fade = Fade::Idle;
+                    return false;
+                }
+                true
+            }
+        }
+    }
+
+    /// A fade interrupted by pause or stop must not leave the queue saying
+    /// one thing and the speakers another: an Out that never switched jumps
+    /// to the new track immediately (silently — the caller pauses next), and
+    /// the raw volume always returns to the user's.
+    fn settle_fade(&mut self) {
+        match std::mem::replace(&mut self.fade, Fade::Idle) {
+            Fade::Idle => {}
+            Fade::Out { path, hint, .. } => {
+                if let Err(e) = self
+                    .engine
+                    .play_file_at_volume(std::path::Path::new(&path), hint, self.engine.volume())
+                {
+                    eprintln!("no se pudo reproducir: {e}");
+                }
+            }
+            Fade::In { .. } => {
+                let user = self.engine.volume();
+                self.engine.set_player_volume_raw(user);
+            }
+        }
     }
 
     pub fn queue(&self) -> &PlayQueue {
@@ -77,12 +166,30 @@ impl Player {
             None => return Ok(()),
         };
 
+        // A fade is a transition: it only makes sense when something is
+        // audible. Starting from stopped or paused plays immediately — the
+        // same gate the desktop's should_fade tests pinned down.
+        if self.engine.fade_on_track_change()
+            && self.engine.fade_seconds() > 0.0
+            && self.engine.is_playing()
+        {
+            let half_ms = (self.engine.fade_seconds() * 500.0) as u32;
+            let steps = (half_ms / 25).max(1);
+            self.fade = Fade::Out { step: 0, steps, path, hint };
+            if let Some(kick) = &self.fade_kick {
+                kick();
+            }
+            return Ok(());
+        }
+
+        self.fade = Fade::Idle;
         self.engine
             .play_file(Path::new(&path), hint)
             .map_err(|e| e.to_string())
     }
 
     pub fn toggle_play(&mut self) {
+        self.settle_fade();
         if self.engine.is_playing() {
             self.engine.pause();
         } else {
@@ -112,6 +219,9 @@ impl Player {
     }
 
     pub fn stop(&mut self) {
+        self.fade = Fade::Idle;
+        let user = self.engine.volume();
+        self.engine.set_player_volume_raw(user);
         self.engine.stop();
     }
 

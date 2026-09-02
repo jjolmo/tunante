@@ -511,6 +511,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_output_label(SharedString::from(output_label(&stored)));
     }
 
+    // The crossfade: same keys the desktop persisted. The timer only exists
+    // while a fade is in flight — the kick starts it, Idle stops it, so the
+    // phone never pays 40 wakeups a second for a feature at rest.
+    let crossfade_secs: i32 = db
+        .get_setting("fade_seconds")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<f32>().ok())
+        .map(|v| v.round() as i32)
+        .unwrap_or(2)
+        .clamp(0, 10);
+    let crossfade_on = db
+        .get_setting("fade_on_track_change")
+        .ok()
+        .flatten()
+        .map(|v| v == "true")
+        .unwrap_or(false);
+    ui.set_crossfade_secs(if crossfade_on { crossfade_secs } else { 0 });
+    {
+        let fade_timer = Rc::new(slint::Timer::default());
+        if let Some(p) = player.borrow_mut().as_mut() {
+            let engine = p.engine_mut();
+            engine.set_fade_on_track_change(crossfade_on);
+            engine.set_fade_seconds(crossfade_secs as f32);
+        }
+        let (timer, player_k) = (fade_timer.clone(), player.clone());
+        let kick = move || {
+            let (timer_inner, player) = (timer.clone(), player_k.clone());
+            timer.start(
+                slint::TimerMode::Repeated,
+                std::time::Duration::from_millis(25),
+                move || {
+                    let active = player
+                        .borrow_mut()
+                        .as_mut()
+                        .map(|p| p.tick_fade())
+                        .unwrap_or(false);
+                    if !active {
+                        timer_inner.stop();
+                    }
+                },
+            );
+        };
+        if let Some(p) = player.borrow_mut().as_mut() {
+            p.set_fade_kick(kick);
+        }
+    }
+
     // The DSP chain: same JSON, same `dsp_config` key the desktop persists,
     // so when the two databases become one the equalizer simply carries over.
     let dsp_config = Rc::new(RefCell::new(
@@ -1926,6 +1974,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = db.set_setting("mini.short_filter_secs", &next.to_string());
             if let Some(p) = player.borrow_mut().as_mut() {
                 p.set_short_filter(next as i64 * 1000);
+            }
+        });
+    }
+
+    {
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        ui.on_cycle_crossfade(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // desactivado → 2 → 4 → 8 → desactivado, total de la transición.
+            let next = match ui.get_crossfade_secs() {
+                0 => 2,
+                2 => 4,
+                4 => 8,
+                _ => 0,
+            };
+            ui.set_crossfade_secs(next);
+            let _ = db.set_setting(
+                "fade_on_track_change",
+                if next > 0 { "true" } else { "false" },
+            );
+            if next > 0 {
+                let _ = db.set_setting("fade_seconds", &next.to_string());
+            }
+            if let Some(p) = player.borrow_mut().as_mut() {
+                let engine = p.engine_mut();
+                engine.set_fade_on_track_change(next > 0);
+                if next > 0 {
+                    engine.set_fade_seconds(next as f32);
+                }
             }
         });
     }

@@ -121,6 +121,8 @@ export component AppWindow inherits Window {
     callback cycle-fade();
     in property <int> short-filter-secs;
     callback cycle-short-filter();
+    in property <int> crossfade-secs;
+    callback cycle-crossfade();
     in property <string> output-label: "sistema";
     in property <string> ui-mode-label: "auto";
     in property <string> update-status;
@@ -436,6 +438,8 @@ export component AppWindow inherits Window {
         cycle-fade => { root.cycle-fade(); }
         short-filter-secs: root.short-filter-secs;
         cycle-short-filter => { root.cycle-short-filter(); }
+        crossfade-secs: root.crossfade-secs;
+        cycle-crossfade => { root.cycle-crossfade(); }
         output-label: root.output-label;
         ui-mode-label: root.ui-mode-label;
         cycle-output => { root.cycle-output(); }
@@ -550,6 +554,8 @@ export component AppWindow inherits Window {
                         cycle-fade => { root.cycle-fade(); }
                         short-filter-secs: root.short-filter-secs;
                         cycle-short-filter => { root.cycle-short-filter(); }
+                        crossfade-secs: root.crossfade-secs;
+                        cycle-crossfade => { root.cycle-crossfade(); }
                         output-label: root.output-label;
                         ui-mode-label: root.ui-mode-label;
                         cycle-output => { root.cycle-output(); }
