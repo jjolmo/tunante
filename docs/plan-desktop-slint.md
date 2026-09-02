@@ -720,14 +720,23 @@ reproducción JNI propia. El watcher vive en helper con mini como único
 cliente; mismo argumento, y ya tiene su test de integración. Nada que
 devolver a la app: nada de lo bajado estorba abajo.
 
-**Medidas, biblioteca real (29.530 pistas), esta máquina (lumina):**
+**Medidas, biblioteca real (29.530 pistas), esta máquina (lumina), ambos
+bajo X11 y medidos de verdad — v0.1.283 AppImage contra v0.2.0, mismo
+banco (`bench.py`: ventana visible, PSS del árbol entero a los 20 s, CPU
+media de 30 s en reposo):**
 
-| Métrica | Valor | El mundo Tauri, de referencia |
+| Métrica | v0.1.283 (Tauri) | v0.2.0 (Slint) |
 |---|---|---|
-| Binarios | 32 MB player + 8,2 MB decoder | + WebKitGTK del sistema y node_modules de 400 MB en desarrollo |
-| Arranque hasta MPRIS arriba | **0,9 s** (con systemd-run en medio) | varios segundos de WebKit |
-| RAM con la tabla de 29.530 cargada | **~200 MB RSS**, un proceso | WebKit repartía más que eso entre procesos antes de pintar la tabla |
-| Procesos | 1 (+ decoder efímero por pista) | app + WebKit + decoder |
+| Ventana visible | 1,0 s (y WebKit aún cargando contenido) | 1,0 s (interactiva; MPRIS a los 0,9 s) |
+| Procesos | 4 (app + 2×WebKit + bwrap) | **1** (+ decoder efímero por pista) |
+| PSS asentada | 729 MB | **117 MB** (6,2× menos) |
+| CPU en reposo | 2,10 %¹ | **0,57 %** |
+| Paquete | 88 MB AppImage | 16 MB AppImage / 32+8 MB sueltos |
+
+¹ La ventana de 30 s del viejo incluyó su propio auto-update descargando
+16 MB — que, de paso, fue la prueba de fuego en vivo: un 0.1.283 corriendo
+normal se tragó limpio el AppImage puente y quedó convertido en v0.2.0
+(md5 idéntico al asset publicado).
 
 **Docs.** `plan-postmarketos.md` marcado histórico (su «Si Tauri no encaja»
 es lo que pasó); CLAUDE.md y README ya contaban la verdad desde el vuelco;
