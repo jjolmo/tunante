@@ -1243,6 +1243,9 @@ component EditField inherits VerticalLayout {
 export component MetadataSheet inherits Rectangle {
     in property <string> heading;
     in property <string> detail;
+    /// The read-only facts (duration · codec · rate · channels · bitrate ·
+    /// size · rating) — the old Properties dialog's bottom half.
+    in property <string> tech;
     /// Editing a whole selection: per-track fields hide, and an empty field
     /// means "leave it alone" rather than "clear it".
     in property <bool> batch;
@@ -1282,6 +1285,12 @@ export component MetadataSheet inherits Rectangle {
                 color: Theme.text-muted;
                 font-size: Theme.font-small;
                 overflow: elide;
+            }
+            if root.tech != "": Text {
+                text: root.tech;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
             }
 
             if !root.batch: EditField { label: "Título"; value <=> root.title-text; }
@@ -1503,6 +1512,9 @@ export component CoverSheet inherits Rectangle {
     callback search(string);
     callback chosen(int);
     callback cancelled();
+    /// The old dialog's "Download automatically": skip the cache, take the
+    /// best answer, apply it.
+    callback auto-download();
 
     background: #000000bb;
 
@@ -1600,7 +1612,20 @@ export component CoverSheet inherits Rectangle {
             }
 
             HorizontalLayout {
-                alignment: end;
+                spacing: Theme.gap;
+                Rectangle {
+                    width: 220px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: cva.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Descargar automáticamente";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    cva := TouchArea { clicked => { root.auto-download(); } }
+                }
+                Rectangle { horizontal-stretch: 1; }
                 Rectangle {
                     width: 110px;
                     height: Theme.touch-target - 8px;

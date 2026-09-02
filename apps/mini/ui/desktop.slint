@@ -10,7 +10,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow, FolderRow, ShortcutRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet } from "widgets.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet, ConsoleArt } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 
@@ -214,6 +214,11 @@ export component DesktopShell inherits Rectangle {
     callback table-column-resized(int, float, float);
     callback table-column-resize-done();
     in property <[PinnedRow]> pinned-folders;
+    /// The consoles with music, as sidebar rows: id in `id`, count in
+    /// `subtitle` — PlaylistRow moonlights, the shape is identical.
+    in property <[PlaylistRow]> sidebar-consoles;
+    callback console-opened(string);
+    callback console-played(string);
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
@@ -253,6 +258,7 @@ export component DesktopShell inherits Rectangle {
     in-out property <bool> editing-metadata;
     in property <string> meta-heading;
     in property <string> meta-detail;
+    in property <string> meta-tech;
     in-out property <string> meta-title;
     in-out property <string> meta-artist;
     in-out property <string> meta-album;
@@ -271,6 +277,7 @@ export component DesktopShell inherits Rectangle {
     callback reclass-accepted();
     callback reclass-cancelled();
     callback table-cover-requested(int);
+    callback cover-auto();
     in-out property <bool> covering;
     in property <string> cover-heading;
     in property <string> cover-status;
@@ -518,6 +525,66 @@ export component DesktopShell inherits Rectangle {
                                 }
                                 pfx := TouchArea {
                                     clicked => { root.folder-unpinned(pf.id); }
+                                }
+                            }
+                        }
+                    }
+
+                    if root.sidebar-consoles.length > 0: Rectangle { height: Theme.gap; }
+                    if root.sidebar-consoles.length > 0: Text {
+                        text: "Consolas";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        height: 26px;
+                        vertical-alignment: center;
+                    }
+                    for sc in root.sidebar-consoles: Rectangle {
+                        height: 34px;
+                        background: sct.has-hover ? Theme.bg-hover : transparent;
+                        border-radius: 6px;
+                        sct := TouchArea {
+                            clicked => {
+                                root.centre = 1;
+                                root.console-opened(sc.id);
+                            }
+                            double-clicked => { root.console-played(sc.id); }
+                        }
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 8px;
+                            spacing: 8px;
+                            VerticalLayout {
+                                alignment: center;
+                                ConsoleArt {
+                                    width: 22px;
+                                    height: 16px;
+                                    console: sc.id;
+                                }
+                            }
+                            Text {
+                                text: sc.name;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-body;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                            Text {
+                                text: sc.subtitle;
+                                color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                            }
+                        }
+                        ContextMenuArea {
+                            Menu {
+                                MenuItem {
+                                    title: "Reproducir";
+                                    activated => { root.console-played(sc.id); }
+                                }
+                                MenuItem {
+                                    title: "Carátulas…";
+                                    activated => { root.centre = 2; }
                                 }
                             }
                         }
@@ -1145,6 +1212,7 @@ export component DesktopShell inherits Rectangle {
     }
 
     if root.covering: CoverSheet {
+        auto-download => { root.cover-auto(); }
         heading: root.cover-heading;
         status: root.cover-status;
         query <=> root.cover-query;
@@ -1169,6 +1237,7 @@ export component DesktopShell inherits Rectangle {
     if root.editing-metadata: MetadataSheet {
         heading: root.meta-heading;
         detail: root.meta-detail;
+        tech: root.meta-tech;
         batch: root.meta-batch;
         title-text <=> root.meta-title;
         artist-text <=> root.meta-artist;

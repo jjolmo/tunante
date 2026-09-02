@@ -751,6 +751,29 @@ impl Tree {
     }
 
     /// (consola, carpeta, cuántas pistas de esa consola hay en ella)
+    /// (console id, es label, track count) for the sidebar, catalog order,
+    /// only consoles that actually hold music.
+    pub fn console_counts(&self, db: &Database) -> Vec<(String, String, usize)> {
+        let mut acc: BTreeMap<String, usize> = BTreeMap::new();
+        for root in &self.roots {
+            for t in db
+                .get_tracks_by_folder(&root.to_string_lossy())
+                .unwrap_or_default()
+            {
+                *acc.entry(console_key(&t).to_string()).or_default() += 1;
+            }
+        }
+        let mut out: Vec<(String, String, usize)> = acc
+            .into_iter()
+            .map(|(c, n)| {
+                let label = console_label(&c).to_string();
+                (c, label, n)
+            })
+            .collect();
+        out.sort_by(|a, b| console_order(&a.0).cmp(&console_order(&b.0)));
+        out
+    }
+
     fn console_index(&self, db: &Database) -> Vec<(String, String, usize)> {
         let mut acc: BTreeMap<(String, String), usize> = BTreeMap::new();
         for root in &self.roots {

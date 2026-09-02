@@ -273,6 +273,9 @@ export component AppWindow inherits Window {
     callback table-column-resized(int, float, float);
     callback table-column-resize-done();
     in property <[PinnedRow]> pinned-folders;
+    in property <[PlaylistRow]> sidebar-consoles;
+    callback console-opened(string);
+    callback console-played(string);
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
@@ -301,6 +304,7 @@ export component AppWindow inherits Window {
     in-out property <bool> editing-metadata;
     in property <string> meta-heading;
     in property <string> meta-detail;
+    in property <string> meta-tech;
     in-out property <string> meta-title;
     in-out property <string> meta-artist;
     in-out property <string> meta-album;
@@ -319,6 +323,7 @@ export component AppWindow inherits Window {
     callback reclass-accepted();
     callback reclass-cancelled();
     callback table-cover-requested(int);
+    callback cover-auto();
     in-out property <bool> covering;
     in property <string> cover-heading;
     in property <string> cover-status;
@@ -523,6 +528,9 @@ export component AppWindow inherits Window {
             table-column-resized(i, dx, total) => { root.table-column-resized(i, dx, total); }
             table-column-resize-done => { root.table-column-resize-done(); }
             pinned-folders: root.pinned-folders;
+        sidebar-consoles: root.sidebar-consoles;
+        console-opened(id) => { root.console-opened(id); }
+        console-played(id) => { root.console-played(id); }
             total-count: root.total-count;
             faved-count: root.faved-count;
             now-stars: root.now-stars;
@@ -551,6 +559,7 @@ export component AppWindow inherits Window {
             editing-metadata <=> root.editing-metadata;
             meta-heading: root.meta-heading;
             meta-detail: root.meta-detail;
+            meta-tech: root.meta-tech;
             meta-title <=> root.meta-title;
             meta-artist <=> root.meta-artist;
             meta-album <=> root.meta-album;
@@ -569,6 +578,7 @@ export component AppWindow inherits Window {
             reclass-accepted => { root.reclass-accepted(); }
             reclass-cancelled => { root.reclass-cancelled(); }
             table-cover-requested(i) => { root.table-cover-requested(i); }
+            cover-auto => { root.cover-auto(); }
             covering <=> root.covering;
             cover-heading: root.cover-heading;
             cover-status: root.cover-status;
