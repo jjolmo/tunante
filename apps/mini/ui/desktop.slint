@@ -217,6 +217,12 @@ export component DesktopShell inherits Rectangle {
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
+    /// Playlist drag-reorder state: source row, live pixel delta.
+    in property <bool> cover-busy;
+    property <int> pl-src: -1;
+    property <length> pl-delta;
+    property <bool> pl-drag-active: false;
+    property <int> pl-drop: -1;
     /// Sidebar width, user-draggable like the old desktop (150–500px).
     in-out property <int> sidebar-width: 210;
     callback sidebar-resized(int);
@@ -546,10 +552,14 @@ export component DesktopShell inherits Rectangle {
                     // The playlists themselves, one tap from anywhere.
                     lists := ListView {
                         vertical-stretch: 1;
-                        for pl in root.show-playlists ? root.all-playlists : []: Rectangle {
+                        for pl[pli] in root.show-playlists ? root.all-playlists : []: Rectangle {
                             height: 34px;
                             background: pt.has-hover ? Theme.bg-hover : transparent;
                             border-radius: 6px;
+                            opacity: root.pl-drag-active && root.pl-src == pli ? 0.5 : 1.0;
+                            border-width: root.pl-drag-active && root.pl-drop == pli
+                                && root.pl-src != pli ? 2px : 0px;
+                            border-color: Theme.accent;
                             HorizontalLayout {
                                 padding-left: 12px;
                                 padding-right: 8px;
@@ -570,11 +580,47 @@ export component DesktopShell inherits Rectangle {
                                 }
                             }
                             pt := TouchArea {
-                                clicked => {
-                                    root.centre = 1;
-                                    root.playlist-open-requested(pl.id);
+                                moved => {
+                                    if (root.pl-src == pli) {
+                                        root.pl-delta = self.mouse-y - self.pressed-y;
+                                        if (root.pl-delta > 17px || root.pl-delta < -17px) {
+                                            root.pl-drag-active = true;
+                                        }
+                                        root.pl-drop = clamp(
+                                            pli + round(root.pl-delta / 34px),
+                                            0, root.all-playlists.length - 1);
+                                    }
                                 }
-                                double-clicked => { root.playlist-played(pl.id); }
+                                pointer-event(ev) => {
+                                    if (ev.button == PointerEventButton.left) {
+                                        if (ev.kind == PointerEventKind.down) {
+                                            root.pl-src = pli;
+                                            root.pl-drag-active = false;
+                                            root.pl-drop = -1;
+                                        }
+                                        if (ev.kind == PointerEventKind.up
+                                            && root.pl-drag-active
+                                            && root.pl-drop >= 0
+                                            && root.pl-drop != pli) {
+                                            root.playlist-reordered(pli, root.pl-drop);
+                                        }
+                                    }
+                                }
+                                clicked => {
+                                    if (root.pl-drag-active) {
+                                        root.pl-drag-active = false;
+                                        root.pl-src = -1;
+                                        root.pl-drop = -1;
+                                    } else {
+                                        root.centre = 1;
+                                        root.playlist-open-requested(pl.id);
+                                    }
+                                }
+                                double-clicked => {
+                                    if (!root.pl-drag-active) {
+                                        root.playlist-played(pl.id);
+                                    }
+                                }
                             }
                             ContextMenuArea {
                                 Menu {
@@ -610,6 +656,13 @@ export component DesktopShell inherits Rectangle {
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                         wrap: word-wrap;
+                    }
+
+                    if root.show-cover && root.now-art.width == 0 && root.cover-busy: Text {
+                        text: "buscando carátula…";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        horizontal-alignment: center;
                     }
 
                     // The old desktop gave its bottom-left corner to the

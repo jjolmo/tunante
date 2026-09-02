@@ -59,7 +59,8 @@
 - [~] «Quitar de la lista»: existe donde las listas viven (la hoja de la
       vista Listas); la tabla no muestra listas, así que ahí no significa
       nada. «Quitar de la cola» ya está en su menú.
-- [ ] Scroll automático a la pista sonando al restaurar la ventana.
+- [~] Scroll a la pista al restaurar la ventana: Slint/winit no exponen el
+      evento de visibilidad; el click en lo-que-suena cubre la intención.
 
 **Sidebar**
 - [x] Carpetas monitorizadas (raíces) en el sidebar con contador, delante de
@@ -81,7 +82,9 @@
       desktop un re-escaneo YA NO sustituye la app entera por la pantalla de
       progreso; la UI sigue usable y el pie informa (el teléfono conserva su
       pantalla: no tiene esquina que ceder).
-- [ ] Reordenar playlists arrastrando.
+- [x] Reordenar playlists arrastrando en el sidebar — umbral de media
+      fila, la arrastrada al 50%, borde accent en el destino, y el click
+      posterior al arrastre queda suprimido (el gesto no abre la lista).
 
 **Árbol / archivos**
 - [x] Buscador de carpetas — la búsqueda del árbol antepone hasta 50
@@ -130,7 +133,9 @@
       diagnóstico: mini NO descargaba nada al reproducir — el hueco era la
       función entera, no el toggle.
 - [x] «Guardar carátula en la carpeta» (store_covers_in_folder).
-- [ ] Acción del click central del tray (5 opciones en el viejo).
+- [~] Acción del click central del tray: aparcado — exige un tercer gancho
+      en el parche SNI (distinguir Activate de SecondaryActivate) y prueba
+      manual con panel real; hoy ambos clicks hacen mostrar/ocultar.
 - [x] Toggles de secciones del sidebar: carátula, Favoritos, Carpetas y
       Listas, bajo las claves show_* del desktop. (Consolas/árbol no son
       secciones del sidebar nuevo.)
@@ -151,17 +156,23 @@
 
 ## C · Menor / pulido
 
-- [ ] Spinner en el panel de carátula mientras se busca.
+- [x] «buscando carátula…» bajo el sidebar mientras la auto-descarga está
+      en vuelo (cover-busy, apagado por art_dirty).
 - [x] Estados vacíos de la tabla: «Nada casa con la búsqueda» vs «No hay
       pistas — añade carpetas desde Ajustes».
 - [x] Registro con toolbar: nivel (todo/aviso+/solo error), filtro de texto,
       Copiar (wl-copy→xclip) y Limpiar; el refresco del timer respeta ambos
       filtros.
-- [ ] Popup de feedback de volumen al hacer rueda sobre el tray.
+- [~] Popup de volumen del tray: el slider de la app ya se mueve en vivo
+      con la rueda; la ventanita flotante del viejo queda como cosmética
+      aparcada.
 - [x] Diálogo de crash: panic hook → tunante-crash.log en XDG data +
       zenity/kdialog con el mensaje y la ruta.
-- [ ] «Fix the lengths too» y ámbito «solo esta pista» en nombres de pistas.
-- [ ] Type-ahead de consola rankeado por codec (escribir `spc` → SNES).
+- [~] «Fix the lengths too»/«solo esta pista» en nombres: el flujo de mini
+      escribe el .m3u del juego entero con re-sellado por probe; los dos
+      matices del viejo quedan como refinamiento pendiente del sheet.
+- [~] Type-ahead de consola por codec: cubierto distinto — mini enseña el
+      catálogo completo desplegable, no hay campo que rankear.
 - [x] «Acerca de Tunante»: fila con versión y autor; click abre el repo.
 
 ## D · Cubierto distinto (no es deuda)
