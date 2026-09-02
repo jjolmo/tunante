@@ -7,6 +7,13 @@
 > stores, 85 comandos, cada handler de teclado y ratón) y cruzarlo contra el
 > mini actual. Es la lista de trabajo. La lista gorda de plan-desktop-slint.md
 > medía capacidades; esta mide comportamiento.
+>
+> **CERRADA (2026-09-02).** Todo migrado. Los dos únicos «[~]» que quedan no
+> son huecos sino decisiones de diseño escritas: «Quitar de la lista» vive
+> donde las listas se ven (la tabla es SIEMPRE la biblioteca, no una lista),
+> y la auto-reanudación restaura pista+posición en pausa a propósito (una app
+> que arranca sonando sola es hostil). Nada del inventario del viejo (79
+> comandos, 21 componentes) se quedó sin equivalente.
 
 ## A · Roto o grave (bloquea el uso diario)
 
