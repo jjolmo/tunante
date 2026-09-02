@@ -1894,7 +1894,13 @@ export component TrackNamesSheet inherits Rectangle {
 // window; this is the only pair of eyes there is.
 export component LogSheet inherits Rectangle {
     in property <[string]> lines;
+    in property <string> level-label;
+    in-out property <string> filter;
     callback cancelled();
+    callback cycle-level();
+    callback filter-changed(string);
+    callback copy-log();
+    callback clear-log();
 
     background: #000000bb;
 
@@ -1915,6 +1921,74 @@ export component LogSheet inherits Rectangle {
                 text: "Registro";
                 color: Theme.text-primary;
                 font-size: Theme.font-title;
+            }
+
+            // Level, filter, copy, clear — the old DebugWindow's toolbar.
+            HorizontalLayout {
+                spacing: Theme.gap;
+                Rectangle {
+                    width: 92px;
+                    height: 30px;
+                    border-radius: Theme.radius;
+                    background: lvl.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: root.level-label;
+                        color: Theme.text-primary;
+                        font-size: Theme.font-small;
+                    }
+                    lvl := TouchArea { clicked => { root.cycle-level(); } }
+                }
+                Rectangle {
+                    height: 30px;
+                    horizontal-stretch: 1;
+                    border-radius: Theme.radius;
+                    background: Theme.bg-tertiary;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        flt := TextInput {
+                            color: Theme.text-primary;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                            single-line: true;
+                            text <=> root.filter;
+                            edited => { root.filter-changed(self.text); }
+                        }
+                    }
+                    if root.filter == "" && !flt.has-focus: HorizontalLayout {
+                        padding-left: 8px;
+                        Text {
+                            text: "Filtrar…";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 70px;
+                    height: 30px;
+                    border-radius: Theme.radius;
+                    background: cpy.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Copiar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-small;
+                    }
+                    cpy := TouchArea { clicked => { root.copy-log(); } }
+                }
+                Rectangle {
+                    width: 70px;
+                    height: 30px;
+                    border-radius: Theme.radius;
+                    background: clr.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: "Limpiar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-small;
+                    }
+                    clr := TouchArea { clicked => { root.clear-log(); } }
+                }
             }
 
             ListView {
