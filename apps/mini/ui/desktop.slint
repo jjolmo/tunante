@@ -222,6 +222,9 @@ export component DesktopShell inherits Rectangle {
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
+    in-out property <bool> names-fix-lengths;
+    in-out property <string> reclass-console-filter;
+    callback reclass-console-filter-changed(string);
     /// Playlist drag-reorder state: source row, live pixel delta.
     in property <bool> cover-busy;
     property <int> pl-src: -1;
@@ -1203,6 +1206,7 @@ export component DesktopShell inherits Rectangle {
     }
 
     if root.naming: TrackNamesSheet {
+        fix-lengths <=> root.names-fix-lengths;
         heading: root.names-heading;
         status: root.names-status;
         names: root.names-rows;
@@ -1223,6 +1227,8 @@ export component DesktopShell inherits Rectangle {
     }
 
     if root.reclassifying: ReclassifySheet {
+        console-filter <=> root.reclass-console-filter;
+        console-filter-changed(t) => { root.reclass-console-filter-changed(t); }
         heading: root.reclass-heading;
         scope-folder <=> root.reclass-scope-folder;
         consoles: root.consoles;

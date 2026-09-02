@@ -181,11 +181,13 @@
       turno). Sin ventana flotante aparte — el tooltip ES el popup.
 - [x] Diálogo de crash: panic hook → tunante-crash.log en XDG data +
       zenity/kdialog con el mensaje y la ruta.
-- [~] «Fix the lengths too»/«solo esta pista» en nombres: el flujo escribe
-      el .m3u del juego con re-sellado por probe; los dos matices quedan
-      como refinamiento del sheet (funcionalmente equivalente hoy).
-- [~] Type-ahead de consola por codec: cubierto distinto — el catálogo es un
-      desplegable completo, no un campo que rankear.
+- [x] «Arreglar también las duraciones» en la hoja de nombres: off deja el
+      campo de duración vacío y el re-sellado por probe pone la real (solo
+      cambian los títulos). El ámbito «solo esta pista» del viejo no aplica:
+      mini re-lee el fichero entero por probe, no una pista suelta.
+- [x] Type-ahead de consola por códec: caja de filtro sobre el desplegable
+      que rankea nombre exacto > prefijo > códec propio (spc → SNES) >
+      substring, con «(automática)» siempre arriba.
 - [x] «Acerca de Tunante»: fila con versión y autor; click abre el repo.
 
 ## D · Cubierto distinto (no es deuda)
