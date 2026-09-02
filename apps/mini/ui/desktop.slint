@@ -145,6 +145,7 @@ export component DesktopShell inherits Rectangle {
     callback table-open-folder(int);
     callback table-pin-folder(int);
     callback table-column-moved(int, int);
+    callback table-row-middle-clicked(int);
     callback table-column-resize-started(int);
     callback table-column-resized(int, float, float);
     callback table-column-resize-done();
@@ -507,6 +508,7 @@ export component DesktopShell inherits Rectangle {
                     open-folder(i) => { root.table-open-folder(i); }
                     pin-folder(i) => { root.table-pin-folder(i); }
                     column-moved(de, a) => { root.table-column-moved(de, a); }
+                    row-middle-clicked(i) => { root.table-row-middle-clicked(i); }
                     column-resize-started(i) => { root.table-column-resize-started(i); }
                     column-resized(i, dx, total) => { root.table-column-resized(i, dx, total); }
                     column-resize-done => { root.table-column-resize-done(); }

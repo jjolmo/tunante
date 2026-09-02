@@ -122,8 +122,12 @@ export component TrackTable inherits Rectangle {
     /// Fetch the archive's track names for this row's file.
     callback names-requested(int);
     /// One click, with its modifiers: plain replaces the selection, Ctrl
-    /// toggles, Shift extends from the anchor. Rust owns the set.
+    /// toggles, Shift extends from the anchor, Ctrl+Shift adds the range
+    /// to what was already selected. Rust owns the set.
     callback row-clicked(int, bool, bool);
+    /// Middle click: toggle the row in and out of the user queue — the
+    /// old desktop's quickest enqueue.
+    callback row-middle-clicked(int);
     /// Arrow keys: delta and whether Shift extends the range.
     callback cursor-moved(int, bool);
     callback select-all();
@@ -317,6 +321,9 @@ export component TrackTable inherits Rectangle {
                             // retargets it, like every desktop list.
                             if (ev.button == PointerEventButton.right && !row.selected) {
                                 root.row-clicked(i, false, false);
+                            }
+                            if (ev.button == PointerEventButton.middle) {
+                                root.row-middle-clicked(i);
                             }
                         }
                     }

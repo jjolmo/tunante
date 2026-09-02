@@ -39,16 +39,19 @@
 ## B · Falta funcional clara
 
 **Tabla**
-- [ ] 5 columnas del catálogo viejo: Album Artist, Disc #, Sample Rate,
-      Channels, y la combinada **Album/Game** con su ajuste de preferencia.
-- [ ] Click central en fila = encolar/desencolar.
+- [x] 4 columnas nuevas: Artista del álbum, Disco, Muestreo (Hz), Canales
+      (mono/estéreo/N) — con celda y ordenación. Queda la combinada
+      **Album/Game** con su ajuste de preferencia (el viejo la tenía visible
+      por defecto).
+- [x] Ordenación persistida entre sesiones (claves session_sort_column/
+      _direction del desktop).
+- [x] Click central en fila = encolar/desencolar de la cola de usuario.
+- [x] Ctrl+Shift+click: el rango se SUMA a la selección existente.
 - [ ] Número de posición en cola en la columna de estado (cuando no suena).
-- [ ] Ctrl+Shift+click: rango AÑADIDO a la selección existente.
 - [ ] Tooltips por celda con el valor completo (todo elidido hoy es ilegible).
 - [ ] Menú contextual de la cabecera (click derecho = toggles de columnas sin
       cerrar el menú; hoy solo existe el ⚙).
 - [ ] «Quitar de la cola» / «Quitar de la lista» contextuales según contexto.
-- [ ] Persistir orden de ordenación entre sesiones (columna + dirección).
 - [ ] Scroll automático a la pista sonando al restaurar la ventana.
 
 **Sidebar**
