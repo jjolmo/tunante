@@ -93,6 +93,8 @@ export struct TableRow {
     path: string,
     /// Rust owns the selection set; the row only paints it.
     selected: bool,
+    // "»N" while the row waits in the user queue; "" otherwise.
+    queue-pos: string,
 }
 
 /// A row of the column chooser: every column the catalog knows, ticked or not.

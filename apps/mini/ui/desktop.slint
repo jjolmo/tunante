@@ -17,6 +17,8 @@ import { TrackTable } from "table.slint";
 component SidebarEntry inherits Rectangle {
     in property <string> label;
     in property <bool> active;
+    /// Double click: play this collection, the old desktop's shortcut.
+    callback played();
     /// The old desktop put a number beside every entry; the answer to
     /// "how big is my library" should not need a click.
     in property <string> count;
@@ -43,7 +45,10 @@ component SidebarEntry inherits Rectangle {
             vertical-alignment: center;
         }
     }
-    t := TouchArea { clicked => { root.clicked(); } }
+    t := TouchArea {
+        clicked => { root.clicked(); }
+        double-clicked => { root.played(); }
+    }
 }
 
 // A horizontal 0..1 slider in the house style, for the volume.
@@ -153,6 +158,13 @@ export component DesktopShell inherits Rectangle {
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
+    /// Sidebar width, user-draggable like the old desktop (150–500px).
+    in-out property <int> sidebar-width: 210;
+    callback sidebar-resized(int);
+    in property <string> scan-status;
+    callback sidebar-play-all();
+    callback playlist-played(string);
+    callback folder-played(string);
     in property <int> cover-fit;
     callback stop-playback();
     callback rate-now(int);
@@ -320,7 +332,7 @@ export component DesktopShell inherits Rectangle {
 
             // --- Sidebar ---
             Rectangle {
-                width: 210px;
+                width: root.sidebar-width * 1px;
                 background: Theme.bg-secondary;
 
                 VerticalLayout {
@@ -342,6 +354,7 @@ export component DesktopShell inherits Rectangle {
                             root.centre = 0;
                             root.table-faved-changed(false);
                         }
+                        played => { root.sidebar-play-all(); }
                     }
                     SidebarEntry {
                         label: "Favoritos";
@@ -382,6 +395,7 @@ export component DesktopShell inherits Rectangle {
                                 root.centre = 0;
                                 root.folder-opened(pf.id);
                             }
+                            double-clicked => { root.folder-played(pf.id); }
                         }
                         HorizontalLayout {
                             padding-left: 12px;
@@ -456,8 +470,19 @@ export component DesktopShell inherits Rectangle {
                                     root.centre = 1;
                                     root.playlist-open-requested(pl.id);
                                 }
+                                double-clicked => { root.playlist-played(pl.id); }
                             }
                         }
+                    }
+
+                    // A rescan reports here, quietly, while the rest of the
+                    // app stays usable — the old desktop's rule. (The phone
+                    // still swaps screens; it has no corner to spare.)
+                    if root.scan-status != "": Text {
+                        text: root.scan-status;
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        wrap: word-wrap;
                     }
 
                     // The old desktop gave its bottom-left corner to the
@@ -482,7 +507,28 @@ export component DesktopShell inherits Rectangle {
                 }
             }
 
-            Rectangle { width: 1px; background: Theme.bg-tertiary; }
+            // The seam doubles as the resize handle, like the old app's.
+            Rectangle {
+                width: 4px;
+                background: sbh.has-hover || sbh.pressed ? Theme.accent : Theme.bg-tertiary;
+                sbh := TouchArea {
+                    mouse-cursor: ew-resize;
+                    property <int> base;
+                    pointer-event(ev) => {
+                        if (ev.kind == PointerEventKind.down) {
+                            self.base = root.sidebar-width;
+                        }
+                        if (ev.kind == PointerEventKind.up) {
+                            root.sidebar-resized(root.sidebar-width);
+                        }
+                    }
+                    moved => {
+                        root.sidebar-width = clamp(
+                            self.base + (self.mouse-x - self.pressed-x) / 1px,
+                            150, 500);
+                    }
+                }
+            }
 
             // --- Centre: the table, the library views, or the settings ---
             Rectangle {

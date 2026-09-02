@@ -236,6 +236,11 @@ export component AppWindow inherits Window {
     in property <string> faved-count;
     in property <string> now-stars;
     in-out property <int> now-rating;
+    in-out property <int> sidebar-width;
+    callback sidebar-resized(int);
+    callback sidebar-play-all();
+    callback playlist-played(string);
+    callback folder-played(string);
     callback stop-playback();
     callback rate-now(int);
     in property <string> table-folder-id;
@@ -401,7 +406,7 @@ export component AppWindow inherits Window {
         done => { root.picker-done(); }
     }
 
-    if !root.setup-mode && root.scan-status != "": Rectangle {
+    if !root.setup-mode && root.scan-status != "" && !root.desktop: Rectangle {
         background: Theme.bg-primary;
         Text {
             text: root.scan-status;
@@ -413,7 +418,8 @@ export component AppWindow inherits Window {
 
     // The desktop shell replaces the whole tabbed layout, not a tab of it: the
     // four screens exist inside it as panes.
-    if !root.setup-mode && root.scan-status == "" && root.desktop: DesktopShell {
+    if !root.setup-mode && root.desktop: DesktopShell {
+        scan-status: root.scan-status;
         library-rows: root.library-rows;
         library-total: root.library-total;
         now-title: root.now-title;
@@ -463,6 +469,11 @@ export component AppWindow inherits Window {
         total-count: root.total-count;
         faved-count: root.faved-count;
         now-stars: root.now-stars;
+        sidebar-width <=> root.sidebar-width;
+        sidebar-resized(w) => { root.sidebar-resized(w); }
+        sidebar-play-all => { root.sidebar-play-all(); }
+        playlist-played(id) => { root.playlist-played(id); }
+        folder-played(id) => { root.folder-played(id); }
         cover-fit: root.cover-fit;
         stop-playback => { root.stop-playback(); }
         rate-now(n) => { root.rate-now(n); }

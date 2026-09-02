@@ -1229,6 +1229,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    // Double-click on a sidebar collection plays it — random start when
+    // shuffle is on, like the old desktop.
+    fn play_collection(
+        ui: &AppWindow,
+        player: &Rc<RefCell<Option<player::Player>>>,
+        queue_model: &VecModel<QueueRow>,
+        tracks: Vec<tunante_core::db::models::Track>,
+    ) {
+        if tracks.is_empty() {
+            return;
+        }
+        if let Some(p) = player.borrow_mut().as_mut() {
+            let start = if p.shuffle() {
+                (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as usize)
+                    .unwrap_or(0))
+                    % tracks.len()
+            } else {
+                0
+            };
+            p.set_tracks(tracks.clone());
+            match p.play_index(start) {
+                Ok(()) => push_now_playing(ui, p),
+                Err(e) => show_play_error(ui, &e),
+            }
+            queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
+        }
+    }
+    {
+        let (db_p, st, player_p) = (db.clone(), table_state.clone(), player.clone());
+        let queue_model_p = queue_model.clone();
+        let weak = ui.as_weak();
+        ui.on_sidebar_play_all(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let tracks = {
+                let mut st = st.borrow_mut();
+                if !st.built {
+                    st.built = true;
+                    st.all = db_p.get_all_tracks().unwrap_or_default();
+                }
+                if st.tracks.is_empty() { st.all.clone() } else { st.tracks.clone() }
+            };
+            play_collection(&ui, &player_p, &queue_model_p, tracks);
+        });
+    }
+    {
+        let (db_p, player_p, queue_model_p) = (db.clone(), player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_playlist_played(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let tracks = db_p.get_playlist_tracks(&id).unwrap_or_default();
+            play_collection(&ui, &player_p, &queue_model_p, tracks);
+        });
+    }
+    {
+        let (db_p, player_p, queue_model_p) = (db.clone(), player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_folder_played(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let folder = db_p
+                .get_pinned_folders()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|f| f.id == id.as_str())
+                .map(|f| f.path);
+            let Some(folder) = folder else { return };
+            let tracks: Vec<_> = db_p
+                .get_all_tracks()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|t| {
+                    let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
+                    real.strip_prefix(folder.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+                })
+                .collect();
+            play_collection(&ui, &player_p, &queue_model_p, tracks);
+        });
+    }
     {
         let st = table_state.clone();
         ui.on_table_open_folder(move |index| {
@@ -2896,6 +2976,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_output_label(SharedString::from(output_label(&next)));
         });
     }
+    ui.set_sidebar_width(
+        db.get_setting("mini.sidebar_width")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<i32>().ok())
+            .map(|w| w.clamp(150, 500))
+            .unwrap_or(210),
+    );
+    {
+        let db = db.clone();
+        ui.on_sidebar_resized(move |w| {
+            let _ = db.set_setting("mini.sidebar_width", &w.clamp(150, 500).to_string());
+        });
+    }
     {
         let (db, weak) = (db.clone(), ui.as_weak());
         let style = Rc::new(std::cell::Cell::new(tray_style));
@@ -3130,6 +3224,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Two taps: one asks GitHub, one installs what it offered. The row's text
     // is the whole state machine, and the workers report through a channel
     // the timer drains like every other background job here.
+    let badge_fp: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
     let (update_tx, update_rx) = std::sync::mpsc::channel::<update::UpdateMsg>();
     let update_pending: Rc<RefCell<Option<(String, String)>>> = Rc::new(RefCell::new(None));
     ui.set_update_status(SharedString::from(format!(
@@ -3428,6 +3523,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let update_manual = update_manual.clone();
         let pinned_model = pinned_model.clone();
         let folders_model = folders_model.clone();
+        let badge_fp = badge_fp.clone();
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
@@ -3742,6 +3838,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
+                }
+
+                // The queue badges in the table: »N on rows waiting in the
+                // user queue. Recomputed only when the queue or the table
+                // actually changed — the fingerprint is cheap, 29k
+                // set_row_data calls are not.
+                {
+                    let fp = {
+                        let st = table_state.borrow();
+                        let paths: Vec<&str> =
+                            p.user_queue().iter().map(|t| t.path.as_str()).collect();
+                        format!("{}|{}", st.stamp, paths.join("\u{1f}"))
+                    };
+                    if *badge_fp.borrow() != fp {
+                        *badge_fp.borrow_mut() = fp;
+                        let pos: std::collections::HashMap<String, usize> = p
+                            .user_queue()
+                            .iter()
+                            .enumerate()
+                            .map(|(i, t)| (t.path.clone(), i + 1))
+                            .collect();
+                        for i in 0..table_model.row_count() {
+                            if let Some(mut r) = table_model.row_data(i) {
+                                let want = pos
+                                    .get(r.path.as_str())
+                                    .map(|n| format!("»{n}"))
+                                    .unwrap_or_default();
+                                if r.queue_pos.as_str() != want {
+                                    r.queue_pos = SharedString::from(want);
+                                    table_model.set_row_data(i, r);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // A global shortcut, wherever the focus was.
@@ -4470,6 +4600,9 @@ struct TableState {
     selected: std::collections::HashSet<usize>,
     /// Where a Shift-range grows from.
     anchor: usize,
+    /// Bumped by every rebuild, so the queue-badge pass in the timer knows
+    /// the rows are fresh (and badge-less) even when the queue is not.
+    stamp: u64,
 }
 
 impl Default for TableState {
@@ -4489,6 +4622,7 @@ impl Default for TableState {
             built: false,
             selected: std::collections::HashSet::new(),
             anchor: 0,
+            stamp: 0,
         }
     }
 }
@@ -5184,10 +5318,12 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                 )),
                 path: SharedString::from(t.path.as_str()),
                 selected: false,
+                queue_pos: SharedString::new(),
             })
             .collect::<Vec<_>>(),
     );
     st.tracks = tracks;
+    st.stamp = st.stamp.wrapping_add(1);
 }
 
 /// Play a file by path, with its folder as the queue context — or, when the

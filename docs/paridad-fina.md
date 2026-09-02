@@ -47,7 +47,11 @@
       _direction del desktop).
 - [x] Click central en fila = encolar/desencolar de la cola de usuario.
 - [x] Ctrl+Shift+click: el rango se SUMA a la selección existente.
-- [ ] Número de posición en cola en la columna de estado (cuando no suena).
+- [x] Posición en cola visible en la fila: «»N» en accent delante del título
+      mientras la pista espera en la cola de usuario (huella barata en el
+      timer; solo repinta filas cuyo badge cambió).
+- [x] «Quitar de la cola» en el menú contextual (mismo toggle que el click
+      central).
 - [ ] Tooltips por celda con el valor completo (todo elidido hoy es ilegible).
 - [ ] Menú contextual de la cabecera (click derecho = toggles de columnas sin
       cerrar el menú; hoy solo existe el ⚙).
@@ -56,14 +60,20 @@
 
 **Sidebar**
 - [ ] Carpetas monitorizadas (raíces) listadas con contador — hoy solo pineadas.
-- [ ] Doble click reproduce (All Tracks, playlist, carpeta, consola) —
-      aleatoria si shuffle.
+- [x] Doble click reproduce en el sidebar — Pistas (el orden visible de la
+      tabla), playlists y carpetas pineadas; arranque aleatorio si shuffle.
+      Quedan las consolas (no listadas en el sidebar).
 - [ ] Botón «+» nueva playlist en el sidebar (input inline, Enter/Escape).
 - [ ] Menú contextual de playlist en sidebar: Enqueue all / Rename / Delete
       (hoy viven solo en la vista Listas).
 - [ ] Menú contextual de carpeta pineada: «Abrir en gestor de archivos».
-- [ ] Ancho del sidebar redimensionable (150–500px, persistido).
-- [ ] Barra de progreso de escaneo al pie del sidebar.
+- [x] Ancho del sidebar redimensionable — la costura de 4px es el asa
+      (cursor ew-resize, se ilumina en accent), 150–500px, persistido en
+      mini.sidebar_width.
+- [x] Progreso de escaneo al pie del sidebar — y con arreglo de fondo: en
+      desktop un re-escaneo YA NO sustituye la app entera por la pantalla de
+      progreso; la UI sigue usable y el pie informa (el teléfono conserva su
+      pantalla: no tiene esquina que ceder).
 - [ ] Reordenar playlists arrastrando.
 
 **Árbol / archivos**
