@@ -96,14 +96,20 @@ libc = "0.2"
 # for the tray's own thread — the shell stays winit.
 tray-icon = { version = "0.21", default-features = false, optional = true }
 gtk = { version = "0.18", optional = true }
+# Self-update from GitHub releases, behind the `updater` feature for the same
+# reason the tray hides behind its own: the Alpine package updates through
+# apk, and a package-managed binary must not overwrite itself. Same ureq the
+# art crate already brought into the tree.
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip", "json"], optional = true }
 mpris-server = "0.10"
 zbus = { version = "5", default-features = false, features = ["async-io"] }
 async-io = "2"
 futures-lite = "2"
 
 [features]
-default = ["tray"]
+default = ["tray", "updater"]
 tray = ["dep:tray-icon", "dep:gtk"]
+updater = ["dep:ureq"]
 
 [build-dependencies]
 slint-build = "1.17"

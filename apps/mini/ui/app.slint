@@ -123,6 +123,8 @@ export component AppWindow inherits Window {
     callback cycle-short-filter();
     in property <string> output-label: "sistema";
     in property <string> ui-mode-label: "auto";
+    in property <string> update-status;
+    callback check-update();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -426,6 +428,8 @@ export component AppWindow inherits Window {
         ui-mode-label: root.ui-mode-label;
         cycle-output => { root.cycle-output(); }
         cycle-ui-mode => { root.cycle-ui-mode(); }
+                    update-status: root.update-status;
+                    check-update => { root.check-update(); }
         eq-enabled: root.eq-enabled;
         eq-low: root.eq-low;
         eq-mid: root.eq-mid;
@@ -538,6 +542,8 @@ export component AppWindow inherits Window {
                         ui-mode-label: root.ui-mode-label;
                         cycle-output => { root.cycle-output(); }
                         cycle-ui-mode => { root.cycle-ui-mode(); }
+                    update-status: root.update-status;
+                    check-update => { root.check-update(); }
                         eq-enabled: root.eq-enabled;
                         eq-low: root.eq-low;
                         eq-mid: root.eq-mid;

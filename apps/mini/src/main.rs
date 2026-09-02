@@ -55,6 +55,7 @@ mod player;
 mod single;
 mod store;
 mod tray;
+mod update;
 use tunante_core::session;
 
 use std::cell::RefCell;
@@ -96,6 +97,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .find(|a| !a.starts_with('-'))
         .map(PathBuf::from)
         .filter(|p| p.is_file());
+
+    // Headless self-update: check, install, exit. No window, no instance
+    // claim — a cron job or an ssh session can keep a player fresh with one
+    // order, and it doubles as the way to exercise the whole update path
+    // without a compositor.
+    if args.iter().any(|a| a == "--update") {
+        let (tx, rx) = std::sync::mpsc::channel::<update::UpdateMsg>();
+        eprintln!("comprobando (v{} local)…", update::CURRENT_VERSION);
+        update::spawn_check(tx.clone());
+        match rx.recv() {
+            Ok(update::UpdateMsg::UpToDate) => eprintln!("al día"),
+            Ok(update::UpdateMsg::Available { version, url }) => {
+                eprintln!("v{version} disponible; descargando…");
+                update::spawn_install(tx, version, url);
+                match rx.recv() {
+                    Ok(update::UpdateMsg::Installed(v)) => eprintln!("v{v} instalada"),
+                    Ok(update::UpdateMsg::Error(e)) => {
+                        eprintln!("{e}");
+                        std::process::exit(1);
+                    }
+                    _ => {}
+                }
+            }
+            Ok(update::UpdateMsg::Error(e)) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+            _ => {}
+        }
+        return Ok(());
+    }
 
     // One instance. A second launch delivers its intent to the first — the
     // file it was handed, or just "come to the front" — and exits.
@@ -1749,6 +1781,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- Self-update -----------------------------------------------------
+    //
+    // Two taps: one asks GitHub, one installs what it offered. The row's text
+    // is the whole state machine, and the workers report through a channel
+    // the timer drains like every other background job here.
+    let (update_tx, update_rx) = std::sync::mpsc::channel::<update::UpdateMsg>();
+    let update_pending: Rc<RefCell<Option<(String, String)>>> = Rc::new(RefCell::new(None));
+    ui.set_update_status(SharedString::from(format!(
+        "v{} — toca para comprobar",
+        update::CURRENT_VERSION
+    )));
+    {
+        let (pending, tx) = (update_pending.clone(), update_tx.clone());
+        let weak = ui.as_weak();
+        ui.on_check_update(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let offered = pending.borrow_mut().take();
+            match offered {
+                Some((version, url)) => {
+                    ui.set_update_status(SharedString::from(format!(
+                        "Descargando v{version}…"
+                    )));
+                    update::spawn_install(tx.clone(), version, url);
+                }
+                None => {
+                    ui.set_update_status(SharedString::from("Comprobando…"));
+                    update::spawn_check(tx.clone());
+                }
+            }
+        });
+    }
+
     // --- The equalizer section -----------------------------------------------
     //
     // One pattern five times: mutate the mirrored config, push it into the
@@ -1902,6 +1966,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (views.clone(), library_dirty.clone(), sync_watches.clone());
         let (table_state, table_model) = (table_state.clone(), table_model.clone());
         let (cover_model, cover_urls) = (cover_model.clone(), cover_urls.clone());
+        let update_pending = update_pending.clone();
         let sleep = sleep.clone();
         let mut ticks: u64 = 0;
         let weak = ui.as_weak();
@@ -1927,6 +1992,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     refresh_artwork(&ui, (!path.is_empty()).then_some(path.as_str()), MAX_ART_SIDE);
                     let rows = tree.borrow().rows(&db);
                     rows_model.set_vec(to_ui_rows(&rows));
+                }
+
+                // The updater's worker reported in.
+                while let Ok(msg) = update_rx.try_recv() {
+                    match msg {
+                        update::UpdateMsg::UpToDate => {
+                            ui.set_update_status(SharedString::from(format!(
+                                "al día (v{})",
+                                update::CURRENT_VERSION
+                            )));
+                        }
+                        update::UpdateMsg::Available { version, url } => {
+                            ui.set_update_status(SharedString::from(format!(
+                                "v{version} disponible — toca para instalar"
+                            )));
+                            *update_pending.borrow_mut() = Some((version, url));
+                        }
+                        update::UpdateMsg::Installed(version) => {
+                            ui.set_update_status(SharedString::from(format!(
+                                "v{version} instalada — reinicia la app"
+                            )));
+                        }
+                        update::UpdateMsg::Error(e) => {
+                            ui.set_update_status(SharedString::from(e));
+                        }
+                    }
                 }
 
                 // The cover picker's worker reported in.

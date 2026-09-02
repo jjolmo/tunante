@@ -180,7 +180,20 @@
 > integración corriendo el binario real: FLAC guarda en el tag, NSF cae al
 > m3u de la carpeta, y un orden que empieza por db no toca el disco. La
 > escritura de tags de *metadatos* no es un gap: el desktop también escribe
-> solo BD ahí. Bloqueadores restantes del vuelco: updater y CI/empaquetado.
+> solo BD ahí. **Tercer bloqueador caído: el updater.**
+> `apps/mini/src/update.rs` (feature `updater`, default on, fuera con
+> `--no-default-features` — el paquete Alpine se actualiza por apk y un
+> binario del gestor no debe pisarse a sí mismo): consulta `releases/latest`,
+> elige el tarball de su arquitectura, y cambia los DOS binarios in situ —
+> copia al lado + doble rename, atómico por fichero, y Linux renombra sin
+> queja el ejecutable en marcha. En Ajustes, una fila con máquina de estados
+> de dos toques (comprobar → instalar); y el instrumento `--update` hace lo
+> mismo headless, que sirve para cron/ssh y para probar sin compositor.
+> Verificado contra producción: un build local v0.1.0 detectó la v0.1.283
+> real, bajó el tarball publicado y se reemplazó a sí mismo y al decoder en
+> caliente. Nota para el vuelco: la release ya publica hasta un zip de
+> Windows de mini — el asset match es por nombre exacto, ampliable.
+> Bloqueador restante: CI/empaquetado (y la decisión macOS/Windows).
 > Resultados medidos en el portátil (Wayland, panel a ~75 Hz):
 >
 > - **Spike 1 (la tabla): pasa con nota.** `apps/mini/examples/table_spike.rs`,
