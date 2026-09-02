@@ -189,7 +189,12 @@ def build(src: Image.Image, rasterise: bool = True) -> dict[Path, bytes]:
             hashlib.sha256(TRAY_SOURCE.read_bytes()).hexdigest() + "\n"
         ).encode()
         if rasterise:
+            # Both colours, because "system" picks one by the panel's actual
+            # theme. The old desktop shipped white-always and the user with a
+            # light KDE saw a white ghost — the guess that is wrong least
+            # often is still wrong for whoever it is wrong for.
             out[TRAY / "mono-white.png"] = mono(TRAY_SOURCE, 32, white=True)
+            out[TRAY / "mono-black.png"] = mono(TRAY_SOURCE, 32, white=False)
 
     # --- mini ------------------------------------------------------------
     for n in (48, 64, 128, 256, 512):
@@ -229,7 +234,7 @@ def main() -> int:
     # Produced by an external rasteriser, so its bytes are not reproducible
     # across machines. `source.sha256`, generated beside it, is what proves
     # it current.
-    unstable = {TRAY / "mono-white.png"}
+    unstable = {TRAY / "mono-white.png", TRAY / "mono-black.png"}
 
     stale = []
     if args.check:
