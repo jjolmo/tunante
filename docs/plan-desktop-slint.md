@@ -123,8 +123,11 @@
 >       glifos (assets/system.svg → tunante-symbolic.svg + mono-white.png
 >       bajo mini, con el truco source.sha256 para que --check no necesite
 >       ImageMagick); «simbólico» publica el *nombre* para que el panel lo
->       recoloree, «sistema» es el glifo blanco en pixmap (siempre pinta),
->       «logo» el cartucho pixel-art. Cambio en vivo por el buzón del
+>       recoloree, «sistema» es el glifo en pixmap con el color elegido
+>       por el tema real del panel vía el portal (el viejo desktop enviaba
+>       blanco-siempre y en KDE claro se veía un fantasma blanco — bug
+>       reportado por el usuario, corregido; el menú contextual de mini no
+>       lo hereda: sus ítems son texto), «logo» el cartucho pixel-art. Cambio en vivo por el buzón del
 >       timeout de 1 Hz, como el tooltip. Verificado: objeto SNI exportado
 >       y registrado en el watcher con el glifo nuevo.
 > - [x] Spike 4, entero. Los **botones de ratón**: lectores evdev
