@@ -28,6 +28,8 @@ export component SettingsTab inherits Rectangle {
     in property <string> ui-mode-label: "auto";
     in property <string> update-status;
     callback check-update();
+    in property <string> theme-label;
+    callback cycle-theme();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -286,6 +288,11 @@ export component SettingsTab inherits Rectangle {
 
         Rectangle { height: 1px; background: Theme.border; }
 
+        SettingRow {
+            label: "Tema";
+            value: root.theme-label;
+            clicked => { root.cycle-theme(); }
+        }
         // The manual override docs/plan-desktop-slint.md promised: auto picks
         // by window width, the other two force a shell.
         SettingRow {

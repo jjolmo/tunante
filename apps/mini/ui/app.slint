@@ -20,6 +20,8 @@ import { DesktopShell } from "desktop.slint";
 // has, wherever the structs live now.
 import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow } from "types.slint";
 export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow }
+// So Rust can flip the palette: ui.global::<Theme>().set_dark(false).
+export { Theme }
 
 export component AppWindow inherits Window {
     title: "Tunante";
@@ -127,6 +129,8 @@ export component AppWindow inherits Window {
     in property <string> ui-mode-label: "auto";
     in property <string> update-status;
     callback check-update();
+    in property <string> theme-label;
+    callback cycle-theme();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -460,6 +464,8 @@ export component AppWindow inherits Window {
         cycle-ui-mode => { root.cycle-ui-mode(); }
                     update-status: root.update-status;
                     check-update => { root.check-update(); }
+                    theme-label: root.theme-label;
+                    cycle-theme => { root.cycle-theme(); }
         eq-enabled: root.eq-enabled;
         eq-low: root.eq-low;
         eq-mid: root.eq-mid;
@@ -582,6 +588,8 @@ export component AppWindow inherits Window {
                         cycle-ui-mode => { root.cycle-ui-mode(); }
                     update-status: root.update-status;
                     check-update => { root.check-update(); }
+                    theme-label: root.theme-label;
+                    cycle-theme => { root.cycle-theme(); }
                         eq-enabled: root.eq-enabled;
                         eq-low: root.eq-low;
                         eq-mid: root.eq-mid;

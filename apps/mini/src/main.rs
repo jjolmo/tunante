@@ -187,6 +187,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.set_ui_mode_label(SharedString::from(ui_mode_label(ui.get_ui_mode())));
 
+    // The palette always had both values; this is just the switch. Persisted
+    // under the desktop's key, so the unified database keeps one opinion.
+    let dark = db
+        .get_setting("theme")
+        .ok()
+        .flatten()
+        .map(|v| v != "light")
+        .unwrap_or(true);
+    ui.global::<Theme>().set_dark(dark);
+    ui.set_theme_label(SharedString::from(if dark { "oscuro" } else { "claro" }));
+
     // The tray runs its own GTK thread; clicks come back through tray::poll()
     // in the UI timer, beside the MPRIS commands they resemble.
     tray::spawn();
@@ -2074,6 +2085,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             ui.set_output_label(SharedString::from(output_label(&next)));
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_theme(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let dark = !ui.global::<Theme>().get_dark();
+            ui.global::<Theme>().set_dark(dark);
+            let _ = db.set_setting("theme", if dark { "dark" } else { "light" });
+            ui.set_theme_label(SharedString::from(if dark { "oscuro" } else { "claro" }));
         });
     }
     {
