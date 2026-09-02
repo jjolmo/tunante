@@ -69,6 +69,8 @@ export component TrackTable inherits Rectangle {
     callback reclassify-requested(int);
     /// Open the cover picker on this row.
     callback cover-requested(int);
+    /// Fetch the archive's track names for this row's file.
+    callback names-requested(int);
     /// One click, with its modifiers: plain replaces the selection, Ctrl
     /// toggles, Shift extends from the anchor. Rust owns the set.
     callback row-clicked(int, bool, bool);
@@ -251,6 +253,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Reclasificar…";
                             activated => { root.reclassify-requested(i); }
+                        }
+                        MenuItem {
+                            title: "Nombres de pistas…";
+                            activated => { root.names-requested(i); }
                         }
                         MenuItem {
                             title: "Buscar carátula…";

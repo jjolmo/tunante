@@ -1209,6 +1209,85 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // --- Track names from the archive ----------------------------------------
+    let names_pending: Rc<RefCell<Option<(String, Vec<String>, Vec<String>)>>> =
+        Rc::new(RefCell::new(None));
+    let names_rows_model = Rc::new(VecModel::from(Vec::<SharedString>::new()));
+    ui.set_names_rows(ModelRc::from(names_rows_model.clone()));
+    let names_file: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+    {
+        let (st, tx) = (table_state.clone(), cover_tx.clone());
+        let (rows, file_cell) = (names_rows_model.clone(), names_file.clone());
+        let weak = ui.as_weak();
+        ui.on_table_names_requested(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let st = st.borrow();
+            let Some(t) = st.tracks.get(index as usize) else { return };
+            let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
+            let file = real.to_string();
+            let subsongs = st
+                .all
+                .iter()
+                .filter(|x| tunante_core::vgm_path::parse_vgm_path(&x.path).0 == file)
+                .count();
+
+            *file_cell.borrow_mut() = file.clone();
+            rows.set_vec(Vec::new());
+            ui.set_names_can_apply(false);
+            ui.set_names_heading(SharedString::from(if t.game.is_empty() {
+                std::path::Path::new(&file)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default()
+            } else {
+                t.game.clone()
+            }));
+            ui.set_naming(true);
+
+            let system = tunante_core::console::by_id(&t.console_id).and_then(|c| c.zophar);
+            let Some(system) = system else {
+                ui.set_names_status(SharedString::from(
+                    "El formato de esta consola lleva una canción por fichero: \
+                     no hay listado que consultar.",
+                ));
+                return;
+            };
+            if t.game.trim().is_empty() {
+                ui.set_names_status(SharedString::from(
+                    "Ponle nombre al juego primero — el listado se busca por él.",
+                ));
+                return;
+            }
+            if subsongs <= 1 {
+                ui.set_names_status(SharedString::from("Este fichero lleva una sola canción."));
+                return;
+            }
+            ui.set_names_status(SharedString::from("Consultando el archivo…"));
+            spawn_names_fetch(tx.clone(), system, t.game.clone(), subsongs);
+        });
+    }
+    {
+        let (pending, tx, file_cell) =
+            (names_pending.clone(), cover_tx.clone(), names_file.clone());
+        let (db_file,) = (dbfile.clone(),);
+        let weak = ui.as_weak();
+        ui.on_names_apply(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some((_, titles, lengths)) = pending.borrow_mut().take() else {
+                return;
+            };
+            ui.set_names_can_apply(false);
+            ui.set_names_status(SharedString::from("Escribiendo…"));
+            spawn_names_apply(
+                tx.clone(),
+                db_file.clone(),
+                file_cell.borrow().clone(),
+                titles,
+                lengths,
+            );
+        });
+    }
+
     // --- Add to playlist from the table --------------------------------------
     let add_targets: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
     {
@@ -2474,6 +2553,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (table_state, table_model) = (table_state.clone(), table_model.clone());
         let (cover_model, cover_urls) = (cover_model.clone(), cover_urls.clone());
         let bulk_plans_model = bulk_plans_model.clone();
+        let (names_pending, names_rows_model) =
+            (names_pending.clone(), names_rows_model.clone());
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
         let mut ticks: u64 = 0;
@@ -2594,6 +2675,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     .collect::<Vec<_>>(),
                             );
                             ui.set_bulk_busy(false);
+                        }
+                        CoverMsg::NamesReady { titles, lengths, named } => {
+                            let rows: Vec<SharedString> = titles
+                                .iter()
+                                .enumerate()
+                                .map(|(i, t)| {
+                                    let title = if t.is_empty() { "—" } else { t.as_str() };
+                                    let len = lengths.get(i).map(String::as_str).unwrap_or("");
+                                    SharedString::from(if len.is_empty() {
+                                        format!("{:>2} · {}", i + 1, title)
+                                    } else {
+                                        format!("{:>2} · {} · {}", i + 1, title, len)
+                                    })
+                                })
+                                .collect();
+                            ui.set_names_status(SharedString::from(format!(
+                                "{named} de {} con nombre. Se escribe un .m3u junto al fichero.",
+                                titles.len()
+                            )));
+                            names_rows_model.set_vec(rows);
+                            *names_pending.borrow_mut() =
+                                Some((String::new(), titles, lengths));
+                            ui.set_names_can_apply(true);
+                        }
+                        CoverMsg::NamesProblem(text) => {
+                            ui.set_names_status(SharedString::from(text));
+                            ui.set_names_can_apply(false);
+                        }
+                        CoverMsg::NamesApplied(n) => {
+                            ui.set_names_status(SharedString::from(format!(
+                                "{n} pistas renombradas."
+                            )));
+                            // The rows changed under every cache; the watcher's
+                            // flag re-reads them all.
+                            library_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                         CoverMsg::BulkDone { written, stamp } => {
                             ui.set_bulk_status(SharedString::from(format!(
@@ -3373,6 +3489,146 @@ enum CoverMsg {
     /// game, console label, source, action — the dry run's findings.
     BulkPlans(Vec<(String, String, String, String)>),
     BulkDone { written: usize, stamp: u64 },
+    NamesReady {
+        titles: Vec<String>,
+        lengths: Vec<String>,
+        named: usize,
+    },
+    NamesProblem(String),
+    NamesApplied(usize),
+}
+
+/// Ask the archive for the track names of a one-file-per-game rip, off the UI
+/// thread. Fetches and counts, refuses on any mismatch — position is the
+/// entire mapping, and a listing of the wrong length would rename every track
+/// to the wrong song.
+fn spawn_names_fetch(
+    tx: std::sync::mpsc::Sender<CoverMsg>,
+    system: &'static str,
+    game: String,
+    subsongs: usize,
+) {
+    std::thread::spawn(move || {
+        use tunante_art::tracklist;
+        let http = tunante_art::http::UreqHttp::default();
+        let entries = tracklist::fetch(&http, system, &game);
+        if entries.is_empty() {
+            let _ = tx.send(CoverMsg::NamesProblem(format!(
+                "No hay listado para «{game}» en el archivo."
+            )));
+            return;
+        }
+        if !tracklist::matches_subsongs(&entries, subsongs) {
+            let _ = tx.send(CoverMsg::NamesProblem(format!(
+                "El archivo lista {} pistas y este fichero tiene {subsongs}. \
+                 La posición es todo el mapeo: otra cuenta es otro rip, y \
+                 aplicarlo renombraría cada pista mal.",
+                entries.len()
+            )));
+            return;
+        }
+        let named = tracklist::named_count(&entries);
+        if named == 0 {
+            let _ = tx.send(CoverMsg::NamesProblem(format!(
+                "El archivo lista {} pistas de «{game}» pero no ha nombrado \
+                 ninguna — todo son «Track N». No hay nada que renombrar.",
+                entries.len()
+            )));
+            return;
+        }
+        let _ = tx.send(CoverMsg::NamesReady {
+            titles: entries
+                .iter()
+                .map(|e| {
+                    if tracklist::is_placeholder(e) {
+                        String::new()
+                    } else {
+                        e.title.clone()
+                    }
+                })
+                .collect(),
+            lengths: entries.iter().map(|e| e.length.clone()).collect(),
+            named,
+        });
+    });
+}
+
+/// Write the names as an `.m3u` beside the file and re-seal the library rows
+/// through the ordinary path: a fresh probe, which already prefers an m3u
+/// title over everything else. Never overwrites a playlist Tunante did not
+/// write — one already there was put there by somebody.
+fn spawn_names_apply(
+    tx: std::sync::mpsc::Sender<CoverMsg>,
+    dbfile: PathBuf,
+    file: String,
+    titles: Vec<String>,
+    lengths: Vec<String>,
+) {
+    std::thread::spawn(move || {
+        use tunante_art::tracklist;
+        let path = std::path::PathBuf::from(&file);
+        let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
+            let _ = tx.send(CoverMsg::NamesProblem("no es un fichero".into()));
+            return;
+        };
+        let m3u = path.with_extension("m3u");
+        if m3u.exists() {
+            let ours = std::fs::read_to_string(&m3u)
+                .map(|b| tracklist::is_ours(&b))
+                .unwrap_or(false);
+            if !ours {
+                let _ = tx.send(CoverMsg::NamesProblem(format!(
+                    "{} ya existe junto al fichero y no lo escribió Tunante. \
+                     Reemplazarlo tiraría el trabajo de alguien.",
+                    m3u.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
+                )));
+                return;
+            }
+        }
+        let entries: Vec<tracklist::Entry> = titles
+            .iter()
+            .enumerate()
+            .map(|(i, t)| tracklist::Entry {
+                number: i as u32 + 1,
+                title: t.clone(),
+                length: lengths.get(i).cloned().unwrap_or_default(),
+            })
+            .collect();
+        if let Err(e) = std::fs::write(&m3u, tracklist::to_m3u(&name, &entries)) {
+            let _ = tx.send(CoverMsg::NamesProblem(format!(
+                "no se pudo escribir {}: {e}",
+                m3u.display()
+            )));
+            return;
+        }
+
+        // Re-read through the pipe and swap the rows — the watcher's own
+        // recipe, on the watcher's own kind of private connection.
+        let Ok(values) = tunante_helper::probe(
+            &path,
+            tunante_helper::scan::PROBE_TIMEOUT,
+            true,
+        ) else {
+            let _ = tx.send(CoverMsg::NamesProblem(
+                "el m3u se escribió, pero la relectura falló".into(),
+            ));
+            return;
+        };
+        let Ok(db) = Database::new(&dbfile) else {
+            let _ = tx.send(CoverMsg::NamesProblem("sin base de datos".into()));
+            return;
+        };
+        let _ = db.remove_tracks_by_base_path(&file);
+        let mut n = 0usize;
+        for v in values {
+            if let Ok(track) = serde_json::from_value::<tunante_core::db::models::Track>(v) {
+                if db.insert_track(&track).is_ok() {
+                    n += 1;
+                }
+            }
+        }
+        let _ = tx.send(CoverMsg::NamesApplied(n));
+    });
 }
 
 /// The whole-library cover run, both halves: `dry` previews, `!dry` writes

@@ -107,8 +107,12 @@
 >       nunca `existing` — el arte del usuario no se toca). El bulk viejo de
 >       mini (sin preview ni manifiesto, con constructor de requests
 >       duplicado) murió en el cambio.
-> - [ ] Nombres de pistas para GBS/NSF/HES/KSS/AY/SAP (suggest/apply desde
->       Zophar — tunante-art lo trae, falta el diálogo).
+> - [x] Nombres de pistas — «Nombres de pistas…» en el menú contextual:
+>       consulta Zophar por el juego, rehúsa ante cualquier desajuste (cuenta
+>       distinta = otro rip; todo-placeholder = nada que escribir; un .m3u
+>       ajeno no se pisa), enseña la lista y Aplicar escribe el .m3u y
+>       re-sella las filas **por probe** — la receta del watcher, conexión
+>       privada incluida — con el flag library_dirty repintándolo todo.
 > - [ ] Sugerencias online en reclasificación (Libretro/Steam) — el worker de
 >       carátulas ya da el patrón.
 > - [ ] Añadir ficheros sueltos (add_files) y skip-version en el updater.
