@@ -227,6 +227,7 @@ export component AppWindow inherits Window {
     callback table-open-folder(int);
     callback table-pin-folder(int);
     callback table-column-moved(int, int);
+    callback table-row-middle-clicked(int);
     callback table-column-resize-started(int);
     callback table-column-resized(int, float, float);
     callback table-column-resize-done();
@@ -454,6 +455,7 @@ export component AppWindow inherits Window {
         table-open-folder(i) => { root.table-open-folder(i); }
         table-pin-folder(i) => { root.table-pin-folder(i); }
         table-column-moved(de, a) => { root.table-column-moved(de, a); }
+        table-row-middle-clicked(i) => { root.table-row-middle-clicked(i); }
         table-column-resize-started(i) => { root.table-column-resize-started(i); }
         table-column-resized(i, dx, total) => { root.table-column-resized(i, dx, total); }
         table-column-resize-done => { root.table-column-resize-done(); }

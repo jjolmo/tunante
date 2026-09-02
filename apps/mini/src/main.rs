@@ -865,6 +865,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.visible = keys;
             }
         }
+        // The sort survives the restart too — the desktop's session keys.
+        if let Ok(Some(k)) = db.get_setting("session_sort_column") {
+            if TABLE_COLUMNS.iter().any(|d| d.key == k) {
+                st.sort_key = k;
+            }
+        }
+        if let Ok(Some(d)) = db.get_setting("session_sort_direction") {
+            st.asc = d != "desc";
+        }
+        ui.set_table_sort_asc(st.asc);
         rebuild_columns(&ui, &st, &columns_model, &choices_model);
         ui.set_table_sort_col(
             st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
@@ -897,6 +907,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (st, model) = (table_state.clone(), table_model.clone());
         let weak = ui.as_weak();
+        let db_s = db.clone();
         ui.on_table_sorted(move |col| {
             let mut st = st.borrow_mut();
             let Some(key) = st.visible.get(col as usize).cloned() else {
@@ -904,6 +915,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             st.asc = if st.sort_key == key { !st.asc } else { true };
             st.sort_key = key;
+            let _ = db_s.set_setting("session_sort_column", &st.sort_key);
+            let _ = db_s.set_setting(
+                "session_sort_direction",
+                if st.asc { "asc" } else { "desc" },
+            );
             rebuild_table(&mut st, &model);
             if let Some(ui) = weak.upgrade() {
                 ui.set_table_sort_col(col);
@@ -1187,6 +1203,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(p) = player_t.borrow_mut().as_mut() {
                 p.play_next(batch);
                 refresh_queue(p, &queue_model_t);
+            }
+        });
+    }
+    {
+        let (st, player_m) = (table_state.clone(), player.clone());
+        let queue_model_m = queue_model.clone();
+        ui.on_table_row_middle_clicked(move |index| {
+            let track = {
+                let st = st.borrow();
+                st.tracks.get(index as usize).cloned()
+            };
+            let Some(track) = track else { return };
+            if let Some(p) = player_m.borrow_mut().as_mut() {
+                // Toggle: already waiting in the user queue → out; not
+                // there → in. The old desktop's middle-click.
+                let pos = p.user_queue().iter().position(|t| t.path == track.path);
+                match pos {
+                    Some(i) => {
+                        let _ = p.dequeue_user(i);
+                    }
+                    None => p.play_next(vec![track]),
+                }
+                refresh_queue(p, &queue_model_m);
             }
         });
     }
@@ -1585,7 +1624,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if i >= st.tracks.len() {
                 return;
             }
-            if shift {
+            if shift && ctrl {
+                // The range JOINS the selection instead of replacing it —
+                // the old desktop's Ctrl+Shift.
+                let (a, b) = (st.anchor.min(i), st.anchor.max(i));
+                st.selected.extend(a..=b);
+            } else if shift {
                 let (a, b) = (st.anchor.min(i), st.anchor.max(i));
                 st.selected = (a..=b).collect();
             } else if ctrl {
@@ -4887,10 +4931,14 @@ const TABLE_COLUMNS: &[ColumnDef] = &[
     ColumnDef { key: "album", label: "Álbum", fraction: 2.4, right: false },
     ColumnDef { key: "game", label: "Juego", fraction: 2.4, right: false },
     ColumnDef { key: "console", label: "Consola", fraction: 1.3, right: false },
+    ColumnDef { key: "albumartist", label: "Artista del álbum", fraction: 2.0, right: false },
+    ColumnDef { key: "disc", label: "Disco", fraction: 0.6, right: true },
     ColumnDef { key: "stars", label: "★", fraction: 1.4, right: false },
     ColumnDef { key: "duration", label: "Duración", fraction: 1.0, right: true },
     ColumnDef { key: "codec", label: "Códec", fraction: 1.0, right: false },
     ColumnDef { key: "bitrate", label: "Bitrate", fraction: 1.0, right: true },
+    ColumnDef { key: "samplerate", label: "Muestreo", fraction: 1.1, right: true },
+    ColumnDef { key: "channels", label: "Canales", fraction: 0.9, right: true },
     ColumnDef { key: "size", label: "Tamaño", fraction: 1.0, right: true },
     ColumnDef { key: "path", label: "Ruta", fraction: 3.4, right: false },
 ];
@@ -4908,6 +4956,18 @@ fn cell_for(t: &tunante_core::db::models::Track, key: &str) -> String {
         "album" => t.album.clone(),
         "game" => t.game.clone(),
         "console" => table_console_label(t).to_string(),
+        "albumartist" => t.album_artist.clone(),
+        "disc" => t.disc_number.map(|n| n.to_string()).unwrap_or_default(),
+        "samplerate" => t
+            .sample_rate
+            .map(|r| format!("{r} Hz"))
+            .unwrap_or_default(),
+        "channels" => match t.channels {
+            Some(1) => "mono".to_string(),
+            Some(2) => "estéreo".to_string(),
+            Some(n) => n.to_string(),
+            None => String::new(),
+        },
         "stars" => stars_for(t.rating),
         "duration" => format!("{}:{:02}", t.duration_ms / 60_000, (t.duration_ms / 1_000) % 60),
         "codec" => t.codec.clone(),
@@ -5094,6 +5154,12 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         "album" => tracks.sort_by(|a, b| library::plegar(&a.album).cmp(&library::plegar(&b.album))),
         "game" => tracks.sort_by(|a, b| library::plegar(&a.game).cmp(&library::plegar(&b.game))),
         "console" => tracks.sort_by(|a, b| table_console_label(a).cmp(table_console_label(b))),
+        "albumartist" => {
+            tracks.sort_by(|a, b| library::plegar(&a.album_artist).cmp(&library::plegar(&b.album_artist)))
+        }
+        "disc" => tracks.sort_by_key(|t| t.disc_number.unwrap_or(0)),
+        "samplerate" => tracks.sort_by_key(|t| t.sample_rate.unwrap_or(0)),
+        "channels" => tracks.sort_by_key(|t| t.channels.unwrap_or(0)),
         "stars" => tracks.sort_by_key(|t| t.rating),
         "duration" => tracks.sort_by_key(|t| t.duration_ms),
         "codec" => tracks.sort_by(|a, b| a.codec.cmp(&b.codec)),
