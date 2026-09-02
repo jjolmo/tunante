@@ -280,6 +280,9 @@ export component AppWindow inherits Window {
     in property <string> faved-count;
     in property <string> now-stars;
     in-out property <int> now-rating;
+    in-out property <bool> names-fix-lengths: true;
+    in-out property <string> reclass-console-filter;
+    callback reclass-console-filter-changed(string);
     in-out property <int> sidebar-width;
     callback sidebar-resized(int);
     callback sidebar-play-all();
@@ -534,6 +537,9 @@ export component AppWindow inherits Window {
             total-count: root.total-count;
             faved-count: root.faved-count;
             now-stars: root.now-stars;
+            names-fix-lengths <=> root.names-fix-lengths;
+            reclass-console-filter <=> root.reclass-console-filter;
+            reclass-console-filter-changed(t) => { root.reclass-console-filter-changed(t); }
             sidebar-width <=> root.sidebar-width;
             sidebar-resized(w) => { root.sidebar-resized(w); }
             sidebar-play-all => { root.sidebar-play-all(); }

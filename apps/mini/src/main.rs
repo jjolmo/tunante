@@ -1393,15 +1393,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The catalog, "(automática)" first: an empty id means "let the rules
     // decide", which set_override turns into clearing the correction.
     {
-        let mut consoles = vec![ConsoleOption {
-            id: SharedString::from(""),
-            name: SharedString::from("(automática)"),
-        }];
-        consoles.extend(tunante_core::console::CONSOLES.iter().map(|c| ConsoleOption {
-            id: SharedString::from(c.id),
-            name: SharedString::from(c.name_es),
-        }));
-        ui.set_consoles(ModelRc::new(VecModel::from(consoles)));
+        ui.set_consoles(ModelRc::new(VecModel::from(consoles_for_filter(""))));
+    }
+    {
+        let weak = ui.as_weak();
+        ui.on_reclass_console_filter_changed(move |q| {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_consoles(ModelRc::new(VecModel::from(consoles_for_filter(&q))));
+        });
     }
     let sugg_model = Rc::new(VecModel::from(Vec::<SharedString>::new()));
     ui.set_reclass_suggestions(ModelRc::from(sugg_model.clone()));
@@ -1432,6 +1431,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or(folder);
             ui.set_reclass_heading(SharedString::from(folder_name));
             ui.set_reclass_scope_folder(true);
+            ui.set_reclass_console_filter(SharedString::new());
+            ui.set_consoles(ModelRc::new(VecModel::from(consoles_for_filter(""))));
             ui.set_reclass_console(SharedString::from(t.console_id.as_str()));
             ui.set_reclass_game(SharedString::from(t.game.as_str()));
             sugg.set_vec(Vec::new());
@@ -1721,6 +1722,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             ui.set_names_can_apply(false);
             ui.set_names_status(SharedString::from("Escribiendo…"));
+            // "Fix the lengths too" off: keep whatever is already timed, so
+            // the .m3u carries only the titles the user came for.
+            let lengths = if ui.get_names_fix_lengths() {
+                lengths
+            } else {
+                Vec::new()
+            };
             spawn_names_apply(
                 tx.clone(),
                 db_file.clone(),
@@ -2311,6 +2319,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_else(|| path.to_string());
             ui.set_reclass_heading(SharedString::from(folder_name));
             ui.set_reclass_scope_folder(true);
+            ui.set_reclass_console_filter(SharedString::new());
+            ui.set_consoles(ModelRc::new(VecModel::from(consoles_for_filter(""))));
             ui.set_reclass_console(SharedString::from(t.console_id.as_str()));
             ui.set_reclass_game(SharedString::from(t.game.as_str()));
             sugg.set_vec(Vec::new());
@@ -6280,6 +6290,56 @@ fn shortcut_combo(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<Stri
     }
     combo.push_str(&name);
     Some(combo)
+}
+
+/// The console dropdown, filtered and ranked: exact name, prefix, a codec
+/// the machine owns (`spc` → SNES), then substring — the old type-ahead's
+/// order, over a list instead of a field.
+fn consoles_for_filter(q: &str) -> Vec<ConsoleOption> {
+    let auto = ConsoleOption {
+        id: SharedString::from(""),
+        name: SharedString::from("(automática)"),
+    };
+    let q = q.trim().to_lowercase();
+    if q.is_empty() {
+        let mut out = vec![auto];
+        out.extend(tunante_core::console::CONSOLES.iter().map(|c| ConsoleOption {
+            id: SharedString::from(c.id),
+            name: SharedString::from(c.name_es),
+        }));
+        return out;
+    }
+    let mut ranked: Vec<(u8, &tunante_core::console::Console)> = tunante_core::console::CONSOLES
+        .iter()
+        .filter_map(|c| {
+            let name = c.name_es.to_lowercase();
+            let name_en = c.name.to_lowercase();
+            let codec = c
+                .codecs
+                .iter()
+                .chain(c.weak_codecs.iter())
+                .any(|e| *e == q);
+            let rank = if name == q || name_en == q {
+                0
+            } else if name.starts_with(&q) || name_en.starts_with(&q) {
+                1
+            } else if codec {
+                2
+            } else if name.contains(&q) || name_en.contains(&q) {
+                3
+            } else {
+                return None;
+            };
+            Some((rank, c))
+        })
+        .collect();
+    ranked.sort_by_key(|(r, c)| (*r, tunante_core::console::display_order(c.id)));
+    let mut out = vec![auto];
+    out.extend(ranked.into_iter().map(|(_, c)| ConsoleOption {
+        id: SharedString::from(c.id),
+        name: SharedString::from(c.name_es),
+    }));
+    out
 }
 
 fn vgm_loops_label(v: Option<f64>) -> String {

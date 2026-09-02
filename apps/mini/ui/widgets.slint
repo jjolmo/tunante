@@ -1339,6 +1339,8 @@ export component ReclassifySheet inherits Rectangle {
     in-out property <bool> scope-folder: true;
     in property <[ConsoleOption]> consoles;
     in-out property <string> selected-console;
+    in-out property <string> console-filter;
+    callback console-filter-changed(string);
     in-out property <string> game-text;
     in property <[string]> suggestions;
     callback game-edited(string);
@@ -1401,8 +1403,36 @@ export component ReclassifySheet inherits Rectangle {
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                     }
+                    // Type a name or a codec: "spc" narrows to SNES. Rust
+                    // ranks and filters; the box just reports keystrokes.
                     Rectangle {
-                        height: 280px;
+                        height: 30px;
+                        background: Theme.bg-tertiary;
+                        border-radius: Theme.radius;
+                        HorizontalLayout {
+                            padding-left: 8px;
+                            padding-right: 8px;
+                            cflt := TextInput {
+                                color: Theme.text-primary;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                                single-line: true;
+                                text <=> root.console-filter;
+                                edited => { root.console-filter-changed(self.text); }
+                            }
+                        }
+                        if root.console-filter == "" && !cflt.has-focus: HorizontalLayout {
+                            padding-left: 8px;
+                            Text {
+                                text: "filtra: nombre o códec (spc…)";
+                                color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                    Rectangle {
+                        height: 246px;
                         background: Theme.bg-tertiary;
                         border-radius: Theme.radius;
                         ListView {
@@ -1833,6 +1863,7 @@ export component TrackNamesSheet inherits Rectangle {
     in property <string> status;
     in property <[string]> names;
     in property <bool> can-apply;
+    in-out property <bool> fix-lengths: true;
     callback apply();
     callback cancelled();
 
@@ -1862,6 +1893,32 @@ export component TrackNamesSheet inherits Rectangle {
                 color: Theme.text-muted;
                 font-size: Theme.font-body;
                 wrap: word-wrap;
+            }
+
+            // The old dialog's "Fix the lengths too": off keeps whatever
+            // the database already timed, on takes Zophar's numbers.
+            Rectangle {
+                height: 34px;
+                border-radius: Theme.radius;
+                background: fxl.has-hover ? Theme.bg-hover : transparent;
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    Text {
+                        text: "Arreglar también las duraciones";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    Text {
+                        text: root.fix-lengths ? "sí" : "no";
+                        color: root.fix-lengths ? Theme.accent : Theme.text-muted;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                    }
+                }
+                fxl := TouchArea { clicked => { root.fix-lengths = !root.fix-lengths; } }
             }
 
             ListView {
