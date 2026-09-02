@@ -13,25 +13,42 @@ use std::path::Path;
 pub fn reveal(path: &Path) {
     let path = path.to_path_buf();
     std::thread::spawn(move || {
-        let ok = std::process::Command::new("busctl")
-            .args([
-                "--user",
-                "call",
-                "org.freedesktop.FileManager1",
-                "/org/freedesktop/FileManager1",
-                "org.freedesktop.FileManager1",
-                "ShowItems",
-                "ass",
-                "1",
-                &file_uri(&path),
-                "",
-            ])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-        if !ok {
+        #[cfg(target_os = "linux")]
+        {
+            let ok = std::process::Command::new("busctl")
+                .args([
+                    "--user",
+                    "call",
+                    "org.freedesktop.FileManager1",
+                    "/org/freedesktop/FileManager1",
+                    "org.freedesktop.FileManager1",
+                    "ShowItems",
+                    "ass",
+                    "1",
+                    &file_uri(&path),
+                    "",
+                ])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if !ok {
+                if let Some(folder) = path.parent() {
+                    let _ = std::process::Command::new("xdg-open").arg(folder).spawn();
+                }
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            // Explorer's own reveal-with-selection. The comma is part of the
+            // switch; no space after it, or the path becomes a second arg.
+            let _ = std::process::Command::new("explorer")
+                .arg(format!("/select,{}", path.display()))
+                .spawn();
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        {
             if let Some(folder) = path.parent() {
-                let _ = std::process::Command::new("xdg-open").arg(folder).spawn();
+                let _ = std::process::Command::new("open").arg(folder).spawn();
             }
         }
     });
@@ -40,6 +57,7 @@ pub fn reveal(path: &Path) {
 /// A file:// URI with the minimum encoding file managers require: spaces and
 /// the URI-reserved bytes, nothing clever. Non-UTF-8 paths percent-encode
 /// byte by byte, which is what the spec wants anyway.
+#[cfg(unix)]
 fn file_uri(path: &Path) -> String {
     use std::os::unix::ffi::OsStrExt;
     let mut uri = String::from("file://");
@@ -57,6 +75,7 @@ fn file_uri(path: &Path) -> String {
 /// Write the launcher entry and its icon under the user's XDG dirs, pointing
 /// at the binary that is running right now. Idempotent: run it again after
 /// moving the install and the entry follows.
+#[cfg(target_os = "linux")]
 pub fn make_desktop_entry() -> Result<(), String> {
     let home = std::env::var("HOME").map_err(|_| "sin $HOME".to_string())?;
     let data = std::env::var("XDG_DATA_HOME")
@@ -96,7 +115,13 @@ pub fn make_desktop_entry() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(target_os = "linux"))]
+pub fn make_desktop_entry() -> Result<(), String> {
+    Err("solo tiene sentido en Linux".to_string())
+}
+
 #[cfg(test)]
+#[cfg(unix)]
 mod tests {
     use super::file_uri;
     use std::path::Path;
