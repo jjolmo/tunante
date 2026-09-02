@@ -95,7 +95,13 @@
 >       Solo el Sonando grande lo respeta; las miniaturas siguen recortadas.
 >       «Limpiar caché de carátulas» llama al `cache::clear()` que
 >       tunante-art ya traía y reporta cuántos ficheros se fueron.
-> - [ ] Carpetas pinneadas (la BD las soporta desde siempre).
+> - [x] Carpetas pinneadas — la BD las soportaba desde siempre; ahora el
+>       sidebar por fin pregunta. «Fijar carpeta» en el menú contextual de la
+>       tabla, sección «Carpetas» en el sidebar (solo aparece si hay alguna),
+>       click acota la tabla a ese subárbol (con frontera: /a/b no atrapa
+>       /a/bc, y el sufijo #n no confunde — test propio), ✕ al pasar el
+>       ratón la despinnea (y ensancha la tabla si era la activa). Pistas/
+>       Favoritos vuelven a la biblioteca entera. Verificado en pantalla.
 >
 > **Integración de escritorio:**
 > - [x] Tray: click izquierdo mostrar/ocultar — resultó estar cableado de

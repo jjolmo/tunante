@@ -63,6 +63,8 @@ export component TrackTable inherits Rectangle {
     callback add-to-playlist(int);
     /// Reveal the row's file in the system file manager.
     callback open-folder(int);
+    /// Pin the row's folder to the sidebar.
+    callback pin-folder(int);
     /// Open the metadata editor on this row.
     callback edit-requested(int);
     /// Open the reclassify sheet on this row.
@@ -265,6 +267,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Abrir carpeta";
                             activated => { root.open-folder(i); }
+                        }
+                        MenuItem {
+                            title: "Fijar carpeta";
+                            activated => { root.pin-folder(i); }
                         }
                     }
                 }
