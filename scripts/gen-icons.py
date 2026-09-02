@@ -31,8 +31,11 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "assets" / "logo.png"
+# The tray wants a silhouette, not a picture. See the tray section of build().
+TRAY_SOURCE = ROOT / "assets" / "system.svg"
 
 MINI = ROOT / "apps/mini/dist/icons"
+TRAY = MINI / "tray"
 ANDROID = ROOT / "apps/android/app/src/main/res"
 
 # Android ships one bitmap per density. The launcher bitmap is 48dp and the
@@ -92,16 +95,101 @@ def png(img: Image.Image) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)
     return buf.getvalue()
-def build(src: Image.Image) -> dict[Path, bytes]:
-    """Every output file and its bytes.
 
+
+def _glyph(source: Path) -> tuple[str, str, str]:
+    """The drawing, its viewBox, and the paint rules that must travel with it.
+
+    `fill-rule` is the one that bites. Inkscape puts it on the wrapping <g>,
+    not on the paths, and a frame drawn as an outer rectangle plus an inner one
+    only has a hole in it under `evenodd`. Extract the paths and leave that
+    behind and the icon becomes a solid black square — which is exactly what
+    the first version of this produced.
+    """
+    import re
+    raw = source.read_text()
+    body = "".join(m.group(0) for m in re.finditer(r"<path\b[^>]*/>", raw))
+    if not body:
+        sys.exit(f"{source}: found no self-closing <path>; cannot build a glyph")
+    body = re.sub(r'\s(?:fill|style)="[^"]*"', "", body)
+    box = re.search(r'viewBox="([^"]+)"', raw)
+    rules = " ".join(
+        f'{name}="{m.group(1)}"'
+        for name in ("fill-rule", "clip-rule")
+        for m in [re.search(rf'{name}="([^"]+)"', raw)]
+        if m
+    )
+    return body, (box.group(1) if box else "0 0 100 100"), rules
+
+
+def symbolic_svg(source: Path) -> bytes:
+    """A monochrome glyph in the form both toolkits recolour.
+
+    GTK wraps the document and injects `rect,circle,path {{ fill: <colour> }}`
+    before rendering (`gtk_icon_info_load_symbolic`); the icon must be an SVG
+    whose name ends in `-symbolic` or GTK never takes that path. Plasma
+    recolours through its own stylesheet, keyed on the class
+    `ColorScheme-Text` with `fill="currentColor"` underneath. So: the class
+    for Plasma, `currentColor` for the cascade, the geometry untouched for
+    GTK, and anything that understands neither still gets a valid
+    black-on-transparent SVG.
+    """
+    body, view, rules = _glyph(source)
+    doc = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="%s" width="16" height="16">\n'
+        '  <defs><style id="current-color-scheme" type="text/css">\n'
+        "    .ColorScheme-Text { color: #000000; }\n"
+        "  </style></defs>\n"
+        '  <g class="ColorScheme-Text" fill="currentColor" %s>%s</g>\n'
+        "</svg>\n"
+    ) % (view, rules, body)
+    return doc.encode()
+
+
+def mono(source: Path, n: int, white: bool) -> bytes:
+    """A flat render of the glyph, for the panel styles that cannot recolour.
+
+    Linux panels do not touch a pixmap, so somebody picks the colour; white,
+    because panels are overwhelmingly dark, is the guess wrong least often.
+    """
+    import subprocess
+    colour = "#ffffff" if white else "#000000"
+    body, view, rules = _glyph(source)
+    flat = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{view}" '
+        f'width="{n}" height="{n}" fill="{colour}" {rules}>{body}</svg>'
+    )
+    out = subprocess.run(
+        ["magick", "-background", "none", "svg:-", "-resize", f"{n}x{n}", "png:-"],
+        input=flat.encode(), capture_output=True,
+    )
+    if out.returncode != 0:
+        sys.exit("magick failed: " + out.stderr.decode()[:400])
+    return out.stdout
+def build(src: Image.Image, rasterise: bool = True) -> dict[Path, bytes]:
+    """Every output file and its bytes. Nothing is written here.
+
+    `rasterise=False` skips the outputs that need an external renderer.
+    `--check` passes it: mono() shells out to ImageMagick, whose SVG bytes
+    are not reproducible across machines — `tray/source.sha256` is what
+    proves those files current instead.
     """
     out: dict[Path, bytes] = {}
 
-    # The Tauri desktop's icon set (ICO, ICNS, favicon, the three tray
-    # renderings and their SVG plumbing) left with the app that used it —
-    # fase 4 of docs/plan-desktop-slint.md. The Slint player's tray decodes
-    # the plain 128px PNG below.
+    # The Tauri desktop's icon set (ICO, ICNS, favicon, the macOS/Windows
+    # tray renderings) left with the app that used it — fase 4 of
+    # docs/plan-desktop-slint.md. What returned is the Linux tray pair
+    # below: the app's styles row needs a recolourable name and a white
+    # pixmap beside the pixel-art logo.
+
+    # --- tray (Linux) ------------------------------------------------------
+    if TRAY_SOURCE.is_file():
+        out[TRAY / "tunante-symbolic.svg"] = symbolic_svg(TRAY_SOURCE)
+        out[TRAY / "source.sha256"] = (
+            hashlib.sha256(TRAY_SOURCE.read_bytes()).hexdigest() + "\n"
+        ).encode()
+        if rasterise:
+            out[TRAY / "mono-white.png"] = mono(TRAY_SOURCE, 32, white=True)
 
     # --- mini ------------------------------------------------------------
     for n in (48, 64, 128, 256, 512):
@@ -127,7 +215,7 @@ def main() -> int:
     args = ap.parse_args()
 
     src = load()
-    planned = build(src)
+    planned = build(src, rasterise=not args.check)
 
     # So the pre-commit hook can stage exactly what was written without keeping
     # its own copy of the list. The first version had one, and the moment the
@@ -138,7 +226,14 @@ def main() -> int:
             print(path.relative_to(ROOT))
         return 0
 
+    # Produced by an external rasteriser, so its bytes are not reproducible
+    # across machines. `source.sha256`, generated beside it, is what proves
+    # it current.
+    unstable = {TRAY / "mono-white.png"}
+
     stale = []
+    if args.check:
+        stale += [p for p in sorted(unstable) if not p.is_file()]
     for path, data in sorted(planned.items()):
         old = path.read_bytes() if path.is_file() else None
         # Compared by content, not by mtime: a checkout touches every file, and

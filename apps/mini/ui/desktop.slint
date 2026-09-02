@@ -239,6 +239,8 @@ export component DesktopShell inherits Rectangle {
     in property <string> global-shortcuts-label;
     in property <bool> global-shortcuts-on;
     callback toggle-global-shortcuts();
+    in property <string> tray-style-label;
+    callback cycle-tray-style();
     in property <bool> update-skippable;
     callback skip-update();
     in property <string> desktop-entry-label;
@@ -536,6 +538,8 @@ export component DesktopShell inherits Rectangle {
                     global-shortcuts-label: root.global-shortcuts-label;
                     global-shortcuts-on: root.global-shortcuts-on;
                     toggle-global-shortcuts => { root.toggle-global-shortcuts(); }
+                    tray-style-label: root.tray-style-label;
+                    cycle-tray-style => { root.cycle-tray-style(); }
                     update-skippable: root.update-skippable;
                     skip-update => { root.skip-update(); }
                     desktop-entry-label: root.desktop-entry-label;
