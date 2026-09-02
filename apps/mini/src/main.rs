@@ -870,6 +870,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     {
+        let (st, player_t, queue_model_t) = (
+            table_state.clone(),
+            player.clone(),
+            queue_model.clone(),
+        );
+        ui.on_table_play_next(move |index| {
+            let batch = {
+                let st = st.borrow();
+                let i = index as usize;
+                if st.selected.len() > 1 && st.selected.contains(&i) {
+                    let mut idx: Vec<usize> = st.selected.iter().copied().collect();
+                    idx.sort_unstable();
+                    idx.iter().filter_map(|&j| st.tracks.get(j).cloned()).collect()
+                } else {
+                    st.tracks.get(i).cloned().into_iter().collect::<Vec<_>>()
+                }
+            };
+            if batch.is_empty() {
+                return;
+            }
+            if let Some(p) = player_t.borrow_mut().as_mut() {
+                p.play_next(batch);
+                refresh_queue(p, &queue_model_t);
+            }
+        });
+    }
+    {
         let st = table_state.clone();
         ui.on_table_open_folder(move |index| {
             let path = {
@@ -1593,7 +1620,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = p.next();
                     push_now_playing(&ui, p);
                 }
-                queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+                refresh_queue(p, &queue_model);
             }
         });
     }
@@ -1601,8 +1628,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (player, queue_model) = (player.clone(), queue_model.clone());
         ui.on_queue_reordered(move |from, to| {
             if let Some(p) = player.borrow_mut().as_mut() {
-                p.reorder(from.max(0) as usize, to.max(0) as usize);
-                queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+                let (from, to) = (from.max(0) as usize, to.max(0) as usize);
+                let u = p.user_queue().len();
+                // Two sections, two orders; a drag across the border has no
+                // meaning and does nothing.
+                if from < u && to < u {
+                    p.move_user(from, to);
+                } else if from >= u && to >= u {
+                    p.reorder(from - u, to - u);
+                }
+                refresh_queue(p, &queue_model);
             }
         });
     }
@@ -1624,8 +1659,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (player, queue_model) = (player.clone(), queue_model.clone());
         ui.on_queue_removed(move |index| {
             if let Some(p) = player.borrow_mut().as_mut() {
-                p.remove_from_queue(index as usize);
-                queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+                let i = index.max(0) as usize;
+                let u = p.user_queue().len();
+                if i < u {
+                    p.dequeue_user(i);
+                } else {
+                    p.remove_from_queue(i - u);
+                }
+                refresh_queue(p, &queue_model);
             }
         });
     }
@@ -1637,9 +1678,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_queue_activated(move |index| {
             let Some(ui) = weak.upgrade() else { return };
             if let Some(p) = player.borrow_mut().as_mut() {
-                if p.play_index(index as usize).is_ok() {
+                let i = index.max(0) as usize;
+                let u = p.user_queue().len();
+                let ok = if i < u {
+                    p.play_user(i).is_ok()
+                } else {
+                    p.play_index(i - u).is_ok()
+                };
+                if ok {
                     push_now_playing(&ui, p);
-                    mark_playing(&queue_model, index as usize);
+                    refresh_queue(p, &queue_model);
                 }
             }
         });
@@ -2796,7 +2844,7 @@ fn enqueue_playlist(
     }
     if let Some(p) = player.borrow_mut().as_mut() {
         p.enqueue_many(tracks);
-        queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+        refresh_queue(p, &queue_model);
     }
 }
 
@@ -2930,7 +2978,7 @@ fn enqueue_all(
             let _ = p.next();
             push_now_playing(ui, p);
         }
-        queue_model.set_vec(to_queue_rows(p.queue().tracks(), p.current_index()));
+        refresh_queue(p, &queue_model);
     }
 }
 
@@ -3292,10 +3340,35 @@ fn mark_playing(model: &Rc<VecModel<QueueRow>>, index: usize) {
 /// Asks the queue for the index rather than hunting for a matching title: two
 /// tracks in an album can share a title, and a set of subsongs from one file
 /// routinely do.
+/// Rebuild the queue pane: the user-queued "play next" rows first, marked
+/// with », then the context. Rebuilt whole rather than marked in place — the
+/// user section shrinks every time a row of it plays, so a marker alone
+/// cannot keep the pane honest.
+fn refresh_queue(p: &player::Player, model: &VecModel<QueueRow>) {
+    let mut rows: Vec<QueueRow> = p
+        .user_queue()
+        .iter()
+        .map(|t| QueueRow {
+            title: SharedString::from(format!(
+                "» {}",
+                if t.title.is_empty() { t.path.as_str() } else { t.title.as_str() }
+            )),
+            subtitle: SharedString::from("a continuación"),
+            playing: false,
+        })
+        .collect();
+    // While a user-queued track sounds, the context marker must not claim it.
+    let marker = if p.playing_from_user_queue() {
+        None
+    } else {
+        p.current_index()
+    };
+    rows.extend(to_queue_rows(p.queue().tracks(), marker));
+    model.set_vec(rows);
+}
+
 fn sync_queue_marker(p: &player::Player, model: &Rc<VecModel<QueueRow>>) {
-    if let Some(i) = p.current_index() {
-        mark_playing(model, i);
-    }
+    refresh_queue(p, model);
 }
 
 /// How big a cover is ever drawn. Anything larger is memory nobody sees.
