@@ -15,6 +15,60 @@
 > columnas configurables, crossfade, tema claro, atajos globales, tooltip del
 > tray) — mejoras de la app única, ya no bloqueadores de nada.
 >
+> **Auditoría de paridad tras el vuelco** — contra el inventario completo del
+> desktop Tauri (79 comandos, 21 componentes) del día uno. Lo esencial está;
+> esto es lo que NO, ordenado por lo que se nota en el uso diario:
+>
+> **Se nota a diario:**
+> - [ ] **Multiselección y teclado en la tabla** (Ctrl+A, flechas, Enter,
+>       Delete, rango con Shift) y edición de metadatos por lote.
+> - [ ] **Columnas configurables** (el desktop tenía 17 con resize/reorder/
+>       show-hide; la tabla nueva trae 7 fijas) y orden persistido.
+> - [ ] **Cola de usuario «reproducir a continuación»** en la shell desktop
+>       (el encolar de mini va al contexto; core ya trae la cola prioritaria)
+>       + continue-from-queue.
+> - [ ] **Crossfade al cambiar de pista**: el orquestador de fades
+>       (`play_with_fade`, ~150 líneas) murió con services/ — recuperable de
+>       git; los mandos del engine (`set_player_volume_raw`,
+>       `bump_fade_generation`) siguen ahí esperándolo.
+> - [ ] **Arrastrar pistas a listas** y **soltar carpetas del SO** (spike 3:
+>       X11 sí, Wayland no).
+>
+> **Ajustes que el desktop tenía y mini no expone** (la maquinaria existe;
+> son filas de Ajustes):
+> - [ ] Prioridad de ratings (BD/tag/m3u) — se honra, no se edita.
+> - [ ] `loop_max_seconds` (tope de pistas infinitas) y fast-scan.
+> - [ ] Balance, stereo width y los matices de mono (compensación/phase-safe)
+>       — el engine los tiene, faltan las filas.
+> - [ ] Modos de encaje de carátula (5) y limpiar caché.
+> - [ ] Carpetas pinneadas (la BD las soporta desde siempre).
+>
+> **Integración de escritorio:**
+> - [ ] Tray: tooltip con la pista, scroll-volumen, click izquierdo
+>       mostrar/ocultar (el parche SNI está enlazado sin cablear),
+>       close-to-tray, estilos de icono.
+> - [ ] Atajos globales configurables + botones de ratón (evdev) — las teclas
+>       multimedia YA funcionan vía MPRIS en Linux; esto es lo custom.
+>       Spike 4, el único sin ejecutar.
+> - [ ] Tema claro / seguir al sistema (Theme.dark existe, nunca se conmuta).
+> - [ ] Ventana de debug (ring buffer de logs).
+> - [ ] Entrada .desktop desde la app y el reveal fino en el gestor de
+>       ficheros (Dolphin/Nautilus vía FileManager1; hoy xdg-open a secas).
+>
+> **Herramientas:**
+> - [ ] Descarga masiva de carátulas con preview → apply → cancel → **undo**
+>       (la lógica entera vive en tunante-art; falta la orquestación y su UI).
+> - [ ] Nombres de pistas para GBS/NSF/HES/KSS/AY/SAP (suggest/apply desde
+>       Zophar — tunante-art lo trae, falta el diálogo).
+> - [ ] Sugerencias online en reclasificación (Libretro/Steam) — el worker de
+>       carátulas ya da el patrón.
+> - [ ] Añadir ficheros sueltos (add_files) y skip-version en el updater.
+>
+> **Comportamiento distinto a conciencia (no bugs):** mini restaura la sesión
+> EN PAUSA (el desktop auto-reanudaba si cerraste hace <5 min); el editor de
+> metadatos escribe solo BD (el desktop igual); macOS se queda en v0.1.283.
+>
+>
 > Estado histórico de las fases, tal como se fue escribiendo:
 >
 > Estado: **Fase 0 casi cerrada y el punto 1 de la Fase 1 ejecutado el mismo
