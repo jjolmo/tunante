@@ -16,11 +16,16 @@
       Ajustes → Library la lista de carpetas monitorizadas con ✕ por carpeta
       (y toggle Watch individual). Mini solo sabe añadir. Grave: una carpeta
       equivocada es para siempre.
-- [ ] **Reordenar columnas arrastrando la cabecera** (umbral 5px, la arrastrada
-      a opacity .5, borde accent en el destino; mismo gesto sin umbral = click
-      para ordenar). Pedido explícitamente por el usuario.
-- [ ] **Redimensionar columnas** (handle de 5px, mínimo 40px, anchos
-      persistidos en `column_config` junto a visibilidad y orden).
+- [x] **Reordenar columnas arrastrando la cabecera** — el gesto del viejo:
+      umbral de 5px separa click-para-ordenar de arrastre, la arrastrada baja
+      a opacity .5, el destino se marca con borde accent, las celdas viajan
+      con su cabecera, y el orden guardado ES el orden de pintado (adiós al
+      corsé de catálogo; una columna re-activada llega al final).
+- [x] **Redimensionar columnas** — handle de 5px con cursor col-resize y
+      brillo accent, mínimo 40px, negocia el ancho con la vecina derecha
+      (el par conserva su suma: nada se desborda), matemática siempre desde
+      el snapshot del press (sin deriva), pesos persistidos como
+      `key:peso` dentro de mini.table_columns.
 - [ ] **El knob de loops para formatos streamed no viaja**: `probe_opts` pasa
       `vgm_loop_count: None`, así que la clave del viejo (0–20 loops para
       BRSTM/ADX/HCA…) ni se lee ni se expone en Ajustes. Las duraciones de esos

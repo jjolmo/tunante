@@ -826,20 +826,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Which columns, remembered. Unknown keys (an old build's) drop out.
         let mut st = table_state.borrow_mut();
         if let Ok(Some(saved)) = db.get_setting("mini.table_columns") {
-            let keys: Vec<String> = saved
-                .split(',')
-                .filter(|k| TABLE_COLUMNS.iter().any(|d| d.key == *k))
-                .map(str::to_string)
-                .collect();
+            // Each entry is `key` or `key:weight` — the saved order IS the
+            // display order, and a weight is a hand-resized width.
+            let mut keys = Vec::new();
+            for item in saved.split(',') {
+                let (key, weight) = match item.split_once(':') {
+                    Some((k, w)) => (k, w.parse::<f32>().ok()),
+                    None => (item, None),
+                };
+                if !TABLE_COLUMNS.iter().any(|d| d.key == key) {
+                    continue;
+                }
+                keys.push(key.to_string());
+                if let Some(w) = weight.filter(|w| *w > 0.0) {
+                    st.widths.insert(key.to_string(), w);
+                }
+            }
             if !keys.is_empty() {
-                st.visible = TABLE_COLUMNS
-                    .iter()
-                    .filter(|d| keys.iter().any(|k| k == d.key))
-                    .map(|d| d.key.to_string())
-                    .collect();
+                st.visible = keys;
             }
         }
-        rebuild_columns(&ui, &st.visible, &columns_model, &choices_model);
+        rebuild_columns(&ui, &st, &columns_model, &choices_model);
         ui.set_table_sort_col(
             st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
         );
@@ -900,19 +907,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     st.visible.retain(|k| *k != key);
                 }
             } else {
-                st.visible = TABLE_COLUMNS
-                    .iter()
-                    .filter(|d| st.visible.iter().any(|k| k == d.key) || d.key == key)
-                    .map(|d| d.key.to_string())
-                    .collect();
+                // Arrives at the end; the user can drag it where they want.
+                st.visible.push(key.clone());
             }
-            let _ = db_c.set_setting("mini.table_columns", &st.visible.join(","));
+            let _ = db_c.set_setting("mini.table_columns", &persist_columns(&st));
             // A hidden sort column falls back to the title rather than
             // pointing at nothing.
             if !st.visible.iter().any(|k| k == &st.sort_key) {
                 st.sort_key = "title".to_string();
             }
-            rebuild_columns(&ui, &st.visible, &cols, &choices);
+            rebuild_columns(&ui, &st, &cols, &choices);
             rebuild_table(&mut st, &model);
             ui.set_table_sort_col(
                 st.visible
@@ -921,6 +925,116 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map(|i| i as i32)
                     .unwrap_or(-1),
             );
+        });
+    }
+    {
+        let (db_c, st) = (db.clone(), table_state.clone());
+        let (cols, choices, model) = (
+            columns_model.clone(),
+            choices_model.clone(),
+            table_model.clone(),
+        );
+        let weak = ui.as_weak();
+        ui.on_table_column_moved(move |from, to| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            let (from, to) = (from as usize, to as usize);
+            if from >= st.visible.len() || to >= st.visible.len() {
+                return;
+            }
+            let key = st.visible.remove(from);
+            st.visible.insert(to, key);
+            let _ = db_c.set_setting("mini.table_columns", &persist_columns(&st));
+            rebuild_columns(&ui, &st, &cols, &choices);
+            // The cells travel with their headers.
+            rebuild_table(&mut st, &model);
+            ui.set_table_sort_col(
+                st.visible
+                    .iter()
+                    .position(|k| k == &st.sort_key)
+                    .map(|i| i as i32)
+                    .unwrap_or(-1),
+            );
+        });
+    }
+
+    // Resize: the drag reports a cumulative offset from the press, so the
+    // maths always starts from the weights snapshotted at the press — never
+    // incremental, which is the difference between a steady column edge and
+    // one that drifts under the pointer.
+    let resize_base: Rc<RefCell<Option<(usize, f32, f32)>>> = Rc::new(RefCell::new(None));
+    {
+        let (st, base) = (table_state.clone(), resize_base.clone());
+        ui.on_table_column_resize_started(move |ci| {
+            let st = st.borrow();
+            let ci = ci as usize;
+            if ci + 1 >= st.visible.len() {
+                // The last column has no right neighbour to trade width
+                // with; its edge is the table's edge.
+                *base.borrow_mut() = None;
+                return;
+            }
+            let weight = |k: &str| {
+                st.widths.get(k).copied().unwrap_or_else(|| {
+                    TABLE_COLUMNS
+                        .iter()
+                        .find(|d| d.key == k)
+                        .map(|d| d.fraction)
+                        .unwrap_or(1.0)
+                })
+            };
+            *base.borrow_mut() =
+                Some((ci, weight(&st.visible[ci]), weight(&st.visible[ci + 1])));
+        });
+    }
+    {
+        let (st, base, cols) = (table_state.clone(), resize_base.clone(), columns_model.clone());
+        ui.on_table_column_resized(move |_ci, dx_px, total_px| {
+            let Some((ci, w_a, w_b)) = *base.borrow() else { return };
+            if total_px <= 0.0 {
+                return;
+            }
+            let mut st = st.borrow_mut();
+            // Weights and shares are proportional: the sum of all weights
+            // maps onto total_px, so a pixel delta converts through it.
+            let total_weight: f32 = st
+                .visible
+                .iter()
+                .map(|k| {
+                    st.widths.get(k).copied().unwrap_or_else(|| {
+                        TABLE_COLUMNS
+                            .iter()
+                            .find(|d| d.key == k)
+                            .map(|d| d.fraction)
+                            .unwrap_or(1.0)
+                    })
+                })
+                .sum();
+            // 40px minimum, the old desktop's floor.
+            let min_w = 40.0 / total_px * total_weight;
+            let pair = w_a + w_b;
+            let new_a = (w_a + dx_px / total_px * total_weight)
+                .clamp(min_w, (pair - min_w).max(min_w));
+            let new_b = pair - new_a;
+            let (key_a, key_b) = (st.visible[ci].clone(), st.visible[ci + 1].clone());
+            st.widths.insert(key_a, new_a);
+            st.widths.insert(key_b, new_b);
+            // Live: only the two touched fractions move, in place.
+            for (i, w) in [(ci, new_a), (ci + 1, new_b)] {
+                if let Some(mut c) = cols.row_data(i) {
+                    c.fraction = w / total_weight.max(0.001);
+                    cols.set_row_data(i, c);
+                }
+            }
+        });
+    }
+    {
+        let (db_c, st, base) = (db.clone(), table_state.clone(), resize_base.clone());
+        ui.on_table_column_resize_done(move || {
+            if base.borrow_mut().take().is_some() {
+                let st = st.borrow();
+                let _ = db_c.set_setting("mini.table_columns", &persist_columns(&st));
+            }
         });
     }
     {
@@ -4181,8 +4295,13 @@ struct TableState {
     sort_key: String,
     asc: bool,
     filter: String,
-    /// Which catalog columns are visible, in catalog order.
+    /// Which catalog columns are visible, in DISPLAY order — the user can
+    /// drag headers around, so the vector's order is the table's order.
     visible: Vec<String>,
+    /// Per-key width weights (same unit as ColumnDef.fraction), only for
+    /// columns the user has resized by hand; everything else keeps its
+    /// default. Persisted as `key:weight` in mini.table_columns.
+    widths: std::collections::HashMap<String, f32>,
     /// Narrowed to rating > 0 — the sidebar's Favoritos entry.
     faved: bool,
     /// Narrowed to one pinned folder's subtree; None is the whole library.
@@ -4207,6 +4326,7 @@ impl Default for TableState {
             asc: true,
             filter: String::new(),
             visible: DEFAULT_COLUMNS.split(',').map(str::to_string).collect(),
+            widths: std::collections::HashMap::new(),
             faved: false,
             folder: None,
             built: false,
@@ -4698,23 +4818,40 @@ fn cell_for(t: &tunante_core::db::models::Track, key: &str) -> String {
 
 /// Rebuild the column models the UI paints from: the visible subset with
 /// fractions normalised to sum 1, and the chooser with its ticks.
+/// The `mini.table_columns` value: keys in display order, each carrying its
+/// hand-set weight when there is one.
+fn persist_columns(st: &TableState) -> String {
+    st.visible
+        .iter()
+        .map(|k| match st.widths.get(k) {
+            Some(w) => format!("{k}:{w:.4}"),
+            None => k.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
 fn rebuild_columns(
     ui: &AppWindow,
-    visible: &[String],
+    st: &TableState,
     columns_model: &VecModel<TableColumn>,
     choices_model: &VecModel<ColumnChoice>,
 ) {
-    let defs: Vec<&ColumnDef> = TABLE_COLUMNS
+    // The visible vector's order is the display order — headers are
+    // draggable — and a hand-resized column keeps its weight.
+    let defs: Vec<&ColumnDef> = st
+        .visible
         .iter()
-        .filter(|d| visible.iter().any(|k| k == d.key))
+        .filter_map(|k| TABLE_COLUMNS.iter().find(|d| d.key == *k))
         .collect();
-    let total: f32 = defs.iter().map(|d| d.fraction).sum();
+    let weight = |d: &ColumnDef| st.widths.get(d.key).copied().unwrap_or(d.fraction);
+    let total: f32 = defs.iter().map(|d| weight(d)).sum();
     columns_model.set_vec(
         defs.iter()
             .map(|d| TableColumn {
                 key: SharedString::from(d.key),
                 label: SharedString::from(d.label),
-                fraction: d.fraction / total.max(0.001),
+                fraction: weight(d) / total.max(0.001),
                 right: d.right,
             })
             .collect::<Vec<_>>(),
@@ -4725,7 +4862,7 @@ fn rebuild_columns(
             .map(|d| ColumnChoice {
                 key: SharedString::from(d.key),
                 label: SharedString::from(d.label),
-                shown: visible.iter().any(|k| k == d.key),
+                shown: st.visible.iter().any(|k| k == d.key),
             })
             .collect::<Vec<_>>(),
     );
