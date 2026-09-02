@@ -236,6 +236,9 @@ export component DesktopShell inherits Rectangle {
     in property <string> mouse-buttons-label;
     in property <bool> mouse-buttons-on;
     callback toggle-mouse-buttons();
+    in property <string> global-shortcuts-label;
+    in property <bool> global-shortcuts-on;
+    callback toggle-global-shortcuts();
     in property <bool> update-skippable;
     callback skip-update();
     in property <string> desktop-entry-label;
@@ -530,6 +533,9 @@ export component DesktopShell inherits Rectangle {
                     mouse-buttons-label: root.mouse-buttons-label;
                     mouse-buttons-on: root.mouse-buttons-on;
                     toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
+                    global-shortcuts-label: root.global-shortcuts-label;
+                    global-shortcuts-on: root.global-shortcuts-on;
+                    toggle-global-shortcuts => { root.toggle-global-shortcuts(); }
                     update-skippable: root.update-skippable;
                     skip-update => { root.skip-update(); }
                     desktop-entry-label: root.desktop-entry-label;

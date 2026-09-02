@@ -36,6 +36,25 @@ fn tooltip_cell() -> std::sync::Arc<std::sync::Mutex<String>> {
         .clone()
 }
 
+/// Scroll notches over the tray icon, accumulated on the GTK thread and
+/// swapped out by the UI timer. Notches rather than raw deltas: the patch
+/// normalises to ±1 per click, and volume wants clicks.
+#[cfg(all(target_os = "linux", feature = "tray"))]
+static SCROLL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+/// How many notches since last asked; positive is up. Zero when the tray
+/// feature is off, which keeps the caller ignorant of platforms.
+pub fn take_scroll() -> i32 {
+    #[cfg(all(target_os = "linux", feature = "tray"))]
+    {
+        SCROLL.swap(0, std::sync::atomic::Ordering::Relaxed)
+    }
+    #[cfg(not(all(target_os = "linux", feature = "tray")))]
+    {
+        0
+    }
+}
+
 /// Tell the tray what to say. Cheap: one mutexed string write.
 #[cfg(all(target_os = "linux", feature = "tray"))]
 pub fn set_tooltip(text: &str) {
@@ -96,6 +115,13 @@ pub fn spawn() {
             .with_menu(Box::new(menu))
             .with_icon(icon)
             .build();
+        // The patch delivers AppIndicator scroll-event here, on this GTK
+        // thread; the atomic carries it across.
+        tray_icon::set_scroll_handler(|_id, delta| {
+            let notch = if delta > 0.0 { 1 } else { -1 };
+            SCROLL.fetch_add(notch, std::sync::atomic::Ordering::Relaxed);
+        });
+
         match tray {
             Ok(tray) => {
                 // The tooltip follows the track. Polled at 1 Hz on this
