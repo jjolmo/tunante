@@ -69,7 +69,7 @@ impl Mode {
 }
 
 /// "1 pista" y no "1 pistas".
-fn pistas(n: usize) -> String {
+pub fn pistas(n: usize) -> String {
     if n == 1 { "1 pista".to_string() } else { format!("{n} pistas") }
 }
 
@@ -157,6 +157,48 @@ impl Tree {
         if !self.expanded.remove(path) {
             self.expanded.insert(path.to_string());
         }
+    }
+
+    /// The expanded set, for persisting — the old desktop remembered it
+    /// under files_expanded_folders and so does this one.
+    pub fn expanded_list(&self) -> Vec<String> {
+        let mut v: Vec<String> = self.expanded.iter().cloned().collect();
+        v.sort();
+        v
+    }
+
+    pub fn set_expanded_paths(&mut self, paths: impl IntoIterator<Item = String>) {
+        self.expanded.extend(paths);
+    }
+
+    /// Expand a folder AND every ancestor, so a search hit becomes visible
+    /// in the tree instead of silently expanded under a collapsed parent.
+    pub fn reveal(&mut self, path: &str) {
+        let mut p = std::path::Path::new(path);
+        loop {
+            self.expanded.insert(p.to_string_lossy().to_string());
+            let Some(parent) = p.parent() else { break };
+            if self.roots.iter().any(|r| r == p) {
+                break;
+            }
+            p = parent;
+        }
+    }
+
+    /// Folders whose name matches, flat and capped — the old desktop's
+    /// «Find folder…» box, riding the same query `albums` uses.
+    pub fn matching_folders(&self, db: &Database, q: &str, cap: usize) -> Vec<(String, usize)> {
+        let q = plegar(q);
+        self.albums(db)
+            .into_iter()
+            .filter(|(path, _)| {
+                std::path::Path::new(path)
+                    .file_name()
+                    .map(|n| plegar(&n.to_string_lossy()).contains(&q))
+                    .unwrap_or(false)
+            })
+            .take(cap)
+            .collect()
     }
 
     /// What a folder holds, from the cache when we have already looked.
@@ -371,15 +413,31 @@ impl Tree {
     }
 
     fn push_folder(&self, db: &Database, dir: &Path, depth: usize, out: &mut Vec<Row>) {
-        let key = dir.to_string_lossy().to_string();
-        let expanded = self.is_expanded(&key);
-
-        let label = dir
+        let mut key = dir.to_string_lossy().to_string();
+        let mut label = dir
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| key.clone());
 
-        let FolderContents { tracks, total, subdirs } = self.contents(db, &key, dir);
+        let mut contents = self.contents(db, &key, dir);
+        // Single-child chains compact into one row, VS Code style: a/b/c
+        // instead of three clicks through folders that hold nothing but the
+        // next folder.
+        let mut dir = dir.to_path_buf();
+        while contents.tracks.is_empty() && contents.subdirs.len() == 1 {
+            let only = contents.subdirs[0].clone();
+            let Some(name) = only.file_name().map(|n| n.to_string_lossy().to_string()) else {
+                break;
+            };
+            label = format!("{label}/{name}");
+            key = only.to_string_lossy().to_string();
+            contents = self.contents(db, &key, &only);
+            dir = only;
+        }
+        let _ = &dir;
+        let expanded = self.is_expanded(&key);
+
+        let FolderContents { tracks, total, subdirs } = contents;
 
         out.push(Row {
             label,

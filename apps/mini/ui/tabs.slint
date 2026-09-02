@@ -914,6 +914,10 @@ export component LibraryTab inherits Rectangle {
     property <string> menu-name;
     property <bool> menu-is-folder;
     callback enqueue-path(string, bool);
+    callback play-path(string);
+    callback reclassify-path(string);
+    callback pin-path(string);
+    callback reveal-path(string);
     // Focus the search field as soon as this tab is built. Only used by the
     // spike: it makes "does the on-screen keyboard come up?" answerable over
     // ssh, without needing someone to put a finger on the glass.
@@ -1500,6 +1504,43 @@ export component LibraryTab inherits Rectangle {
                     clicked => {
                         root.pending-path = root.menu-path;
                         root.pending-deep = false;
+                        root.menu-path = "";
+                    }
+                }
+
+                if root.menu-is-folder: Rectangle { height: 1px; background: Theme.border; }
+
+                // The old desktop's folder menu, completed: play it, file it
+                // under the right game, keep it at hand, or see it outside.
+                if root.menu-is-folder: MenuAction {
+                    glyph: "▶";
+                    label: "Reproducir carpeta";
+                    clicked => {
+                        root.play-path(root.menu-path);
+                        root.menu-path = "";
+                    }
+                }
+                if root.menu-is-folder: MenuAction {
+                    glyph: "◈";
+                    label: "Reclasificar…";
+                    clicked => {
+                        root.reclassify-path(root.menu-path);
+                        root.menu-path = "";
+                    }
+                }
+                if root.menu-is-folder: MenuAction {
+                    glyph: "📌";
+                    label: "Fijar en el sidebar";
+                    clicked => {
+                        root.pin-path(root.menu-path);
+                        root.menu-path = "";
+                    }
+                }
+                if root.menu-is-folder: MenuAction {
+                    glyph: "🗀";
+                    label: "Abrir en el gestor de archivos";
+                    clicked => {
+                        root.reveal-path(root.menu-path);
                         root.menu-path = "";
                     }
                 }

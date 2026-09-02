@@ -56,7 +56,9 @@
       juego · álbum y la ruta — todo lo que la elipsis esconde.
 - [x] Menú contextual de la cabecera: click derecho lista columnas con ✓
       (el multi-tick sin cerrar del viejo lo conserva el ⚙).
-- [ ] «Quitar de la cola» / «Quitar de la lista» contextuales según contexto.
+- [~] «Quitar de la lista»: existe donde las listas viven (la hoja de la
+      vista Listas); la tabla no muestra listas, así que ahí no significa
+      nada. «Quitar de la cola» ya está en su menú.
 - [ ] Scroll automático a la pista sonando al restaurar la ventana.
 
 **Sidebar**
@@ -82,12 +84,19 @@
 - [ ] Reordenar playlists arrastrando.
 
 **Árbol / archivos**
-- [ ] Buscador de carpetas («Find folder...», resultados planos, máx 50).
-- [ ] Contadores de pistas por carpeta propagados hacia arriba.
-- [ ] Persistir carpetas expandidas.
-- [ ] Menú contextual de carpeta: Play / Crear playlist / Reclasificar /
-      Pin / Abrir en gestor (hoy parcial).
-- [ ] Compactación de cadenas de un solo hijo (A/B/C estilo VS Code).
+- [x] Buscador de carpetas — la búsqueda del árbol antepone hasta 50
+      carpetas cuyo nombre casa; tocar una la REVELA en el árbol
+      (expandiendo ancestros) y limpia la búsqueda.
+- [x] Contadores por carpeta: ya eran de subárbol (contents().total cuenta
+      descendientes) — estaba hecho y la lista no lo sabía.
+- [x] Carpetas expandidas persistidas (files_expanded_folders, la clave
+      del viejo), guardadas en cada toggle.
+- [x] Menú de carpeta completo: además de encolar/añadir-a-lista, ahora
+      Reproducir carpeta, Reclasificar…, Fijar en el sidebar y Abrir en el
+      gestor de archivos.
+- [x] Compactación de cadenas de un solo hijo (a/b/c, estilo VS Code) —
+      carpetas sin pistas y con un único subdirectorio colapsan en una fila;
+      la clave de expansión es el final de la cadena.
 
 **Transporte**
 - [x] Click en el bloque now-playing = saltar a la pista: selecciona,

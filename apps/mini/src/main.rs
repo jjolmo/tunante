@@ -312,6 +312,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Cloned rather than moved: the console view needs the roots again to answer
     // "everything of this console", which is a query across the whole library.
     let tree = Rc::new(RefCell::new(library::Tree::new(roots.clone())));
+    // The expanded folders survive the restart, under the old key.
+    if let Ok(Some(saved)) = db.get_setting("files_expanded_folders") {
+        tree.borrow_mut()
+            .set_expanded_paths(saved.split('\n').map(str::to_string));
+    }
     let rows_model = Rc::new(VecModel::from(Vec::<LibraryRow>::new()));
 
     let db = Rc::new(db);
@@ -812,7 +817,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let path = row.path.to_string();
 
             if row.is_folder {
-                tree.borrow_mut().toggle(&path);
+                // A folder picked out of a search gets revealed — ancestors
+                // and all — and the search clears so the tree can show it.
+                if !ui.get_search().is_empty() {
+                    tree.borrow_mut().reveal(&path);
+                    ui.set_search(SharedString::new());
+                } else {
+                    tree.borrow_mut().toggle(&path);
+                }
+                let _ = db.set_setting(
+                    "files_expanded_folders",
+                    &tree.borrow().expanded_list().join("\n"),
+                );
                 refresh_library(&ui, &tree, &db, &views);
                 return;
             }
@@ -2171,6 +2187,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let folders_model = Rc::new(VecModel::from(Vec::<FolderRow>::new()));
     ui.set_library_folders(ModelRc::from(folders_model.clone()));
     refresh_library_folders(&db, &folders_model);
+    // The folder sheet's four new verbs, path-based.
+    {
+        let (db_p, player_p, queue_model_p) = (db.clone(), player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_library_play_path(move |path| {
+            let Some(ui) = weak.upgrade() else { return };
+            // get_tracks_by_folder already answers for the whole subtree.
+            let tracks = db_p.get_tracks_by_folder(&path).unwrap_or_default();
+            play_collection(&ui, &player_p, &queue_model_p, tracks);
+        });
+    }
+    {
+        let (db_p, target, sugg) = (db.clone(), reclass_target.clone(), sugg_model.clone());
+        let weak = ui.as_weak();
+        ui.on_library_reclassify_path(move |path| {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(t) = db_p
+                .get_tracks_by_folder(&path)
+                .unwrap_or_default()
+                .into_iter()
+                .next()
+            else {
+                return;
+            };
+            *target.borrow_mut() = Some((path.to_string(), t.path.clone()));
+            let folder_name = std::path::Path::new(path.as_str())
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.to_string());
+            ui.set_reclass_heading(SharedString::from(folder_name));
+            ui.set_reclass_scope_folder(true);
+            ui.set_reclass_console(SharedString::from(t.console_id.as_str()));
+            ui.set_reclass_game(SharedString::from(t.game.as_str()));
+            sugg.set_vec(Vec::new());
+            ui.set_reclassifying(true);
+        });
+    }
+    {
+        let (db_p, model) = (db.clone(), pinned_model.clone());
+        ui.on_library_pin_path(move |path| {
+            let _ = db_p.add_pinned_folder(&uuid::Uuid::new_v4().to_string(), &path);
+            refresh_pinned(&db_p, &model);
+        });
+    }
+    ui.on_library_reveal_path(|path| {
+        integrate::reveal(&std::path::Path::new(path.as_str()).join("."));
+    });
+
     {
         let (db_f, model) = (db.clone(), folders_model.clone());
         let sync = sync_watches.clone();
@@ -3965,7 +4029,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // capped: nobody reads past a few hundred hits, and building more
             // rows than that is memory spent on nothing.
             let hits = db.search_tracks(&q).unwrap_or_default();
-            let rows: Vec<library::Row> = hits
+            // Folders first, capped at 50 like the old «Find folder…» box;
+            // tapping one reveals it in the tree (see library-activated).
+            let folder_rows: Vec<library::Row> = tree
+                .borrow()
+                .matching_folders(&db, &q, 50)
+                .into_iter()
+                .map(|(path, n)| library::Row {
+                    label: std::path::Path::new(&path)
+                        .file_name()
+                        .map(|f| f.to_string_lossy().to_string())
+                        .unwrap_or_else(|| path.clone()),
+                    detail: library::pistas(n),
+                    depth: 0,
+                    is_folder: true,
+                    expanded: false,
+                    path,
+                })
+                .collect();
+            let rows: Vec<library::Row> = folder_rows
+                .into_iter()
+                .chain(hits
                 .iter()
                 .take(300)
                 .map(|t| library::Row {
@@ -3975,7 +4059,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     is_folder: false,
                     expanded: false,
                     path: t.path.clone(),
-                })
+                }))
                 .collect();
             ui.set_library_total(hits.len() as i32);
             ui.set_library_grid(false);

@@ -113,6 +113,10 @@ export component AppWindow inherits Window {
     callback library-activated(int);
     callback library-enqueued(int);
     callback library-enqueue-path(string, bool);
+    callback library-play-path(string);
+    callback library-reclassify-path(string);
+    callback library-pin-path(string);
+    callback library-reveal-path(string);
     in-out property <int> library-mode: 0;
     callback library-mode-changed(int);
     in property <[GridLine]> library-grid-lines;
@@ -622,6 +626,10 @@ export component AppWindow inherits Window {
             library-activated(i) => { root.library-activated(i); }
             library-enqueued(i) => { root.library-enqueued(i); }
             library-enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
+        library-play-path(p) => { root.library-play-path(p); }
+        library-reclassify-path(p) => { root.library-reclassify-path(p); }
+        library-pin-path(p) => { root.library-pin-path(p); }
+        library-reveal-path(p) => { root.library-reveal-path(p); }
             library-mode-changed(i) => { root.library-mode-changed(i); }
             library-grid-tapped(p) => { root.library-grid-tapped(p); }
             library-back => { root.library-back(); }
@@ -922,6 +930,10 @@ export component AppWindow inherits Window {
                         activated(i) => { root.library-activated(i); }
                         enqueued(i) => { root.library-enqueued(i); }
                         enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
+                    play-path(p) => { root.library-play-path(p); }
+                    reclassify-path(p) => { root.library-reclassify-path(p); }
+                    pin-path(p) => { root.library-pin-path(p); }
+                    reveal-path(p) => { root.library-reveal-path(p); }
                         search-changed(s) => { root.search-changed(s); }
                         playlists: root.playlists;
                         all-playlists: root.all-playlists;
