@@ -2008,73 +2008,92 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         });
     }
+    // --- Bulk cover download: preview first, apply second, undo forever ----
+    let bulk_plans_model = Rc::new(VecModel::from(Vec::<PlanRow>::new()));
+    ui.set_bulk_plans(ModelRc::from(bulk_plans_model.clone()));
+    let bulk_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    ui.set_undo_covers_label(SharedString::from(
+        if db
+            .get_setting("mini.last_cover_run")
+            .ok()
+            .flatten()
+            .filter(|v| !v.is_empty())
+            .is_some()
+        {
+            "disponible"
+        } else {
+            "nada que deshacer"
+        },
+    ));
     {
-        // Cover art, reusing the scan's status line and its channel. Same shape
-        // as `on_rescan` above on purpose: one idiom in this app for "long job
-        // with a message under it", not two.
-        let (db, scan_tx) = (db.clone(), scan_tx.clone());
-        let dirty_outer = std::sync::Arc::clone(&art_dirty);
-        let weak = ui.as_weak();
+        let (db, tx, cancel) = (db.clone(), cover_tx.clone(), bulk_cancel.clone());
+        let (plans, weak) = (bulk_plans_model.clone(), ui.as_weak());
         ui.on_descargar_caratulas(move || {
             let Some(ui) = weak.upgrade() else { return };
             let tracks = db.get_all_tracks().unwrap_or_default();
             if tracks.is_empty() {
                 return;
             }
-            ui.set_scan_status("Buscando carátulas…".into());
-            let tx = scan_tx.clone();
-            let dirty = std::sync::Arc::clone(&dirty_outer);
-            std::thread::spawn(move || {
-                let all: Vec<(String, String)> = tunante_core::console::CONSOLES
-                    .iter()
-                    .filter_map(|c| c.libretro.map(|s| (c.id.to_string(), s.to_string())))
-                    .collect();
-                // One request per game: a hundred tracks of one soundtrack want
-                // one cover between them.
-                let mut seen = std::collections::HashSet::new();
-                let reqs: Vec<tunante_art::resolver::CoverRequest> = tracks
-                    .iter()
-                    .filter(|t| seen.insert((t.console_id.clone(), t.game.clone())))
-                    .map(|t| {
-                        let candidates = tunante_art::resolver::candidates_for(
-                            &t.game, &t.album, &t.path,
-                        );
-                        let real = t.path.split('#').next().unwrap_or(&t.path);
-                        tunante_art::resolver::CoverRequest {
-                            libretro_system: tunante_core::console::by_id(&t.console_id)
-                                .and_then(|c| c.libretro)
-                                .map(str::to_string),
-                            other_systems: all
-                                .iter()
-                                .filter(|(o, _)| *o != t.console_id)
-                                .cloned()
-                                .collect(),
-                            console_id: t.console_id.clone(),
-                            candidates,
-                            dir: std::path::Path::new(real).parent().map(|p| p.to_path_buf()),
-                        }
-                    })
-                    .collect();
-
-                let resolver = std::sync::Arc::new(tunante_art::resolver::Resolver::new());
-                let opts = tunante_art::resolver::BulkOptions::default();
-                let plans = resolver.resolve_many(reqs, &opts, |p| {
-                    let _ = tx.send(Some(format!(
-                        "Carátulas {}/{}\n{} encontradas",
-                        p.done, p.total, p.found
-                    )));
-                });
-                let found = plans.iter().filter(|p| p.source != "none").count();
-                dirty.store(true, std::sync::atomic::Ordering::Relaxed);
-                let _ = tx.send(Some(format!(
-                    "{found} carátulas de {} juegos",
-                    plans.len()
-                )));
-                std::thread::sleep(std::time::Duration::from_secs(3));
-                let _ = tx.send(None);
-            });
+            cancel.store(false, std::sync::atomic::Ordering::SeqCst);
+            plans.set_vec(Vec::new());
+            ui.set_bulk_busy(true);
+            ui.set_bulk_status(SharedString::from("Preparando…"));
+            ui.set_bulk_covering(true);
+            spawn_bulk_covers(tx.clone(), tracks, cancel.clone(), true);
         });
     }
+    {
+        let (db, tx, cancel) = (db.clone(), cover_tx.clone(), bulk_cancel.clone());
+        let weak = ui.as_weak();
+        ui.on_bulk_apply(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let tracks = db.get_all_tracks().unwrap_or_default();
+            cancel.store(false, std::sync::atomic::Ordering::SeqCst);
+            ui.set_bulk_busy(true);
+            ui.set_bulk_status(SharedString::from("Descargando…"));
+            spawn_bulk_covers(tx.clone(), tracks, cancel.clone(), false);
+        });
+    }
+    {
+        let cancel = bulk_cancel.clone();
+        let weak = ui.as_weak();
+        ui.on_bulk_cancelled(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // Closing the sheet is also the stop button: a run in flight sees
+            // the flag at its next request.
+            cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+            ui.set_bulk_covering(false);
+        });
+    }
+    {
+        let (db, dirty) = (db.clone(), std::sync::Arc::clone(&art_dirty));
+        let weak = ui.as_weak();
+        ui.on_undo_covers(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(stamp) = db
+                .get_setting("mini.last_cover_run")
+                .ok()
+                .flatten()
+                .filter(|v| !v.is_empty())
+                .and_then(|v| v.parse::<u64>().ok())
+            else {
+                return;
+            };
+            match tunante_art::folder::Manifest::undo(&tunante_art::cache::cache_dir(), stamp) {
+                Ok(n) => {
+                    let _ = db.set_setting("mini.last_cover_run", "");
+                    ui.set_undo_covers_label(SharedString::from(format!(
+                        "{n} borradas"
+                    )));
+                    dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                Err(e) => {
+                    ui.set_undo_covers_label(SharedString::from(format!("falló: {e}")));
+                }
+            }
+        });
+    }
+
     {
         // Adding a folder later reuses the first-run picker rather than being a
         // second, subtly different browser.
@@ -2454,6 +2473,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             (views.clone(), library_dirty.clone(), sync_watches.clone());
         let (table_state, table_model) = (table_state.clone(), table_model.clone());
         let (cover_model, cover_urls) = (cover_model.clone(), cover_urls.clone());
+        let bulk_plans_model = bulk_plans_model.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
         let mut ticks: u64 = 0;
@@ -2551,6 +2571,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ui.set_covering(false);
                             // The folder-art cache remembers misses too; this
                             // is the flag that makes the new cover show up.
+                            art_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                        }
+                        CoverMsg::BulkStatus(text) => {
+                            ui.set_bulk_status(SharedString::from(text));
+                        }
+                        CoverMsg::BulkPlans(rows) => {
+                            let would = rows.iter().filter(|r| r.3 == "se escribiría").count();
+                            ui.set_bulk_status(SharedString::from(format!(
+                                "{} juegos · {} se escribirían",
+                                rows.len(),
+                                would
+                            )));
+                            bulk_plans_model.set_vec(
+                                rows.into_iter()
+                                    .map(|(game, console, source, action)| PlanRow {
+                                        game: SharedString::from(game),
+                                        console: SharedString::from(console),
+                                        source: SharedString::from(source),
+                                        action: SharedString::from(action),
+                                    })
+                                    .collect::<Vec<_>>(),
+                            );
+                            ui.set_bulk_busy(false);
+                        }
+                        CoverMsg::BulkDone { written, stamp } => {
+                            ui.set_bulk_status(SharedString::from(format!(
+                                "{written} carátulas escritas"
+                            )));
+                            ui.set_bulk_busy(false);
+                            let _ = db.set_setting("mini.last_cover_run", &stamp.to_string());
+                            ui.set_undo_covers_label(SharedString::from("disponible"));
                             art_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                     }
@@ -3318,6 +3369,92 @@ enum CoverMsg {
     Status(String),
     Options(Vec<CoverHit>),
     Saved,
+    BulkStatus(String),
+    /// game, console label, source, action — the dry run's findings.
+    BulkPlans(Vec<(String, String, String, String)>),
+    BulkDone { written: usize, stamp: u64 },
+}
+
+/// The whole-library cover run, both halves: `dry` previews, `!dry` writes
+/// behind a manifest so exactly this run can be undone. One request per game
+/// — a hundred tracks of one soundtrack want one cover between them —
+/// deduplicated on the matcher's notion of sameness.
+fn spawn_bulk_covers(
+    tx: std::sync::mpsc::Sender<CoverMsg>,
+    tracks: Vec<tunante_core::db::models::Track>,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    dry: bool,
+) {
+    std::thread::spawn(move || {
+        let mut seen = std::collections::HashSet::new();
+        let reqs: Vec<tunante_art::resolver::CoverRequest> = tracks
+            .iter()
+            .filter(|t| {
+                seen.insert((
+                    t.console_id.clone(),
+                    tunante_art::name::normalize(&t.game).key,
+                ))
+            })
+            .map(|t| cover_request_for(t, !dry))
+            .collect();
+
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let manifest = (!dry)
+            .then(|| {
+                tunante_art::folder::Manifest::new(&tunante_art::cache::cache_dir(), stamp).ok()
+            })
+            .flatten();
+
+        let opts = tunante_art::resolver::BulkOptions {
+            dry_run: dry,
+            min_confidence: tunante_art::Confidence::High,
+            cancel,
+            ..Default::default()
+        };
+        let verb = if dry { "Buscando" } else { "Descargando" };
+        let plans = cover_resolver().resolve_many(reqs, &opts, |p| {
+            let _ = tx.send(CoverMsg::BulkStatus(format!(
+                "{verb}… {}/{} · {} encontradas",
+                p.done, p.total, p.found
+            )));
+        });
+
+        if dry {
+            let rows = plans
+                .iter()
+                .map(|p| {
+                    let action = if p.existing.is_some() {
+                        "ya tiene (se conserva)"
+                    } else if p.source == "none" || p.url.is_none() {
+                        "sin resultado"
+                    } else {
+                        "se escribiría"
+                    };
+                    (
+                        p.game.clone(),
+                        tunante_core::console::by_id(&p.console_id)
+                            .map(|c| c.name_es.to_string())
+                            .unwrap_or_default(),
+                        if p.source == "none" { String::new() } else { p.source.clone() },
+                        action.to_string(),
+                    )
+                })
+                .collect();
+            let _ = tx.send(CoverMsg::BulkPlans(rows));
+        } else {
+            let mut written = 0usize;
+            for p in plans.iter().filter_map(|p| p.written.as_ref()) {
+                if let Some(m) = &manifest {
+                    let _ = m.record(std::path::Path::new(p));
+                }
+                written += 1;
+            }
+            let _ = tx.send(CoverMsg::BulkDone { written, stamp });
+        }
+    });
 }
 
 /// One resolver for the whole app: it owns the HTTP agent with its per-host

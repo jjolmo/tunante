@@ -99,8 +99,14 @@
 >       ficheros (Dolphin/Nautilus vía FileManager1; hoy xdg-open a secas).
 >
 > **Herramientas:**
-> - [ ] Descarga masiva de carátulas con preview → apply → cancel → **undo**
->       (la lógica entera vive en tunante-art; falta la orquestación y su UI).
+> - [x] Descarga masiva con preview → apply → cancel → **undo** — la hoja
+>       enseña lo que el dry run haría (juego · consola · fuente · acción),
+>       Aplicar corre la real tras un `Manifest` sellado, «Parar» pone el
+>       flag que resolve_many ya miraba, y «Deshacer última descarga» en
+>       Ajustes borra exactamente los ficheros de esa corrida (`written`,
+>       nunca `existing` — el arte del usuario no se toca). El bulk viejo de
+>       mini (sin preview ni manifiesto, con constructor de requests
+>       duplicado) murió en el cambio.
 > - [ ] Nombres de pistas para GBS/NSF/HES/KSS/AY/SAP (suggest/apply desde
 >       Zophar — tunante-art lo trae, falta el diálogo).
 > - [ ] Sugerencias online en reclasificación (Libretro/Steam) — el worker de
