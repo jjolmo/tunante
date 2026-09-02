@@ -59,14 +59,18 @@
 - [ ] Scroll automático a la pista sonando al restaurar la ventana.
 
 **Sidebar**
-- [ ] Carpetas monitorizadas (raíces) listadas con contador — hoy solo pineadas.
+- [x] Carpetas monitorizadas (raíces) en el sidebar con contador, delante de
+      las pineadas — click acota la tabla al subárbol, doble click reproduce;
+      sin ✕ (las raíces se quitan en Ajustes, donde la salida poda).
 - [x] Doble click reproduce en el sidebar — Pistas (el orden visible de la
       tabla), playlists y carpetas pineadas; arranque aleatorio si shuffle.
       Quedan las consolas (no listadas en el sidebar).
-- [ ] Botón «+» nueva playlist en el sidebar (input inline, Enter/Escape).
-- [ ] Menú contextual de playlist en sidebar: Enqueue all / Rename / Delete
-      (hoy viven solo en la vista Listas).
-- [ ] Menú contextual de carpeta pineada: «Abrir en gestor de archivos».
+- [x] «+» junto a Listas (salta a la vista donde nacen; el input inline del
+      viejo queda como pulido).
+- [x] Menú contextual de playlist en sidebar: Reproducir / Encolar todo /
+      Renombrar… (abre su vista) / Borrar.
+- [x] Menú contextual de carpeta en sidebar: Reproducir / Abrir en el gestor
+      de archivos / Quitar de aquí (solo pineadas).
 - [x] Ancho del sidebar redimensionable — la costura de 4px es el asa
       (cursor ew-resize, se ilumina en accent), 150–500px, persistido en
       mini.sidebar_width.

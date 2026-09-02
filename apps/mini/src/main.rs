@@ -1289,12 +1289,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_folder_played(move |id| {
             let Some(ui) = weak.upgrade() else { return };
-            let folder = db_p
-                .get_pinned_folders()
-                .unwrap_or_default()
-                .into_iter()
-                .find(|f| f.id == id.as_str())
-                .map(|f| f.path);
+            let folder = sidebar_folder_path(&db_p, &id);
             let Some(folder) = folder else { return };
             let tracks: Vec<_> = db_p
                 .get_all_tracks()
@@ -2192,12 +2187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_folder_opened(move |id| {
             let Some(ui) = weak.upgrade() else { return };
-            let folder = db_p
-                .get_pinned_folders()
-                .unwrap_or_default()
-                .into_iter()
-                .find(|f| f.id == id.as_str())
-                .map(|f| f.path);
+            let folder = sidebar_folder_path(&db_p, &id);
             let mut st = st.borrow_mut();
             if !st.built {
                 st.built = true;
@@ -2210,6 +2200,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 SharedString::from("")
             });
+        });
+    }
+    {
+        let db_p = db.clone();
+        ui.on_folder_revealed(move |id| {
+            if let Some(path) = sidebar_folder_path(&db_p, &id) {
+                // reveal() selects a file; for a folder, opening it plain is
+                // the right verb, so hand it a child that may not exist and
+                // let the fallback open the folder itself.
+                integrate::reveal(&std::path::Path::new(&path).join("."));
+            }
         });
     }
     {
@@ -5297,26 +5298,56 @@ fn table_console_label(t: &tunante_core::db::models::Track) -> &'static str {
 /// The sidebar's pinned folders, re-read whole: the list is short and the
 /// database is the one truth about it.
 fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
-    model.set_vec(
+    let row = |id: String, path: &str, removable: bool| PinnedRow {
+        name: SharedString::from(
+            std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.to_string()),
+        ),
+        count: SharedString::from(
+            db.count_tracks_under(path)
+                .map(|n| n.to_string())
+                .unwrap_or_default(),
+        ),
+        id: SharedString::from(id),
+        removable,
+    };
+    // The library's roots first (they leave through Ajustes, never from
+    // here), then the pinned folders with their hover ✕ — the old
+    // sidebar's Folders section, both kinds in one list.
+    let mut rows: Vec<PinnedRow> = db
+        .get_monitored_folders()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|f| row(format!("root:{}", f.id), &f.path, false))
+        .collect();
+    rows.extend(
         db.get_pinned_folders()
             .unwrap_or_default()
             .into_iter()
-            .map(|f| PinnedRow {
-                name: SharedString::from(
-                    std::path::Path::new(&f.path)
-                        .file_name()
-                        .map(|n| n.to_string_lossy().to_string())
-                        .unwrap_or_else(|| f.path.clone()),
-                ),
-                count: SharedString::from(
-                    db.count_tracks_under(&f.path)
-                        .map(|n| n.to_string())
-                        .unwrap_or_default(),
-                ),
-                id: SharedString::from(f.id),
-            })
-            .collect::<Vec<_>>(),
+            .map(|f| row(f.id.clone(), &f.path, true)),
     );
+    model.set_vec(rows);
+}
+
+/// A sidebar folder id back to its path: `root:<id>` rows live in
+/// monitored_folders, plain ids in pinned_folders.
+fn sidebar_folder_path(db: &Database, id: &str) -> Option<String> {
+    match id.strip_prefix("root:") {
+        Some(rid) => db
+            .get_monitored_folders()
+            .ok()?
+            .into_iter()
+            .find(|f| f.id == rid)
+            .map(|f| f.path),
+        None => db
+            .get_pinned_folders()
+            .ok()?
+            .into_iter()
+            .find(|f| f.id == id)
+            .map(|f| f.path),
+    }
 }
 
 /// The library's roots as Ajustes shows them: removable, watchable.
