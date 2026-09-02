@@ -252,6 +252,7 @@ export component AppWindow inherits Window {
     in property <string> table-folder-id;
     callback folder-opened(string);
     callback folder-unpinned(string);
+    callback folder-revealed(string);
     callback table-edit-requested(int);
     callback table-row-clicked(int, bool, bool);
     callback table-cursor-moved(int, bool);
@@ -489,6 +490,7 @@ export component AppWindow inherits Window {
         table-folder-id: root.table-folder-id;
         folder-opened(id) => { root.folder-opened(id); }
         folder-unpinned(id) => { root.folder-unpinned(id); }
+        folder-revealed(id) => { root.folder-revealed(id); }
         table-edit-requested(i) => { root.table-edit-requested(i); }
         table-cursor: root.table-cursor;
         table-row-clicked(i, c, sh) => { root.table-row-clicked(i, c, sh); }

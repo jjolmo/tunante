@@ -76,6 +76,9 @@ export struct PinnedRow {
     id: string,
     name: string,
     count: string,
+    /// Pinned folders can be unpinned from here; library roots cannot —
+    /// they leave through Ajustes, where removal prunes tracks.
+    removable: bool,
 }
 
 export struct TableColumn {

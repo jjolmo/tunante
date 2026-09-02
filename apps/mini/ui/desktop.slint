@@ -176,6 +176,7 @@ export component DesktopShell inherits Rectangle {
     in property <string> table-folder-id;
     callback folder-opened(string);
     callback folder-unpinned(string);
+    callback folder-revealed(string);
     callback table-edit-requested(int);
     callback table-row-clicked(int, bool, bool);
     callback table-cursor-moved(int, bool);
@@ -401,6 +402,22 @@ export component DesktopShell inherits Rectangle {
                             }
                             double-clicked => { root.folder-played(pf.id); }
                         }
+                        ContextMenuArea {
+                            Menu {
+                                MenuItem {
+                                    title: "Reproducir";
+                                    activated => { root.folder-played(pf.id); }
+                                }
+                                MenuItem {
+                                    title: "Abrir en el gestor de archivos";
+                                    activated => { root.folder-revealed(pf.id); }
+                                }
+                                MenuItem {
+                                    title: "Quitar de aquí";
+                                    activated => { root.folder-unpinned(pf.id); }
+                                }
+                            }
+                        }
                         HorizontalLayout {
                             padding-left: 12px;
                             padding-right: 8px;
@@ -412,7 +429,7 @@ export component DesktopShell inherits Rectangle {
                                 overflow: elide;
                                 horizontal-stretch: 1;
                             }
-                            if !pft.has-hover && pf.count != "": Text {
+                            if (!pft.has-hover || !pf.removable) && pf.count != "": Text {
                                 text: pf.count;
                                 color: Theme.text-muted;
                                 font-size: Theme.font-small;
@@ -420,7 +437,7 @@ export component DesktopShell inherits Rectangle {
                             }
                             // The unpin, only under the pointer: a row of
                             // permanent ✕ reads as a warning, not a control.
-                            if pft.has-hover: Rectangle {
+                            if pft.has-hover && pf.removable: Rectangle {
                                 width: 18px;
                                 Text {
                                     text: "✕";
@@ -436,12 +453,32 @@ export component DesktopShell inherits Rectangle {
                     }
 
                     Rectangle { height: Theme.gap; }
-                    Text {
-                        text: "Listas";
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
+                    HorizontalLayout {
                         height: 26px;
-                        vertical-alignment: center;
+                        Text {
+                            text: "Listas";
+                            color: Theme.text-muted;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        // "+" lands you where lists are born and managed.
+                        Rectangle {
+                            width: 22px;
+                            border-radius: Theme.radius;
+                            background: plnew.has-hover ? Theme.bg-hover : transparent;
+                            Text {
+                                text: "＋";
+                                color: plnew.has-hover ? Theme.text-primary : Theme.text-muted;
+                                font-size: Theme.font-small;
+                            }
+                            plnew := TouchArea {
+                                clicked => {
+                                    root.centre = 1;
+                                    root.library-mode-changed(4);
+                                }
+                            }
+                        }
                     }
                     // The playlists themselves, one tap from anywhere.
                     lists := ListView {
@@ -475,6 +512,29 @@ export component DesktopShell inherits Rectangle {
                                     root.playlist-open-requested(pl.id);
                                 }
                                 double-clicked => { root.playlist-played(pl.id); }
+                            }
+                            ContextMenuArea {
+                                Menu {
+                                    MenuItem {
+                                        title: "Reproducir";
+                                        activated => { root.playlist-played(pl.id); }
+                                    }
+                                    MenuItem {
+                                        title: "Encolar todo";
+                                        activated => { root.playlist-enqueue-id(pl.id); }
+                                    }
+                                    MenuItem {
+                                        title: "Renombrar…";
+                                        activated => {
+                                            root.centre = 1;
+                                            root.playlist-open-requested(pl.id);
+                                        }
+                                    }
+                                    MenuItem {
+                                        title: "Borrar";
+                                        activated => { root.playlist-delete(pl.id); }
+                                    }
+                                }
                             }
                         }
                     }
