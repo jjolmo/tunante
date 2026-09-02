@@ -104,6 +104,18 @@ jobs:
             libfontconfig1-dev libasound2-dev zlib1g-dev \
             libgtk-3-dev libappindicator3-dev
 
+      # The tag exists before this workflow starts (workflow_run fires after
+      # Release completes), so the binary can carry its release version. A
+      # dispatch or PR run has no tag and builds unstamped — update.rs then
+      # reports the workspace placeholder and skips the silent update check.
+      - name: Stamp the release version into the build
+        if: github.event_name != 'pull_request'
+        run: |
+          git fetch -q --tags origin 2>/dev/null || true
+          TAG=$(git tag --points-at HEAD | head -1)
+          [ -n "$TAG" ] && echo "TUNANTE_VERSION=${TAG#v}" >> "$GITHUB_ENV" \
+            || echo "no tag; building unstamped"
+
       - name: Build
         run: cargo build --release -p tunante-mini -p tunante-decoder
 
@@ -199,6 +211,15 @@ jobs:
           workspaces: .
           key: mini-windows
           cache-on-failure: true
+
+      - name: Stamp the release version into the build
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          git fetch -q --tags origin 2>/dev/null || true
+          TAG=$(git tag --points-at HEAD | head -1)
+          [ -n "$TAG" ] && echo "TUNANTE_VERSION=${TAG#v}" >> "$GITHUB_ENV" \
+            || echo "no tag; building unstamped"
 
       - name: Build
         run: cargo build --release -p tunante-mini -p tunante-decoder

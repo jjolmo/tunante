@@ -2808,7 +2808,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // honours the skipped version.
     let update_manual = Rc::new(std::cell::Cell::new(false));
     let update_skipped: Option<String> = db.get_setting("update.skip_version").ok().flatten();
-    if cfg!(all(target_os = "linux", feature = "updater")) {
+    if cfg!(all(target_os = "linux", feature = "updater")) && update::IS_RELEASE {
         update::spawn_check(update_tx.clone());
     }
     {

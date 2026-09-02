@@ -12,6 +12,17 @@
 > Decisión de plataformas: Linux + Windows-zip ya salen de mini.yml; macOS
 > queda para después (v0.1.283 sigue sirviendo allí).
 >
+> **Bug de pre-release cazado (2026-09-02):** ningún sitio estampaba la
+> versión en el binario — todo build decía 0.1.0, así que un binario
+> liberado habría visto su propia release como «nueva» para siempre (el
+> test de fase 4 probó descarga+swap desde un dev build; el estado
+> estacionario no). Ahora CI inyecta el tag por `TUNANTE_VERSION`
+> (option_env en update.rs; mini.yml lo resuelve antes del build en linux
+> y windows, APKBUILD exporta $pkgver), y el chequeo silencioso de
+> arranque solo corre en builds estampadas — un dev build anunciando
+> updates está a un toque de machacarse a sí mismo. Verificado: build con
+> 9.9.9 responde «al día» al `--update` headless.
+>
 > **2026-09-02, cierre:** la lista de paridad de abajo está molida — lo que
 > queda sin marcar está aparcado con motivo escrito (teclas globales custom
 > a la espera de una conexión D-Bus real; scroll/estilos del tray a la

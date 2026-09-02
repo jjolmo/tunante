@@ -22,7 +22,20 @@ pub enum UpdateMsg {
     Error(String),
 }
 
-pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+/// The version this binary answers to. CI stamps the release tag in through
+/// `TUNANTE_VERSION` at build time; without it this is a dev build reporting
+/// the workspace's placeholder — and the updater must know the difference,
+/// because a binary that reports 0.1.0 forever would see its own release as
+/// news forever.
+pub const CURRENT_VERSION: &str = match option_env!("TUNANTE_VERSION") {
+    Some(v) => v,
+    None => env!("CARGO_PKG_VERSION"),
+};
+
+/// Whether this build carries a stamped release version. The silent startup
+/// check keys off this: a dev build announcing "update available" is one tap
+/// from replacing the binary someone is actively working on.
+pub const IS_RELEASE: bool = option_env!("TUNANTE_VERSION").is_some();
 
 #[cfg(all(target_os = "linux", feature = "updater"))]
 mod imp {
