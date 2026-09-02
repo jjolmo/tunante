@@ -139,6 +139,10 @@ export component DesktopShell inherits Rectangle {
     callback playlist-created-for-add(string);
     callback table-open-folder(int);
     callback table-pin-folder(int);
+    callback table-column-moved(int, int);
+    callback table-column-resize-started(int);
+    callback table-column-resized(int, float, float);
+    callback table-column-resize-done();
     in property <[PinnedRow]> pinned-folders;
     in property <string> total-count;
     in property <string> faved-count;
@@ -497,6 +501,10 @@ export component DesktopShell inherits Rectangle {
                     add-to-playlist(i) => { root.table-add-to-playlist(i); }
                     open-folder(i) => { root.table-open-folder(i); }
                     pin-folder(i) => { root.table-pin-folder(i); }
+                    column-moved(de, a) => { root.table-column-moved(de, a); }
+                    column-resize-started(i) => { root.table-column-resize-started(i); }
+                    column-resized(i, dx, total) => { root.table-column-resized(i, dx, total); }
+                    column-resize-done => { root.table-column-resize-done(); }
                     edit-requested(i) => { root.table-edit-requested(i); }
                     cursor: root.table-cursor;
                     row-clicked(i, c, sh) => { root.table-row-clicked(i, c, sh); }

@@ -16,9 +16,25 @@ component HeaderCell inherits Rectangle {
     in property <string> label;
     in property <bool> active;
     in property <bool> asc;
-    callback clicked();
+    /// This cell is being dragged somewhere else.
+    in property <bool> dragging;
+    /// The dragged cell would land here.
+    in property <bool> drop-target;
+    /// Press/drag/release with the offset from the press point — the parent
+    /// decides whether the gesture was a sort click (under the threshold) or
+    /// a reorder. Same protocol as the old desktop's raw mouse handlers.
+    callback pressed();
+    callback dragged(length);
+    callback released(length);
+    /// The 5px handle on the right edge: cumulative dx while resizing.
+    callback resize-started();
+    callback resized(length);
+    callback resize-done();
 
     background: t.has-hover ? Theme.bg-hover : transparent;
+    opacity: root.dragging ? 0.5 : 1.0;
+    border-width: root.drop-target ? 2px : 0px;
+    border-color: Theme.accent;
 
     HorizontalLayout {
         padding-left: 8px;
@@ -38,7 +54,39 @@ component HeaderCell inherits Rectangle {
             vertical-alignment: center;
         }
     }
-    t := TouchArea { clicked => { root.clicked(); } }
+    t := TouchArea {
+        moved => { root.dragged(self.mouse-x - self.pressed-x); }
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.left) {
+                if (ev.kind == PointerEventKind.down) {
+                    root.pressed();
+                }
+                if (ev.kind == PointerEventKind.up) {
+                    root.released(self.mouse-x - self.pressed-x);
+                }
+            }
+        }
+    }
+    // The resize handle, drawn last so it wins the 5px it needs.
+    rh := TouchArea {
+        x: root.width - 5px;
+        width: 5px;
+        height: 100%;
+        mouse-cursor: col-resize;
+        moved => { root.resized(self.mouse-x - self.pressed-x); }
+        pointer-event(ev) => {
+            if (ev.button == PointerEventButton.left) {
+                if (ev.kind == PointerEventKind.down) { root.resize-started(); }
+                if (ev.kind == PointerEventKind.up) { root.resize-done(); }
+            }
+        }
+    }
+    if rh.has-hover || rh.pressed: Rectangle {
+        x: root.width - 2px;
+        width: 2px;
+        height: 100%;
+        background: Theme.accent;
+    }
 }
 
 export component TrackTable inherits Rectangle {
@@ -83,6 +131,19 @@ export component TrackTable inherits Rectangle {
     callback activate-cursor();
     /// A column ticked on or off in the chooser.
     callback column-toggled(string);
+    /// Header dragged from one visible slot to another.
+    callback column-moved(int, int);
+    /// Resize, live: visible index, cumulative dx in px, table width in px.
+    callback column-resize-started(int);
+    callback column-resized(int, float, float);
+    callback column-resize-done();
+
+    // Header-drag state. The threshold is the old desktop's: 5px from the
+    // press point separates a sort click from a reorder gesture.
+    property <int> drag-src: -1;
+    property <bool> drag-active: false;
+    property <length> drag-x;
+    property <int> drop-col: -1;
     /// Where the keyboard cursor sits, for the scroll-into-view below.
     in property <int> cursor: -1;
 
@@ -150,7 +211,41 @@ export component TrackTable inherits Rectangle {
                     label: col.label;
                     active: root.sort-col == ci;
                     asc: root.sort-asc;
-                    clicked => { root.sorted(ci); }
+                    dragging: root.drag-active && root.drag-src == ci;
+                    drop-target: root.drag-active && root.drag-src != ci
+                        && root.drag-x >= self.x && root.drag-x < self.x + self.width;
+                    changed drop-target => {
+                        if (self.drop-target) { root.drop-col = ci; }
+                    }
+                    pressed => {
+                        root.drag-src = ci;
+                        root.drag-active = false;
+                        root.drop-col = -1;
+                    }
+                    dragged(dx) => {
+                        if (root.drag-src == ci) {
+                            root.drag-x = self.x + self.width / 2 + dx;
+                            if (dx > 5px || dx < -5px) {
+                                root.drag-active = true;
+                            }
+                        }
+                    }
+                    released(dx) => {
+                        if (root.drag-active && root.drop-col >= 0
+                            && root.drop-col != ci) {
+                            root.column-moved(ci, root.drop-col);
+                        } else if (!root.drag-active) {
+                            root.sorted(ci);
+                        }
+                        root.drag-src = -1;
+                        root.drag-active = false;
+                        root.drop-col = -1;
+                    }
+                    resize-started => { root.column-resize-started(ci); }
+                    resized(dx) => {
+                        root.column-resized(ci, dx / 1px, cells-width.width / 1px);
+                    }
+                    resize-done => { root.column-resize-done(); }
                 }
                 // The column chooser lives where the columns end.
                 Rectangle {
