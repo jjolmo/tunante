@@ -48,6 +48,15 @@
 //!     Writes the rating to disk following the priority order (the caller's
 //!     database half is the caller's business; an order starting with db
 //!     means "don't touch the disk", same as everywhere else).
+//!
+//! tunante-decoder resolve-ratings [--order db,file,folder]
+//!     stdin:  one `<db_rating>\t<path>` per line, the caller's whole library
+//!     stdout: one `<resolved>\t<path>` per line, ONLY where they differ
+//!     The startup reconciliation: a `_ratings.m3u` edited by another machine
+//!     or a tag written by another player wins according to the same order,
+//!     and the caller updates its database with the diff. Batched over one
+//!     pipe because spawning a process per track would turn a two-second
+//!     pass into a minute of fork().
 //! ```
 //!
 //! The header is a text line so the stream can be inspected with `head -1`; the
@@ -78,6 +87,22 @@ fn main() -> ExitCode {
         usage();
         return ExitCode::FAILURE;
     };
+
+    // The one mode with no path argument: everything arrives on stdin.
+    if mode == "resolve-ratings" {
+        let order = args
+            .iter()
+            .skip_while(|a| *a != "--order")
+            .nth(1)
+            .map(String::as_str);
+        return match resolve_ratings(order) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("tunante-decoder: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
 
     let Some(path) = args.get(2) else {
         usage();
@@ -241,6 +266,30 @@ fn rate(path: &str, rating: i32, order: Option<&str>) -> Result<(), String> {
         "skipped": outcome.skipped.iter().map(|s| s.as_key()).collect::<Vec<_>>(),
     });
     writeln!(out, "{payload}").map_err(|e| e.to_string())
+}
+
+/// The startup rating pass: stdin lines of `<db_rating>\t<path>`, stdout
+/// lines of `<resolved>\t<path>` where the disk disagrees with the database.
+fn resolve_ratings(order: Option<&str>) -> Result<(), String> {
+    let order = tunante_codec::metadata::rating_source::parse_order(order);
+    let stdin = io::stdin();
+    let stdout = io::stdout();
+    let mut out = BufWriter::new(stdout.lock());
+    for line in stdin.lock().lines() {
+        let line = line.map_err(|e| e.to_string())?;
+        let Some((rating, path)) = line.split_once('\t') else {
+            continue;
+        };
+        let Ok(db_rating) = rating.parse::<i32>() else {
+            continue;
+        };
+        let resolved =
+            tunante_codec::metadata::rating_source::resolve_rating(path, db_rating, &order);
+        if resolved != db_rating {
+            writeln!(out, "{resolved}\t{path}").map_err(|e| e.to_string())?;
+        }
+    }
+    out.flush().map_err(|e| e.to_string())
 }
 
 /// Seek requests arriving on stdin, in milliseconds. -1 means nothing pending.
