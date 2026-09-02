@@ -92,14 +92,25 @@
 > - [ ] Carpetas pinneadas (la BD las soporta desde siempre).
 >
 > **Integración de escritorio:**
-> - [ ] Tray: scroll-volumen, click izquierdo mostrar/ocultar (el parche SNI
->       está enlazado sin cablear), close-to-tray, estilos de icono (el
->       tooltip ya sigue a la pista).
+> - [x] Tray: click izquierdo mostrar/ocultar — resultó estar cableado de
+>       punta a punta (el parche registra el primer ítem como secondary
+>       activate target, «toggle» llega por MenuEvent y el timer lo maneja) —
+>       y **close-to-tray**: fila «Cerrar a la bandeja» (off por defecto),
+>       el botón de cerrar esconde en vez de salir cuando el tray está
+>       compilado. Quedan scroll-volumen (el crate no entrega el Scroll del
+>       SNI; haría falta otro gancho en el parche) y estilos de icono.
 > - [ ] Atajos globales configurables + botones de ratón (evdev) — las teclas
 >       multimedia YA funcionan vía MPRIS en Linux; esto es lo custom.
 >       Spike 4, el único sin ejecutar.
-> - [ ] Seguir al sistema en el tema (el toggle manual ya está).
-> - [ ] Ventana de debug (ring buffer de logs).
+> - [x] Seguir al sistema en el tema — tres estados (oscuro → claro →
+>       sistema); «sistema» lee `org.freedesktop.appearance color-scheme`
+>       del portal vía busctl, un hilo lo refresca cada 5 s y el timer
+>       aplica el flip en vivo. Sin opinión del portal, oscuro.
+> - [x] Ventana de debug — con premio: mini nunca instaló logger, así que
+>       los `log::warn!` del engine, el watcher y tunante-art se perdían.
+>       Ahora un ring de 500 líneas (+ eco a stderr) detrás de la fachada
+>       `log`, y la fila «Registro» en Ajustes abre la hoja, que se
+>       refresca sola mientras está abierta.
 > - [ ] Entrada .desktop desde la app y el reveal fino en el gestor de
 >       ficheros (Dolphin/Nautilus vía FileManager1; hoy xdg-open a secas).
 >

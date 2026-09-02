@@ -30,6 +30,9 @@ export component SettingsTab inherits Rectangle {
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
+    callback show-log();
+    in-out property <bool> close-to-tray;
+    callback toggle-close-to-tray();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -342,6 +345,14 @@ export component SettingsTab inherits Rectangle {
             label: "Tema";
             value: root.theme-label;
             clicked => { root.cycle-theme(); }
+        // Only meaningful when the tray is compiled in; without it the row
+        // still toggles but the close button keeps quitting.
+        SettingRow {
+            label: "Cerrar a la bandeja";
+            value: root.close-to-tray ? "sí" : "no";
+            highlighted: root.close-to-tray;
+            clicked => { root.toggle-close-to-tray(); }
+        }
         }
         // The manual override docs/plan-desktop-slint.md promised: auto picks
         // by window width, the other two force a shell.
@@ -354,6 +365,11 @@ export component SettingsTab inherits Rectangle {
             label: "Buscar actualizaciones";
             value: root.update-status;
             clicked => { root.check-update(); }
+        }
+        SettingRow {
+            label: "Registro";
+            value: "≡";
+            clicked => { root.show-log(); }
         }
 
         Rectangle { vertical-stretch: 1; }

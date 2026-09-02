@@ -224,6 +224,9 @@ export component DesktopShell inherits Rectangle {
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
+    callback show-log();
+    in-out property <bool> close-to-tray;
+    callback toggle-close-to-tray();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -451,6 +454,9 @@ export component DesktopShell inherits Rectangle {
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
+                    show-log => { root.show-log(); }
+                    close-to-tray <=> root.close-to-tray;
+                    toggle-close-to-tray => { root.toggle-close-to-tray(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
                     continue-queue <=> root.continue-queue;

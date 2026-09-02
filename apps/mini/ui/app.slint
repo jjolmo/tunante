@@ -13,7 +13,7 @@ import { Theme, Fmt } from "theme.slint";
 import { TabSwitcher, MiniPlayer } from "widgets.slint";
 import { NowPlayingTab, QueueTab, SettingsTab, LibraryTab } from "tabs.slint";
 import { FolderPicker } from "picker.slint";
-import { CoversPlanSheet } from "widgets.slint";
+import { CoversPlanSheet, LogSheet } from "widgets.slint";
 import { DesktopShell } from "desktop.slint";
 
 // Imported for AppWindow's own properties, and re-exported so
@@ -132,6 +132,9 @@ export component AppWindow inherits Window {
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
+    callback show-log();
+    in-out property <bool> close-to-tray;
+    callback toggle-close-to-tray();
     in property <string> undo-covers-label;
     callback undo-covers();
     in-out property <bool> continue-queue;
@@ -144,6 +147,8 @@ export component AppWindow inherits Window {
     in property <bool> dsp-mono-phase;
     callback toggle-mono-compensate();
     callback toggle-mono-phase();
+    in-out property <bool> showing-log;
+    in property <[string]> log-lines;
     in-out property <bool> bulk-covering;
     in property <string> bulk-status;
     in property <[PlanRow]> bulk-plans;
@@ -509,6 +514,9 @@ export component AppWindow inherits Window {
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
+                    show-log => { root.show-log(); }
+                    close-to-tray <=> root.close-to-tray;
+                    toggle-close-to-tray => { root.toggle-close-to-tray(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
                     continue-queue <=> root.continue-queue;
@@ -645,6 +653,9 @@ export component AppWindow inherits Window {
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
+                    show-log => { root.show-log(); }
+                    close-to-tray <=> root.close-to-tray;
+                    toggle-close-to-tray => { root.toggle-close-to-tray(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
                     continue-queue <=> root.continue-queue;
@@ -779,5 +790,10 @@ export component AppWindow inherits Window {
         busy: root.bulk-busy;
         apply => { root.bulk-apply(); }
         cancelled => { root.bulk-cancelled(); }
+    }
+
+    if root.showing-log: LogSheet {
+        lines: root.log-lines;
+        cancelled => { root.showing-log = false; }
     }
 }

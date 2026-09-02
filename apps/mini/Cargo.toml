@@ -10,6 +10,7 @@ name = "tunante-mini"
 path = "src/main.rs"
 
 [dependencies]
+log = "0.4"
 tunante-core = { path = "../../crates/tunante-core", default-features = false }
 
 # The playback engine, shared with the desktop app since fase 3a of

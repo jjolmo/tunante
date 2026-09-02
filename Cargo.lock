@@ -6526,6 +6526,7 @@ dependencies = [
  "gtk",
  "image",
  "libc",
+ "log",
  "mpris-server",
  "serde_json",
  "slint",
