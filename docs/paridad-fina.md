@@ -12,10 +12,11 @@
 
 - [x] **Doble click no reproducía** — cada click repintaba la selección con
       `set_vec`, matando el TouchArea entre click y click. Arreglado 3e6b5a8.
-- [ ] **No se puede quitar una carpeta de la biblioteca.** El viejo tenía en
-      Ajustes → Library la lista de carpetas monitorizadas con ✕ por carpeta
-      (y toggle Watch individual). Mini solo sabe añadir. Grave: una carpeta
-      equivocada es para siempre.
+- [x] **Quitar carpetas de la biblioteca** — lista de raíces en Ajustes con
+      ✕ por carpeta y toggle vigilada/sin vigilar. La poda respeta a las
+      supervivientes (`remove_tracks_by_folder_path_excluding`: una carpeta
+      anidada absorbida no se lleva la música de otra raíz), y sync_watches
+      ahora reconcilia en ambos sentidos (para de vigilar lo quitado).
 - [x] **Reordenar columnas arrastrando la cabecera** — el gesto del viejo:
       umbral de 5px separa click-para-ordenar de arrastre, la arrastrada baja
       a opacity .5, el destino se marca con borde accent, las celdas viajan
@@ -26,13 +27,14 @@
       (el par conserva su suma: nada se desborda), matemática siempre desde
       el snapshot del press (sin deriva), pesos persistidos como
       `key:peso` dentro de mini.table_columns.
-- [ ] **El knob de loops para formatos streamed no viaja**: `probe_opts` pasa
-      `vgm_loop_count: None`, así que la clave del viejo (0–20 loops para
-      BRSTM/ADX/HCA…) ni se lee ni se expone en Ajustes. Las duraciones de esos
-      formatos no obedecen al usuario.
-- [ ] **Errores de reproducción invisibles**: el viejo tenía ErrorToast
-      ("Failed to play \"X\": …", autodescarte 8 s). Mini los manda a stderr;
-      en pantalla una pista rota simplemente "no suena".
+- [x] **Loops de formatos streamed** — fila «Bucles de formatos streamed»
+      (predet./1/2/3/5/10) sobre la clave `vgm_loop_count` del desktop; la
+      leen AMBOS lados (probe_opts para el escáner, engine para la
+      reproducción — antes ninguno), así barra y oídos cuentan lo mismo.
+- [x] **Errores de reproducción visibles** — toast en la esquina («No se
+      pudo reproducir: …»), click lo cierra, el timer lo envejece a los 8 s
+      (el reloj del viejo). Cablea los tres caminos de play del usuario;
+      stderr sigue recibiendo copia.
 
 ## B · Falta funcional clara
 

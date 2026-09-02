@@ -168,6 +168,12 @@ impl FolderWatcher {
         Ok(())
     }
 
+    /// What is being watched right now — so a caller can reconcile this
+    /// against the database's list instead of remembering its own.
+    pub fn watched(&self) -> Vec<String> {
+        self.watched_paths.keys().cloned().collect()
+    }
+
     pub fn stop_watching(&mut self, path: &str) -> Result<(), String> {
         if let Some(ref mut watcher) = self.watcher {
             let _ = watcher.unwatch(Path::new(path));
