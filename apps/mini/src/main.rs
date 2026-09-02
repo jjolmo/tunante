@@ -2657,6 +2657,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Some(t) => (t.title.clone(), t.artist.clone(), t.album.clone()),
                     None => (String::new(), String::new(), String::new()),
                 };
+                // The tray's tooltip says what the lock screen would.
+                tray::set_tooltip(&if title.is_empty() {
+                    "Tunante".to_string()
+                } else if artist.is_empty() {
+                    title.clone()
+                } else {
+                    format!("{title} — {artist}")
+                });
                 let _ = mpris_tx.send(mpris::Update {
                     title,
                     artist,

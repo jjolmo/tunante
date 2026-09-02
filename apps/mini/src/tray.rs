@@ -22,6 +22,33 @@ pub enum TrayAction {
     Quit,
 }
 
+/// The tooltip's mailbox. The UI thread writes what is playing; a 1 s glib
+/// timeout on the tray's own thread reads it and talks to the SNI — GTK
+/// objects never cross threads, the string does.
+#[cfg(all(target_os = "linux", feature = "tray"))]
+static TOOLTIP: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<String>>> =
+    std::sync::OnceLock::new();
+
+#[cfg(all(target_os = "linux", feature = "tray"))]
+fn tooltip_cell() -> std::sync::Arc<std::sync::Mutex<String>> {
+    TOOLTIP
+        .get_or_init(|| std::sync::Arc::new(std::sync::Mutex::new("Tunante".to_string())))
+        .clone()
+}
+
+/// Tell the tray what to say. Cheap: one mutexed string write.
+#[cfg(all(target_os = "linux", feature = "tray"))]
+pub fn set_tooltip(text: &str) {
+    if let Ok(mut t) = tooltip_cell().lock() {
+        if *t != text {
+            *t = text.to_string();
+        }
+    }
+}
+
+#[cfg(not(all(target_os = "linux", feature = "tray")))]
+pub fn set_tooltip(_text: &str) {}
+
 #[cfg(all(target_os = "linux", feature = "tray"))]
 pub fn spawn() {
     std::thread::spawn(|| {
@@ -70,7 +97,23 @@ pub fn spawn() {
             .with_icon(icon)
             .build();
         match tray {
-            Ok(_tray) => gtk::main(),
+            Ok(tray) => {
+                // The tooltip follows the track. Polled at 1 Hz on this
+                // thread rather than pushed: the mailbox is a string, and a
+                // second of lag on a tooltip is beneath noticing.
+                let cell = tooltip_cell();
+                let mut last = String::new();
+                gtk::glib::timeout_add_seconds_local(1, move || {
+                    if let Ok(text) = cell.lock() {
+                        if *text != last {
+                            last = text.clone();
+                            let _ = tray.set_tooltip(Some(last.as_str()));
+                        }
+                    }
+                    gtk::glib::ControlFlow::Continue
+                });
+                gtk::main()
+            }
             Err(e) => eprintln!("sin icono de bandeja: {e}"),
         }
     });
