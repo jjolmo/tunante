@@ -20,8 +20,16 @@
 > esto es lo que NO, ordenado por lo que se nota en el uso diario:
 >
 > **Se nota a diario:**
-> - [ ] **Multiselección y teclado en la tabla** (Ctrl+A, flechas, Enter,
->       Delete, rango con Shift) y edición de metadatos por lote.
+> - [x] **Multiselección y teclado en la tabla** — click plano/Ctrl/Shift
+>       con el set en Rust (índices, limpiado en cada rebuild: una ordenación
+>       cambia qué significan), flechas con rango por Shift, Enter reproduce
+>       el cursor (borde de acento, scroll-into-view en Slint), Ctrl+A, click
+>       derecho fuera de la selección la re-apunta. Encolar sobre selección
+>       encola el lote en orden visible; **editar sobre selección abre el
+>       editor por lote** (campos por-pista ocultos, vacío = no tocar — los
+>       Option de update_track_metadata ya decían exactamente eso). Falta
+>       Delete (sin significado en biblioteca; llegará con las listas en
+>       tabla).
 > - [ ] **Columnas configurables** (el desktop tenía 17 con resize/reorder/
 >       show-hide; la tabla nueva trae 7 fijas) y orden persistido.
 > - [ ] **Cola de usuario «reproducir a continuación»** en la shell desktop
