@@ -122,6 +122,12 @@ export component DesktopShell inherits Rectangle {
     in property <[FolderRow]> library-folders;
     in property <string> vgm-loops-label;
     callback cycle-vgm-loops();
+    in property <bool> auto-covers;
+    callback toggle-auto-covers();
+    in property <bool> covers-in-folder;
+    callback toggle-covers-in-folder();
+    in property <bool> titlebar-track;
+    callback toggle-titlebar-track();
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -681,6 +687,12 @@ export component DesktopShell inherits Rectangle {
                     library-folders: root.library-folders;
                     vgm-loops-label: root.vgm-loops-label;
                     cycle-vgm-loops => { root.cycle-vgm-loops(); }
+                    auto-covers: root.auto-covers;
+                    toggle-auto-covers => { root.toggle-auto-covers(); }
+                    covers-in-folder: root.covers-in-folder;
+                    toggle-covers-in-folder => { root.toggle-covers-in-folder(); }
+                    titlebar-track: root.titlebar-track;
+                    toggle-titlebar-track => { root.toggle-titlebar-track(); }
                     folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                     folder-removed(id) => { root.folder-removed(id); }
                     loop-count: root.loop-count;
