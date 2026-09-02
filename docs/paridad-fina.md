@@ -40,9 +40,9 @@
 
 **Tabla**
 - [x] 4 columnas nuevas: Artista del álbum, Disco, Muestreo (Hz), Canales
-      (mono/estéreo/N) — con celda y ordenación. Queda la combinada
-      **Album/Game** con su ajuste de preferencia (el viejo la tenía visible
-      por defecto).
+      (mono/estéreo/N) — con celda y ordenación. Y la combinada
+      **Álbum / Juego** con su fila «La columna Álbum/Juego enseña»
+      (álbum/juego, clave album_game_prefers del desktop).
 - [x] Ordenación persistida entre sesiones (claves session_sort_column/
       _direction del desktop).
 - [x] Click central en fila = encolar/desencolar de la cola de usuario.
