@@ -42,6 +42,10 @@ pub struct Player {
     /// Wakes the fade timer the moment a crossfade begins — set by main.rs
     /// once the timer exists, because the player is built first.
     fade_kick: Option<Box<dyn Fn()>>,
+    /// The track actually sounding. Usually the queue's current, but a
+    /// user-queued "play next" track plays while the context index stays
+    /// put — the queue is the map, this is where the needle is.
+    now: Option<Track>,
 }
 
 impl Player {
@@ -54,6 +58,7 @@ impl Player {
             fade_ms: 8_000,
             fade: Fade::Idle,
             fade_kick: None,
+            now: None,
         };
         // The engine's default is the desktop's 0.8; this app has always
         // started at full volume and the session restore adjusts it after.
@@ -151,7 +156,48 @@ impl Player {
     }
 
     pub fn current(&self) -> Option<&Track> {
-        self.queue.current()
+        self.now.as_ref().or_else(|| self.queue.current())
+    }
+
+    /// True while the sounding track is a user-queued one the context does
+    /// not point at — the moment the context marker must not claim it.
+    pub fn playing_from_user_queue(&self) -> bool {
+        match (&self.now, self.queue.current()) {
+            (Some(n), Some(c)) => n.id != c.id,
+            (Some(_), None) => true,
+            _ => false,
+        }
+    }
+
+    /// "And *right* after this one": the priority queue the context never
+    /// sees. Consumed by `next()` before anything else, shuffle included.
+    pub fn play_next(&mut self, tracks: Vec<Track>) {
+        for t in tracks {
+            self.queue.enqueue_track(t);
+        }
+    }
+
+    pub fn user_queue(&self) -> &[Track] {
+        self.queue.get_user_queue()
+    }
+
+    /// Remove the ith user-queued track, returning it.
+    pub fn dequeue_user(&mut self, index: usize) -> Option<Track> {
+        let t = self.queue.get_user_queue().get(index)?.clone();
+        self.queue.dequeue_track(&t.id);
+        Some(t)
+    }
+
+    pub fn move_user(&mut self, from: usize, to: usize) {
+        self.queue.move_in_user_queue(from, to);
+    }
+
+    /// Play a user-queued row right now, jumping the line it was already in.
+    pub fn play_user(&mut self, index: usize) -> Result<(), String> {
+        match self.dequeue_user(index) {
+            Some(t) => self.start_track(t),
+            None => Ok(()),
+        }
     }
 
     /// Play the track at `index` in the queue.
@@ -161,10 +207,19 @@ impl Player {
     }
 
     fn play_current(&mut self) -> Result<(), String> {
-        let (path, hint) = match self.queue.current() {
-            Some(t) => (t.path.clone(), t.duration_ms),
-            None => return Ok(()),
-        };
+        match self.queue.current().cloned() {
+            Some(t) => self.start_track(t),
+            None => Ok(()),
+        }
+    }
+
+    /// The one place a track starts. `next()`/`prev()` must come through here
+    /// with the track the queue *returned*: the user queue plays things that
+    /// are not the context's current, and re-reading `queue.current()` after a
+    /// pop would play the wrong file.
+    fn start_track(&mut self, track: Track) -> Result<(), String> {
+        let (path, hint) = (track.path.clone(), track.duration_ms);
+        self.now = Some(track);
 
         // A fade is a transition: it only makes sense when something is
         // audible. Starting from stopped or paused plays immediately — the
@@ -202,24 +257,25 @@ impl Player {
     }
 
     pub fn next(&mut self) -> Result<(), String> {
-        if self.queue.next().is_some() {
-            self.play_current()
-        } else {
-            self.stop();
-            Ok(())
+        match self.queue.next() {
+            Some(t) => self.start_track(t),
+            None => {
+                self.stop();
+                Ok(())
+            }
         }
     }
 
     pub fn prev(&mut self) -> Result<(), String> {
-        if self.queue.prev().is_some() {
-            self.play_current()
-        } else {
-            Ok(())
+        match self.queue.prev() {
+            Some(t) => self.start_track(t),
+            None => Ok(()),
         }
     }
 
     pub fn stop(&mut self) {
         self.fade = Fade::Idle;
+        self.now = None;
         let user = self.engine.volume();
         self.engine.set_player_volume_raw(user);
         self.engine.stop();

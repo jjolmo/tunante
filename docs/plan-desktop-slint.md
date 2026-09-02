@@ -32,9 +32,17 @@
 >       tabla).
 > - [ ] **Columnas configurables** (el desktop tenía 17 con resize/reorder/
 >       show-hide; la tabla nueva trae 7 fijas) y orden persistido.
-> - [ ] **Cola de usuario «reproducir a continuación»** en la shell desktop
->       (el encolar de mini va al contexto; core ya trae la cola prioritaria)
->       + continue-from-queue.
+> - [x] **Cola de usuario «reproducir a continuación»** — y de paso un bug
+>       que esperaba agazapado: `next()` de core devuelve la pista (cola de
+>       usuario primero), pero el player releía `queue.current()` — con cola
+>       de usuario habría sonado el fichero equivocado. Ahora `start_track`
+>       reproduce lo devuelto y el player recuerda «lo que suena» aparte del
+>       índice del contexto (la cola es el mapa; esto es la aguja). Menú
+>       «Reproducir a continuación» (respeta la selección), sección » al
+>       principio del panel de cola con activar/quitar/reordenar por
+>       secciones, y el marcador del contexto calla mientras suena una
+>       user-queued. Pendiente: continue-from-queue (la danza de
+>       pending_context_update).
 > - [x] **Crossfade al cambiar de pista** — reencarnado, no restaurado: el
 >       hilo+Mutex del desktop no cabía en el `Rc` de mini, así que es una
 >       máquina de estados (Out→In) en el player, pisada por un timer Slint

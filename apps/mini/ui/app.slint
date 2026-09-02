@@ -152,6 +152,7 @@ export component AppWindow inherits Window {
     callback table-filter-changed(string);
     callback table-rated(int, int);
     callback table-enqueued(int);
+    callback table-play-next(int);
     callback table-open-folder(int);
     callback table-edit-requested(int);
     callback table-row-clicked(int, bool, bool);
@@ -348,6 +349,7 @@ export component AppWindow inherits Window {
         table-filter-changed(s) => { root.table-filter-changed(s); }
         table-rated(i, stars) => { root.table-rated(i, stars); }
         table-enqueued(i) => { root.table-enqueued(i); }
+        table-play-next(i) => { root.table-play-next(i); }
         table-open-folder(i) => { root.table-open-folder(i); }
         table-edit-requested(i) => { root.table-edit-requested(i); }
         table-cursor: root.table-cursor;

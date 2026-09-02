@@ -55,6 +55,8 @@ export component TrackTable inherits Rectangle {
     callback rated(int, int);
     /// "Y después esta": append to the queue context, mini's own enqueue.
     callback enqueued(int);
+    /// "Y *justo* después": the priority queue next() consumes first.
+    callback play-next(int);
     /// Reveal the row's file in the system file manager.
     callback open-folder(int);
     /// Open the metadata editor on this row.
@@ -212,6 +214,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Reproducir";
                             activated => { root.activated(i); }
+                        }
+                        MenuItem {
+                            title: "Reproducir a continuación";
+                            activated => { root.play-next(i); }
                         }
                         MenuItem {
                             title: "Encolar";
