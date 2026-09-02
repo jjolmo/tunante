@@ -30,6 +30,8 @@ export component SettingsTab inherits Rectangle {
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
+    in property <string> undo-covers-label;
+    callback undo-covers();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -275,6 +277,11 @@ export component SettingsTab inherits Rectangle {
             label: "Descargar carátulas";
             value: "⬇";
             clicked => { root.descargar-caratulas(); }
+        }
+        SettingRow {
+            label: "Deshacer última descarga";
+            value: root.undo-covers-label;
+            clicked => { root.undo-covers(); }
         }
 
         Rectangle { height: 1px; background: Theme.border; }

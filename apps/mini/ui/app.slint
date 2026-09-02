@@ -13,13 +13,14 @@ import { Theme, Fmt } from "theme.slint";
 import { TabSwitcher, MiniPlayer } from "widgets.slint";
 import { NowPlayingTab, QueueTab, SettingsTab, LibraryTab } from "tabs.slint";
 import { FolderPicker } from "picker.slint";
+import { CoversPlanSheet } from "widgets.slint";
 import { DesktopShell } from "desktop.slint";
 
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
 // has, wherever the structs live now.
-import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow } from "types.slint";
-export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow }
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow } from "types.slint";
+export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow }
 // So Rust can flip the palette: ui.global::<Theme>().set_dark(false).
 export { Theme }
 
@@ -131,6 +132,14 @@ export component AppWindow inherits Window {
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
+    in property <string> undo-covers-label;
+    callback undo-covers();
+    in-out property <bool> bulk-covering;
+    in property <string> bulk-status;
+    in property <[PlanRow]> bulk-plans;
+    in property <bool> bulk-busy;
+    callback bulk-apply();
+    callback bulk-cancelled();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -476,6 +485,8 @@ export component AppWindow inherits Window {
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
+                    undo-covers-label: root.undo-covers-label;
+                    undo-covers => { root.undo-covers(); }
         eq-enabled: root.eq-enabled;
         eq-low: root.eq-low;
         eq-mid: root.eq-mid;
@@ -600,6 +611,8 @@ export component AppWindow inherits Window {
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
+                    undo-covers-label: root.undo-covers-label;
+                    undo-covers => { root.undo-covers(); }
                         eq-enabled: root.eq-enabled;
                         eq-low: root.eq-low;
                         eq-mid: root.eq-mid;
@@ -712,5 +725,15 @@ export component AppWindow inherits Window {
             vertical: false;
             tab <=> root.tab;
         }
+    }
+
+    // Over whichever shell is up: the bulk download is asked for from
+    // Ajustes, which both shells show.
+    if root.bulk-covering: CoversPlanSheet {
+        status: root.bulk-status;
+        plans: root.bulk-plans;
+        busy: root.bulk-busy;
+        apply => { root.bulk-apply(); }
+        cancelled => { root.bulk-cancelled(); }
     }
 }

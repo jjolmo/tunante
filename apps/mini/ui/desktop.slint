@@ -217,6 +217,8 @@ export component DesktopShell inherits Rectangle {
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
+    in property <string> undo-covers-label;
+    callback undo-covers();
     callback cycle-output();
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
@@ -431,6 +433,8 @@ export component DesktopShell inherits Rectangle {
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
+                    undo-covers-label: root.undo-covers-label;
+                    undo-covers => { root.undo-covers(); }
                     eq-enabled: root.eq-enabled;
                     eq-low: root.eq-low;
                     eq-mid: root.eq-mid;

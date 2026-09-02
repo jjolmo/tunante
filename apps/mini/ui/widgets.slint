@@ -4,7 +4,7 @@
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, ConsoleOption, CoverCandidate } from "types.slint";
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, ConsoleOption, CoverCandidate, PlanRow } from "types.slint";
 
 export component SwipeRow inherits Rectangle {
     in property <string> action-label;
@@ -1675,6 +1675,107 @@ export component PlaylistPickSheet inherits Rectangle {
                         font-size: Theme.font-body;
                     }
                     plc := TouchArea { clicked => { root.cancelled(); } }
+                }
+            }
+        }
+    }
+}
+
+
+// The bulk cover download, dry by default: what a run WOULD write, reviewed
+// before anything touches a synced folder. Apply is the second decision.
+export component CoversPlanSheet inherits Rectangle {
+    in property <string> status;
+    in property <[PlanRow]> plans;
+    in property <bool> busy;
+    callback apply();
+    callback cancelled();
+
+    background: #000000bb;
+
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: min(640px, root.width - Theme.gap * 4);
+        height: min(620px, root.height - Theme.gap * 4);
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+        TouchArea { }
+
+        VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: "Descarga de carátulas";
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+            }
+            Text {
+                text: root.status;
+                color: Theme.text-muted;
+                font-size: Theme.font-body;
+            }
+
+            ListView {
+                vertical-stretch: 1;
+                for plan in root.plans: Rectangle {
+                    height: 40px;
+                    HorizontalLayout {
+                        spacing: Theme.gap;
+                        VerticalLayout {
+                            alignment: center;
+                            horizontal-stretch: 1;
+                            Text {
+                                text: plan.game;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-body;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: plan.console + (plan.source == "" ? "" : " · " + plan.source);
+                                color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                                overflow: elide;
+                            }
+                        }
+                        Text {
+                            text: plan.action;
+                            color: plan.action == "se escribiría" ? Theme.accent : Theme.text-muted;
+                            font-size: Theme.font-small;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                spacing: Theme.gap;
+                alignment: end;
+
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: bpc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: root.busy ? "Parar" : "Cerrar";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    bpc := TouchArea { clicked => { root.cancelled(); } }
+                }
+                if !root.busy && root.plans.length > 0: Rectangle {
+                    width: 130px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: Theme.accent;
+                    Text {
+                        text: "Aplicar";
+                        color: #ffffff;
+                        font-size: Theme.font-body;
+                    }
+                    TouchArea { clicked => { root.apply(); } }
                 }
             }
         }
