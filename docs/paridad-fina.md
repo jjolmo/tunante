@@ -68,9 +68,8 @@
 - [x] Carpetas monitorizadas (raíces) en el sidebar con contador, delante de
       las pineadas — click acota la tabla al subárbol, doble click reproduce;
       sin ✕ (las raíces se quitan en Ajustes, donde la salida poda).
-- [x] Doble click reproduce en el sidebar — Pistas (el orden visible de la
-      tabla), playlists y carpetas pineadas; arranque aleatorio si shuffle.
-      Quedan las consolas (no listadas en el sidebar).
+- [x] Doble click reproduce en el sidebar — Pistas, playlists, carpetas
+      pineadas Y consolas; arranque aleatorio si shuffle.
 - [x] «+» junto a Listas (salta a la vista donde nacen; el input inline del
       viejo queda como pulido).
 - [x] Menú contextual de playlist en sidebar: Reproducir / Encolar todo /
@@ -161,6 +160,15 @@
 
 ## C · Menor / pulido
 
+- [x] Sección Consolas en el sidebar — siluetas (ConsoleArt) y contadores,
+      click acota, doble click reproduce, menú Reproducir/Carátulas.
+- [x] Filas de solo lectura del editor de metadatos (duración · códec ·
+      muestreo · canales · bitrate · tamaño · ★), una línea bajo la ruta.
+- [x] «Descargar automáticamente» en la hoja de carátula (refetch: olvida
+      la caché, coge la mejor del archivo, la aplica sobre lo que haya).
+- [x] ETA humanizada y nombre del elemento en el progreso del bulk de
+      carátulas («~3 min», «menos de un minuto»).
+
 - [x] «buscando carátula…» bajo el sidebar mientras la auto-descarga está
       en vuelo (cover-busy, apagado por art_dirty).
 - [x] Estados vacíos de la tabla: «Nada casa con la búsqueda» vs «No hay
@@ -168,16 +176,16 @@
 - [x] Registro con toolbar: nivel (todo/aviso+/solo error), filtro de texto,
       Copiar (wl-copy→xclip) y Limpiar; el refresco del timer respeta ambos
       filtros.
-- [~] Popup de volumen del tray: el slider de la app ya se mueve en vivo
-      con la rueda; la ventanita flotante del viejo queda como cosmética
-      aparcada.
+- [x] Feedback de volumen del tray: la rueda mueve el slider Y el tooltip
+      del icono muestra «Volumen N%» ~1,5 s (el buzón del tooltip cede el
+      turno). Sin ventana flotante aparte — el tooltip ES el popup.
 - [x] Diálogo de crash: panic hook → tunante-crash.log en XDG data +
       zenity/kdialog con el mensaje y la ruta.
-- [~] «Fix the lengths too»/«solo esta pista» en nombres: el flujo de mini
-      escribe el .m3u del juego entero con re-sellado por probe; los dos
-      matices del viejo quedan como refinamiento pendiente del sheet.
-- [~] Type-ahead de consola por codec: cubierto distinto — mini enseña el
-      catálogo completo desplegable, no hay campo que rankear.
+- [~] «Fix the lengths too»/«solo esta pista» en nombres: el flujo escribe
+      el .m3u del juego con re-sellado por probe; los dos matices quedan
+      como refinamiento del sheet (funcionalmente equivalente hoy).
+- [~] Type-ahead de consola por codec: cubierto distinto — el catálogo es un
+      desplegable completo, no un campo que rankear.
 - [x] «Acerca de Tunante»: fila con versión y autor; click abre el repo.
 
 ## D · Cubierto distinto (no es deuda)

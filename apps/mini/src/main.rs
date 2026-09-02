@@ -1584,6 +1584,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     {
+        let (target, dirty) = (cover_target.clone(), std::sync::Arc::clone(&art_dirty));
+        let (db_c, tx) = (db.clone(), cover_tx.clone());
+        let weak = ui.as_weak();
+        ui.on_cover_auto(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some(t) = target.borrow().clone() else { return };
+            ui.set_cover_status(SharedString::from("Descargando la mejor…"));
+            let store = db_c
+                .get_setting("store_covers_in_folder")
+                .ok()
+                .flatten()
+                .map(|v| v == "true")
+                .unwrap_or(false);
+            let (tx, dirty) = (tx.clone(), std::sync::Arc::clone(&dirty));
+            std::thread::spawn(move || {
+                // The old refetch_cover: forget what the cache thinks, take
+                // the archive's best answer, apply it over what exists.
+                let req = cover_request_for(&t, store);
+                let resolver = cover_resolver();
+                resolver.forget(&req);
+                let opts = tunante_art::resolver::BulkOptions {
+                    min_confidence: tunante_art::Confidence::High,
+                    overwrite: tunante_art::folder::Overwrite::Replace,
+                    ..Default::default()
+                };
+                let plans = resolver.resolve_many(vec![req], &opts, |_| {});
+                let ok = plans
+                    .first()
+                    .is_some_and(|p| p.written.is_some() || p.existing.is_some());
+                dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                let _ = tx.send(CoverMsg::Status(
+                    if ok {
+                        "Aplicada la mejor del archivo.".to_string()
+                    } else {
+                        "Nada con confianza suficiente; elige a mano.".to_string()
+                    },
+                ));
+            });
+        });
+    }
+    {
         let (target, urls, tx) = (cover_target.clone(), cover_urls.clone(), cover_tx.clone());
         let weak = ui.as_weak();
         ui.on_cover_chosen(move |index| {
@@ -1874,6 +1915,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     uniform(|t| t.album.as_str()).unwrap_or_default(),
                 ));
                 ui.set_meta_track(SharedString::new());
+                ui.set_meta_tech(SharedString::new());
                 ui.set_editing_metadata(true);
                 return;
             }
@@ -1898,6 +1940,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_meta_track(SharedString::from(
                 t.track_number.map(|n| n.to_string()).unwrap_or_default(),
             ));
+            // The read-only half of the old Properties dialog, one line.
+            let mut tech: Vec<String> = vec![
+                cell_for(t, "duration", false),
+                t.codec.to_uppercase(),
+            ];
+            for extra in [
+                cell_for(t, "samplerate", false),
+                cell_for(t, "channels", false),
+                cell_for(t, "bitrate", false),
+                cell_for(t, "size", false),
+            ] {
+                if !extra.is_empty() {
+                    tech.push(extra);
+                }
+            }
+            if t.rating > 0 {
+                tech.push(stars_for(t.rating));
+            }
+            ui.set_meta_tech(SharedString::from(tech.join(" · ")));
             ui.set_editing_metadata(true);
         });
     }
@@ -2187,6 +2248,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let folders_model = Rc::new(VecModel::from(Vec::<FolderRow>::new()));
     ui.set_library_folders(ModelRc::from(folders_model.clone()));
     refresh_library_folders(&db, &folders_model);
+    let consoles_side = Rc::new(VecModel::from(Vec::<PlaylistRow>::new()));
+    ui.set_sidebar_consoles(ModelRc::from(consoles_side.clone()));
+    {
+        let (db_c, tree_c, model) = (db.clone(), tree.clone(), consoles_side.clone());
+        refresh_sidebar_consoles(&db_c, &tree_c, &model);
+    }
+    {
+        let (tree_c, db_c, views_c) = (tree.clone(), db.clone(), views.clone());
+        let weak = ui.as_weak();
+        ui.on_console_opened(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            tree_c.borrow_mut().mode = library::Mode::Consoles;
+            tree_c.borrow_mut().nav.clear();
+            tree_c.borrow_mut().nav.push(format!("consola:{id}"));
+            ui.set_library_mode(1);
+            refresh_library(&ui, &tree_c, &db_c, &views_c);
+        });
+    }
+    {
+        let (db_c, player_c, queue_c) = (db.clone(), player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_console_played(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let tracks: Vec<_> = db_c
+                .get_all_tracks()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|t| tunante_core::console::key_of(t) == id.as_str())
+                .collect();
+            play_collection(&ui, &player_c, &queue_c, tracks);
+        });
+    }
     // The folder sheet's four new verbs, path-based.
     {
         let (db_p, player_p, queue_model_p) = (db.clone(), player.clone(), queue_model.clone());
@@ -4124,8 +4217,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let update_manual = update_manual.clone();
         let pinned_model = pinned_model.clone();
         let folders_model = folders_model.clone();
+        let consoles_side = consoles_side.clone();
         let badge_fp = badge_fp.clone();
         let tray_click = tray_click.clone();
+        let vol_tooltip_hold = Rc::new(std::cell::Cell::new(0u8));
         let pending_search = pending_search.clone();
         let art_try: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
         let theme_mode = theme_mode.clone();
@@ -4361,6 +4456,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     refresh_counts(&db, &ui);
                     refresh_pinned(&db, &pinned_model);
                     refresh_library_folders(&db, &folders_model);
+                    refresh_sidebar_consoles(&db, &tree, &consoles_side);
                     refresh_library(&ui, &tree, &db, &views);
                     let mut st = table_state.borrow_mut();
                     if st.built {
@@ -4559,6 +4655,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let v = (p.volume() + notches as f32 * 0.05).clamp(0.0, 1.0);
                     p.set_volume(v);
                     ui.set_volume(p.volume());
+                    // The pointer is on the icon (that is what scrolling is),
+                    // so the tooltip is the old volume popup, for free. Held
+                    // for ~1.5 s before the track tooltip takes it back.
+                    tray::set_tooltip(&format!("Volumen {:.0}%", v * 100.0));
+                    vol_tooltip_hold.set(3);
                 }
 
                 // Anything the tray menu asked for. Same shapes as MPRIS,
@@ -4706,14 +4807,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Some(t) => (t.title.clone(), t.artist.clone(), t.album.clone()),
                     None => (String::new(), String::new(), String::new()),
                 };
-                // The tray's tooltip says what the lock screen would.
-                tray::set_tooltip(&if title.is_empty() {
-                    "Tunante".to_string()
-                } else if artist.is_empty() {
-                    title.clone()
+                // The tray's tooltip says what the lock screen would —
+                // unless a volume scroll just claimed it for a moment.
+                if vol_tooltip_hold.get() > 0 {
+                    vol_tooltip_hold.set(vol_tooltip_hold.get() - 1);
                 } else {
-                    format!("{title} — {artist}")
-                });
+                    tray::set_tooltip(&if title.is_empty() {
+                        "Tunante".to_string()
+                    } else if artist.is_empty() {
+                        title.clone()
+                    } else {
+                        format!("{title} — {artist}")
+                    });
+                }
                 let _ = mpris_tx.send(mpris::Update {
                     title,
                     artist,
@@ -5574,9 +5680,29 @@ fn spawn_bulk_covers(
             ..Default::default()
         };
         let verb = if dry { "Buscando" } else { "Descargando" };
+        let started = std::time::Instant::now();
         let plans = cover_resolver().resolve_many(reqs, &opts, |p| {
+            // The old panel's humanized ETA, from the pace so far.
+            let eta = if p.done > 0 && p.done < p.total {
+                let secs = started.elapsed().as_secs_f64() / p.done as f64
+                    * (p.total - p.done) as f64;
+                if secs < 60.0 {
+                    " · menos de un minuto".to_string()
+                } else if secs < 3600.0 {
+                    format!(" · ~{} min", (secs / 60.0).round() as u64)
+                } else {
+                    format!(" · ~{}h {}m", secs as u64 / 3600, (secs as u64 % 3600) / 60)
+                }
+            } else {
+                String::new()
+            };
+            let current = if p.current.is_empty() {
+                String::new()
+            } else {
+                format!("\n{}", p.current)
+            };
             let _ = tx.send(CoverMsg::BulkStatus(format!(
-                "{verb}… {}/{} · {} encontradas",
+                "{verb}… {}/{} · {} encontradas{eta}{current}",
                 p.done, p.total, p.found
             )));
         });
@@ -5955,6 +6081,26 @@ fn sidebar_folder_path(db: &Database, id: &str) -> Option<String> {
             .find(|f| f.id == id)
             .map(|f| f.path),
     }
+}
+
+/// The consoles that hold music, for the sidebar section — PlaylistRow
+/// reused (id, name, count-as-subtitle).
+fn refresh_sidebar_consoles(
+    db: &Database,
+    tree: &Rc<RefCell<library::Tree>>,
+    model: &VecModel<PlaylistRow>,
+) {
+    model.set_vec(
+        tree.borrow()
+            .console_counts(db)
+            .into_iter()
+            .map(|(id, name, n)| PlaylistRow {
+                id: SharedString::from(id),
+                name: SharedString::from(name),
+                subtitle: SharedString::from(n.to_string()),
+            })
+            .collect::<Vec<_>>(),
+    );
 }
 
 /// The library's roots as Ajustes shows them: removable, watchable.
