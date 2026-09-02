@@ -769,47 +769,42 @@ export component DesktopShell inherits Rectangle {
                 }
 
                 // Rate what is playing without hunting it down in the
-                // table, and one tap to the EQ — both straight off the old
-                // transport bar.
-                if root.now-title != "": Rectangle {
-                    width: 92px;
-                    Text {
-                        x: 0;
-                        width: parent.width;
-                        height: 100%;
-                        text: root.now-stars;
-                        color: Theme.accent;
-                        font-size: Theme.font-small;
-                        vertical-alignment: center;
-                    }
-                    TouchArea {
-                        clicked => {
-                            root.rate-now(clamp(
-                                floor(self.mouse-x / (parent.width / 5)) + 1,
-                                1, 5));
-                        }
-                    }
-                }
-                RoundButton {
-                    glyph: "∿";
-                    size: 36px;
-                    active: root.centre == 2;
-                    clicked => { root.centre = 2; }
-                }
-
-                HorizontalLayout {
-                    width: 170px;
-                    spacing: 8px;
+                // table, one tap to the EQ, and the volume — one tight
+                // cluster, vertically centred, no orphaned widgets.
+                VerticalLayout {
                     alignment: center;
-                    Text {
-                        text: "🔊";
-                        color: Theme.text-secondary;
-                        vertical-alignment: center;
-                    }
-                    VolumeBar {
-                        width: 130px;
-                        value: root.volume;
-                        changed(v) => { root.set-volume(v); }
+                    HorizontalLayout {
+                        spacing: 10px;
+                        if root.now-title != "": Rectangle {
+                            width: 92px;
+                            Text {
+                                x: 0;
+                                width: parent.width;
+                                height: 100%;
+                                text: root.now-stars;
+                                color: Theme.accent;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => {
+                                    root.rate-now(clamp(
+                                        floor(self.mouse-x / (parent.width / 5)) + 1,
+                                        1, 5));
+                                }
+                            }
+                        }
+                        RoundButton {
+                            glyph: "∿";
+                            size: 36px;
+                            active: root.centre == 2;
+                            clicked => { root.centre = 2; }
+                        }
+                        VolumeBar {
+                            width: 120px;
+                            value: root.volume;
+                            changed(v) => { root.set-volume(v); }
+                        }
                     }
                 }
             }
