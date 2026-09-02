@@ -48,6 +48,7 @@ mod debuglog;
 mod theme_watch;
 mod integrate;
 mod buttons;
+mod shortcuts;
 // logind, reached over D-Bus, and only `mpris` uses it.
 #[cfg(target_os = "linux")]
 mod inhibit;
@@ -2327,6 +2328,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_setup_mode(true);
         });
     }
+    // --- Global shortcuts (portal) --------------------------------------------
+    //
+    // The session is created lazily, on the first enable, because the first
+    // BindShortcuts opens the desktop's own binding dialog. The forward flag
+    // outlives toggles so re-enabling costs nothing.
+    let shortcut_forward = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let shortcut_rx: Rc<RefCell<Option<std::sync::mpsc::Receiver<shortcuts::Msg>>>> =
+        Rc::new(RefCell::new(None));
+    {
+        let enabled = db
+            .get_setting("mini.global_shortcuts")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        ui.set_global_shortcuts_on(enabled);
+        if enabled {
+            // The portal needs the app to exist as a .desktop entry before
+            // it will listen to it. Idempotent, so re-running is free.
+            let _ = integrate::make_desktop_entry();
+            shortcut_forward.store(true, std::sync::atomic::Ordering::Relaxed);
+            *shortcut_rx.borrow_mut() = Some(shortcuts::spawn(shortcut_forward.clone()));
+            ui.set_global_shortcuts_label(SharedString::from("vinculando…"));
+        } else {
+            ui.set_global_shortcuts_label(SharedString::from("no"));
+        }
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        let (flag, rx_slot) = (shortcut_forward.clone(), shortcut_rx.clone());
+        ui.on_toggle_global_shortcuts(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let enable = !ui.get_global_shortcuts_on();
+            ui.set_global_shortcuts_on(enable);
+            let _ = db.set_setting(
+                "mini.global_shortcuts",
+                if enable { "true" } else { "false" },
+            );
+            flag.store(enable, std::sync::atomic::Ordering::Relaxed);
+            if enable {
+                if rx_slot.borrow().is_none() {
+                    let _ = integrate::make_desktop_entry();
+                    *rx_slot.borrow_mut() = Some(shortcuts::spawn(flag.clone()));
+                    ui.set_global_shortcuts_label(SharedString::from("vinculando…"));
+                } else {
+                    ui.set_global_shortcuts_label(SharedString::from("sí"));
+                }
+            } else {
+                ui.set_global_shortcuts_label(SharedString::from("no"));
+            }
+        });
+    }
+
     // --- Mouse side buttons ---------------------------------------------------
     //
     // evdev readers behind a toggle (mini.mouse_buttons, off by default).
@@ -3307,6 +3361,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     sync_queue_marker(p, &queue_model);
                 }
 
+                // A global shortcut, wherever the focus was.
+                let pending: Vec<shortcuts::Msg> = shortcut_rx
+                    .borrow()
+                    .as_ref()
+                    .map(|rx| rx.try_iter().collect())
+                    .unwrap_or_default();
+                for msg in pending {
+                    match msg {
+                        shortcuts::Msg::Status(text) => {
+                            ui.set_global_shortcuts_label(SharedString::from(text));
+                            continue;
+                        }
+                        shortcuts::Msg::PlayPause => p.toggle_play(),
+                        shortcuts::Msg::Next => {
+                            let _ = p.next();
+                            adopt_pending_context(p, &db);
+                        }
+                        shortcuts::Msg::Prev => {
+                            let _ = p.prev();
+                        }
+                    }
+                    push_now_playing(&ui, p);
+                    sync_queue_marker(p, &queue_model);
+                }
+
                 // A thumb button on the mouse, wherever the focus was.
                 while let Ok(cmd) = button_rx.try_recv() {
                     match cmd {
@@ -3320,6 +3399,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
+                }
+
+                // Scroll over the tray icon: volume, five percent a notch,
+                // like every SNI player before this one.
+                let notches = tray::take_scroll();
+                if notches != 0 {
+                    let v = (p.volume() + notches as f32 * 0.05).clamp(0.0, 1.0);
+                    p.set_volume(v);
+                    ui.set_volume(p.volume());
                 }
 
                 // Anything the tray menu asked for. Same shapes as MPRIS,
