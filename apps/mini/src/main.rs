@@ -4736,14 +4736,20 @@ fn rebuild_columns(
 /// selection changes happen at click speed, and the spike put a whole-model
 /// swap at 11–21 ms over 30k rows — simpler than bookkeeping point updates.
 fn repaint_selection(st: &TableState, model: &VecModel<TableRow>) {
-    let rows: Vec<TableRow> = (0..model.row_count())
-        .filter_map(|i| {
-            let mut r = model.row_data(i)?;
-            r.selected = st.selected.contains(&i);
-            Some(r)
-        })
-        .collect();
-    model.set_vec(rows);
+    // Per-row updates, never set_vec: replacing the whole model makes the
+    // ListView rebuild every row element, and the TouchArea that counted
+    // the first click of a double-click dies with it — which is why
+    // double-clicking a track played nothing for the first human to try.
+    // set_row_data only notifies the row, and only changed rows at that.
+    for i in 0..model.row_count() {
+        if let Some(mut r) = model.row_data(i) {
+            let should = st.selected.contains(&i);
+            if r.selected != should {
+                r.selected = should;
+                model.set_row_data(i, r);
+            }
+        }
+    }
 }
 
 /// Five glyphs, filled up to the rating. Pre-painted here because the UI
