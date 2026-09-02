@@ -22,6 +22,8 @@ export component SettingsTab inherits Rectangle {
     callback cycle-fade();
     in property <int> short-filter-secs;
     callback cycle-short-filter();
+    in property <int> crossfade-secs;
+    callback cycle-crossfade();
     in property <string> output-label: "sistema";
     in property <string> ui-mode-label: "auto";
     in property <string> update-status;
@@ -135,6 +137,15 @@ export component SettingsTab inherits Rectangle {
             label: "Fundido final";
             value: root.fade-seconds == 0 ? "sin fundido" : root.fade-seconds + " s";
             clicked => { root.cycle-fade(); }
+        }
+        // The transition between tracks, distinct from "Fundido final",
+        // which is how a looping track ends.
+        SettingRow {
+            label: "Crossfade entre pistas";
+            value: root.crossfade-secs == 0
+                ? "desactivado" : root.crossfade-secs + " s";
+            highlighted: root.crossfade-secs != 0;
+            clicked => { root.cycle-crossfade(); }
         }
         SettingRow {
             label: "Saltar pistas cortas";

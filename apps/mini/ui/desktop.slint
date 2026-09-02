@@ -200,6 +200,8 @@ export component DesktopShell inherits Rectangle {
     callback cycle-fade();
     in property <int> short-filter-secs;
     callback cycle-short-filter();
+    in property <int> crossfade-secs;
+    callback cycle-crossfade();
     in property <string> output-label;
     in property <string> ui-mode-label;
     in property <string> update-status;
@@ -397,6 +399,8 @@ export component DesktopShell inherits Rectangle {
                     cycle-fade => { root.cycle-fade(); }
                     short-filter-secs: root.short-filter-secs;
                     cycle-short-filter => { root.cycle-short-filter(); }
+                    crossfade-secs: root.crossfade-secs;
+                    cycle-crossfade => { root.cycle-crossfade(); }
                     output-label: root.output-label;
                     ui-mode-label: root.ui-mode-label;
                     cycle-output => { root.cycle-output(); }
