@@ -111,9 +111,17 @@
 >       el botón de cerrar esconde en vez de salir cuando el tray está
 >       compilado. Quedan scroll-volumen (el crate no entrega el Scroll del
 >       SNI; haría falta otro gancho en el parche) y estilos de icono.
-> - [ ] Atajos globales configurables + botones de ratón (evdev) — las teclas
->       multimedia YA funcionan vía MPRIS en Linux; esto es lo custom.
->       Spike 4, el único sin ejecutar.
+> - [x] Spike 4 ejecutado, y la mitad de ratón implementada. Veredicto del
+>       spike: el portal `GlobalShortcuts` v2 existe en esta máquina y es el
+>       camino correcto para teclas custom, pero contesta por señales D-Bus —
+>       necesita una conexión de bus de verdad, no el idioma busctl-subproceso
+>       del repo, así que las teclas custom quedan aparcadas con diseño
+>       decidido (las multimedia YA van por MPRIS). Los **botones de ratón**
+>       sí: lectores evdev (BTN_SIDE/EXTRA/FORWARD/BACK → anterior/siguiente,
+>       solo presses) tras el toggle «Botones de ratón» (off por defecto:
+>       leer todo /dev/input es de pedirlo, no de venir puesto), la etiqueta
+>       dice la verdad sobre el grupo `input`, y re-activar re-enumera — así
+>       se recoge un ratón enchufado después.
 > - [x] Seguir al sistema en el tema — tres estados (oscuro → claro →
 >       sistema); «sistema» lee `org.freedesktop.appearance color-scheme`
 >       del portal vía busctl, un hilo lo refresca cada 5 s y el timer

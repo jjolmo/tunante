@@ -136,6 +136,9 @@ export component AppWindow inherits Window {
     callback show-log();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
+    in property <string> mouse-buttons-label;
+    in property <bool> mouse-buttons-on;
+    callback toggle-mouse-buttons();
     in property <bool> update-skippable;
     callback skip-update();
     in property <string> desktop-entry-label;
@@ -538,6 +541,9 @@ export component AppWindow inherits Window {
                     show-log => { root.show-log(); }
                     close-to-tray <=> root.close-to-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
+                    mouse-buttons-label: root.mouse-buttons-label;
+                    mouse-buttons-on: root.mouse-buttons-on;
+                    toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
                     update-skippable: root.update-skippable;
                     skip-update => { root.skip-update(); }
                     desktop-entry-label: root.desktop-entry-label;
@@ -688,6 +694,9 @@ export component AppWindow inherits Window {
                     show-log => { root.show-log(); }
                     close-to-tray <=> root.close-to-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
+                    mouse-buttons-label: root.mouse-buttons-label;
+                    mouse-buttons-on: root.mouse-buttons-on;
+                    toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
                     update-skippable: root.update-skippable;
                     skip-update => { root.skip-update(); }
                     desktop-entry-label: root.desktop-entry-label;

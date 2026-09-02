@@ -47,6 +47,7 @@ mod boost;
 mod debuglog;
 mod theme_watch;
 mod integrate;
+mod buttons;
 // logind, reached over D-Bus, and only `mpris` uses it.
 #[cfg(target_os = "linux")]
 mod inhibit;
@@ -2326,6 +2327,57 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_setup_mode(true);
         });
     }
+    // --- Mouse side buttons ---------------------------------------------------
+    //
+    // evdev readers behind a toggle (mini.mouse_buttons, off by default).
+    // The stop flag is per-activation: toggling off abandons the old
+    // generation of threads, toggling on starts a fresh one — which is also
+    // how a mouse plugged in later gets noticed.
+    let (button_tx, button_rx) = std::sync::mpsc::channel::<buttons::ButtonCmd>();
+    let button_stop: Rc<RefCell<std::sync::Arc<std::sync::atomic::AtomicBool>>> =
+        Rc::new(RefCell::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))));
+    let buttons_label = |n: usize| -> String {
+        if n == 0 {
+            "sin acceso (grupo input)".to_string()
+        } else {
+            format!("sí ({n} dispositivos)")
+        }
+    };
+    {
+        let enabled = db
+            .get_setting("mini.mouse_buttons")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        ui.set_mouse_buttons_on(enabled);
+        if enabled {
+            let n = buttons::spawn(button_tx.clone(), button_stop.borrow().clone());
+            ui.set_mouse_buttons_label(SharedString::from(buttons_label(n)));
+        } else {
+            ui.set_mouse_buttons_label(SharedString::from("no"));
+        }
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        let (stop, tx) = (button_stop.clone(), button_tx.clone());
+        ui.on_toggle_mouse_buttons(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let enable = !ui.get_mouse_buttons_on();
+            ui.set_mouse_buttons_on(enable);
+            let _ = db.set_setting("mini.mouse_buttons", if enable { "true" } else { "false" });
+            stop.borrow().store(true, std::sync::atomic::Ordering::Relaxed);
+            if enable {
+                let fresh = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                *stop.borrow_mut() = fresh.clone();
+                let n = buttons::spawn(tx.clone(), fresh);
+                ui.set_mouse_buttons_label(SharedString::from(buttons_label(n)));
+            } else {
+                ui.set_mouse_buttons_label(SharedString::from("no"));
+            }
+        });
+    }
+
     // --- Cover fit and cache ------------------------------------------------
     //
     // Five ways to sit a non-square cover in a square, under the desktop's
@@ -3250,6 +3302,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // command first. Advertised as unsupported, so nothing
                         // well-behaved should be asking.
                         mpris::Command::Seek(_) => {}
+                    }
+                    push_now_playing(&ui, p);
+                    sync_queue_marker(p, &queue_model);
+                }
+
+                // A thumb button on the mouse, wherever the focus was.
+                while let Ok(cmd) = button_rx.try_recv() {
+                    match cmd {
+                        buttons::ButtonCmd::Next => {
+                            let _ = p.next();
+                            adopt_pending_context(p, &db);
+                        }
+                        buttons::ButtonCmd::Prev => {
+                            let _ = p.prev();
+                        }
                     }
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
