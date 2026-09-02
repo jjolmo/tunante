@@ -76,6 +76,8 @@ build() {
 	# main() and segfault the moment it moves to a worker thread — which is
 	# exactly what rodio does.
 	export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,stack-size=8388608"
+	# So the binary reports the package's version, not the workspace placeholder.
+	export TUNANTE_VERSION="$pkgver"
 
 	# --locked y no --frozen. `--frozen` es `--locked` más `--offline`, y sin
 	# crates vendorizados no hay nada que resolver sin red: en un contenedor
