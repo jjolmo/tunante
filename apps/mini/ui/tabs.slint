@@ -39,6 +39,8 @@ export component SettingsTab inherits Rectangle {
     in property <string> global-shortcuts-label;
     in property <bool> global-shortcuts-on;
     callback toggle-global-shortcuts();
+    in property <string> tray-style-label;
+    callback cycle-tray-style();
     in property <bool> update-skippable;
     callback skip-update();
     in property <string> desktop-entry-label;
@@ -398,6 +400,11 @@ export component SettingsTab inherits Rectangle {
             value: root.mouse-buttons-label;
             highlighted: root.mouse-buttons-on;
             clicked => { root.toggle-mouse-buttons(); }
+        }
+        SettingRow {
+            label: "Icono de bandeja";
+            value: root.tray-style-label;
+            clicked => { root.cycle-tray-style(); }
         }
         SettingRow {
             label: "Cerrar a la bandeja";

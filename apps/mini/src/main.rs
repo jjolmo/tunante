@@ -215,7 +215,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // The tray runs its own GTK thread; clicks come back through tray::poll()
     // in the UI timer, beside the MPRIS commands they resemble.
-    tray::spawn();
+    let tray_style = match db
+        .get_setting("tray_icon_style")
+        .ok()
+        .flatten()
+        .as_deref()
+    {
+        Some("symbolic") => 1u8,
+        Some("logo") => 2,
+        _ => 0,
+    };
+    tray::spawn(tray_style);
+    ui.set_tray_style_label(SharedString::from(tray_style_label(tray_style)));
 
     if focus_search {
         ui.set_autofocus_search(true);
@@ -2591,6 +2602,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db, weak) = (db.clone(), ui.as_weak());
+        let style = Rc::new(std::cell::Cell::new(tray_style));
+        ui.on_cycle_tray_style(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = (style.get() + 1) % 3;
+            style.set(next);
+            let _ = db.set_setting(
+                "tray_icon_style",
+                match next {
+                    1 => "symbolic",
+                    2 => "logo",
+                    _ => "system",
+                },
+            );
+            tray::set_style(next);
+            ui.set_tray_style_label(SharedString::from(tray_style_label(next)));
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
         let theme_mode = theme_mode.clone();
         ui.on_cycle_theme(move || {
             let Some(ui) = weak.upgrade() else { return };
@@ -4017,6 +4047,14 @@ fn rating_priority_label(raw: Option<&str>) -> &'static str {
         Some("file,folder,db") => "fichero primero",
         Some("folder,file,db") => "carpeta primero",
         _ => "BD manda",
+    }
+}
+
+fn tray_style_label(style: u8) -> &'static str {
+    match style {
+        1 => "simbólico",
+        2 => "logo",
+        _ => "sistema",
     }
 }
 

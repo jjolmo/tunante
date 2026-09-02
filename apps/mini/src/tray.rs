@@ -36,6 +36,26 @@ fn tooltip_cell() -> std::sync::Arc<std::sync::Mutex<String>> {
         .clone()
 }
 
+/// Which face the icon wears: 0 sistema (white glyph pixmap — panels are
+/// overwhelmingly dark and a pixmap always draws), 1 simbólico (published by
+/// *name* so the panel recolours it — the native look, at the risk that a
+/// name that fails to resolve is no icon at all), 2 logo (the pixel-art
+/// cartridge, immune to every theme question). The desktop app's taxonomy,
+/// under its `tray_icon_style` key.
+#[cfg(all(target_os = "linux", feature = "tray"))]
+static STYLE: std::sync::Mutex<Option<u8>> = std::sync::Mutex::new(None);
+
+/// Ask the tray to change style. Picked up by the 1 Hz timeout on the GTK
+/// thread, same as the tooltip.
+pub fn set_style(style: u8) {
+    #[cfg(all(target_os = "linux", feature = "tray"))]
+    if let Ok(mut s) = STYLE.lock() {
+        *s = Some(style);
+    }
+    #[cfg(not(all(target_os = "linux", feature = "tray")))]
+    let _ = style;
+}
+
 /// Scroll notches over the tray icon, accumulated on the GTK thread and
 /// swapped out by the UI timer. Notches rather than raw deltas: the patch
 /// normalises to ±1 per click, and volume wants clicks.
@@ -68,28 +88,64 @@ pub fn set_tooltip(text: &str) {
 #[cfg(not(all(target_os = "linux", feature = "tray")))]
 pub fn set_tooltip(_text: &str) {}
 
+/// The pixmap a style draws: the pixel-art logo, or the white glyph. Both
+/// embedded, so the icon works from any install path.
 #[cfg(all(target_os = "linux", feature = "tray"))]
-pub fn spawn() {
-    std::thread::spawn(|| {
+fn pixmap_for(style: u8) -> Option<tray_icon::Icon> {
+    let bytes: &[u8] = if style == 2 {
+        include_bytes!("../dist/icons/128x128/tunante-mini.png")
+    } else {
+        include_bytes!("../dist/icons/tray/mono-white.png")
+    };
+    let img = image::load_from_memory(bytes).ok()?;
+    let rgba = img.into_rgba8();
+    let (w, h) = rgba.dimensions();
+    tray_icon::Icon::from_rgba(rgba.into_raw(), w, h).ok()
+}
+
+/// Put the symbolic SVG somewhere the panel can resolve it, and name it —
+/// or take the name back. Written at runtime because the same binary ships
+/// as a tarball, an apk and a `cargo run`, and only a package has anywhere
+/// to install icons.
+#[cfg(all(target_os = "linux", feature = "tray"))]
+fn apply_symbolic(on: bool) {
+    if !on {
+        tray_icon::set_symbolic_icon(None);
+        return;
+    }
+    const SVG: &[u8] = include_bytes!("../dist/icons/tray/tunante-symbolic.svg");
+    const NAME: &str = "tunante-symbolic";
+    let dir = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("tunante-tray");
+    // Two copies of the same file: a flat dir is what libayatana documents,
+    // but Plasma feeds the path to Qt's theme search, which wants
+    // `<theme>/<size>/<context>/`. A kilobyte buys not guessing the host.
+    let themed = dir.join("hicolor/scalable/apps");
+    if std::fs::create_dir_all(&themed).is_err() {
+        return;
+    }
+    for target in [dir.join(format!("{NAME}.svg")), themed.join(format!("{NAME}.svg"))] {
+        if std::fs::write(&target, SVG).is_err() {
+            return;
+        }
+    }
+    tray_icon::set_symbolic_icon(Some((NAME.to_string(), dir)));
+}
+
+#[cfg(all(target_os = "linux", feature = "tray"))]
+pub fn spawn(style: u8) {
+    std::thread::spawn(move || {
         if gtk::init().is_err() {
             eprintln!("sin GTK: la app funciona, el icono de bandeja no");
             return;
         }
 
-        // The 128px source, decoded here: the SNI protocol wants RGBA pixels,
-        // and embedding the PNG keeps the icon working from any install path.
-        let icon = {
-            let bytes = include_bytes!("../dist/icons/128x128/tunante-mini.png");
-            match image::load_from_memory(bytes) {
-                Ok(img) => {
-                    let rgba = img.into_rgba8();
-                    let (w, h) = rgba.dimensions();
-                    tray_icon::Icon::from_rgba(rgba.into_raw(), w, h).ok()
-                }
-                Err(_) => None,
-            }
-        };
-        let Some(icon) = icon else {
+        // The name has to be published before the tray is built — the
+        // patch reads it inside TrayIcon::new.
+        apply_symbolic(style == 1);
+        let Some(icon) = pixmap_for(style) else {
             eprintln!("el icono embebido no decodifica; sin bandeja");
             return;
         };
@@ -129,12 +185,20 @@ pub fn spawn() {
                 // second of lag on a tooltip is beneath noticing.
                 let cell = tooltip_cell();
                 let mut last = String::new();
+                let mut tray = tray;
                 gtk::glib::timeout_add_seconds_local(1, move || {
                     if let Ok(text) = cell.lock() {
                         if *text != last {
                             last = text.clone();
                             let _ = tray.set_tooltip(Some(last.as_str()));
                         }
+                    }
+                    // A style change from Ajustes: republish name and pixmap.
+                    // set_icon re-reads the symbolic global, so the order is
+                    // the name first, then the forced repaint.
+                    if let Some(style) = STYLE.lock().ok().and_then(|mut s| s.take()) {
+                        apply_symbolic(style == 1);
+                        let _ = tray.set_icon(pixmap_for(style));
                     }
                     gtk::glib::ControlFlow::Continue
                 });
@@ -161,7 +225,7 @@ pub fn poll() -> Option<TrayAction> {
 // Same shape as the mpris stubs: the event loop in main.rs never has to know
 // which platform it is on.
 #[cfg(not(all(target_os = "linux", feature = "tray")))]
-pub fn spawn() {}
+pub fn spawn(_style: u8) {}
 
 #[cfg(not(all(target_os = "linux", feature = "tray")))]
 pub fn poll() -> Option<TrayAction> {

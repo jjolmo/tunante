@@ -117,7 +117,16 @@
 >       compilado. **Scroll-volumen**: el gancho resultó existir ya en el
 >       parche (`set_scroll_handler`, señal scroll-event del AppIndicator);
 >       mini ahora lo consume — un atómico de muescas que el timer vuelca
->       en el volumen, 5% por click. Queda solo estilos de icono (cosmético).
+>       en el volumen, 5% por click. Y los **estilos de icono**: fila «Icono
+>       de bandeja» (sistema/simbólico/logo, clave `tray_icon_style` del
+>       desktop). gen-icons.py recuperó del histórico la generación de
+>       glifos (assets/system.svg → tunante-symbolic.svg + mono-white.png
+>       bajo mini, con el truco source.sha256 para que --check no necesite
+>       ImageMagick); «simbólico» publica el *nombre* para que el panel lo
+>       recoloree, «sistema» es el glifo blanco en pixmap (siempre pinta),
+>       «logo» el cartucho pixel-art. Cambio en vivo por el buzón del
+>       timeout de 1 Hz, como el tooltip. Verificado: objeto SNI exportado
+>       y registrado en el watcher con el glifo nuevo.
 > - [x] Spike 4, entero. Los **botones de ratón**: lectores evdev
 >       (BTN_SIDE/EXTRA/FORWARD/BACK → anterior/siguiente, solo presses)
 >       tras el toggle «Botones de ratón» (off por defecto: leer todo
