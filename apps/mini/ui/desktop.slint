@@ -583,10 +583,17 @@ export component DesktopShell inherits Rectangle {
                 }
             }
 
-            Rectangle { width: 1px; background: Theme.bg-tertiary; }
-
-            // --- Right: the queue, always in sight ---
-            Rectangle {
+            // --- Right: the queue — only while it has something to say.
+            //
+            // The Tauri desktop's rule, kept on purpose: its Queued entry
+            // existed only while the queue had items. A permanently
+            // reserved column showing nothing reads as a rendering bug,
+            // and an empty queue has nothing to teach anyone.
+            if root.queue-rows.length > 0: Rectangle {
+                width: 1px;
+                background: Theme.bg-tertiary;
+            }
+            if root.queue-rows.length > 0: Rectangle {
                 width: 300px;
                 background: Theme.bg-primary;
                 QueueTab {
