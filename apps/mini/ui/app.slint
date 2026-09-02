@@ -19,7 +19,7 @@ import { DesktopShell } from "desktop.slint";
 // Imported for AppWindow's own properties, and re-exported so
 // `slint::include_modules!()` keeps generating the same Rust types it always
 // has, wherever the structs live now.
-import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow, PinnedRow } from "types.slint";
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow, PinnedRow, FolderRow } from "types.slint";
 export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, LibraryRow, PlanRow, QueueRow, PlaylistRow, FolderEntry, TableColumn, TableRow }
 // So Rust can flip the palette: ui.global::<Theme>().set_dark(false).
 export { Theme }
@@ -59,6 +59,11 @@ export component AppWindow inherits Window {
     in property <bool> sleep-running;
     in property <int> sleep-minutes;
     in property <string> library-summary;
+    in property <[FolderRow]> library-folders;
+    in property <string> vgm-loops-label;
+    callback cycle-vgm-loops();
+    callback folder-watch-toggled(string, bool);
+    callback folder-removed(string);
     // Empty unless the sound has nowhere to go. See output.rs.
     in property <string> output-warning;
     in property <int> loop-count: 2;
@@ -167,6 +172,11 @@ export component AppWindow inherits Window {
     callback toggle-mono-compensate();
     callback toggle-mono-phase();
     in-out property <bool> showing-log;
+    /// A playback error the user must actually see; "" is silence. Click
+    /// dismisses; the 500 ms timer ages it out after ~8 s, like the old
+    /// desktop's ErrorToast.
+    in-out property <string> error-toast;
+    in-out property <int> error-toast-age;
     in property <[string]> log-lines;
     in-out property <bool> bulk-covering;
     in property <string> bulk-status;
@@ -512,6 +522,11 @@ export component AppWindow inherits Window {
         sleep-running: root.sleep-running;
         sleep-minutes: root.sleep-minutes;
         library-summary: root.library-summary;
+                    library-folders: root.library-folders;
+                    vgm-loops-label: root.vgm-loops-label;
+                    cycle-vgm-loops => { root.cycle-vgm-loops(); }
+                    folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
+                    folder-removed(id) => { root.folder-removed(id); }
         loop-count: root.loop-count;
         fade-seconds: root.fade-seconds;
 
@@ -700,6 +715,11 @@ export component AppWindow inherits Window {
                         sleep-running: root.sleep-running;
                         sleep-minutes: root.sleep-minutes;
                         library-summary: root.library-summary;
+                    library-folders: root.library-folders;
+                    vgm-loops-label: root.vgm-loops-label;
+                    cycle-vgm-loops => { root.cycle-vgm-loops(); }
+                    folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
+                    folder-removed(id) => { root.folder-removed(id); }
                         loop-count: root.loop-count;
                         fade-seconds: root.fade-seconds;
                         set-volume(v) => { root.set-volume(v); }
@@ -876,6 +896,29 @@ export component AppWindow inherits Window {
         busy: root.bulk-busy;
         apply => { root.bulk-apply(); }
         cancelled => { root.bulk-cancelled(); }
+    }
+
+    if root.error-toast != "": Rectangle {
+        x: root.width - self.width - 16px;
+        y: root.height - self.height - 110px;
+        width: min(520px, root.width - 32px);
+        height: et.preferred-height + 20px;
+        background: Theme.warning-bg;
+        border-radius: Theme.radius * 2;
+        et := HorizontalLayout {
+            padding: 10px;
+            spacing: 8px;
+            Text { text: "⚠"; color: Theme.warning-fg; vertical-alignment: center; }
+            Text {
+                text: root.error-toast;
+                color: Theme.warning-fg;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+            }
+        }
+        TouchArea { clicked => { root.error-toast = ""; } }
     }
 
     if root.showing-log: LogSheet {

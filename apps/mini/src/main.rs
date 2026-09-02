@@ -382,7 +382,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (db, watcher) = (db.clone(), watcher.clone());
         Rc::new(move || {
             let mut w = watcher.borrow_mut();
-            for f in db.get_monitored_folders().unwrap_or_default() {
+            let folders = db.get_monitored_folders().unwrap_or_default();
+            // Both directions: a folder removed or un-watched in Ajustes
+            // stops being listened to, not just new ones starting.
+            for path in w.watched() {
+                let keep = folders
+                    .iter()
+                    .any(|f| f.path == path && f.watching_enabled);
+                if !keep {
+                    let _ = w.stop_watching(&path);
+                }
+            }
+            for f in &folders {
                 if f.watching_enabled {
                     if let Err(e) = w.start_watching(&f.path) {
                         eprintln!("no se pudo vigilar {}: {e}", f.path);
@@ -702,6 +713,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(p) = player.borrow_mut().as_mut() {
         p.set_volume(saved.volume);
+        if let Some(v) = db
+            .get_setting("vgm_loop_count")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<f64>().ok())
+        {
+            p.engine_mut().set_vgm_loop_count(v);
+        }
         p.set_loop_settings(
             ui.get_loop_count().max(1) as u32,
             ui.get_fade_seconds() as u64 * 1000,
@@ -800,7 +819,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(p) = player.borrow_mut().as_mut() {
                 p.set_tracks(tracks.clone());
                 if let Err(e) = p.play_index(start) {
-                    eprintln!("no se pudo reproducir: {e}");
+                    show_play_error(&ui, &e);
                     return;
                 }
                 push_now_playing(&ui, p);
@@ -1064,7 +1083,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(p) = player_t.borrow_mut().as_mut() {
                 p.set_tracks(tracks.clone());
                 if let Err(e) = p.play_index(index) {
-                    eprintln!("no se pudo reproducir: {e}");
+                    show_play_error(&ui, &e);
                     return;
                 }
                 push_now_playing(&ui, p);
@@ -1894,6 +1913,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_pinned_folders(ModelRc::from(pinned_model.clone()));
     refresh_pinned(&db, &pinned_model);
     refresh_counts(&db, &ui);
+    let folders_model = Rc::new(VecModel::from(Vec::<FolderRow>::new()));
+    ui.set_library_folders(ModelRc::from(folders_model.clone()));
+    refresh_library_folders(&db, &folders_model);
+    {
+        let (db_f, model) = (db.clone(), folders_model.clone());
+        let sync = sync_watches.clone();
+        ui.on_folder_watch_toggled(move |id, on| {
+            if let Err(e) = db_f.toggle_folder_watching(&id, on) {
+                eprintln!("no se pudo cambiar la vigilancia: {e}");
+                return;
+            }
+            sync();
+            refresh_library_folders(&db_f, &model);
+        });
+    }
+    {
+        let (db_f, model) = (db.clone(), folders_model.clone());
+        let sync = sync_watches.clone();
+        let dirty = library_dirty.clone();
+        ui.on_folder_removed(move |id| {
+            let folders = db_f.get_monitored_folders().unwrap_or_default();
+            let Some(folder) = folders.iter().find(|f| f.id == id.as_str()) else {
+                return;
+            };
+            // Prune its tracks, but never the ones another root still
+            // covers — nested folders were absorbed on add, and removal
+            // must not take the survivors' music with it.
+            let keep: Vec<String> = folders
+                .iter()
+                .filter(|f| f.id != id.as_str())
+                .map(|f| f.path.clone())
+                .collect();
+            if let Err(e) = db_f.remove_monitored_folder(&id) {
+                eprintln!("no se pudo quitar la carpeta: {e}");
+                return;
+            }
+            match db_f.remove_tracks_by_folder_path_excluding(&folder.path, &keep) {
+                Ok(n) => eprintln!("carpeta fuera: {} pistas menos", n),
+                Err(e) => eprintln!("la carpeta se quitó pero la poda falló: {e}"),
+            }
+            sync();
+            refresh_library_folders(&db_f, &model);
+            dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
     {
         let (db_p, st) = (db.clone(), table_state.clone());
         let model = pinned_model.clone();
@@ -2892,6 +2956,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     {
+        let stored = db
+            .get_setting("vgm_loop_count")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<f64>().ok());
+        ui.set_vgm_loops_label(SharedString::from(vgm_loops_label(stored)));
+    }
+    {
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        ui.on_cycle_vgm_loops(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let current = db
+                .get_setting("vgm_loop_count")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<f64>().ok());
+            // predet. → 1 → 2 → 3 → 5 → 10 → predet.
+            let next = match current.map(|v| v as i64) {
+                None => Some(1.0),
+                Some(1) => Some(2.0),
+                Some(2) => Some(3.0),
+                Some(3) => Some(5.0),
+                Some(5) => Some(10.0),
+                _ => None,
+            };
+            let _ = db.set_setting(
+                "vgm_loop_count",
+                &next.map(|v| v.to_string()).unwrap_or_default(),
+            );
+            if let (Some(p), Some(v)) = (player.borrow_mut().as_mut(), next) {
+                p.engine_mut().set_vgm_loop_count(v);
+            }
+            ui.set_vgm_loops_label(SharedString::from(vgm_loops_label(next)));
+        });
+    }
+    {
         let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_toggle_slow_scan(move || {
             let Some(ui) = weak.upgrade() else { return };
@@ -3283,6 +3383,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let log_model = log_model.clone();
         let update_manual = update_manual.clone();
         let pinned_model = pinned_model.clone();
+        let folders_model = folders_model.clone();
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
@@ -3320,6 +3421,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if ui.global::<Theme>().get_dark() != dark {
                             ui.global::<Theme>().set_dark(dark);
                         }
+                    }
+                }
+
+                // The error toast ages out at ~8 s, the old desktop's clock.
+                if !ui.get_error_toast().is_empty() {
+                    let age = ui.get_error_toast_age() + 1;
+                    if age >= 16 {
+                        ui.set_error_toast(SharedString::new());
+                        ui.set_error_toast_age(0);
+                    } else {
+                        ui.set_error_toast_age(age);
                     }
                 }
 
@@ -3508,6 +3620,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if library_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
                     refresh_counts(&db, &ui);
                     refresh_pinned(&db, &pinned_model);
+                    refresh_library_folders(&db, &folders_model);
                     refresh_library(&ui, &tree, &db, &views);
                     let mut st = table_state.borrow_mut();
                     if st.built {
@@ -4735,7 +4848,7 @@ fn probe_opts(db: &Database) -> tunante_helper::ProbeOpts {
             .and_then(|v| v.parse::<i64>().ok())
             .filter(|s| *s > 0)
             .map(|s| s * 1000),
-        vgm_loop_count: None,
+        vgm_loop_count: get("vgm_loop_count").and_then(|v| v.parse::<f64>().ok()),
         caps_all: get("loop_max_caps_all").map(|v| v == "true").unwrap_or(false),
     }
 }
@@ -4925,6 +5038,21 @@ fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
     );
 }
 
+/// The library's roots as Ajustes shows them: removable, watchable.
+fn refresh_library_folders(db: &Database, model: &VecModel<FolderRow>) {
+    model.set_vec(
+        db.get_monitored_folders()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| FolderRow {
+                id: SharedString::from(f.id),
+                path: SharedString::from(f.path),
+                watching: f.watching_enabled,
+            })
+            .collect::<Vec<_>>(),
+    );
+}
+
 /// The sidebar's numbers: every entry that is a set says how big it is.
 fn refresh_counts(db: &Database, ui: &AppWindow) {
     if let Ok((total, faved)) = db.count_tracks() {
@@ -5000,6 +5128,22 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
 /// library has never seen it, whatever the decoder says the file contains.
 /// The five cover-fit modes, as the desktop stored them. The ints are what
 /// the UI switches on; the keys are what the database keeps.
+/// A playback failure the user can see, not just stderr: the toast in the
+/// corner, dismissed by click or aged out by the timer.
+fn show_play_error(ui: &AppWindow, e: &str) {
+    eprintln!("no se pudo reproducir: {e}");
+    ui.set_error_toast(SharedString::from(format!("No se pudo reproducir: {e}")));
+    ui.set_error_toast_age(0);
+}
+
+fn vgm_loops_label(v: Option<f64>) -> String {
+    match v {
+        None => "predeterminado".to_string(),
+        Some(v) if v <= 1.0 => "1 pasada".to_string(),
+        Some(v) => format!("{} pasadas", v as i64),
+    }
+}
+
 fn cover_fit_from_key(key: &str) -> i32 {
     match key {
         "contain" => 1,
@@ -5106,7 +5250,7 @@ fn play_from_path(
         p.set_tracks(tracks.clone());
         match p.play_index(start) {
             Ok(()) => push_now_playing(ui, p),
-            Err(e) => eprintln!("no se pudo reproducir: {e}"),
+            Err(e) => show_play_error(ui, &e),
         }
     }
     queue_model.set_vec(to_queue_rows(&tracks, Some(start)));

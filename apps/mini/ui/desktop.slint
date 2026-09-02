@@ -9,7 +9,7 @@
 
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow } from "types.slint";
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow, FolderRow } from "types.slint";
 import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
@@ -114,6 +114,11 @@ export component DesktopShell inherits Rectangle {
     in property <bool> sleep-running;
     in property <int> sleep-minutes;
     in property <string> library-summary;
+    in property <[FolderRow]> library-folders;
+    in property <string> vgm-loops-label;
+    callback cycle-vgm-loops();
+    callback folder-watch-toggled(string, bool);
+    callback folder-removed(string);
     in property <int> loop-count;
     in property <int> fade-seconds;
 
@@ -561,6 +566,11 @@ export component DesktopShell inherits Rectangle {
                     sleep-running: root.sleep-running;
                     sleep-minutes: root.sleep-minutes;
                     library-summary: root.library-summary;
+                    library-folders: root.library-folders;
+                    vgm-loops-label: root.vgm-loops-label;
+                    cycle-vgm-loops => { root.cycle-vgm-loops(); }
+                    folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
+                    folder-removed(id) => { root.folder-removed(id); }
                     loop-count: root.loop-count;
                     fade-seconds: root.fade-seconds;
                     set-volume(v) => { root.set-volume(v); }

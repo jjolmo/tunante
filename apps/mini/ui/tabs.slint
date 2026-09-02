@@ -3,7 +3,7 @@
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow } from "types.slint";
+import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderRow } from "types.slint";
 import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow } from "widgets.slint";
 
 export component SettingsTab inherits Rectangle {
@@ -11,6 +11,11 @@ export component SettingsTab inherits Rectangle {
     in property <bool> sleep-running;
     in property <int> sleep-minutes;
     in property <string> library-summary;
+    in property <[FolderRow]> library-folders;
+    in property <string> vgm-loops-label;
+    callback cycle-vgm-loops();
+    callback folder-watch-toggled(string, bool);
+    callback folder-removed(string);
     in property <int> loop-count;
     in property <int> fade-seconds;
     callback set-volume(float);
@@ -196,6 +201,14 @@ export component SettingsTab inherits Rectangle {
         }
         // Applies from the next scan: existing rows keep the durations they
         // were sealed with.
+        // vgmstream's looping streams (BRSTM, ADX, HCA…): how many passes
+        // before the fade. Scan and playback read the same key, so the
+        // progress bar and the ears agree.
+        SettingRow {
+            label: "Bucles de formatos streamed";
+            value: root.vgm-loops-label;
+            clicked => { root.cycle-vgm-loops(); }
+        }
         SettingRow {
             label: "Tope de pistas infinitas";
             value: root.loop-max-mins == 0 ? "predeterminado" : root.loop-max-mins + " min";
@@ -316,6 +329,53 @@ export component SettingsTab inherits Rectangle {
             label: "Añadir una carpeta";
             value: "＋";
             clicked => { root.add-folder(); }
+        }
+        // The library's roots, each removable and watchable — the row the
+        // old desktop had and this app shipped without: a wrong folder was
+        // forever.
+        for lf in root.library-folders: Rectangle {
+            height: 40px;
+            HorizontalLayout {
+                padding-left: Theme.gap;
+                padding-right: Theme.gap;
+                spacing: Theme.gap;
+                Text {
+                    text: lf.path;
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Rectangle {
+                    width: 84px;
+                    border-radius: Theme.radius;
+                    background: wt.has-hover ? Theme.bg-hover : transparent;
+                    Text {
+                        text: lf.watching ? "vigilada" : "sin vigilar";
+                        color: lf.watching ? Theme.accent : Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                    wt := TouchArea {
+                        clicked => { root.folder-watch-toggled(lf.id, !lf.watching); }
+                    }
+                }
+                Rectangle {
+                    width: 32px;
+                    border-radius: Theme.radius;
+                    background: xt.has-hover ? Theme.bg-hover : transparent;
+                    Text {
+                        text: "✕";
+                        color: xt.has-hover ? Theme.text-primary : Theme.text-muted;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                    }
+                    xt := TouchArea {
+                        clicked => { root.folder-removed(lf.id); }
+                    }
+                }
+            }
         }
         SettingRow {
             label: "Volver a analizar";

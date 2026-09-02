@@ -65,6 +65,13 @@ export struct FolderEntry {
 /// visible subset; fractions arrive already normalised to sum 1.
 // A pinned folder in the desktop sidebar: id from the database, name is the
 // last path component — enough to recognise it, short enough to fit.
+// A monitored library root in Ajustes: removable, watchable.
+export struct FolderRow {
+    id: string,
+    path: string,
+    watching: bool,
+}
+
 export struct PinnedRow {
     id: string,
     name: string,
