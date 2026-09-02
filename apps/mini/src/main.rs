@@ -296,12 +296,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let grid_model = Rc::new(VecModel::from(Vec::<GridLine>::new()));
     let art_cache: Rc<RefCell<Vec<(String, slint::Image)>>> = Rc::new(RefCell::new(Vec::new()));
-    /// Set by the cover-download worker, acted on by the UI timer.
-    ///
-    /// The cache is an `Rc` owned by the UI thread and the download runs on its
-    /// own, so this is the handover. It matters because the cache remembers
-    /// *misses* too: without clearing it, every folder the run just gave a cover
-    /// to keeps showing the placeholder until the app restarts.
+    // Set by the cover-download worker, acted on by the UI timer.
+    //
+    // The cache is an `Rc` owned by the UI thread and the download runs on its
+    // own, so this is the handover. It matters because the cache remembers
+    // *misses* too: without clearing it, every folder the run just gave a cover
+    // to keeps showing the placeholder until the app restarts.
     let art_dirty = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     ui.set_library_grid_lines(ModelRc::from(grid_model.clone()));
 
@@ -3385,7 +3385,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // Seeking needs the decoder protocol to grow a seek
                         // command first. Advertised as unsupported, so nothing
                         // well-behaved should be asking.
-                        mpris::Command::Seek(_) => {}
+                        // MPRIS Seek is a relative offset; the player's
+                        // seek is absolute, so add from where we are.
+                        mpris::Command::Seek(offset_ms) => {
+                            let now = p.position_ms() as i64;
+                            p.seek((now + offset_ms).max(0) as u64);
+                        }
                     }
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
@@ -4899,18 +4904,6 @@ fn to_queue_rows(
             playing: Some(i) == playing,
         })
         .collect()
-}
-
-fn mark_playing(model: &Rc<VecModel<QueueRow>>, index: usize) {
-    for i in 0..model.row_count() {
-        if let Some(mut row) = model.row_data(i) {
-            let should = i == index;
-            if row.playing != should {
-                row.playing = should;
-                model.set_row_data(i, row);
-            }
-        }
-    }
 }
 
 /// Move the "now playing" marker to wherever the queue says we are.

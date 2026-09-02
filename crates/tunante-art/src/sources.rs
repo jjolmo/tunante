@@ -294,7 +294,7 @@ pub fn suggest_names(http: &dyn Http, query: &str) -> Vec<String> {
         return Vec::new();
     };
     let mut out: Vec<String> = Vec::new();
-    let mut push = |t: &str, out: &mut Vec<String>| {
+    let push = |t: &str, out: &mut Vec<String>| {
         let t = t.trim();
         if !t.is_empty() && !out.iter().any(|x: &String| x.eq_ignore_ascii_case(t)) {
             out.push(t.to_string());

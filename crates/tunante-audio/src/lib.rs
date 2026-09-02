@@ -23,6 +23,12 @@
 //!   kernel the moment the track changes.
 //! - `tunante-codec`, and with it every vendored core, is not linked here.
 
+// rodio 0.21 deprecated `DeviceTrait::name` in favour of description()/id().
+// Deliberately kept: the `audio_output_device` setting stores this exact
+// string, and swapping the source of truth would orphan every saved device
+// choice. Migrating to id() is its own change, done on purpose or not at all.
+#![allow(deprecated)]
+
 use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::path::Path;
