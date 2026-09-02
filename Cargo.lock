@@ -8868,6 +8868,7 @@ dependencies = [
  "tunante-audio",
  "tunante-core",
  "tunante-helper",
+ "ureq",
  "uuid",
  "walkdir",
  "zbus",
