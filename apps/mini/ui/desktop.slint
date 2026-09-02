@@ -9,7 +9,7 @@
 
 import { ListView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableRow } from "types.slint";
+import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow } from "types.slint";
 import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
@@ -111,6 +111,9 @@ export component DesktopShell inherits Rectangle {
     // The track table's world. Rust owns sort and filter; the table only
     // reports which header or row was touched.
     in property <[TableRow]> table-rows;
+    in property <[TableColumn]> table-columns;
+    in property <[ColumnChoice]> table-column-choices;
+    callback table-column-toggled(string);
     in property <int> table-sort-col;
     in property <bool> table-sort-asc;
     in-out property <string> table-filter;
@@ -330,6 +333,9 @@ export component DesktopShell inherits Rectangle {
                 if root.centre == 0: TrackTable {
                     init => { root.table-needed(); }
                     rows: root.table-rows;
+                    columns: root.table-columns;
+                    column-choices: root.table-column-choices;
+                    column-toggled(k) => { root.table-column-toggled(k); }
                     now-path: root.now-path;
                     sort-col: root.table-sort-col;
                     sort-asc: root.table-sort-asc;

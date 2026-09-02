@@ -3,14 +3,14 @@
 //
 // The spike (apps/mini/examples/table_spike.rs) proved the shape first: a
 // ListView over fixed-height rows holds 30 000 × 17 at the panel's refresh
-// rate on both renderers, and a full sort-and-rebuild costs 11–21 ms. This is
-// that table grown real: fewer columns for now (fase 3b widens it), and the
-// sorting/filtering on the Rust side of the callbacks, where the data is.
+// rate on both renderers, and a full sort-and-rebuild costs 11–21 ms. The
+// columns are a model now, the GridLine trick sideways: Rust owns the catalog
+// and the visible subset, pre-paints one cell string per column, and the UI
+// never computes anything — which is also what makes show/hide free.
 
 import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
-import { TableRow } from "types.slint";
-
+import { ColumnChoice, TableColumn, TableRow } from "types.slint";
 
 component HeaderCell inherits Rectangle {
     in property <string> label;
@@ -43,6 +43,8 @@ component HeaderCell inherits Rectangle {
 
 export component TrackTable inherits Rectangle {
     in property <[TableRow]> rows;
+    in property <[TableColumn]> columns;
+    in property <[ColumnChoice]> column-choices;
     in property <string> now-path;
     in property <int> sort-col;
     in property <bool> sort-asc;
@@ -73,12 +75,12 @@ export component TrackTable inherits Rectangle {
     callback select-all();
     /// Enter on the keyboard cursor.
     callback activate-cursor();
+    /// A column ticked on or off in the chooser.
+    callback column-toggled(string);
     /// Where the keyboard cursor sits, for the scroll-into-view below.
     in property <int> cursor: -1;
 
-    // Column layout, as fractions of the width. One place, used by header and
-    // rows alike, so they cannot drift.
-    property <[float]> widths: [0.04, 0.28, 0.17, 0.20, 0.10, 0.12, 0.09];
+    property <bool> choosing-columns: false;
 
     // Keep the keyboard cursor on screen. 28px is the row height below; the
     // maths runs only when the cursor moves, not per frame.
@@ -137,12 +139,25 @@ export component TrackTable inherits Rectangle {
             background: Theme.bg-primary;
 
             HorizontalLayout {
-                for label[i] in ["#", "Título", "Artista", "Juego", "Consola", "★", "Duración"]: HeaderCell {
-                    width: header.width * root.widths[i];
-                    label: label;
-                    active: root.sort-col == i;
+                for col[ci] in root.columns: HeaderCell {
+                    width: cells-width.width * col.fraction;
+                    label: col.label;
+                    active: root.sort-col == ci;
                     asc: root.sort-asc;
-                    clicked => { root.sorted(i); }
+                    clicked => { root.sorted(ci); }
+                }
+                // The column chooser lives where the columns end.
+                Rectangle {
+                    width: 30px;
+                    background: gear.has-hover ? Theme.bg-hover : transparent;
+                    Text {
+                        text: "⚙";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                    }
+                    gear := TouchArea {
+                        clicked => { root.choosing-columns = true; }
+                    }
                 }
             }
         }
@@ -243,80 +258,105 @@ export component TrackTable inherits Rectangle {
                 }
 
                 HorizontalLayout {
-                    property <length> w: parent.width;
-                    Text {
-                        width: w * root.widths[0];
-                        text: playing ? "▶" : row.n;
-                        color: playing ? Theme.accent : Theme.text-muted;
-                        font-size: Theme.font-small;
-                        vertical-alignment: center;
-                        horizontal-alignment: center;
-                    }
-                    Text {
-                        width: w * root.widths[1];
-                        text: row.title;
-                        color: playing ? Theme.accent : Theme.text-primary;
-                        font-size: Theme.font-body;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    Text {
-                        width: w * root.widths[2];
-                        text: row.artist;
-                        color: Theme.text-secondary;
-                        font-size: Theme.font-body;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    Text {
-                        width: w * root.widths[3];
-                        text: row.game;
-                        color: Theme.text-secondary;
-                        font-size: Theme.font-body;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    Text {
-                        width: w * root.widths[4];
-                        text: row.console;
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-                    stars-cell := Rectangle {
-                        width: w * root.widths[5];
-                        Text {
-                            x: 0;
-                            width: parent.width;
+                    for col[ci] in root.columns: Rectangle {
+                        width: cells-width.width * col.fraction;
+
+                        if col.key != "stars": Text {
+                            x: 6px;
+                            width: parent.width - 12px;
                             height: 100%;
-                            text: row.stars;
-                            color: Theme.accent;
-                            font-size: Theme.font-small;
+                            text: ci == 0 && playing
+                                ? "▶ " + row.cells[ci]
+                                : row.cells[ci];
+                            color: playing ? Theme.accent
+                                : (ci == 0 ? Theme.text-primary : Theme.text-secondary);
+                            font-size: Theme.font-body;
                             vertical-alignment: center;
+                            horizontal-alignment: col.right ? right : left;
+                            overflow: elide;
                         }
-                        // On top of the row's own TouchArea, so a click on the
-                        // stars rates instead of selecting. Which star: plain
-                        // arithmetic over five equal slots.
-                        TouchArea {
-                            clicked => {
-                                root.rated(i, clamp(
-                                    floor(self.mouse-x / (stars-cell.width / 5)) + 1,
-                                    1, 5));
+                        // The stars are the one cell that is a control, not a
+                        // label: which star was hit is plain arithmetic over
+                        // five equal slots.
+                        if col.key == "stars": Rectangle {
+                            Text {
+                                x: 0;
+                                width: parent.width;
+                                height: 100%;
+                                text: row.cells[ci];
+                                color: Theme.accent;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                            }
+                            TouchArea {
+                                clicked => {
+                                    root.rated(i, clamp(
+                                        floor(self.mouse-x / (parent.width / 5)) + 1,
+                                        1, 5));
+                                }
                             }
                         }
-                    }
-                    Text {
-                        width: w * root.widths[6];
-                        text: row.duration;
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        vertical-alignment: center;
-                        horizontal-alignment: right;
                     }
                 }
             }
         }
+        }
+    }
+
+    // Header and rows share this so the ⚙ gutter never misaligns them.
+    cells-width := Rectangle {
+        width: parent.width - 30px;
+        height: 0;
+    }
+
+    // --- The column chooser ------------------------------------------------
+    if root.choosing-columns: Rectangle {
+        background: #000000bb;
+        TouchArea { clicked => { root.choosing-columns = false; } }
+
+        Rectangle {
+            width: 280px;
+            height: chooser.preferred-height;
+            background: Theme.bg-secondary;
+            border-radius: Theme.radius * 2;
+            TouchArea { }
+
+            chooser := VerticalLayout {
+                padding: Theme.gap * 2;
+                spacing: 2px;
+
+                Text {
+                    text: "Columnas";
+                    color: Theme.text-primary;
+                    font-size: Theme.font-title;
+                    height: 34px;
+                }
+                for c in root.column-choices: Rectangle {
+                    height: 32px;
+                    border-radius: Theme.radius;
+                    background: cht.has-hover ? Theme.bg-hover : transparent;
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text {
+                            text: c.label;
+                            color: c.shown ? Theme.text-primary : Theme.text-muted;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            horizontal-stretch: 1;
+                        }
+                        Text {
+                            text: c.shown ? "✓" : "";
+                            color: Theme.accent;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                        }
+                    }
+                    cht := TouchArea {
+                        clicked => { root.column-toggled(c.key); }
+                    }
+                }
+            }
         }
     }
 }

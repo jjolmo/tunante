@@ -30,8 +30,14 @@
 >       Option de update_track_metadata ya decían exactamente eso). Falta
 >       Delete (sin significado en biblioteca; llegará con las listas en
 >       tabla).
-> - [ ] **Columnas configurables** (el desktop tenía 17 con resize/reorder/
->       show-hide; la tabla nueva trae 7 fijas) y orden persistido.
+> - [x] **Columnas configurables** — el truco de GridLine de lado: catálogo
+>       de 12 en Rust (n/título/artista/álbum/juego/consola/★/duración/códec/
+>       bitrate/tamaño/ruta), celdas pre-pintadas por columna visible,
+>       fracciones normalizadas, selector con ✓ tras el ⚙ de la cabecera,
+>       persistido en `mini.table_columns`. El orden es ahora **por clave**,
+>       así que sobrevive a ocultar columnas (una columna de orden oculta cae
+>       a Título en vez de señalar a la nada). Sin resize/reorder por
+>       arrastre aún.
 > - [x] **Cola de usuario «reproducir a continuación»** — y de paso un bug
 >       que esperaba agazapado: `next()` de core devuelve la pista (cola de
 >       usuario primero), pero el player releía `queue.current()` — con cola

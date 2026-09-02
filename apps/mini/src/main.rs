@@ -747,6 +747,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table_model = Rc::new(VecModel::from(Vec::<TableRow>::new()));
     ui.set_table_rows(ModelRc::from(table_model.clone()));
     let table_state = Rc::new(RefCell::new(TableState::default()));
+    let columns_model = Rc::new(VecModel::from(Vec::<TableColumn>::new()));
+    let choices_model = Rc::new(VecModel::from(Vec::<ColumnChoice>::new()));
+    ui.set_table_columns(ModelRc::from(columns_model.clone()));
+    ui.set_table_column_choices(ModelRc::from(choices_model.clone()));
+    {
+        // Which columns, remembered. Unknown keys (an old build's) drop out.
+        let mut st = table_state.borrow_mut();
+        if let Ok(Some(saved)) = db.get_setting("mini.table_columns") {
+            let keys: Vec<String> = saved
+                .split(',')
+                .filter(|k| TABLE_COLUMNS.iter().any(|d| d.key == *k))
+                .map(str::to_string)
+                .collect();
+            if !keys.is_empty() {
+                st.visible = TABLE_COLUMNS
+                    .iter()
+                    .filter(|d| keys.iter().any(|k| k == d.key))
+                    .map(|d| d.key.to_string())
+                    .collect();
+            }
+        }
+        rebuild_columns(&ui, &st.visible, &columns_model, &choices_model);
+        ui.set_table_sort_col(
+            st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
+        );
+    }
 
     {
         let (db_t, st, model) = (db.clone(), table_state.clone(), table_model.clone());
@@ -760,7 +786,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             st.all = db_t.get_all_tracks().unwrap_or_default();
             rebuild_table(&mut st, &model);
             if let Some(ui) = weak.upgrade() {
-                ui.set_table_sort_col(st.sort_col);
+                ui.set_table_sort_col(
+                    st.visible
+                        .iter()
+                        .position(|k| k == &st.sort_key)
+                        .map(|i| i as i32)
+                        .unwrap_or(-1),
+                );
                 ui.set_table_sort_asc(st.asc);
             }
         });
@@ -770,13 +802,54 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_table_sorted(move |col| {
             let mut st = st.borrow_mut();
-            st.asc = if st.sort_col == col { !st.asc } else { true };
-            st.sort_col = col;
+            let Some(key) = st.visible.get(col as usize).cloned() else {
+                return;
+            };
+            st.asc = if st.sort_key == key { !st.asc } else { true };
+            st.sort_key = key;
             rebuild_table(&mut st, &model);
             if let Some(ui) = weak.upgrade() {
-                ui.set_table_sort_col(st.sort_col);
+                ui.set_table_sort_col(col);
                 ui.set_table_sort_asc(st.asc);
             }
+        });
+    }
+    {
+        let (st, model) = (table_state.clone(), table_model.clone());
+        let (cols, choices, db_c) = (columns_model.clone(), choices_model.clone(), db.clone());
+        let weak = ui.as_weak();
+        ui.on_table_column_toggled(move |key| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            let key = key.to_string();
+            if st.visible.iter().any(|k| *k == key) {
+                // Never down to zero: a table with no columns is a mistake,
+                // not a preference.
+                if st.visible.len() > 1 {
+                    st.visible.retain(|k| *k != key);
+                }
+            } else {
+                st.visible = TABLE_COLUMNS
+                    .iter()
+                    .filter(|d| st.visible.iter().any(|k| k == d.key) || d.key == key)
+                    .map(|d| d.key.to_string())
+                    .collect();
+            }
+            let _ = db_c.set_setting("mini.table_columns", &st.visible.join(","));
+            // A hidden sort column falls back to the title rather than
+            // pointing at nothing.
+            if !st.visible.iter().any(|k| k == &st.sort_key) {
+                st.sort_key = "title".to_string();
+            }
+            rebuild_columns(&ui, &st.visible, &cols, &choices);
+            rebuild_table(&mut st, &model);
+            ui.set_table_sort_col(
+                st.visible
+                    .iter()
+                    .position(|k| k == &st.sort_key)
+                    .map(|i| i as i32)
+                    .unwrap_or(-1),
+            );
         });
     }
     {
@@ -3105,9 +3178,11 @@ fn output_label(stored: &str) -> String {
 struct TableState {
     all: Vec<tunante_core::db::models::Track>,
     tracks: Vec<tunante_core::db::models::Track>,
-    sort_col: i32,
+    sort_key: String,
     asc: bool,
     filter: String,
+    /// Which catalog columns are visible, in catalog order.
+    visible: Vec<String>,
     /// Narrowed to rating > 0 — the sidebar's Favoritos entry.
     faved: bool,
     built: bool,
@@ -3126,9 +3201,10 @@ impl Default for TableState {
         Self {
             all: Vec::new(),
             tracks: Vec::new(),
-            sort_col: 1,
+            sort_key: "title".to_string(),
             asc: true,
             filter: String::new(),
+            visible: DEFAULT_COLUMNS.split(',').map(str::to_string).collect(),
             faved: false,
             built: false,
             selected: std::collections::HashSet::new(),
@@ -3236,6 +3312,100 @@ fn spawn_cover_search(
     });
 }
 
+/// The column catalog: everything the table can show. `fraction` values are
+/// relative weights, normalised when the visible subset is built.
+struct ColumnDef {
+    key: &'static str,
+    label: &'static str,
+    fraction: f32,
+    right: bool,
+}
+
+const TABLE_COLUMNS: &[ColumnDef] = &[
+    ColumnDef { key: "n", label: "#", fraction: 0.5, right: false },
+    ColumnDef { key: "title", label: "Título", fraction: 3.4, right: false },
+    ColumnDef { key: "artist", label: "Artista", fraction: 2.2, right: false },
+    ColumnDef { key: "album", label: "Álbum", fraction: 2.4, right: false },
+    ColumnDef { key: "game", label: "Juego", fraction: 2.4, right: false },
+    ColumnDef { key: "console", label: "Consola", fraction: 1.3, right: false },
+    ColumnDef { key: "stars", label: "★", fraction: 1.4, right: false },
+    ColumnDef { key: "duration", label: "Duración", fraction: 1.0, right: true },
+    ColumnDef { key: "codec", label: "Códec", fraction: 1.0, right: false },
+    ColumnDef { key: "bitrate", label: "Bitrate", fraction: 1.0, right: true },
+    ColumnDef { key: "size", label: "Tamaño", fraction: 1.0, right: true },
+    ColumnDef { key: "path", label: "Ruta", fraction: 3.4, right: false },
+];
+
+const DEFAULT_COLUMNS: &str = "n,title,artist,game,console,stars,duration";
+
+/// One cell, painted. The UI never computes a cell — the GridLine rule.
+fn cell_for(t: &tunante_core::db::models::Track, key: &str) -> String {
+    match key {
+        "n" => t.track_number.map(|n| n.to_string()).unwrap_or_default(),
+        "title" => {
+            if t.title.is_empty() { t.path.clone() } else { t.title.clone() }
+        }
+        "artist" => t.artist.clone(),
+        "album" => t.album.clone(),
+        "game" => t.game.clone(),
+        "console" => table_console_label(t).to_string(),
+        "stars" => stars_for(t.rating),
+        "duration" => format!("{}:{:02}", t.duration_ms / 60_000, (t.duration_ms / 1_000) % 60),
+        "codec" => t.codec.clone(),
+        "bitrate" => t
+            .bitrate
+            .map(|b| format!("{b} kbps"))
+            .unwrap_or_default(),
+        "size" => {
+            if t.file_size <= 0 {
+                String::new()
+            } else if t.file_size < 1024 * 1024 {
+                format!("{} KB", t.file_size / 1024)
+            } else {
+                format!("{:.1} MB", t.file_size as f64 / (1024.0 * 1024.0))
+            }
+        }
+        "path" => t.path.clone(),
+        _ => String::new(),
+    }
+}
+
+/// Rebuild the column models the UI paints from: the visible subset with
+/// fractions normalised to sum 1, and the chooser with its ticks.
+fn rebuild_columns(
+    ui: &AppWindow,
+    visible: &[String],
+    columns_model: &VecModel<TableColumn>,
+    choices_model: &VecModel<ColumnChoice>,
+) {
+    let defs: Vec<&ColumnDef> = TABLE_COLUMNS
+        .iter()
+        .filter(|d| visible.iter().any(|k| k == d.key))
+        .collect();
+    let total: f32 = defs.iter().map(|d| d.fraction).sum();
+    columns_model.set_vec(
+        defs.iter()
+            .map(|d| TableColumn {
+                key: SharedString::from(d.key),
+                label: SharedString::from(d.label),
+                fraction: d.fraction / total.max(0.001),
+                right: d.right,
+            })
+            .collect::<Vec<_>>(),
+    );
+    choices_model.set_vec(
+        TABLE_COLUMNS
+            .iter()
+            .map(|d| ColumnChoice {
+                key: SharedString::from(d.key),
+                label: SharedString::from(d.label),
+                shown: visible.iter().any(|k| k == d.key),
+            })
+            .collect::<Vec<_>>(),
+    );
+    let _ = ui;
+}
+
 /// Push the selection set back into the rows. A full pass with one set_vec:
 /// selection changes happen at click speed, and the spike put a whole-model
 /// swap at 11–21 ms over 30k rows — simpler than bookkeeping point updates.
@@ -3278,13 +3448,18 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         .cloned()
         .collect();
 
-    match st.sort_col {
-        0 => tracks.sort_by_key(|t| t.track_number.unwrap_or(0)),
-        2 => tracks.sort_by(|a, b| library::plegar(&a.artist).cmp(&library::plegar(&b.artist))),
-        3 => tracks.sort_by(|a, b| library::plegar(&a.game).cmp(&library::plegar(&b.game))),
-        4 => tracks.sort_by(|a, b| table_console_label(a).cmp(table_console_label(b))),
-        5 => tracks.sort_by_key(|t| t.rating),
-        6 => tracks.sort_by_key(|t| t.duration_ms),
+    match st.sort_key.as_str() {
+        "n" => tracks.sort_by_key(|t| t.track_number.unwrap_or(0)),
+        "artist" => tracks.sort_by(|a, b| library::plegar(&a.artist).cmp(&library::plegar(&b.artist))),
+        "album" => tracks.sort_by(|a, b| library::plegar(&a.album).cmp(&library::plegar(&b.album))),
+        "game" => tracks.sort_by(|a, b| library::plegar(&a.game).cmp(&library::plegar(&b.game))),
+        "console" => tracks.sort_by(|a, b| table_console_label(a).cmp(table_console_label(b))),
+        "stars" => tracks.sort_by_key(|t| t.rating),
+        "duration" => tracks.sort_by_key(|t| t.duration_ms),
+        "codec" => tracks.sort_by(|a, b| a.codec.cmp(&b.codec)),
+        "bitrate" => tracks.sort_by_key(|t| t.bitrate.unwrap_or(0)),
+        "size" => tracks.sort_by_key(|t| t.file_size),
+        "path" => tracks.sort_by(|a, b| a.path.cmp(&b.path)),
         _ => tracks.sort_by(|a, b| library::plegar(&a.title).cmp(&library::plegar(&b.title))),
     }
     if !st.asc {
@@ -3295,24 +3470,13 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         tracks
             .iter()
             .map(|t| TableRow {
-                n: SharedString::from(
-                    t.track_number.map(|n| n.to_string()).unwrap_or_default(),
-                ),
-                title: SharedString::from(if t.title.is_empty() {
-                    t.path.as_str()
-                } else {
-                    t.title.as_str()
-                }),
-                artist: SharedString::from(t.artist.as_str()),
-                game: SharedString::from(t.game.as_str()),
-                console: SharedString::from(table_console_label(t)),
-                duration: SharedString::from(format!(
-                    "{}:{:02}",
-                    t.duration_ms / 60_000,
-                    (t.duration_ms / 1_000) % 60
+                cells: ModelRc::new(VecModel::from(
+                    st.visible
+                        .iter()
+                        .map(|k| SharedString::from(cell_for(t, k)))
+                        .collect::<Vec<_>>(),
                 )),
                 path: SharedString::from(t.path.as_str()),
-                stars: SharedString::from(stars_for(t.rating)),
                 selected: false,
             })
             .collect::<Vec<_>>(),

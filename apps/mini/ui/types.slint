@@ -61,19 +61,30 @@ export struct FolderEntry {
 /// One row of the desktop shell's track table. Everything is a display string
 /// already — Rust owns the sorting and filtering, so the UI never needs the
 /// raw values back.
+/// One visible column of the track table. Rust owns the catalog and the
+/// visible subset; fractions arrive already normalised to sum 1.
+export struct TableColumn {
+    key: string,
+    label: string,
+    fraction: float,
+    /// Numbers read right-aligned.
+    right: bool,
+}
+
 export struct TableRow {
-    n: string,
-    title: string,
-    artist: string,
-    game: string,
-    console: string,
-    duration: string,
+    /// One pre-painted string per visible column, aligned with the columns
+    /// model — the GridLine trick again: the UI never computes a cell.
+    cells: [string],
     path: string,
-    /// Five glyphs, pre-painted ("★★★☆☆"): the UI never needs the number
-    /// back, and a click reports which star was under the pointer.
-    stars: string,
     /// Rust owns the selection set; the row only paints it.
     selected: bool,
+}
+
+/// A row of the column chooser: every column the catalog knows, ticked or not.
+export struct ColumnChoice {
+    key: string,
+    label: string,
+    shown: bool,
 }
 
 /// One console the reclassify sheet can offer.
