@@ -88,14 +88,22 @@ pub fn set_tooltip(text: &str) {
 #[cfg(not(all(target_os = "linux", feature = "tray")))]
 pub fn set_tooltip(_text: &str) {}
 
-/// The pixmap a style draws: the pixel-art logo, or the white glyph. Both
-/// embedded, so the icon works from any install path.
+/// The pixmap a style draws: the pixel-art logo, or the glyph in the colour
+/// the panel needs. All embedded, so the icon works from any install path.
+///
+/// `dark` is what the portal says about the desktop right now. The old
+/// desktop shipped white-always on the "panels are overwhelmingly dark"
+/// argument, and the one user on a light KDE got a white ghost — both in
+/// the tray and wherever else that guess was reused. The portal removes
+/// the guess.
 #[cfg(all(target_os = "linux", feature = "tray"))]
-fn pixmap_for(style: u8) -> Option<tray_icon::Icon> {
+fn pixmap_for(style: u8, dark: bool) -> Option<tray_icon::Icon> {
     let bytes: &[u8] = if style == 2 {
         include_bytes!("../dist/icons/128x128/tunante-mini.png")
-    } else {
+    } else if dark {
         include_bytes!("../dist/icons/tray/mono-white.png")
+    } else {
+        include_bytes!("../dist/icons/tray/mono-black.png")
     };
     let img = image::load_from_memory(bytes).ok()?;
     let rgba = img.into_rgba8();
@@ -145,7 +153,8 @@ pub fn spawn(style: u8) {
         // The name has to be published before the tray is built — the
         // patch reads it inside TrayIcon::new.
         apply_symbolic(style == 1);
-        let Some(icon) = pixmap_for(style) else {
+        let dark = crate::theme_watch::prefers_dark().unwrap_or(true);
+        let Some(icon) = pixmap_for(style, dark) else {
             eprintln!("el icono embebido no decodifica; sin bandeja");
             return;
         };
@@ -186,6 +195,7 @@ pub fn spawn(style: u8) {
                 let cell = tooltip_cell();
                 let mut last = String::new();
                 let mut tray = tray;
+                let mut current = (style, dark);
                 gtk::glib::timeout_add_seconds_local(1, move || {
                     if let Ok(text) = cell.lock() {
                         if *text != last {
@@ -193,12 +203,21 @@ pub fn spawn(style: u8) {
                             let _ = tray.set_tooltip(Some(last.as_str()));
                         }
                     }
-                    // A style change from Ajustes: republish name and pixmap.
-                    // set_icon re-reads the symbolic global, so the order is
-                    // the name first, then the forced repaint.
-                    if let Some(style) = STYLE.lock().ok().and_then(|mut s| s.take()) {
+                    // A style change from Ajustes, or the desktop switching
+                    // light/dark under the "sistema" glyph — either way,
+                    // republish name and pixmap. set_icon re-reads the
+                    // symbolic global, so the order is the name first, then
+                    // the forced repaint.
+                    let style = STYLE
+                        .lock()
+                        .ok()
+                        .and_then(|mut s| s.take())
+                        .unwrap_or(current.0);
+                    let dark = crate::theme_watch::prefers_dark().unwrap_or(true);
+                    if (style, dark) != current {
+                        current = (style, dark);
                         apply_symbolic(style == 1);
-                        let _ = tray.set_icon(pixmap_for(style));
+                        let _ = tray.set_icon(pixmap_for(style, dark));
                     }
                     gtk::glib::ControlFlow::Continue
                 });
