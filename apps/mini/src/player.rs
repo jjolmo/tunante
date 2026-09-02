@@ -192,6 +192,23 @@ impl Player {
         self.queue.move_in_user_queue(from, to);
     }
 
+    pub fn set_continue_from_queue(&mut self, on: bool) {
+        self.queue.set_continue_from_queue(on);
+    }
+
+    /// A user-queued track just played that the context does not contain;
+    /// with continue-from-queue on, core asks the caller to bring the
+    /// track's own context in. `adopt_context` is what answers (and clears
+    /// the request); an unanswered one is cleared by the next ordinary
+    /// advance, which is core's own rule.
+    pub fn take_pending_context(&self) -> Option<Track> {
+        self.queue.pending_context_update().cloned()
+    }
+
+    pub fn adopt_context(&mut self, tracks: Vec<Track>, current_id: &str) {
+        self.queue.update_context(tracks, current_id);
+    }
+
     /// Play a user-queued row right now, jumping the line it was already in.
     pub fn play_user(&mut self, index: usize) -> Result<(), String> {
         match self.dequeue_user(index) {

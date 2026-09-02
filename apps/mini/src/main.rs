@@ -151,7 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = db.add_monitored_folder(&id, &folder.to_string_lossy());
 
         let mut last_shown = 0usize;
-        let added = library::scan_folder(&db, folder, |p| {
+        let added = tunante_helper::scan::scan_folder_with(&db, folder, &probe_opts(&db), |p| {
             // One line per 25 files: enough to see it moving, few enough that
             // the terminal is not the bottleneck on a collection of thousands.
             if p.scanned - last_shown >= 25 || p.scanned == p.total {
@@ -323,11 +323,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match change {
                     tunante_helper::watch::FileChange::Modified => {
                         // Probe first: a read that fails must not cost the
-                        // rows we already had.
-                        let Ok(values) = tunante_helper::probe(
+                        // rows we already had. Same knobs as the scanner, read
+                        // from this thread's own connection.
+                        let Ok(values) = tunante_helper::probe_with(
                             path,
                             tunante_helper::scan::PROBE_TIMEOUT,
-                            true,
+                            &probe_opts(db),
                         ) else {
                             return;
                         };
@@ -482,7 +483,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 };
                 for folder in chosen {
-                    let _ = library::scan_folder(&db, &folder, |p| {
+                    let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
                         let _ = tx.send(Some(format!(
                             "Analizando {}/{}\n{} pistas encontradas",
                             p.scanned, p.total, p.added
@@ -590,6 +591,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_eq_high(c.eq_high_db);
         ui.set_preamp_db(c.preamp_db);
         ui.set_dsp_mono(c.mono);
+        ui.set_dsp_mono_compensate(c.mono_compensate);
+        ui.set_dsp_mono_phase(c.mono_phase_safe);
         ui.set_dsp_limiter(c.limiter);
         ui.set_dsp_balance(c.balance);
         ui.set_dsp_width(c.width);
@@ -615,6 +618,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .flatten()
             .and_then(|s| s.parse().ok())
             .unwrap_or(2),
+    );
+    if let Some(p) = player.borrow_mut().as_mut() {
+        p.set_continue_from_queue(
+            db.get_setting("continue_from_queue")
+                .ok()
+                .flatten()
+                .map(|v| v == "true")
+                .unwrap_or(false),
+        );
+    }
+    ui.set_continue_queue(
+        db.get_setting("continue_from_queue")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false),
+    );
+    ui.set_loop_max_mins(
+        db.get_setting("loop_max_seconds")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<i32>().ok())
+            .map(|s| s / 60)
+            .unwrap_or(0),
+    );
+    ui.set_slow_scan(
+        db.get_setting("fast_scan")
+            .ok()
+            .flatten()
+            .map(|v| v == "false")
+            .unwrap_or(false),
     );
     ui.set_short_filter_secs({
         let secs: i64 = db
@@ -1965,10 +1999,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (player, queue_model) = (player.clone(), queue_model.clone());
+        let db_adopt = db.clone();
         let weak = ui.as_weak();
         ui.on_next_track(move || {
             if let Some(p) = player.borrow_mut().as_mut() {
                 let _ = p.next();
+                adopt_pending_context(p, &db_adopt);
                 if let Some(ui) = weak.upgrade() {
                     push_now_playing(&ui, p);
                 }
@@ -2099,7 +2135,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 };
                 for folder in folders {
-                    let _ = library::scan_folder(&db, &folder, |p| {
+                    let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
                         let _ = tx.send(Some(format!(
                             "Analizando {}/{}\n{} pistas encontradas",
                             p.scanned, p.total, p.added
@@ -2314,6 +2350,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     {
         let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        ui.on_toggle_continue_queue(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_continue_queue();
+            ui.set_continue_queue(next);
+            let _ = db.set_setting("continue_from_queue", if next { "true" } else { "false" });
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.set_continue_from_queue(next);
+            }
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_loop_max(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // predeterminado → 2 → 3 → 5 → 8 min. Applies from the next scan;
+            // existing rows keep the durations they were sealed with.
+            let next = match ui.get_loop_max_mins() {
+                0 => 2,
+                2 => 3,
+                3 => 5,
+                5 => 8,
+                _ => 0,
+            };
+            ui.set_loop_max_mins(next);
+            let _ = db.set_setting("loop_max_seconds", &(next * 60).to_string());
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_slow_scan(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let slow = !ui.get_slow_scan();
+            ui.set_slow_scan(slow);
+            let _ = db.set_setting("fast_scan", if slow { "false" } else { "true" });
+        });
+    }
+    {
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
         ui.on_cycle_crossfade(move || {
             let Some(ui) = weak.upgrade() else { return };
             // desactivado → 2 → 4 → 8 → desactivado, total de la transición.
@@ -2432,6 +2506,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut c = cfg.borrow_mut();
             c.mono = !c.mono;
             ui.set_dsp_mono(c.mono);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_toggle_mono_compensate(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            c.mono_compensate = !c.mono_compensate;
+            ui.set_dsp_mono_compensate(c.mono_compensate);
+            store_dsp(&db, &player, &c);
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_toggle_mono_phase(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            c.mono_phase_safe = !c.mono_phase_safe;
+            ui.set_dsp_mono_phase(c.mono_phase_safe);
             store_dsp(&db, &player, &c);
         });
     }
@@ -2819,6 +2915,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         mpris::Command::Stop => p.stop(),
                         mpris::Command::Next => {
                             let _ = p.next();
+                            adopt_pending_context(p, &db);
                         }
                         mpris::Command::Previous => {
                             let _ = p.prev();
@@ -2842,6 +2939,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         tray::TrayAction::PlayPause => p.toggle_play(),
                         tray::TrayAction::Next => {
                             let _ = p.next();
+                            adopt_pending_context(p, &db);
                         }
                         tray::TrayAction::Prev => {
                             let _ = p.prev();
@@ -2862,6 +2960,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if p.poll_track_end() {
+                    adopt_pending_context(p, &db);
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
                 }
@@ -3893,6 +3992,41 @@ fn spawn_cover_search(
             .collect();
         let _ = tx.send(CoverMsg::Options(out));
     });
+}
+
+/// The scan knobs, read where every probing path can share them. Mini's
+/// tradition is the fast scan (a phone cannot afford silence detection), so
+/// `fast_scan` defaults ON here — the desktop defaulted off. "false" in the
+/// shared key means someone asked for the thorough one.
+fn probe_opts(db: &Database) -> tunante_helper::ProbeOpts {
+    let get = |k: &str| db.get_setting(k).ok().flatten();
+    tunante_helper::ProbeOpts {
+        fast: get("fast_scan").map(|v| v != "false").unwrap_or(true),
+        loop_max_ms: get("loop_max_seconds")
+            .and_then(|v| v.parse::<i64>().ok())
+            .filter(|s| *s > 0)
+            .map(|s| s * 1000),
+        vgm_loop_count: None,
+        caps_all: get("loop_max_caps_all").map(|v| v == "true").unwrap_or(false),
+    }
+}
+
+/// With continue-from-queue on, a user-queued track from elsewhere asks for
+/// its own context once it plays. Called after every advance that can pop
+/// the user queue.
+fn adopt_pending_context(p: &mut player::Player, db: &Database) {
+    if let Some(t) = p.take_pending_context() {
+        let folder = std::path::Path::new(
+            tunante_core::vgm_path::parse_vgm_path(&t.path).0,
+        )
+        .parent()
+        .map(|d| d.to_string_lossy().to_string())
+        .unwrap_or_default();
+        let tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
+        if !tracks.is_empty() {
+            p.adopt_context(tracks, &t.id);
+        }
+    }
 }
 
 /// The column catalog: everything the table can show. `fraction` values are

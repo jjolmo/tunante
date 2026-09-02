@@ -75,9 +75,14 @@
 > son filas de Ajustes):
 > - [x] Prioridad de ratings — fila que cicla tres presets (BD manda /
 >       fichero primero / carpeta primero) sobre la clave del desktop.
-> - [ ] `loop_max_seconds` y fast-scan — reagrupados: piden que el `probe`
->       del decoder aprenda `--loop-max`/`--slow` y que `helper::scan` los
->       transporte (cambio de protocolo + firma compartida con Android).
+> - [x] `loop_max_seconds` y fast-scan — el probe aprendió `--loop-max-ms`,
+>       `--vgm-loops` y `--caps-all`; `ProbeOpts` viaja por `probe_with` y
+>       `scan_folder_with` (las firmas viejas delegan: Android intacto, en
+>       verde por NDK). Mini los lee de las claves compartidas en TODOS sus
+>       caminos de sondeo — escaneos, watcher — con su tradición respetada:
+>       fast por defecto, y «Escaneo minucioso» como el opt-in.
+>       Filas nuevas: «Tope de pistas infinitas» (predet./2/3/5/8 min, aplica
+>       desde el siguiente escaneo) y «Escaneo minucioso».
 > - [x] Balance y stereo width — `DbSliderRow` generalizado a rangos
 >       (neutral con su marca, snap al centro: nadie clava 0.0 con el dedo,
 >       y un balance de 0.03 es un altavoz roto), el flag de width sigue al
@@ -118,6 +123,14 @@
 >       que luego casará el descargador de carátulas) + Steam llegan por el
 >       canal, sellados por generación para que teclear les gane sin peligro.
 > - [ ] Añadir ficheros sueltos (add_files) y skip-version en el updater.
+>
+> - [x] Matices de mono (compensación y seguro de fase) — dos filas bajo
+>       Mono, encendidas solo cuando Mono lo está.
+> - [x] Continue-from-queue — fila «Continuar desde lo encolado», passthrough
+>       al queue de core, y `adopt_pending_context` tras cada avance que pueda
+>       consumir la cola de usuario (transporte, MPRIS, tray, fin de pista):
+>       la pista adoptada trae su carpeta como contexto nuevo, la regla que
+>       `pending_context_update` siempre pidió.
 >
 > **Comportamiento distinto a conciencia (no bugs):** mini restaura la sesión
 > EN PAUSA (el desktop auto-reanudaba si cerraste hace <5 min); el editor de

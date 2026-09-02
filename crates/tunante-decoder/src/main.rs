@@ -21,12 +21,16 @@
 //! # Protocol
 //!
 //! ```text
-//! tunante-decoder probe <path> [--fast]
+//! tunante-decoder probe <path> [--fast] [--loop-max-ms N] [--vgm-loops F] [--caps-all]
 //!     stdout: one line of JSON — {"ok":true,"tracks":[…]} or {"ok":false,"error":"…"}
 //!     --fast skips silence detection for GME tracks with no declared length.
 //!            Those are decoded in full to find where they stop, which costs
 //!            seconds per file — the difference between a scan of minutes and
 //!            one of half an hour.
+//!     The rest are the library's scan knobs, travelling down the pipe so a
+//!     pipe-based app's durations agree with what its player will do:
+//!     --loop-max-ms caps the endless tracks, --vgm-loops must match playback,
+//!     --caps-all applies the cap over declared lengths too.
 //!
 //! tunante-decoder play <path> [duration_hint_ms] [--loops N] [--fade MS] [--vgm-loops F]
 //!     stdout: one line of JSON header, then raw PCM until EOF
@@ -64,7 +68,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
 
     let usage = || {
-        eprintln!("usage: tunante-decoder probe <path> [--fast]");
+        eprintln!("usage: tunante-decoder probe <path> [--fast] [--loop-max-ms N] [--vgm-loops F] [--caps-all]");
         eprintln!("       tunante-decoder play  <path> [hint_ms] [--loops N] [--fade MS] [--vgm-loops F]");
         eprintln!("       tunante-decoder art   <path>");
         eprintln!("       tunante-decoder rate  <path> <rating> [--order db,file,folder]");
@@ -81,7 +85,16 @@ fn main() -> ExitCode {
     };
 
     let result = match mode.as_str() {
-        "probe" => probe(path, args.iter().any(|a| a == "--fast")),
+        "probe" => {
+            let flag = |name: &str| args.iter().skip_while(|a| *a != name).nth(1).cloned();
+            probe(
+                path,
+                args.iter().any(|a| a == "--fast"),
+                flag("--loop-max-ms").and_then(|s| s.parse().ok()),
+                flag("--vgm-loops").and_then(|s| s.parse().ok()),
+                args.iter().any(|a| a == "--caps-all"),
+            )
+        }
         "art" => art(path),
         "rate" => {
             let rating = args
@@ -151,17 +164,27 @@ fn main() -> ExitCode {
 /// detection decodes the track in full to find where it goes quiet, which is
 /// accurate and costs over a second per file — fine when a user asks about one
 /// track, ruinous across a whole library.
-fn probe(path: &str, fast: bool) -> Result<(), String> {
+fn probe(
+    path: &str,
+    fast: bool,
+    loop_max_ms: Option<i64>,
+    vgm_loops: Option<f64>,
+    caps_all: bool,
+) -> Result<(), String> {
     let stdout = io::stdout();
     let mut out = stdout.lock();
 
-    // `fast` is one field of ScanOpts now, not the whole argument. The rest
-    // keeps its defaults here: the helper reports what a file says, and the
-    // library's own limits are applied by whoever asked.
-    let opts = tunante_codec::metadata::ScanOpts {
+    let mut opts = tunante_codec::metadata::ScanOpts {
         fast_scan: fast,
+        loop_max_caps_all: caps_all,
         ..Default::default()
     };
+    if let Some(ms) = loop_max_ms {
+        opts.loop_max_ms = ms;
+    }
+    if let Some(v) = vgm_loops {
+        opts.vgm_loop_count = v;
+    }
     match tunante_codec::metadata::read_metadata_all_with_opts(Path::new(path), opts) {
         Ok(tracks) => {
             let payload = serde_json::json!({ "ok": true, "tracks": tracks });

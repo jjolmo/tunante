@@ -67,6 +67,24 @@ pub struct ScanProgress {
 pub fn scan_folder(
     db: &Database,
     root: &Path,
+    on_progress: impl FnMut(&ScanProgress),
+) -> Result<usize, String> {
+    scan_folder_with(
+        db,
+        root,
+        &crate::ProbeOpts {
+            fast: true,
+            ..Default::default()
+        },
+        on_progress,
+    )
+}
+
+/// [`scan_folder`], with the caller's scan knobs travelling into every probe.
+pub fn scan_folder_with(
+    db: &Database,
+    root: &Path,
+    opts: &crate::ProbeOpts,
     mut on_progress: impl FnMut(&ScanProgress),
 ) -> Result<usize, String> {
     let files: Vec<PathBuf> = WalkDir::new(root)
@@ -100,6 +118,7 @@ pub fn scan_folder(
     for _ in 0..workers {
         let queue = queue.clone();
         let tx = tx.clone();
+        let opts = opts.clone();
         handles.push(std::thread::spawn(move || loop {
             let next = { queue.lock().ok().and_then(|mut q| q.next()) };
             let Some(path) = next else { return };
@@ -107,7 +126,7 @@ pub fn scan_folder(
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let result = crate::probe(&path, PROBE_TIMEOUT, true);
+            let result = crate::probe_with(&path, PROBE_TIMEOUT, &opts);
             if tx.send((name, result)).is_err() {
                 return;
             }

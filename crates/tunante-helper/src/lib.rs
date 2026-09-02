@@ -169,10 +169,45 @@ fn capture(mut child: Child, timeout: Duration) -> Result<String, String> {
 /// declare none. It decodes the track in full, so it costs over a second a file;
 /// a library scan cannot afford that and does not need it.
 pub fn probe(path: &Path, timeout: Duration, fast: bool) -> Result<Vec<serde_json::Value>, String> {
+    probe_with(
+        path,
+        timeout,
+        &ProbeOpts {
+            fast,
+            ..Default::default()
+        },
+    )
+}
+
+/// The library's scan knobs, carried down the pipe so the durations a scan
+/// records agree with what playback will do. `None`/`false` everywhere means
+/// "the decoder's defaults", which is what the plain [`probe`] always meant.
+#[derive(Clone, Debug, Default)]
+pub struct ProbeOpts {
+    pub fast: bool,
+    pub loop_max_ms: Option<i64>,
+    pub vgm_loop_count: Option<f64>,
+    pub caps_all: bool,
+}
+
+pub fn probe_with(
+    path: &Path,
+    timeout: Duration,
+    opts: &ProbeOpts,
+) -> Result<Vec<serde_json::Value>, String> {
     let mut cmd = decoder_command();
     cmd.arg("probe").arg(path);
-    if fast {
+    if opts.fast {
         cmd.arg("--fast");
+    }
+    if let Some(ms) = opts.loop_max_ms {
+        cmd.arg("--loop-max-ms").arg(ms.to_string());
+    }
+    if let Some(v) = opts.vgm_loop_count {
+        cmd.arg("--vgm-loops").arg(v.to_string());
+    }
+    if opts.caps_all {
+        cmd.arg("--caps-all");
     }
 
     let child = cmd
