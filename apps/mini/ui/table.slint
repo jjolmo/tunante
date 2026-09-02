@@ -347,6 +347,10 @@ export component TrackTable inherits Rectangle {
                             activated => { root.enqueued(i); }
                         }
                         MenuItem {
+                            title: "Quitar de la cola";
+                            activated => { root.row-middle-clicked(i); }
+                        }
+                        MenuItem {
                             title: "Añadir a lista…";
                             activated => { root.add-to-playlist(i); }
                         }
@@ -387,8 +391,11 @@ export component TrackTable inherits Rectangle {
                             height: 100%;
                             text: ci == 0 && playing
                                 ? "▶ " + row.cells[ci]
-                                : row.cells[ci];
-                            color: playing ? Theme.accent
+                                : (ci == 0 && row.queue-pos != ""
+                                    ? row.queue-pos + " " + row.cells[ci]
+                                    : row.cells[ci]);
+                            color: playing || (ci == 0 && row.queue-pos != "")
+                                ? Theme.accent
                                 : (ci == 0 ? Theme.text-primary : Theme.text-secondary);
                             font-size: Theme.font-body;
                             vertical-alignment: center;
