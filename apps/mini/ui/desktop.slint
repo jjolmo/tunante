@@ -433,6 +433,15 @@ export component DesktopShell inherits Rectangle {
                     padding: Theme.gap;
                     spacing: 2px;
 
+                    // The browse sections scroll as one — with the Consolas list and
+                    // the cover, the fixed content outgrew the window and shoved the
+                    // transport bar off the bottom. Ajustes and the cover stay pinned
+                    // below, outside this Flickable.
+                    Flickable {
+                        vertical-stretch: 1;
+                        viewport-height: scroll-inner.preferred-height;
+                        scroll-inner := VerticalLayout {
+                            spacing: 2px;
                     Text {
                         text: "Biblioteca";
                         color: Theme.text-muted;
@@ -635,8 +644,7 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
                     // The playlists themselves, one tap from anywhere.
-                    lists := ListView {
-                        vertical-stretch: 1;
+                    VerticalLayout {
                         for pl[pli] in root.show-playlists ? root.all-playlists : []: Rectangle {
                             height: 34px;
                             background: root.centre == 0 && root.table-scope-kind == "playlist"
@@ -734,6 +742,8 @@ export component DesktopShell inherits Rectangle {
                                 }
                             }
                         }
+                    }
+                    }
                     }
 
                     // A rescan reports here, quietly, while the rest of the
