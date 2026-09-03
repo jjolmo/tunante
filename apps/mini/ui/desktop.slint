@@ -60,7 +60,7 @@ component SidebarEntry inherits Rectangle {
     in property <string> count;
     callback clicked();
 
-    height: Theme.compact ? 28px : 34px;
+    height: Theme.compact ? 24px : 34px;
     background: root.active ? Theme.bg-selected : (t.has-hover ? Theme.bg-hover : transparent);
     border-radius: 6px;
 
@@ -467,8 +467,8 @@ export component DesktopShell inherits Rectangle {
                 background: Theme.bg-secondary;
 
                 VerticalLayout {
-                    padding: Theme.compact ? 6px : Theme.gap;
-                    spacing: Theme.compact ? 1px : 2px;
+                    padding: Theme.compact ? 4px : Theme.gap;
+                    spacing: Theme.compact ? 0px : 2px;
 
                     // The browse sections scroll as one — with the Consolas list and
                     // the cover, the fixed content outgrew the window and shoved the
@@ -483,7 +483,7 @@ export component DesktopShell inherits Rectangle {
                         text: "Biblioteca";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
-                        height: Theme.compact ? 20px : 26px;
+                        height: Theme.compact ? 18px : 26px;
                         vertical-alignment: center;
                     }
                     SidebarEntry {
@@ -532,16 +532,16 @@ export component DesktopShell inherits Rectangle {
                         clicked => { root.centre = 1; root.library-mode-changed(4); }
                     }
 
-                    if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.compact ? 4px : Theme.gap; }
+                    if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-folders && root.pinned-folders.length > 0: Text {
                         text: "Carpetas";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
-                        height: Theme.compact ? 20px : 26px;
+                        height: Theme.compact ? 18px : 26px;
                         vertical-alignment: center;
                     }
                     for pf in root.show-folders ? root.pinned-folders : []: Rectangle {
-                        height: 34px;
+                        height: Theme.compact ? 26px : 34px;
                         background: root.centre == 0 && root.table-scope-kind == "folder"
                             && root.table-folder-id == pf.id
                             ? Theme.bg-selected
@@ -606,16 +606,16 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.compact ? 4px : Theme.gap; }
+                    if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-consoles && root.sidebar-consoles.length > 0: Text {
                         text: "Consolas";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
-                        height: Theme.compact ? 20px : 26px;
+                        height: Theme.compact ? 18px : 26px;
                         vertical-alignment: center;
                     }
                     for sc in root.show-consoles ? root.sidebar-consoles : []: Rectangle {
-                        height: 34px;
+                        height: Theme.compact ? 26px : 34px;
                         border-radius: 6px;
                         background: root.centre == 0 && root.table-scope-kind == "console"
                             && root.table-folder-id == sc.id
@@ -669,9 +669,9 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.show-playlists: Rectangle { height: Theme.compact ? 4px : Theme.gap; }
+                    if root.show-playlists: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-playlists: HorizontalLayout {
-                        height: Theme.compact ? 20px : 26px;
+                        height: Theme.compact ? 18px : 26px;
                         Text {
                             text: "Listas";
                             color: Theme.text-muted;
@@ -700,7 +700,7 @@ export component DesktopShell inherits Rectangle {
                     // The playlists themselves, one tap from anywhere.
                     VerticalLayout {
                         for pl[pli] in root.show-playlists ? root.all-playlists : []: Rectangle {
-                            height: 34px;
+                            height: Theme.compact ? 26px : 34px;
                             background: root.centre == 0 && root.table-scope-kind == "playlist"
                                 && root.table-folder-id == pl.id
                                 ? Theme.bg-selected
