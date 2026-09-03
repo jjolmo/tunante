@@ -562,6 +562,9 @@ export component DesktopShell inherits Rectangle {
                         height: 100%;
                         VerticalLayout {
                             spacing: 2px;
+                            // Keep the scrollbar off the entries: without this
+                            // gutter it sits over the counts and the selection.
+                            padding-right: 10px;
                     SectionHeader {
                         title: "Biblioteca";
                         collapsed <=> root.collapse-biblioteca;
