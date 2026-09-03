@@ -295,6 +295,7 @@ export component AppWindow inherits Window {
     in property <length> table-restore-y;
     in property <int> table-restore-tick;
     in property <int> table-center-tick;
+    in property <int> table-center-row;
     callback table-scrolled(length);
     in property <int> table-sort-col: 1;
     in property <bool> table-sort-asc: true;
@@ -586,6 +587,7 @@ export component AppWindow inherits Window {
             table-restore-y: root.table-restore-y;
             table-restore-tick: root.table-restore-tick;
             table-center-tick: root.table-center-tick;
+            table-center-row: root.table-center-row;
             table-scrolled(y) => { root.table-scrolled(y); }
             table-sort-col: root.table-sort-col;
             table-sort-asc: root.table-sort-asc;

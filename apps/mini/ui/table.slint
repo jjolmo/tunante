@@ -205,15 +205,24 @@ export component TrackTable inherits Rectangle {
     // Deferred by a short timer: the click often arrives just as the table is
     // switched back into view (from Discos, say), and the ListView has not laid
     // out yet — so visible-height is still zero and the centre lands wrong.
+    // The row to centre, and a tick that fires the centring every time it is
+    // bumped — even for the same row, which a cursor change would coalesce away.
+    in property <int> center-row;
     in property <int> center-tick;
-    changed center-tick => { center-timer.restart(); }
+    changed center-tick => {
+        root.center-now();
+        center-timer.restart();
+    }
+    function center-now() {
+        if (root.center-row >= 0 && lv.visible-height > 0) {
+            lv.viewport-y = -(root.center-row * root.row-h - (lv.visible-height - root.row-h) / 2);
+        }
+    }
     center-timer := Timer {
-        interval: 45ms;
+        interval: 60ms;
         running: false;
         triggered => {
-            if (root.cursor >= 0) {
-                lv.viewport-y = -(root.cursor * root.row-h - (lv.visible-height - root.row-h) / 2);
-            }
+            root.center-now();
             center-timer.stop();
         }
     }
