@@ -4967,6 +4967,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // The watcher changed rows underneath: re-read whatever view
                 // is on screen, and the table's caches with it.
                 if library_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    // The rows changed on disk: drop the grouped-view caches so
+                    // the reads below rebuild from the database.
+                    tree.borrow().invalidate();
                     refresh_counts(&db, &ui);
                     refresh_pinned(&db, &pinned_model);
                     refresh_library_folders(&db, &folders_model);

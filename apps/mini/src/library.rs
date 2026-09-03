@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use tunante_core::db::models::Track;
 use tunante_core::db::Database;
@@ -110,6 +111,13 @@ pub struct Tree {
     pub mode: Mode,
     /// Filtro sobre lo que se ve, en las vistas de rejilla. Vacío = todo.
     pub filter: String,
+    /// Every track under the roots, loaded once. Discos, Juegos and Consolas
+    /// all group over the whole library; without this each was re-querying
+    /// SQLite for 30 000 rows on every view switch AND every filter keystroke.
+    all_cache: std::cell::RefCell<Option<Rc<Vec<Track>>>>,
+    /// The unfiltered grid for each (mode, nav) already computed. Filtering is
+    /// then a cheap pass over the cached cells instead of rebuilding the index.
+    grid_cache: std::cell::RefCell<std::collections::HashMap<String, Vec<Cell>>>,
     /// Dónde estamos dentro de una vista de rejilla.
     ///
     /// Vacía = el nivel de arriba. En Consolas, `[consola]` son sus juegos y
@@ -150,7 +158,36 @@ impl Tree {
             mode: Mode::Tree,
             filter: String::new(),
             nav: Vec::new(),
+            all_cache: Default::default(),
+            grid_cache: Default::default(),
         }
+    }
+
+    /// Every track under the roots, loaded once and kept. Callers that group
+    /// the whole library (Discos/Juegos/Consolas) share this instead of each
+    /// re-reading SQLite. Invalidated by [`Tree::invalidate`] on a rescan.
+    fn all_tracks(&self, db: &Database) -> Rc<Vec<Track>> {
+        if let Some(a) = self.all_cache.borrow().as_ref() {
+            return a.clone();
+        }
+        let mut all = Vec::new();
+        for root in &self.roots {
+            all.extend(
+                db.get_tracks_by_folder(&root.to_string_lossy())
+                    .unwrap_or_default(),
+            );
+        }
+        let rc = Rc::new(all);
+        *self.all_cache.borrow_mut() = Some(rc.clone());
+        rc
+    }
+
+    /// Drop every cache. Called when the library changes on disk (a scan, a
+    /// folder added or removed), so the next read rebuilds from the database.
+    pub fn invalidate(&self) {
+        self.all_cache.borrow_mut().take();
+        self.grid_cache.borrow_mut().clear();
+        self.cache.borrow_mut().clear();
     }
 
     pub fn toggle(&mut self, path: &str) {
@@ -245,6 +282,31 @@ impl Tree {
     pub fn rows_for(&self, db: &Database, mode: Mode) -> Vec<Row> {
         match mode {
             Mode::Tree => {
+                let needle = plegar(self.filter.trim());
+                if !needle.is_empty() {
+                    // Filtering the tree flattens it to the matching tracks —
+                    // the old app's behaviour, and what the search box promises.
+                    // Title or filename, plus the path so an untagged folder
+                    // full of rips is findable by its name.
+                    let matched: Vec<Track> = self
+                        .all_tracks(db)
+                        .iter()
+                        .filter(|t| {
+                            let name = if t.title.is_empty() {
+                                file_label(&t.path)
+                            } else {
+                                t.title.clone()
+                            };
+                            plegar(&name).contains(&needle)
+                                || plegar(&t.path).contains(&needle)
+                        })
+                        .take(2000)
+                        .cloned()
+                        .collect();
+                    let mut out = Vec::new();
+                    self.push_tracks(matched, 0, &mut out);
+                    return out;
+                }
                 let mut out = Vec::new();
                 for root in &self.roots {
                     self.push_folder(db, root, 0, &mut out);
@@ -273,15 +335,10 @@ impl Tree {
     /// phone that is a lot of `readdir` for an answer the database already has.
     fn albums(&self, db: &Database) -> Vec<(String, usize)> {
         let mut count: BTreeMap<String, usize> = BTreeMap::new();
-        for root in &self.roots {
-            for t in db
-                .get_tracks_by_folder(&root.to_string_lossy())
-                .unwrap_or_default()
-            {
-                let real = vgm_path::parse_vgm_path(&t.path).0;
-                if let Some(dir) = Path::new(real).parent() {
-                    *count.entry(dir.to_string_lossy().to_string()).or_default() += 1;
-                }
+        for t in self.all_tracks(db).iter() {
+            let real = vgm_path::parse_vgm_path(&t.path).0;
+            if let Some(dir) = Path::new(real).parent() {
+                *count.entry(dir.to_string_lossy().to_string()).or_default() += 1;
             }
         }
         count.into_iter().collect()
@@ -294,25 +351,11 @@ impl Tree {
     /// not part of any name, one bad tag not renaming a whole game's composer —
     /// are tested there.
     fn games(&self, db: &Database) -> Vec<tunante_core::games::Game> {
-        let mut all = Vec::new();
-        for root in &self.roots {
-            all.extend(
-                db.get_tracks_by_folder(&root.to_string_lossy())
-                    .unwrap_or_default(),
-            );
-        }
-        tunante_core::games::index(&all)
+        tunante_core::games::index(&self.all_tracks(db))
     }
 
     fn game_tracks(&self, db: &Database, game: &str) -> Vec<tunante_core::db::models::Track> {
-        let mut all = Vec::new();
-        for root in &self.roots {
-            all.extend(
-                db.get_tracks_by_folder(&root.to_string_lossy())
-                    .unwrap_or_default(),
-            );
-        }
-        tunante_core::games::tracks_of(&all, game)
+        tunante_core::games::tracks_of(&self.all_tracks(db), game)
             .into_iter()
             .cloned()
             .collect()
@@ -584,6 +627,7 @@ pub fn format_duration(ms: i64) -> String {
 }
 
 /// Una tarjeta de la rejilla.
+#[derive(Clone)]
 pub struct Cell {
     pub title: String,
     pub subtitle: String,
@@ -618,6 +662,23 @@ impl Tree {
     }
 
     fn grid_unfiltered(&self, db: &Database, mode: Mode) -> Option<Vec<Cell>> {
+        // Keyed by view and where we are in it: the same grid is asked for on
+        // every filter keystroke, and rebuilding the whole index each time is
+        // what made typing lag. Cleared on a rescan by `invalidate`.
+        let key = format!("{}|{}", mode as u8, self.nav.join("\u{1f}"));
+        if let Some(hit) = self.grid_cache.borrow().get(&key) {
+            return Some(hit.clone());
+        }
+        let built = self.grid_unfiltered_build(db, mode);
+        if let Some(cells) = &built {
+            self.grid_cache
+                .borrow_mut()
+                .insert(key, cells.clone());
+        }
+        built
+    }
+
+    fn grid_unfiltered_build(&self, db: &Database, mode: Mode) -> Option<Vec<Cell>> {
         match (mode, self.nav.len()) {
             (Mode::Albums, 0) => Some(
                 self.albums(db)
@@ -776,19 +837,14 @@ impl Tree {
 
     fn console_index(&self, db: &Database) -> Vec<(String, String, usize)> {
         let mut acc: BTreeMap<(String, String), usize> = BTreeMap::new();
-        for root in &self.roots {
-            for t in db
-                .get_tracks_by_folder(&root.to_string_lossy())
-                .unwrap_or_default()
-            {
-                let real = vgm_path::parse_vgm_path(&t.path).0;
-                let Some(dir) = Path::new(real).parent() else { continue };
-                *acc.entry((
-                    console_key(&t).to_string(),
-                    dir.to_string_lossy().to_string(),
-                ))
-                .or_default() += 1;
-            }
+        for t in self.all_tracks(db).iter() {
+            let real = vgm_path::parse_vgm_path(&t.path).0;
+            let Some(dir) = Path::new(real).parent() else { continue };
+            *acc.entry((
+                console_key(&t).to_string(),
+                dir.to_string_lossy().to_string(),
+            ))
+            .or_default() += 1;
         }
         let mut out: Vec<(String, String, usize)> =
             acc.into_iter().map(|((c, d), n)| (c, d, n)).collect();
