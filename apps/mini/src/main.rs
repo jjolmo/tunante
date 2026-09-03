@@ -2339,44 +2339,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (st, player, model) = (table_state.clone(), player.clone(), table_model.clone());
+        let db_now = db.clone();
         let weak = ui.as_weak();
         ui.on_now_clicked(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let path = player
-                .borrow()
-                .as_ref()
-                .and_then(|p| p.current().map(|t| t.path.clone()));
-            let Some(path) = path else { return };
+            // The list it is playing from, and where in it we are: clicking the
+            // name always jumps back to that list and centres the track — no
+            // matter what the table was narrowed to in the meantime.
+            let (path, context): (String, Vec<String>) = {
+                let pb = player.borrow();
+                let Some(p) = pb.as_ref() else { return };
+                let Some(cur) = p.current().map(|t| t.path.clone()) else { return };
+                let mut ctx: Vec<String> =
+                    p.queue().tracks().iter().map(|t| t.path.clone()).collect();
+                if ctx.is_empty() {
+                    ctx.push(cur.clone());
+                }
+                (cur, ctx)
+            };
             let mut st = st.borrow_mut();
-            // The row scrolls into view through the cursor — the table's
-            // changed-cursor handler already does the maths.
+            if !st.built {
+                st.built = true;
+                st.all = db_now.get_all_tracks().unwrap_or_default();
+            }
+            st.filter.clear();
+            st.scope = Scope::Context { paths: context };
+            st.sort_key = "__scope__".to_string();
+            ui.set_table_filter(SharedString::new());
+            ui.set_table_faved(false);
+            ui.set_table_scope_kind(SharedString::from("context"));
+            ui.set_table_folder_id(SharedString::from(""));
+            ui.set_table_scope_label(SharedString::from(scope_label(&db_now, &st.scope)));
+            rebuild_table(&mut st, &model);
+            ui.set_table_sort_col(-1);
             if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
                 st.selected = std::iter::once(i).collect();
                 st.anchor = i;
                 repaint_selection(&st, &model);
                 ui.set_table_cursor(-1);
                 ui.set_table_cursor(i as i32);
-                // Centre it, not merely nudge it into view — the click asked to
-                // "go to what is playing", and centre is where the eye looks.
                 ui.set_table_center_tick(ui.get_table_center_tick() + 1);
-            } else if !st.filter.is_empty() || st.scope != Scope::Library {
-                // Not in the current narrowing: widen to the whole library
-                // and try again — the old app's fallback chain, first rung.
-                st.filter.clear();
-                st.scope = Scope::Library;
-                ui.set_table_filter(SharedString::new());
-                ui.set_table_faved(false);
-                ui.set_table_scope_kind(SharedString::from(""));
-                ui.set_table_folder_id(SharedString::from(""));
-                ui.set_table_scope_label(SharedString::from(""));
-                rebuild_table(&mut st, &model);
-                if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
-                    st.selected = std::iter::once(i).collect();
-                    st.anchor = i;
-                    repaint_selection(&st, &model);
-                    ui.set_table_cursor(-1);
-                    ui.set_table_cursor(i as i32);
-                }
             }
         });
     }
@@ -6152,6 +6154,9 @@ enum Scope {
     /// The user queue, by ordered path (the queue is player state, snapshotted
     /// on open and refreshed by the timer while it is the table's scope).
     Queue { paths: Vec<String> },
+    /// The list the current track is playing from — the playback context, by
+    /// ordered path. Set by clicking the now-playing name to jump back to it.
+    Context { paths: Vec<String> },
 }
 
 impl Scope {
@@ -6162,6 +6167,7 @@ impl Scope {
             Scope::Console(id) => ("console", id),
             Scope::Playlist { id, .. } => ("playlist", id),
             Scope::Queue { .. } => ("queue", ""),
+            Scope::Context { .. } => ("context", ""),
             _ => ("", ""),
         }
     }
@@ -6893,6 +6899,7 @@ fn scope_label(db: &Database, scope: &Scope) -> String {
                 .unwrap_or_else(|| f.clone())
         ),
         Scope::Queue { paths } => return format!("Cola · {} pistas", paths.len()),
+        Scope::Context { paths } => return format!("Reproduciendo · {} pistas", paths.len()),
         Scope::Playlist { id, .. } => {
             let name = db
                 .get_playlists()
@@ -6976,7 +6983,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
     // The scope decides the base set; a playlist keeps its own order, so it
     // is built by id rather than filtered out of `all`.
     let base: Vec<tunante_core::db::models::Track> = match &st.scope {
-        Scope::Queue { paths } => {
+        Scope::Queue { paths } | Scope::Context { paths } => {
             let by_path: std::collections::HashMap<&str, &tunante_core::db::models::Track> =
                 st.all.iter().map(|t| (t.path.as_str(), t)).collect();
             paths
@@ -7018,7 +7025,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         })
         .collect();
     // A playlist with the sentinel sort keeps its stored order untouched.
-    let keep_order = matches!(st.scope, Scope::Playlist { .. } | Scope::Queue { .. })
+    let keep_order = matches!(st.scope, Scope::Playlist { .. } | Scope::Queue { .. } | Scope::Context { .. })
         && st.sort_key == "__scope__";
     if !keep_order {
 
