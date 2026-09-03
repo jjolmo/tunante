@@ -2338,6 +2338,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_table_sort_col(-1);
         });
     }
+    {
+        let (db_c, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let (plmodel, allpl) = (playlists_model.clone(), all_playlists_model.clone());
+        ui.on_table_remove_from_playlist(move |index| {
+            let mut st = st.borrow_mut();
+            let Scope::Playlist { id, .. } = st.scope.clone() else { return };
+            let Some(track) = st.tracks.get(index as usize) else { return };
+            let track_id = track.id.clone();
+            if db_c.remove_track_from_playlist(&id, &track_id).is_err() {
+                return;
+            }
+            // Re-resolve the playlist's ids and rebuild in place.
+            let ids: Vec<String> = db_c
+                .get_playlist_tracks(&id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|t| t.id)
+                .collect();
+            st.scope = Scope::Playlist { ids, id: id.clone() };
+            rebuild_table(&mut st, &model);
+            drop(st);
+            // The sidebar counts move with it.
+            refresh_playlists_models(&db_c, &plmodel, &allpl);
+        });
+    }
     // The folder sheet's four new verbs, path-based.
     {
         let (db_p, player_p, queue_model_p) = (db.clone(), player.clone(), queue_model.clone());
@@ -5012,6 +5037,26 @@ fn playlist_subtitle(n: i64) -> String {
 /// Refill both playlist models from the database.
 ///
 /// `all` is never filtered; `playlists` honours the search box.
+/// The two playlist models (visible + all), without the rest of Views —
+/// for callers that only changed a playlist's contents.
+fn refresh_playlists_models(
+    db: &Database,
+    visible: &VecModel<PlaylistRow>,
+    all_pl: &VecModel<PlaylistRow>,
+) {
+    let all = db.get_playlists().unwrap_or_default();
+    let rows: Vec<PlaylistRow> = all
+        .iter()
+        .map(|p| PlaylistRow {
+            id: SharedString::from(p.id.as_str()),
+            name: SharedString::from(p.name.as_str()),
+            subtitle: SharedString::from(playlist_subtitle(p.track_count)),
+        })
+        .collect();
+    visible.set_vec(rows.clone());
+    all_pl.set_vec(rows);
+}
+
 fn refresh_playlists(db: &Database, views: &Views, filter: &str) {
     let all = db.get_playlists().unwrap_or_default();
     let row = |p: &tunante_core::db::models::Playlist| PlaylistRow {

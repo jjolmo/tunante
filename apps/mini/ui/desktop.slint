@@ -250,6 +250,7 @@ export component DesktopShell inherits Rectangle {
     in property <string> table-scope-kind;
     callback console-opened-in-table(string);
     callback playlist-opened-in-table(string);
+    callback table-remove-from-playlist(int);
     callback folder-opened(string);
     callback folder-unpinned(string);
     callback folder-revealed(string);
@@ -474,7 +475,8 @@ export component DesktopShell inherits Rectangle {
                     }
                     for pf in root.show-folders ? root.pinned-folders : []: Rectangle {
                         height: 34px;
-                        background: root.centre == 0 && root.table-folder-id == pf.id
+                        background: root.centre == 0 && root.table-scope-kind == "folder"
+                            && root.table-folder-id == pf.id
                             ? Theme.bg-selected
                             : (pft.has-hover ? Theme.bg-hover : transparent);
                         border-radius: 6px;
@@ -798,6 +800,8 @@ export component DesktopShell inherits Rectangle {
 
                 if root.centre == 0: TrackTable {
                     init => { root.table-needed(); }
+                    playlist-scope: root.table-scope-kind == "playlist";
+                    remove-from-playlist(i) => { root.table-remove-from-playlist(i); }
                     focus-filter-tick: root.focus-filter-tick;
                     rows: root.table-rows;
                     columns: root.table-columns;
