@@ -168,6 +168,18 @@ component VolumeBar inherits Rectangle {
     touch := TouchArea {
         moved => { root.changed(clamp(self.mouse-x / track.width, 0.0, 1.0)); }
         clicked => { root.changed(clamp(self.mouse-x / track.width, 0.0, 1.0)); }
+        // The wheel nudges the volume in 5% steps, like every desktop mixer.
+        scroll-event(e) => {
+            if (e.delta-y > 0) {
+                root.changed(clamp(root.value + 0.05, 0.0, 1.0));
+                return accept;
+            }
+            if (e.delta-y < 0) {
+                root.changed(clamp(root.value - 0.05, 0.0, 1.0));
+                return accept;
+            }
+            reject
+        }
     }
 }
 
@@ -1196,6 +1208,7 @@ export component DesktopShell inherits Rectangle {
                     alignment: center;
                     HorizontalLayout {
                         spacing: 6px;
+                        padding-right: 12px;
                         if root.now-title != "": Rectangle {
                             width: 96px;
                             height: 34px;
