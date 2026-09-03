@@ -812,14 +812,31 @@ export component ConsoleArt inherits Rectangle {
         }
     }
 
-    // Nintendo 64: los tres brazos. Con Path, que es lo único que dibuja ángulos.
-    if root.console == "n64": Path {
-        width: 78 * root.u; height: 56 * root.u;
-        viewbox-width: 100; viewbox-height: 72;
-        fill: #d8d8de;
-        commands: "M 42 0 L 58 0 L 62 26 L 38 26 Z"
-                + "M 30 22 L 46 30 L 34 68 L 16 62 Z"
-                + "M 70 22 L 84 62 L 66 68 L 54 30 Z";
+    // Nintendo 64: el logotipo de las tres aspas, una por color, girando en
+    // torno al centro. Path por aspa, que es lo único que dibuja ángulos.
+    if root.console == "n64": Rectangle {
+        width: 62 * root.u; height: 62 * root.u;
+        // Aspa superior.
+        Path {
+            width: 100%; height: 100%;
+            viewbox-width: 100; viewbox-height: 100;
+            fill: #e2483f;
+            commands: "M 50 50 L 38 40 L 44 6 L 66 12 Z";
+        }
+        // Aspa inferior izquierda.
+        Path {
+            width: 100%; height: 100%;
+            viewbox-width: 100; viewbox-height: 100;
+            fill: #46b04a;
+            commands: "M 50 50 L 55 65 L 22 82 L 12 62 Z";
+        }
+        // Aspa inferior derecha.
+        Path {
+            width: 100%; height: 100%;
+            viewbox-width: 100; viewbox-height: 100;
+            fill: #3f8fe0;
+            commands: "M 50 50 L 62 55 L 78 88 L 56 84 Z";
+        }
     }
 
     // PlayStation: sus cuatro símbolos. Es lo que cualquiera reconoce de lejos.
