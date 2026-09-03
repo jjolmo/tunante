@@ -194,6 +194,18 @@ export component DesktopSettings inherits Rectangle {
     in property <bool> caps-all;
     callback toggle-caps-all();
     callback reset-dsp();
+    in property <int> theme-mode;
+    callback set-theme(int);
+    in property <string> dsp-status;
+    in property <bool> auto-update;
+    callback toggle-auto-update();
+    in property <bool> ask-update;
+    callback toggle-ask-update();
+    in property <string> mouse-back-label;
+    in property <string> mouse-forward-label;
+    in property <string> mouse-side-label;
+    in property <string> mouse-extra-label;
+    callback cycle-mouse-action(string);
     // Closed from the ✕, the backdrop, or Escape.
     callback close();
 
@@ -489,6 +501,21 @@ export component DesktopSettings inherits Rectangle {
                             // ===== DSP =====
                             if root.tab == 3: VerticalLayout {
                                 spacing: 2px;
+                                Rectangle {
+                                    height: 34px;
+                                    border-radius: Theme.radius;
+                                    background: Theme.bg-secondary;
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        Text {
+                                            text: root.dsp-status;
+                                            color: Theme.text-muted;
+                                            font-size: Theme.font-small;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                        }
+                                    }
+                                }
                                 Section { text: "Ecualizador"; }
                                 CheckRow {
                                     label: "Ecualizador";
@@ -566,10 +593,41 @@ export component DesktopSettings inherits Rectangle {
                             // ===== Apariencia =====
                             if root.tab == 4: VerticalLayout {
                                 spacing: 2px;
-                                SettingRow {
-                                    label: "Tema";
-                                    value: root.theme-label;
-                                    clicked => { root.cycle-theme(); }
+                                Section { text: "Tema"; }
+                                HorizontalLayout {
+                                    spacing: Theme.gap;
+                                    height: 84px;
+                                    for card[ci] in [
+                                        { name: "Oscuro", mode: 0 },
+                                        { name: "Claro", mode: 1 },
+                                        { name: "Sistema", mode: 2 },
+                                    ]: Rectangle {
+                                        border-radius: Theme.radius;
+                                        border-width: root.theme-mode == card.mode ? 2px : 1px;
+                                        border-color: root.theme-mode == card.mode ? Theme.accent : Theme.bg-tertiary;
+                                        background: tcard.has-hover ? Theme.bg-hover : Theme.bg-secondary;
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 6px;
+                                            padding: Theme.gap;
+                                            // A little swatch that hints the theme.
+                                            Rectangle {
+                                                height: 30px;
+                                                border-radius: 4px;
+                                                background: card.mode == 1 ? #f4f4f4
+                                                    : (card.mode == 0 ? #1e1e1e : #808080);
+                                                border-width: 1px;
+                                                border-color: Theme.bg-tertiary;
+                                            }
+                                            Text {
+                                                text: card.name;
+                                                color: root.theme-mode == card.mode ? Theme.accent : Theme.text-primary;
+                                                font-size: Theme.font-small;
+                                                horizontal-alignment: center;
+                                            }
+                                        }
+                                        tcard := TouchArea { clicked => { root.set-theme(card.mode); } }
+                                    }
                                 }
                                 Section { text: "Secciones del sidebar"; }
                                 CheckRow {
@@ -617,6 +675,26 @@ export component DesktopSettings inherits Rectangle {
                                     label: "Botones de ratón";
                                     checked: root.mouse-buttons-on;
                                     toggled => { root.toggle-mouse-buttons(); }
+                                }
+                                SettingRow {
+                                    label: "Ratón · Atrás";
+                                    value: root.mouse-back-label;
+                                    clicked => { root.cycle-mouse-action("back"); }
+                                }
+                                SettingRow {
+                                    label: "Ratón · Adelante";
+                                    value: root.mouse-forward-label;
+                                    clicked => { root.cycle-mouse-action("forward"); }
+                                }
+                                SettingRow {
+                                    label: "Ratón · Lateral";
+                                    value: root.mouse-side-label;
+                                    clicked => { root.cycle-mouse-action("side"); }
+                                }
+                                SettingRow {
+                                    label: "Ratón · Extra";
+                                    value: root.mouse-extra-label;
+                                    clicked => { root.cycle-mouse-action("extra"); }
                                 }
                                 Section { text: "Teclas de la aplicación"; }
                                 for sr in root.shortcut-rows: SettingRow {
@@ -671,6 +749,16 @@ export component DesktopSettings inherits Rectangle {
                                     label: "Omitir esta versión";
                                     value: "×";
                                     clicked => { root.skip-update(); }
+                                }
+                                CheckRow {
+                                    label: "Auto-actualizar al arrancar";
+                                    checked: root.auto-update;
+                                    toggled => { root.toggle-auto-update(); }
+                                }
+                                CheckRow {
+                                    label: "Avisar de actualizaciones al arrancar";
+                                    checked: root.ask-update;
+                                    toggled => { root.toggle-ask-update(); }
                                 }
 
                                 Section { text: "Sistema"; }

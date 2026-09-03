@@ -20,10 +20,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
+/// Which physical thumb button fired — the caller maps it to an action.
 #[derive(Clone, Copy, Debug)]
 pub enum ButtonCmd {
-    Next,
-    Prev,
+    Back,
+    Forward,
+    Side,
+    Extra,
 }
 
 // input-event-codes.h: the four thumb-button identities mice actually ship.
@@ -85,8 +88,10 @@ fn read_loop(mut file: std::fs::File, tx: Sender<ButtonCmd>, stop: Arc<AtomicBoo
             continue;
         }
         let cmd = match code {
-            BTN_EXTRA | BTN_FORWARD => ButtonCmd::Next,
-            BTN_SIDE | BTN_BACK => ButtonCmd::Prev,
+            BTN_BACK => ButtonCmd::Back,
+            BTN_FORWARD => ButtonCmd::Forward,
+            BTN_SIDE => ButtonCmd::Side,
+            BTN_EXTRA => ButtonCmd::Extra,
             _ => continue,
         };
         if tx.send(cmd).is_err() {

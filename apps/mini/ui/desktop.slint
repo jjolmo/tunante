@@ -181,6 +181,18 @@ export component DesktopShell inherits Rectangle {
     in property <bool> caps-all;
     callback toggle-caps-all();
     callback reset-dsp();
+    in property <int> theme-mode;
+    callback set-theme(int);
+    in property <string> dsp-status;
+    in property <bool> auto-update;
+    callback toggle-auto-update();
+    in property <bool> ask-update;
+    callback toggle-ask-update();
+    in property <string> mouse-back-label;
+    in property <string> mouse-forward-label;
+    in property <string> mouse-side-label;
+    in property <string> mouse-extra-label;
+    callback cycle-mouse-action(string);
     in property <string> about-label;
     callback open-repo();
     in property <[ShortcutRow]> shortcut-rows;
@@ -1238,6 +1250,18 @@ export component DesktopShell inherits Rectangle {
                     caps-all: root.caps-all;
                     toggle-caps-all => { root.toggle-caps-all(); }
                     reset-dsp => { root.reset-dsp(); }
+                    theme-mode: root.theme-mode;
+                    set-theme(m) => { root.set-theme(m); }
+                    dsp-status: root.dsp-status;
+                    auto-update: root.auto-update;
+                    toggle-auto-update => { root.toggle-auto-update(); }
+                    ask-update: root.ask-update;
+                    toggle-ask-update => { root.toggle-ask-update(); }
+                    mouse-back-label: root.mouse-back-label;
+                    mouse-forward-label: root.mouse-forward-label;
+                    mouse-side-label: root.mouse-side-label;
+                    mouse-extra-label: root.mouse-extra-label;
+                    cycle-mouse-action(b) => { root.cycle-mouse-action(b); }
                     about-label: root.about-label;
                     open-repo => { root.open-repo(); }
                     shortcut-rows: root.shortcut-rows;
