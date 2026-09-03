@@ -226,14 +226,19 @@ export component TrackTable inherits Rectangle {
     // maths runs only when the cursor moves, not per frame.
     changed cursor => {
         if (root.cursor >= 0) {
-            if (root.cursor * 28px < -lv.viewport-y) {
-                lv.viewport-y = -root.cursor * 28px;
+            if (root.cursor * root.row-h < -lv.viewport-y) {
+                lv.viewport-y = -root.cursor * root.row-h;
             }
-            if ((root.cursor + 1) * 28px > -lv.viewport-y + lv.visible-height) {
-                lv.viewport-y = -((root.cursor + 1) * 28px - lv.visible-height);
+            if ((root.cursor + 1) * root.row-h > -lv.viewport-y + lv.visible-height) {
+                lv.viewport-y = -((root.cursor + 1) * root.row-h - lv.visible-height);
             }
         }
     }
+    // One row's height, the real one: the tooltip and the cursor-scroll both
+    // anchor to row * this, and it must match the rows the ListView paints —
+    // a 28-vs-26 drift multiplied by an absolute row index slammed the tooltip
+    // to the bottom of the table the moment you scrolled.
+    property <length> row-h: Theme.compact ? 26px : 28px;
 
     VerticalLayout {
         // --- Scope chip: which collection the table is showing, and a way
@@ -456,7 +461,7 @@ export component TrackTable inherits Rectangle {
             for row[i] in root.rows: Rectangle {
                 property <bool> playing: row.path == root.now-path;
                 // Desktop matches the old Tauri TrackList: 26px rows, 12px cells.
-                height: Theme.compact ? 26px : 28px;
+                height: root.row-h;
                 background: row.selected ? Theme.bg-selected
                     : (rt.has-hover ? Theme.bg-hover
                     : (mod(i, 2) == 0 ? Theme.bg-primary : Theme.bg-secondary));
@@ -621,7 +626,11 @@ export component TrackTable inherits Rectangle {
         visible: root.tip-row >= 0 && root.tip-row < root.rows.length
             && self.opacity > 0.01;
         x: 46px;
-        y: min(71px + (root.tip-row + 1) * 28px + lv.viewport-y,
+        // Anchored just below the hovered row: list-top (filter + header, plus
+        // the scope chip when it is showing) + the row's own offset + how far
+        // the list is scrolled. Clamped so it never spills past the table.
+        y: min((root.scope-label != "" ? 30px : 0px) + 71px
+                   + (root.tip-row + 1) * root.row-h + lv.viewport-y,
                root.height - self.height - 8px);
         width: min(tip-l.preferred-width + 20px, root.width - 92px);
         height: tip-l.preferred-height + 14px;
