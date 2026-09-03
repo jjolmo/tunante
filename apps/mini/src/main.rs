@@ -965,6 +965,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table_model = Rc::new(VecModel::from(Vec::<TableRow>::new()));
     ui.set_table_rows(ModelRc::from(table_model.clone()));
     let table_state = Rc::new(RefCell::new(TableState::default()));
+    // The scope a track was played from, so clicking the now-playing name jumps
+    // back to that exact list — Favoritos to Favoritos, a console to its console
+    // — and not to a generic "what's playing" view.
+    let played_scope: Rc<RefCell<Scope>> = Rc::new(RefCell::new(Scope::Library));
     // The search box's latest text, flushed to the database by the timer —
     // a write per keystroke would be noise, the old app debounced too.
     let pending_search: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
@@ -1259,6 +1263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             player.clone(),
             queue_model.clone(),
         );
+        let played_scope_t = played_scope.clone();
         let weak = ui.as_weak();
         ui.on_table_activated(move |index| {
             let Some(ui) = weak.upgrade() else { return };
@@ -1267,8 +1272,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if index >= tracks.len() {
                 return;
             }
-            // The table's visible order — filtered, sorted — becomes the queue,
-            // which is what double-clicking a row in any desktop player means.
+            // Remember which list this came from — clicking the name returns here.
+            *played_scope_t.borrow_mut() = st.borrow().scope.clone();
+            // The table's visible order — filtered, sorted — becomes the context.
             if let Some(p) = player_t.borrow_mut().as_mut() {
                 p.set_tracks(tracks.clone());
                 if let Err(e) = p.play_index(index) {
@@ -1440,7 +1446,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db_p, st, player_p) = (db.clone(), table_state.clone(), player.clone());
-        let queue_model_p = queue_model.clone();
+        let (queue_model_p, played_scope_p) = (queue_model.clone(), played_scope.clone());
         let weak = ui.as_weak();
         ui.on_sidebar_play_all(move || {
             let Some(ui) = weak.upgrade() else { return };
@@ -1450,6 +1456,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     st.built = true;
                     st.all = db_p.get_all_tracks().unwrap_or_default();
                 }
+                *played_scope_p.borrow_mut() = st.scope.clone();
                 if st.tracks.is_empty() { st.all.clone() } else { st.tracks.clone() }
             };
             play_collection(&ui, &player_p, &queue_model_p, tracks);
@@ -1457,15 +1464,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db_p, player_p, queue_model_p) = (db.clone(), player.clone(), queue_model.clone());
+        let played_scope_p = played_scope.clone();
         let weak = ui.as_weak();
         ui.on_playlist_played(move |id| {
             let Some(ui) = weak.upgrade() else { return };
             let tracks = db_p.get_playlist_tracks(&id).unwrap_or_default();
+            *played_scope_p.borrow_mut() = Scope::Playlist {
+                ids: tracks.iter().map(|t| t.id.clone()).collect(),
+                id: id.to_string(),
+            };
             play_collection(&ui, &player_p, &queue_model_p, tracks);
         });
     }
     {
         let (db_p, player_p, queue_model_p) = (db.clone(), player.clone(), queue_model.clone());
+        let played_scope_p = played_scope.clone();
         let weak = ui.as_weak();
         ui.on_folder_played(move |id| {
             let Some(ui) = weak.upgrade() else { return };
@@ -1481,6 +1494,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .is_some_and(|rest| rest.starts_with('/'))
                 })
                 .collect();
+            *played_scope_p.borrow_mut() = Scope::Folder(folder);
             play_collection(&ui, &player_p, &queue_model_p, tracks);
         });
     }
@@ -2339,39 +2353,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (st, player, model) = (table_state.clone(), player.clone(), table_model.clone());
-        let db_now = db.clone();
+        let (db_now, played_scope_n) = (db.clone(), played_scope.clone());
         let weak = ui.as_weak();
         ui.on_now_clicked(move || {
             let Some(ui) = weak.upgrade() else { return };
-            // The list it is playing from, and where in it we are: clicking the
-            // name always jumps back to that list and centres the track — no
-            // matter what the table was narrowed to in the meantime.
-            let (path, context): (String, Vec<String>) = {
-                let pb = player.borrow();
-                let Some(p) = pb.as_ref() else { return };
-                let Some(cur) = p.current().map(|t| t.path.clone()) else { return };
-                let mut ctx: Vec<String> =
-                    p.queue().tracks().iter().map(|t| t.path.clone()).collect();
-                if ctx.is_empty() {
-                    ctx.push(cur.clone());
-                }
-                (cur, ctx)
+            // Clicking the name jumps to the exact list the track was played
+            // from — Favoritos to Favoritos, a console to its console — and
+            // centres it, whatever the table had been narrowed to since.
+            let path = match player.borrow().as_ref().and_then(|p| p.current().map(|t| t.path.clone())) {
+                Some(p) => p,
+                None => return,
             };
+            let scope = played_scope_n.borrow().clone();
             let mut st = st.borrow_mut();
             if !st.built {
                 st.built = true;
                 st.all = db_now.get_all_tracks().unwrap_or_default();
             }
             st.filter.clear();
-            st.scope = Scope::Context { paths: context };
-            st.sort_key = "__scope__".to_string();
+            // Lists with a hand-made order keep it; the rest sort by column.
+            let keeps_order = matches!(
+                scope,
+                Scope::Playlist { .. } | Scope::Queue { .. }
+            );
+            if keeps_order {
+                st.sort_key = "__scope__".to_string();
+            } else if st.sort_key == "__scope__" {
+                st.sort_key = "title".to_string();
+            }
+            st.scope = scope;
+            let (kind, id) = st.scope.tag();
+            let faved = matches!(st.scope, Scope::Faved);
             ui.set_table_filter(SharedString::new());
-            ui.set_table_faved(false);
-            ui.set_table_scope_kind(SharedString::from("context"));
-            ui.set_table_folder_id(SharedString::from(""));
+            ui.set_table_faved(faved);
+            ui.set_table_scope_kind(SharedString::from(kind));
+            ui.set_table_folder_id(SharedString::from(id));
             ui.set_table_scope_label(SharedString::from(scope_label(&db_now, &st.scope)));
             rebuild_table(&mut st, &model);
-            ui.set_table_sort_col(-1);
+            ui.set_table_sort_col(
+                if keeps_order {
+                    -1
+                } else {
+                    st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1)
+                },
+            );
             if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
                 st.selected = std::iter::once(i).collect();
                 st.anchor = i;
@@ -2415,6 +2440,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db_c, player_c, queue_c) = (db.clone(), player.clone(), queue_model.clone());
+        let played_scope_c = played_scope.clone();
         let weak = ui.as_weak();
         ui.on_console_played(move |id| {
             let Some(ui) = weak.upgrade() else { return };
@@ -2424,6 +2450,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .into_iter()
                 .filter(|t| tunante_core::console::key_of(t) == id.as_str())
                 .collect();
+            *played_scope_c.borrow_mut() = Scope::Console(id.to_string());
             play_collection(&ui, &player_c, &queue_c, tracks);
         });
     }
@@ -6154,9 +6181,6 @@ enum Scope {
     /// The user queue, by ordered path (the queue is player state, snapshotted
     /// on open and refreshed by the timer while it is the table's scope).
     Queue { paths: Vec<String> },
-    /// The list the current track is playing from — the playback context, by
-    /// ordered path. Set by clicking the now-playing name to jump back to it.
-    Context { paths: Vec<String> },
 }
 
 impl Scope {
@@ -6167,7 +6191,6 @@ impl Scope {
             Scope::Console(id) => ("console", id),
             Scope::Playlist { id, .. } => ("playlist", id),
             Scope::Queue { .. } => ("queue", ""),
-            Scope::Context { .. } => ("context", ""),
             _ => ("", ""),
         }
     }
@@ -6899,7 +6922,6 @@ fn scope_label(db: &Database, scope: &Scope) -> String {
                 .unwrap_or_else(|| f.clone())
         ),
         Scope::Queue { paths } => return format!("Cola · {} pistas", paths.len()),
-        Scope::Context { paths } => return format!("Reproduciendo · {} pistas", paths.len()),
         Scope::Playlist { id, .. } => {
             let name = db
                 .get_playlists()
@@ -6983,7 +7005,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
     // The scope decides the base set; a playlist keeps its own order, so it
     // is built by id rather than filtered out of `all`.
     let base: Vec<tunante_core::db::models::Track> = match &st.scope {
-        Scope::Queue { paths } | Scope::Context { paths } => {
+        Scope::Queue { paths } => {
             let by_path: std::collections::HashMap<&str, &tunante_core::db::models::Track> =
                 st.all.iter().map(|t| (t.path.as_str(), t)).collect();
             paths
@@ -7025,7 +7047,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
         })
         .collect();
     // A playlist with the sentinel sort keeps its stored order untouched.
-    let keep_order = matches!(st.scope, Scope::Playlist { .. } | Scope::Queue { .. } | Scope::Context { .. })
+    let keep_order = matches!(st.scope, Scope::Playlist { .. } | Scope::Queue { .. })
         && st.sort_key == "__scope__";
     if !keep_order {
 
