@@ -13,6 +13,7 @@ import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, Queu
 import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet, ConsoleArt } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
+import { DesktopSettings } from "settings.slint";
 
 // A transport button drawn with the app's own SVG icons — the glyphs the
 // old desktop shipped, tinted by state. Text glyphs came from whatever font
@@ -896,7 +897,7 @@ export component DesktopShell inherits Rectangle {
                     playlist-enqueue-id(id) => { root.playlist-enqueue-id(id); }
                 }
 
-                if root.centre == 2: SettingsTab {
+                if root.centre == 2: DesktopSettings {
                     volume: root.volume;
                     sleep-running: root.sleep-running;
                     sleep-minutes: root.sleep-minutes;
