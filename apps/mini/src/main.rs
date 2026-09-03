@@ -653,11 +653,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .and_then(|s| serde_json::from_str::<tunante_core::dsp::DspConfig>(&s).ok())
             .unwrap_or_default(),
     ));
-    {
-        let c = dsp_config.borrow();
-        if let Some(p) = player.borrow_mut().as_mut() {
-            c.apply_to(p.engine_mut().dsp());
-        }
+    let push_dsp_ui = |ui: &AppWindow, c: &tunante_core::dsp::DspConfig| {
         ui.set_eq_enabled(c.eq_enabled);
         ui.set_eq_low(c.eq_low_db);
         ui.set_eq_mid(c.eq_mid_db);
@@ -669,6 +665,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_dsp_limiter(c.limiter);
         ui.set_dsp_balance(c.balance);
         ui.set_dsp_width(c.width);
+    };
+    {
+        let c = dsp_config.borrow();
+        if let Some(p) = player.borrow_mut().as_mut() {
+            c.apply_to(p.engine_mut().dsp());
+        }
+        push_dsp_ui(&ui, &c);
     }
     ui.set_rating_priority_label(SharedString::from(rating_priority_label(
         db.get_setting("rating_source_priority")
@@ -3661,6 +3664,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     sidebar_toggle!(on_toggle_show_faved, get_show_faved, set_show_faved, "show_faved");
     sidebar_toggle!(on_toggle_show_folders, get_show_folders, set_show_folders, "show_folders_list");
     sidebar_toggle!(on_toggle_show_playlists, get_show_playlists, set_show_playlists, "show_playlists");
+    ui.set_show_consoles(get_bool_setting(&db, "show_consoles", true));
+    ui.set_show_files(get_bool_setting(&db, "show_files_browser", true));
+    sidebar_toggle!(on_toggle_show_consoles, get_show_consoles, set_show_consoles, "show_consoles");
+    sidebar_toggle!(on_toggle_show_files, get_show_files, set_show_files, "show_files_browser");
+    // Cap the endless-track limit over declared lengths too.
+    ui.set_caps_all(get_bool_setting(&db, "loop_max_caps_all", false));
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_caps_all(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_caps_all();
+            ui.set_caps_all(next);
+            let _ = db.set_setting("loop_max_caps_all", if next { "true" } else { "false" });
+        });
+    }
+    {
+        let (cfg, db, player, weak) =
+            (dsp_config.clone(), db.clone(), player.clone(), ui.as_weak());
+        ui.on_reset_dsp(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut c = cfg.borrow_mut();
+            *c = tunante_core::dsp::DspConfig::default();
+            push_dsp_ui(&ui, &c);
+            store_dsp(&db, &player, &c);
+        });
+    }
 
     // --- In-app shortcuts ----------------------------------------------------
     //
@@ -5494,6 +5523,14 @@ fn store_dsp(
     if let Ok(json) = serde_json::to_string(cfg) {
         let _ = db.set_setting("dsp_config", &json);
     }
+}
+
+fn get_bool_setting(db: &Database, key: &str, default: bool) -> bool {
+    db.get_setting(key)
+        .ok()
+        .flatten()
+        .map(|v| v == "true")
+        .unwrap_or(default)
 }
 
 fn rating_priority_label(raw: Option<&str>) -> &'static str {

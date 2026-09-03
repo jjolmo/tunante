@@ -187,6 +187,13 @@ export component DesktopSettings inherits Rectangle {
     callback set-width(float);
     in property <string> rating-priority-label;
     callback cycle-rating-priority();
+    in property <bool> show-consoles;
+    callback toggle-show-consoles();
+    in property <bool> show-files;
+    callback toggle-show-files();
+    in property <bool> caps-all;
+    callback toggle-caps-all();
+    callback reset-dsp();
     // Closed from the ✕, the backdrop, or Escape.
     callback close();
 
@@ -426,6 +433,11 @@ export component DesktopSettings inherits Rectangle {
                                     value: root.loop-max-mins == 0 ? "predeterminado" : (root.loop-max-mins + " min");
                                     clicked => { root.cycle-loop-max(); }
                                 }
+                                CheckRow {
+                                    label: "Aplicar el tope a todas las pistas";
+                                    checked: root.caps-all;
+                                    toggled => { root.toggle-caps-all(); }
+                                }
                                 Section { text: "Metadatos"; }
                                 SettingRow {
                                     label: "La columna Álbum/Juego enseña";
@@ -544,6 +556,11 @@ export component DesktopSettings inherits Rectangle {
                                     unit: "";
                                     changed(v) => { root.set-width(v); }
                                 }
+                                SettingRow {
+                                    label: "Restablecer todos los efectos";
+                                    value: "↺";
+                                    clicked => { root.reset-dsp(); }
+                                }
                             }
 
                             // ===== Apariencia =====
@@ -575,6 +592,16 @@ export component DesktopSettings inherits Rectangle {
                                     checked: root.show-playlists;
                                     toggled => { root.toggle-show-playlists(); }
                                 }
+                                CheckRow {
+                                    label: "Consolas en el sidebar";
+                                    checked: root.show-consoles;
+                                    toggled => { root.toggle-show-consoles(); }
+                                }
+                                CheckRow {
+                                    label: "Árbol de ficheros en el sidebar";
+                                    checked: root.show-files;
+                                    toggled => { root.toggle-show-files(); }
+                                }
                             }
 
                             // ===== Atajos =====
@@ -602,7 +629,38 @@ export component DesktopSettings inherits Rectangle {
 
                             // ===== Acerca de =====
                             if root.tab == 6: VerticalLayout {
-                                spacing: 2px;
+                                spacing: 10px;
+                                // Logo + name + version, the old header.
+                                HorizontalLayout {
+                                    spacing: Theme.gap * 1.5;
+                                    padding-top: Theme.gap;
+                                    Image {
+                                        width: 64px;
+                                        height: 64px;
+                                        source: @image-url("../dist/icons/128x128/tunante-mini.png");
+                                    }
+                                    VerticalLayout {
+                                        alignment: center;
+                                        Text {
+                                            text: "Tunante";
+                                            color: Theme.text-primary;
+                                            font-size: Theme.font-title * 1.2;
+                                            font-weight: 700;
+                                        }
+                                        Text {
+                                            text: root.about-label;
+                                            color: Theme.text-muted;
+                                            font-size: Theme.font-small;
+                                        }
+                                    }
+                                }
+                                Text {
+                                    text: "Un reproductor multiplataforma centrado en la música de videojuegos, inspirado en foobar2000.";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-small;
+                                    wrap: word-wrap;
+                                }
+
                                 Section { text: "Actualizaciones"; }
                                 SettingRow {
                                     label: "Buscar actualizaciones";
@@ -614,6 +672,7 @@ export component DesktopSettings inherits Rectangle {
                                     value: "×";
                                     clicked => { root.skip-update(); }
                                 }
+
                                 Section { text: "Sistema"; }
                                 SettingRow {
                                     label: "Integrar en el escritorio";
@@ -625,10 +684,45 @@ export component DesktopSettings inherits Rectangle {
                                     value: "≡";
                                     clicked => { root.show-log(); }
                                 }
-                                SettingRow {
-                                    label: "Acerca de Tunante";
-                                    value: root.about-label;
-                                    clicked => { root.open-repo(); }
+
+                                Section { text: "Código fuente"; }
+                                Rectangle {
+                                    height: 38px;
+                                    border-radius: Theme.radius;
+                                    background: gh.has-hover ? Theme.bg-hover : transparent;
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        Text {
+                                            text: "github.com/jjolmo/tunante";
+                                            color: Theme.accent;
+                                            font-size: Theme.font-body;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+                                    gh := TouchArea { clicked => { root.open-repo(); } }
+                                }
+
+                                Section { text: "Construido con"; }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    padding-bottom: Theme.gap;
+                                    for tech in ["Slint", "Rust", "SQLite", "rodio", "lofty", "vgmstream"]: Rectangle {
+                                        height: 26px;
+                                        width: badge.preferred-width + 18px;
+                                        border-radius: 13px;
+                                        background: Theme.bg-tertiary;
+                                        badge := Text {
+                                            text: tech;
+                                            color: Theme.text-secondary;
+                                            font-size: Theme.font-small;
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    text: "Vibecoded por jjolmo.";
+                                    color: Theme.text-muted;
+                                    font-size: Theme.font-small;
                                 }
                             }
                         }
