@@ -137,33 +137,53 @@ component SectionHeader inherits Rectangle {
     }
 }
 
-// One line of text that scrolls, gently and back, when it does not fit — so a
-// long title or a wall of composer credits never spills over the artwork.
+// One line of text that scrolls, slowly and forever in one direction, when it
+// does not fit — so a long title or a wall of composer credits never spills
+// over the artwork. Two copies chase each other so the loop has no seam.
 component Marquee inherits Rectangle {
     in property <string> text;
     in property <length> font-size;
     in property <color> text-color;
     in property <int> weight: 400;
     clip: true;
-    // A few px of slack so the last glyph is not clipped at rest.
-    property <length> overflow: max(0px, txt.preferred-width - self.width + 4px);
-    property <bool> away;
-    // Only ticks when there is something to scroll; flips the target so the
-    // text eases to the end, holds, and eases back.
+    // The gap between the tail of one copy and the head of the next.
+    property <length> gap: 48px;
+    property <length> span: txt.preferred-width + root.gap;
+    property <bool> scrolling: txt.preferred-width > self.width;
+    // Driven by a timer, not `animate iteration-count`, which does not loop in
+    // Slint — it plays the 0→-span transition once and stops. ~34 px/s.
+    property <length> pos;
     Timer {
-        interval: 2600ms;
-        running: root.overflow > 0px;
-        triggered => { root.away = !root.away; }
+        interval: 30ms;
+        running: root.scrolling;
+        triggered => {
+            root.pos = root.pos + 1px;
+            if (root.pos >= root.span) {
+                root.pos = root.pos - root.span;
+            }
+        }
     }
-    txt := Text {
-        text: root.text;
-        color: root.text-color;
-        font-size: root.font-size;
-        font-weight: root.weight;
-        vertical-alignment: center;
-        height: 100%;
-        x: root.away ? -root.overflow : 0px;
-        animate x { duration: 2000ms; easing: ease-in-out; }
+
+    strip := Rectangle {
+        x: root.scrolling ? -root.pos : 0px;
+        txt := Text {
+            x: 0;
+            text: root.text;
+            color: root.text-color;
+            font-size: root.font-size;
+            font-weight: root.weight;
+            vertical-alignment: center;
+            height: 100%;
+        }
+        if root.scrolling: Text {
+            x: root.span;
+            text: root.text;
+            color: root.text-color;
+            font-size: root.font-size;
+            font-weight: root.weight;
+            vertical-alignment: center;
+            height: 100%;
+        }
     }
 }
 
