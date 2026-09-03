@@ -64,6 +64,9 @@ component HeaderCell inherits Rectangle {
     HorizontalLayout {
         padding-left: 8px;
         spacing: 4px;
+        // Pack the sort arrow right up against its label instead of letting
+        // the label stretch and float the arrow out to the column's middle.
+        alignment: start;
         Text {
             text: root.label;
             color: root.active ? Theme.accent : Theme.text-secondary;
@@ -198,6 +201,13 @@ export component TrackTable inherits Rectangle {
     in property <length> restore-y;
     in property <int> restore-tick;
     changed restore-tick => { lv.viewport-y = -root.restore-y; }
+    // Bumped to centre the view on the cursor row (e.g. "go to what's playing").
+    in property <int> center-tick;
+    changed center-tick => {
+        if (root.cursor >= 0) {
+            lv.viewport-y = -(root.cursor * root.row-h - (lv.visible-height - root.row-h) / 2);
+        }
+    }
 
     // Header-drag state. The threshold is the old desktop's: 5px from the
     // press point separates a sort click from a reorder gesture.
@@ -243,8 +253,9 @@ export component TrackTable inherits Rectangle {
     VerticalLayout {
         // --- Scope chip: which collection the table is showing, and a way
         // out. Empty (Library/Faved) leaves no bar, so All Tracks looks the
-        // same as it always did.
-        if root.scope-label != "": Rectangle {
+        // same as it always did. On the phone it is its own row; the desktop
+        // tucks it into the left of the filter box instead (see below).
+        if root.scope-label != "" && !Theme.compact: Rectangle {
             height: 30px;
             background: Theme.bg-secondary;
             border-radius: 8px;
@@ -286,6 +297,32 @@ export component TrackTable inherits Rectangle {
                 padding-left: 12px;
                 padding-right: 12px;
                 spacing: 8px;
+
+                // The desktop's scope chip, inline: label + a way out, left of
+                // the search, so the folder title and the filter share one row.
+                if root.scope-label != "" && Theme.compact: Text {
+                    text: root.scope-label;
+                    color: Theme.accent;
+                    font-size: Theme.font-small;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+                if root.scope-label != "" && Theme.compact: Rectangle {
+                    width: 18px;
+                    border-radius: Theme.radius;
+                    background: scx2.has-hover ? Theme.bg-hover : transparent;
+                    Text {
+                        text: "✕";
+                        color: scx2.has-hover ? Theme.text-primary : Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                    scx2 := TouchArea { clicked => { root.scope-cleared(); } }
+                }
+                if root.scope-label != "" && Theme.compact: Rectangle {
+                    width: 1px;
+                    background: Theme.bg-tertiary;
+                }
 
                 Text {
                     text: "🔍";
@@ -560,7 +597,18 @@ export component TrackTable inherits Rectangle {
                     for col[ci] in root.columns: Rectangle {
                         width: cells-width.width * col.fraction;
 
-                        if col.key != "stars": Text {
+                        // A dedicated "playing" column: the play glyph on the
+                        // row that sounds, nothing on the rest.
+                        if col.key == "playing": Text {
+                            width: parent.width;
+                            height: 100%;
+                            text: playing ? "▶" : "";
+                            color: row.selected ? #ffffff : Theme.accent;
+                            font-size: Theme.compact ? 12px : Theme.font-body;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                        if col.key != "stars" && col.key != "playing": Text {
                             x: 6px;
                             width: parent.width - 12px;
                             height: 100%;
@@ -569,11 +617,16 @@ export component TrackTable inherits Rectangle {
                                 : (ci == 0 && row.queue-pos != ""
                                     ? row.queue-pos + " " + row.cells[ci]
                                     : row.cells[ci]);
-                            color: playing || (ci == 0 && row.queue-pos != "")
-                                ? Theme.accent
+                            // Selected or playing rows sit on a blue ground;
+                            // white keeps their text legible where accent-on-
+                            // accent would vanish.
+                            color: row.selected || playing
+                                ? #ffffff
+                                : (ci == 0 && row.queue-pos != ""
+                                    ? Theme.accent
                                 // The old desktop painted every cell text-primary;
                                 // the phone keeps secondary columns dimmer.
-                                : (ci == 0 || Theme.compact ? Theme.text-primary : Theme.text-secondary);
+                                    : (ci == 0 || Theme.compact ? Theme.text-primary : Theme.text-secondary));
                             font-size: Theme.compact ? 12px : Theme.font-body;
                             vertical-alignment: center;
                             horizontal-alignment: col.right ? right : left;
@@ -588,13 +641,14 @@ export component TrackTable inherits Rectangle {
                                 width: parent.width;
                                 height: 100%;
                                 text: row.cells[ci];
-                                color: Theme.accent;
+                                color: row.selected || playing ? #ffffff : Theme.accent;
                                 // Bigger than a text cell: at font-small the
                                 // glyphs read as specks. Letter-spacing gives
                                 // the five room to breathe.
-                                font-size: Theme.compact ? 15px : 17px;
-                                letter-spacing: 1px;
+                                font-size: Theme.compact ? 19px : 21px;
+                                letter-spacing: 1.5px;
                                 vertical-alignment: center;
+                                horizontal-alignment: center;
                             }
                             TouchArea {
                                 clicked => {
@@ -629,7 +683,7 @@ export component TrackTable inherits Rectangle {
         // Anchored just below the hovered row: list-top (filter + header, plus
         // the scope chip when it is showing) + the row's own offset + how far
         // the list is scrolled. Clamped so it never spills past the table.
-        y: min((root.scope-label != "" ? 30px : 0px) + 71px
+        y: min((root.scope-label != "" && !Theme.compact ? 30px : 0px) + 71px
                    + (root.tip-row + 1) * root.row-h + lv.viewport-y,
                root.height - self.height - 8px);
         width: min(tip-l.preferred-width + 20px, root.width - 92px);
