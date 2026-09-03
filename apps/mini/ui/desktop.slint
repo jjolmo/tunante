@@ -375,6 +375,10 @@ export component DesktopShell inherits Rectangle {
     callback cycle-crossfade();
     in property <string> output-label;
     in property <string> ui-mode-label;
+    in property <int> ui-mode;
+    in-out property <int> ui-mode-pending;
+    in property <string> ui-mode-pending-label;
+    callback apply-ui-mode();
     in property <string> update-status;
     callback check-update();
     in property <string> theme-label;
@@ -1264,6 +1268,10 @@ export component DesktopShell inherits Rectangle {
                     mouse-extra-label: root.mouse-extra-label;
                     cycle-mouse-action(b) => { root.cycle-mouse-action(b); }
                     reset-shortcuts => { root.reset-shortcuts(); }
+                    ui-mode: root.ui-mode;
+                    ui-mode-pending: root.ui-mode-pending;
+                    ui-mode-pending-label: root.ui-mode-pending-label;
+                    apply-ui-mode => { root.apply-ui-mode(); }
                     now-art: root.now-art;
                     cover-fit: root.cover-fit;
                     about-label: root.about-label;

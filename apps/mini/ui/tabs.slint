@@ -51,6 +51,10 @@ export component SettingsTab inherits Rectangle {
     callback cycle-crossfade();
     in property <string> output-label: "sistema";
     in property <string> ui-mode-label: "auto";
+    in property <int> ui-mode;
+    in-out property <int> ui-mode-pending;
+    in property <string> ui-mode-pending-label;
+    callback apply-ui-mode();
     in property <string> update-status;
     callback check-update();
     in property <string> theme-label;
@@ -569,8 +573,14 @@ export component SettingsTab inherits Rectangle {
         // by window width, the other two force a shell.
         SettingRow {
             label: "Modo de interfaz";
-            value: root.ui-mode-label;
+            value: root.ui-mode-pending-label;
             clicked => { root.cycle-ui-mode(); }
+        }
+        if root.ui-mode-pending != root.ui-mode: SettingRow {
+            label: "↳ Aplicar (cambia la presentación)";
+            value: "Aplicar";
+            highlighted: true;
+            clicked => { root.apply-ui-mode(); }
         }
         SettingRow {
             label: "Buscar actualizaciones";
