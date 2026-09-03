@@ -90,6 +90,53 @@ component SidebarEntry inherits Rectangle {
     }
 }
 
+// A muted section title in the sidebar. A chevron surfaces on hover (or
+// stays put while collapsed, so a folded section still signals itself) and
+// clicking the row folds the section away. An optional trailing "+" keeps
+// the Listas header's "new list" affordance.
+component SectionHeader inherits Rectangle {
+    in property <string> title;
+    in-out property <bool> collapsed;
+    in property <bool> has-add;
+    callback add-clicked();
+
+    height: Theme.compact ? 18px : 26px;
+    background: transparent;
+
+    // Whole-row toggle first, so the "+" declared after wins its own area.
+    ha := TouchArea {
+        clicked => { root.collapsed = !root.collapsed; }
+    }
+    HorizontalLayout {
+        Text {
+            text: root.title;
+            color: Theme.text-muted;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+        }
+        if ha.has-hover || root.collapsed: Text {
+            text: root.collapsed ? "▸" : "▾";
+            color: Theme.text-muted;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+        }
+        if root.has-add: Rectangle {
+            width: 22px;
+            border-radius: Theme.radius;
+            background: plnew.has-hover ? Theme.bg-hover : transparent;
+            Text {
+                text: "＋";
+                color: plnew.has-hover ? Theme.text-primary : Theme.text-muted;
+                font-size: Theme.font-small;
+            }
+            plnew := TouchArea {
+                clicked => { root.add-clicked(); }
+            }
+        }
+    }
+}
+
 // A horizontal 0..1 slider in the house style, for the volume.
 component VolumeBar inherits Rectangle {
     in property <float> value;
@@ -144,6 +191,12 @@ export component DesktopShell inherits Rectangle {
     in-out property <string> search;
     in property <bool> autofocus-search;
     in-out property <int> library-mode;
+
+    // Sidebar section fold state — view-only, lives here in the UI.
+    property <bool> collapse-biblioteca;
+    property <bool> collapse-carpetas;
+    property <bool> collapse-consolas;
+    property <bool> collapse-listas;
     in property <[GridLine]> library-grid-lines;
     in property <bool> library-grid;
     in property <string> library-crumb;
@@ -482,13 +535,12 @@ export component DesktopShell inherits Rectangle {
                         viewport-height: scroll-inner.preferred-height;
                         scroll-inner := VerticalLayout {
                             spacing: 2px;
-                    Text {
-                        text: "Biblioteca";
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        height: Theme.compact ? 18px : 26px;
-                        vertical-alignment: center;
+                    SectionHeader {
+                        title: "Biblioteca";
+                        collapsed <=> root.collapse-biblioteca;
                     }
+                    if !root.collapse-biblioteca: VerticalLayout {
+                        spacing: 2px;
                     SidebarEntry {
                         label: "Pistas";
                         count: root.total-count;
@@ -571,16 +623,14 @@ export component DesktopShell inherits Rectangle {
                         active: root.centre == 1 && root.library-mode == 4;
                         clicked => { root.centre = 1; root.library-mode-changed(4); }
                     }
+                    }
 
                     if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
-                    if root.show-folders && root.pinned-folders.length > 0: Text {
-                        text: "Carpetas";
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        height: Theme.compact ? 18px : 26px;
-                        vertical-alignment: center;
+                    if root.show-folders && root.pinned-folders.length > 0: SectionHeader {
+                        title: "Carpetas";
+                        collapsed <=> root.collapse-carpetas;
                     }
-                    for pf in root.show-folders ? root.pinned-folders : []: Rectangle {
+                    for pf in (root.show-folders && !root.collapse-carpetas) ? root.pinned-folders : []: Rectangle {
                         height: Theme.compact ? 26px : 34px;
                         background: root.centre == 0 && root.table-scope-kind == "folder"
                             && root.table-folder-id == pf.id
@@ -647,14 +697,11 @@ export component DesktopShell inherits Rectangle {
                     }
 
                     if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
-                    if root.show-consoles && root.sidebar-consoles.length > 0: Text {
-                        text: "Consolas";
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        height: Theme.compact ? 18px : 26px;
-                        vertical-alignment: center;
+                    if root.show-consoles && root.sidebar-consoles.length > 0: SectionHeader {
+                        title: "Consolas";
+                        collapsed <=> root.collapse-consolas;
                     }
-                    for sc in root.show-consoles ? root.sidebar-consoles : []: Rectangle {
+                    for sc in (root.show-consoles && !root.collapse-consolas) ? root.sidebar-consoles : []: Rectangle {
                         height: Theme.compact ? 26px : 34px;
                         border-radius: 6px;
                         background: root.centre == 0 && root.table-scope-kind == "console"
@@ -710,36 +757,19 @@ export component DesktopShell inherits Rectangle {
                     }
 
                     if root.show-playlists: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
-                    if root.show-playlists: HorizontalLayout {
-                        height: Theme.compact ? 18px : 26px;
-                        Text {
-                            text: "Listas";
-                            color: Theme.text-muted;
-                            font-size: Theme.font-small;
-                            vertical-alignment: center;
-                            horizontal-stretch: 1;
-                        }
+                    if root.show-playlists: SectionHeader {
+                        title: "Listas";
+                        collapsed <=> root.collapse-listas;
+                        has-add: true;
                         // "+" lands you where lists are born and managed.
-                        Rectangle {
-                            width: 22px;
-                            border-radius: Theme.radius;
-                            background: plnew.has-hover ? Theme.bg-hover : transparent;
-                            Text {
-                                text: "＋";
-                                color: plnew.has-hover ? Theme.text-primary : Theme.text-muted;
-                                font-size: Theme.font-small;
-                            }
-                            plnew := TouchArea {
-                                clicked => {
-                                    root.centre = 1;
-                                    root.library-mode-changed(4);
-                                }
-                            }
+                        add-clicked => {
+                            root.centre = 1;
+                            root.library-mode-changed(4);
                         }
                     }
                     // The playlists themselves, one tap from anywhere.
                     VerticalLayout {
-                        for pl[pli] in root.show-playlists ? root.all-playlists : []: Rectangle {
+                        for pl[pli] in (root.show-playlists && !root.collapse-listas) ? root.all-playlists : []: Rectangle {
                             height: Theme.compact ? 26px : 34px;
                             background: root.centre == 0 && root.table-scope-kind == "playlist"
                                 && root.table-folder-id == pl.id
