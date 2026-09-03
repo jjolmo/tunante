@@ -149,6 +149,9 @@ export component DesktopShell inherits Rectangle {
     in property <string> library-crumb;
     in property <int> library-columns;
     in property <[QueueRow]> queue-rows;
+    in property <int> queue-placement;
+    callback cycle-queue-placement();
+    callback queue-opened-in-table();
     in property <[PlaylistRow]> playlists;
     in property <[PlaylistRow]> all-playlists;
     in property <bool> showing-playlists;
@@ -504,6 +507,43 @@ export component DesktopShell inherits Rectangle {
                         clicked => {
                             root.centre = 0;
                             root.table-faved-changed(true);
+                        }
+                    }
+                    // Queue as a sidebar element (placement 0 entry, 1 list),
+                    // only while it has items — the old "Queued" view.
+                    if root.queue-placement == 0 && root.queue-rows.length > 0: SidebarEntry {
+                        label: "Cola";
+                        count: root.queue-rows.length;
+                        active: root.centre == 0 && root.table-scope-kind == "queue";
+                        clicked => { root.centre = 0; root.queue-opened-in-table(); }
+                    }
+                    if root.queue-placement == 1 && root.queue-rows.length > 0: Text {
+                        text: "Cola (" + root.queue-rows.length + ")";
+                        color: Theme.text-muted;
+                        font-size: Theme.font-small;
+                        height: Theme.compact ? 18px : 26px;
+                        vertical-alignment: center;
+                    }
+                    if root.queue-placement == 1: VerticalLayout {
+                        spacing: 0px;
+                        for qr[qi] in root.queue-rows: Rectangle {
+                        height: Theme.compact ? 24px : 34px;
+                        border-radius: 6px;
+                        background: qt.has-hover ? Theme.bg-hover : transparent;
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 8px;
+                            Text {
+                                text: qr.title;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-small;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+                        }
+                        qt := TouchArea {
+                            clicked => { root.queue-activated(qi); }
+                        }
                         }
                     }
                     if root.show-files: SidebarEntry {
@@ -958,11 +998,11 @@ export component DesktopShell inherits Rectangle {
             // existed only while the queue had items. A permanently
             // reserved column showing nothing reads as a rendering bug,
             // and an empty queue has nothing to teach anyone.
-            if root.queue-rows.length > 0: Rectangle {
+            if root.queue-placement == 2 && root.queue-rows.length > 0: Rectangle {
                 width: 1px;
                 background: Theme.bg-tertiary;
             }
-            if root.queue-rows.length > 0: Rectangle {
+            if root.queue-placement == 2 && root.queue-rows.length > 0: Rectangle {
                 width: 300px;
                 background: Theme.bg-primary;
                 QueueTab {
@@ -1287,6 +1327,8 @@ export component DesktopShell inherits Rectangle {
                     mouse-extra-label: root.mouse-extra-label;
                     cycle-mouse-action(b) => { root.cycle-mouse-action(b); }
                     reset-shortcuts => { root.reset-shortcuts(); }
+                    queue-placement: root.queue-placement;
+                    cycle-queue-placement => { root.cycle-queue-placement(); }
                     ui-mode: root.ui-mode;
                     ui-mode-pending: root.ui-mode-pending;
                     ui-mode-pending-label: root.ui-mode-pending-label;

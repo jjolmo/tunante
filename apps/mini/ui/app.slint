@@ -38,6 +38,9 @@ export component AppWindow inherits Window {
 
     in property <[LibraryRow]> library-rows;
     in property <[QueueRow]> queue-rows;
+    in property <int> queue-placement;
+    callback cycle-queue-placement();
+    callback queue-opened-in-table();
     in property <string> now-title: "Nothing playing";
     in property <string> now-artist;
     in property <string> now-album;
@@ -638,6 +641,9 @@ export component AppWindow inherits Window {
             mouse-extra-label: root.mouse-extra-label;
             cycle-mouse-action(b) => { root.cycle-mouse-action(b); }
             reset-shortcuts => { root.reset-shortcuts(); }
+            queue-placement: root.queue-placement;
+            cycle-queue-placement => { root.cycle-queue-placement(); }
+            queue-opened-in-table => { root.queue-opened-in-table(); }
             ui-mode: root.ui-mode;
             ui-mode-pending: root.ui-mode-pending;
             ui-mode-pending-label: root.ui-mode-pending-label;
