@@ -287,6 +287,8 @@ export component AppWindow inherits Window {
     in property <[TableColumn]> table-columns;
     in property <[ColumnChoice]> table-column-choices;
     callback table-column-toggled(string);
+    in property <int> star-display-mode;
+    callback set-star-display-mode(int);
     in property <int> table-sort-col: 1;
     in property <bool> table-sort-asc: true;
     in-out property <string> table-filter;
@@ -564,6 +566,8 @@ export component AppWindow inherits Window {
             table-columns: root.table-columns;
             table-column-choices: root.table-column-choices;
             table-column-toggled(k) => { root.table-column-toggled(k); }
+            star-display-mode: root.star-display-mode;
+            set-star-display-mode(m) => { root.set-star-display-mode(m); }
             table-sort-col: root.table-sort-col;
             table-sort-asc: root.table-sort-asc;
             table-filter <=> root.table-filter;
