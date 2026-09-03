@@ -202,10 +202,19 @@ export component TrackTable inherits Rectangle {
     in property <int> restore-tick;
     changed restore-tick => { lv.viewport-y = -root.restore-y; }
     // Bumped to centre the view on the cursor row (e.g. "go to what's playing").
+    // Deferred by a short timer: the click often arrives just as the table is
+    // switched back into view (from Discos, say), and the ListView has not laid
+    // out yet — so visible-height is still zero and the centre lands wrong.
     in property <int> center-tick;
-    changed center-tick => {
-        if (root.cursor >= 0) {
-            lv.viewport-y = -(root.cursor * root.row-h - (lv.visible-height - root.row-h) / 2);
+    changed center-tick => { center-timer.restart(); }
+    center-timer := Timer {
+        interval: 45ms;
+        running: false;
+        triggered => {
+            if (root.cursor >= 0) {
+                lv.viewport-y = -(root.cursor * root.row-h - (lv.visible-height - root.row-h) / 2);
+            }
+            center-timer.stop();
         }
     }
 
@@ -597,11 +606,12 @@ export component TrackTable inherits Rectangle {
                         width: cells-width.width * col.fraction;
 
                         // A dedicated "playing" column: the play glyph on the
-                        // row that sounds, nothing on the rest.
+                        // row that sounds, and the queue position on a row that
+                        // has been enqueued.
                         if col.key == "playing": Text {
                             width: parent.width;
                             height: 100%;
-                            text: playing ? "▶" : "";
+                            text: playing ? "▶" : row.queue-pos;
                             color: row.selected ? #ffffff : Theme.accent;
                             font-size: Theme.compact ? 12px : Theme.font-body;
                             vertical-alignment: center;
