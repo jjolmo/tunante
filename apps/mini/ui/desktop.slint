@@ -251,6 +251,8 @@ export component DesktopShell inherits Rectangle {
     callback console-opened-in-table(string);
     callback playlist-opened-in-table(string);
     callback table-remove-from-playlist(int);
+    in property <string> table-scope-label;
+    callback table-scope-cleared();
     callback folder-opened(string);
     callback folder-unpinned(string);
     callback folder-revealed(string);
@@ -802,6 +804,8 @@ export component DesktopShell inherits Rectangle {
                     init => { root.table-needed(); }
                     playlist-scope: root.table-scope-kind == "playlist";
                     remove-from-playlist(i) => { root.table-remove-from-playlist(i); }
+                    scope-label: root.table-scope-label;
+                    scope-cleared => { root.table-scope-cleared(); }
                     focus-filter-tick: root.focus-filter-tick;
                     rows: root.table-rows;
                     columns: root.table-columns;

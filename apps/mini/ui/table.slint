@@ -155,6 +155,9 @@ export component TrackTable inherits Rectangle {
     /// True when the table is showing a playlist — enables "remove from list".
     in property <bool> playlist-scope;
     callback remove-from-playlist(int);
+    /// "Lista · X" / "Consola · Y" / "Carpeta · Z"; "" means All/Faved.
+    in property <string> scope-label;
+    callback scope-cleared();
     /// Rust bumps this to land focus in the filter box — the focus_search
     /// action; granting focus is slint-only business.
     in property <int> focus-filter-tick;
@@ -176,6 +179,41 @@ export component TrackTable inherits Rectangle {
     }
 
     VerticalLayout {
+        // --- Scope chip: which collection the table is showing, and a way
+        // out. Empty (Library/Faved) leaves no bar, so All Tracks looks the
+        // same as it always did.
+        if root.scope-label != "": Rectangle {
+            height: 30px;
+            background: Theme.bg-secondary;
+            border-radius: 8px;
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 6px;
+                spacing: 8px;
+                Text {
+                    text: root.scope-label;
+                    color: Theme.accent;
+                    font-size: Theme.font-small;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
+                }
+                Rectangle {
+                    width: 24px;
+                    border-radius: Theme.radius;
+                    background: scx.has-hover ? Theme.bg-hover : transparent;
+                    Text {
+                        text: "✕";
+                        color: scx.has-hover ? Theme.text-primary : Theme.text-muted;
+                        font-size: Theme.font-small;
+                        vertical-alignment: center;
+                    }
+                    scx := TouchArea { clicked => { root.scope-cleared(); } }
+                }
+            }
+        }
+
         // --- Filter box ---
         Rectangle {
             height: 40px;

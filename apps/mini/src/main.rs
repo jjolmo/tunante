@@ -2090,6 +2090,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_table_faved(faved);
             ui.set_table_scope_kind(SharedString::from(""));
             ui.set_table_folder_id(SharedString::from(""));
+            ui.set_table_scope_label(SharedString::from(""));
         });
     }
 
@@ -2232,6 +2233,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_table_faved(false);
                 ui.set_table_scope_kind(SharedString::from(""));
                 ui.set_table_folder_id(SharedString::from(""));
+                ui.set_table_scope_label(SharedString::from(""));
                 rebuild_table(&mut st, &model);
                 if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
                     st.selected = std::iter::once(i).collect();
@@ -2304,6 +2306,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             rebuild_table(&mut st, &model);
             ui.set_table_faved(false);
             ui.set_table_scope_kind(SharedString::from("console"));
+            ui.set_table_scope_label(SharedString::from(scope_label(&db_c, &st.scope)));
             ui.set_table_folder_id(id);
             ui.set_table_sort_col(
                 st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
@@ -2334,6 +2337,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             rebuild_table(&mut st, &model);
             ui.set_table_faved(false);
             ui.set_table_scope_kind(SharedString::from("playlist"));
+            ui.set_table_scope_label(SharedString::from(scope_label(&db_c, &st.scope)));
             ui.set_table_folder_id(id);
             ui.set_table_sort_col(-1);
         });
@@ -2361,6 +2365,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             drop(st);
             // The sidebar counts move with it.
             refresh_playlists_models(&db_c, &plmodel, &allpl);
+        });
+    }
+    {
+        let (st, model) = (table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_scope_cleared(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            st.scope = Scope::Library;
+            if st.sort_key == "__scope__" {
+                st.sort_key = "title".to_string();
+            }
+            rebuild_table(&mut st, &model);
+            ui.set_table_faved(false);
+            ui.set_table_scope_kind(SharedString::from(""));
+            ui.set_table_folder_id(SharedString::from(""));
+            ui.set_table_scope_label(SharedString::from(""));
+            ui.set_table_sort_col(
+                st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
+            );
         });
     }
     // The folder sheet's four new verbs, path-based.
@@ -2493,6 +2517,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_table_faved(false);
             ui.set_table_scope_kind(SharedString::from(if scoped { "folder" } else { "" }));
             ui.set_table_folder_id(if scoped { id } else { SharedString::from("") });
+            ui.set_table_scope_label(SharedString::from(scope_label(&db_p, &st.scope)));
         });
     }
     {
@@ -2521,6 +2546,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 rebuild_table(&mut st, &tmodel);
                 ui.set_table_scope_kind(SharedString::from(""));
                 ui.set_table_folder_id(SharedString::from(""));
+                ui.set_table_scope_label(SharedString::from(""));
             }
         });
     }
@@ -6195,6 +6221,31 @@ fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
             .map(|f| row(f.id.clone(), &f.path, true)),
     );
     model.set_vec(rows);
+}
+
+/// The chip text for the table's current scope, or "" for library/faved.
+fn scope_label(db: &Database, scope: &Scope) -> String {
+    match scope {
+        Scope::Console(id) => format!("Consola · {}", tunante_core::console::label_es(id)),
+        Scope::Folder(f) => format!(
+            "Carpeta · {}",
+            std::path::Path::new(f)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| f.clone())
+        ),
+        Scope::Playlist { id, .. } => {
+            let name = db
+                .get_playlists()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|p| p.id == *id)
+                .map(|p| p.name)
+                .unwrap_or_default();
+            format!("Lista · {name}")
+        }
+        _ => String::new(),
+    }
 }
 
 /// A sidebar folder id back to its path: `root:<id>` rows live in
