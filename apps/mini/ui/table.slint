@@ -693,6 +693,63 @@ export component TrackTable inherits Rectangle {
         height: 0;
     }
 
+    // --- Scrollbar -----------------------------------------------------------
+    //
+    // The toolkit's own is a ghost — a pale hairline you can barely find. This
+    // one has a raised, bordered thumb over the table's right edge; the track
+    // takes the drag (and a click-to-jump), the thumb is only its face.
+    if lv.viewport-height > lv.visible-height + 1px: Rectangle {
+        property <length> top: (root.scope-label != "" && !Theme.compact ? 30px : 0px) + 71px;
+        x: parent.width - 14px;
+        y: self.top;
+        width: 11px;
+        height: root.height - self.top;
+        background: Theme.bg-secondary;
+        border-radius: 5px;
+        border-width: 1px;
+        border-color: Theme.bg-tertiary;
+
+        thumb := Rectangle {
+            x: 1px;
+            width: parent.width - 2px;
+            height: max(30px, parent.height * lv.visible-height / lv.viewport-height);
+            y: (parent.height - self.height)
+                * (-lv.viewport-y) / max(1px, lv.viewport-height - lv.visible-height);
+            background: sbar.pressed ? Theme.accent
+                : (sbar.has-hover ? Theme.text-primary : Theme.text-secondary);
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.bg-primary;
+            // A top highlight and a bottom shadow give the thumb a raised face.
+            Rectangle {
+                y: 1px;
+                x: 1px;
+                width: parent.width - 2px;
+                height: 1px;
+                background: #ffffff40;
+                border-radius: 1px;
+            }
+        }
+        sbar := TouchArea {
+            moved => {
+                self.jump(self.mouse-y);
+            }
+            pointer-event(ev) => {
+                if (ev.button == PointerEventButton.left
+                        && ev.kind == PointerEventKind.down) {
+                    self.jump(self.mouse-y);
+                }
+            }
+            // Centre the thumb on the pointer, then map that back to the list.
+            function jump(my: length) {
+                lv.viewport-y = -clamp(
+                    (my - thumb.height / 2) / max(1px, parent.height - thumb.height)
+                        * (lv.viewport-height - lv.visible-height),
+                    0, lv.viewport-height - lv.visible-height);
+            }
+        }
+    }
+
     // --- The tooltip ---------------------------------------------------------
     //
     // Every elided cell's full story, on hover with an OS-style delay: the
