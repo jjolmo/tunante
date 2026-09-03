@@ -191,6 +191,14 @@ export component DesktopSettings inherits Rectangle {
     callback toggle-show-consoles();
     in property <bool> show-files;
     callback toggle-show-files();
+    in property <bool> show-discos;
+    callback toggle-show-discos();
+    in property <bool> show-consoles-view;
+    callback toggle-show-consoles-view();
+    in property <bool> show-juegos;
+    callback toggle-show-juegos();
+    in property <bool> show-listas-view;
+    callback toggle-show-listas-view();
     in property <bool> caps-all;
     callback toggle-caps-all();
     callback reset-dsp();
@@ -668,36 +676,57 @@ export component DesktopSettings inherits Rectangle {
                                         tcard := TouchArea { clicked => { root.set-theme(card.mode); } }
                                     }
                                 }
+                                Section { text: "Vistas de la biblioteca"; }
+                                CheckRow {
+                                    label: "Árbol";
+                                    checked: root.show-files;
+                                    toggled => { root.toggle-show-files(); }
+                                }
+                                CheckRow {
+                                    label: "Discos";
+                                    checked: root.show-discos;
+                                    toggled => { root.toggle-show-discos(); }
+                                }
+                                CheckRow {
+                                    label: "Consolas";
+                                    checked: root.show-consoles-view;
+                                    toggled => { root.toggle-show-consoles-view(); }
+                                }
+                                CheckRow {
+                                    label: "Juegos";
+                                    checked: root.show-juegos;
+                                    toggled => { root.toggle-show-juegos(); }
+                                }
+                                CheckRow {
+                                    label: "Listas";
+                                    checked: root.show-listas-view;
+                                    toggled => { root.toggle-show-listas-view(); }
+                                }
                                 Section { text: "Secciones del sidebar"; }
                                 CheckRow {
-                                    label: "Carátula en el sidebar";
+                                    label: "Carátula del reproductor";
                                     checked: root.show-cover;
                                     toggled => { root.toggle-show-cover(); }
                                 }
                                 CheckRow {
-                                    label: "Favoritos en el sidebar";
+                                    label: "Favoritos";
                                     checked: root.show-faved;
                                     toggled => { root.toggle-show-faved(); }
                                 }
                                 CheckRow {
-                                    label: "Carpetas en el sidebar";
+                                    label: "Carpetas";
                                     checked: root.show-folders;
                                     toggled => { root.toggle-show-folders(); }
                                 }
                                 CheckRow {
-                                    label: "Listas en el sidebar";
-                                    checked: root.show-playlists;
-                                    toggled => { root.toggle-show-playlists(); }
-                                }
-                                CheckRow {
-                                    label: "Consolas en el sidebar";
+                                    label: "Consolas (acceso rápido)";
                                     checked: root.show-consoles;
                                     toggled => { root.toggle-show-consoles(); }
                                 }
                                 CheckRow {
-                                    label: "Árbol de ficheros en el sidebar";
-                                    checked: root.show-files;
-                                    toggled => { root.toggle-show-files(); }
+                                    label: "Listas (acceso rápido)";
+                                    checked: root.show-playlists;
+                                    toggled => { root.toggle-show-playlists(); }
                                 }
                             }
 

@@ -181,6 +181,14 @@ export component DesktopShell inherits Rectangle {
     callback toggle-show-consoles();
     in property <bool> show-files;
     callback toggle-show-files();
+    in property <bool> show-discos;
+    callback toggle-show-discos();
+    in property <bool> show-consoles-view;
+    callback toggle-show-consoles-view();
+    in property <bool> show-juegos;
+    callback toggle-show-juegos();
+    in property <bool> show-listas-view;
+    callback toggle-show-listas-view();
     in property <bool> caps-all;
     callback toggle-caps-all();
     callback reset-dsp();
@@ -503,22 +511,22 @@ export component DesktopShell inherits Rectangle {
                         active: root.centre == 1 && root.library-mode == 0;
                         clicked => { root.centre = 1; root.library-mode-changed(0); }
                     }
-                    SidebarEntry {
+                    if root.show-discos: SidebarEntry {
                         label: "Discos";
                         active: root.centre == 1 && root.library-mode == 1;
                         clicked => { root.centre = 1; root.library-mode-changed(1); }
                     }
-                    SidebarEntry {
+                    if root.show-consoles-view: SidebarEntry {
                         label: "Consolas";
                         active: root.centre == 1 && root.library-mode == 2;
                         clicked => { root.centre = 1; root.library-mode-changed(2); }
                     }
-                    SidebarEntry {
+                    if root.show-juegos: SidebarEntry {
                         label: "Juegos";
                         active: root.centre == 1 && root.library-mode == 3;
                         clicked => { root.centre = 1; root.library-mode-changed(3); }
                     }
-                    SidebarEntry {
+                    if root.show-listas-view: SidebarEntry {
                         label: "Listas";
                         active: root.centre == 1 && root.library-mode == 4;
                         clicked => { root.centre = 1; root.library-mode-changed(4); }
@@ -1255,6 +1263,14 @@ export component DesktopShell inherits Rectangle {
                     toggle-show-consoles => { root.toggle-show-consoles(); }
                     show-files: root.show-files;
                     toggle-show-files => { root.toggle-show-files(); }
+                    show-discos: root.show-discos;
+                    toggle-show-discos => { root.toggle-show-discos(); }
+                    show-consoles-view: root.show-consoles-view;
+                    toggle-show-consoles-view => { root.toggle-show-consoles-view(); }
+                    show-juegos: root.show-juegos;
+                    toggle-show-juegos => { root.toggle-show-juegos(); }
+                    show-listas-view: root.show-listas-view;
+                    toggle-show-listas-view => { root.toggle-show-listas-view(); }
                     caps-all: root.caps-all;
                     toggle-caps-all => { root.toggle-caps-all(); }
                     reset-dsp => { root.reset-dsp(); }
