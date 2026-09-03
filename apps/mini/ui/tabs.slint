@@ -82,6 +82,8 @@ export component SettingsTab inherits Rectangle {
     callback undo-covers();
     in-out property <bool> continue-queue;
     callback toggle-continue-queue();
+    in-out property <bool> resume-on-open;
+    callback toggle-resume-on-open();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
@@ -220,6 +222,15 @@ export component SettingsTab inherits Rectangle {
             value: root.continue-queue ? "sí" : "no";
             highlighted: root.continue-queue;
             clicked => { root.toggle-continue-queue(); }
+        }
+        // The old desktop resumed playing if you closed it playing within the
+        // last five minutes. Off by default here — an app that starts making
+        // noise on its own is a surprise — but available for those who want it.
+        SettingRow {
+            label: "Reanudar reproducción al abrir";
+            value: root.resume-on-open ? "sí" : "no";
+            highlighted: root.resume-on-open;
+            clicked => { root.toggle-resume-on-open(); }
         }
         // Applies from the next scan: existing rows keep the durations they
         // were sealed with.

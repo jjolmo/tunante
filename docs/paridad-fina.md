@@ -163,9 +163,10 @@
       library_dirty repinta. Medido en vivo: 29.530 en 0,48 s (el viejo,
       1,5 s in-process).
 - [x] Texto de búsqueda persistido (search_query), flush por el timer.
-- [~] Auto-reanudación <5 min: cubierto distinto a propósito — mini
-      restaura pista y posición SIEMPRE pero en pausa; nunca suelta sonido
-      solo por abrirse, que es lo que la regla de 5 min acotaba.
+- [x] Auto-reanudación <5 min — OPCIONAL: fila «Reanudar reproducción al
+      abrir» (off por defecto). Con ella, si cerraste sonando hace menos de
+      5 min (claves mini.was_playing/mini.closed_at), la app arranca
+      reproduciendo; si no, restaura en pausa como siempre.
 
 ## C · Menor / pulido
 

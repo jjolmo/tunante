@@ -199,6 +199,8 @@ export component AppWindow inherits Window {
     callback undo-covers();
     in-out property <bool> continue-queue;
     callback toggle-continue-queue();
+    in-out property <bool> resume-on-open;
+    callback toggle-resume-on-open();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
@@ -920,6 +922,8 @@ export component AppWindow inherits Window {
                     undo-covers => { root.undo-covers(); }
                     continue-queue <=> root.continue-queue;
                     toggle-continue-queue => { root.toggle-continue-queue(); }
+                    resume-on-open <=> root.resume-on-open;
+                    toggle-resume-on-open => { root.toggle-resume-on-open(); }
                     loop-max-mins: root.loop-max-mins;
                     cycle-loop-max => { root.cycle-loop-max(); }
                     slow-scan <=> root.slow-scan;
