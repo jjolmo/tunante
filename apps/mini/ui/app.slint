@@ -291,6 +291,7 @@ export component AppWindow inherits Window {
     callback set-star-display-mode(int);
     in property <length> table-restore-y;
     in property <int> table-restore-tick;
+    in property <int> table-center-tick;
     callback table-scrolled(length);
     in property <int> table-sort-col: 1;
     in property <bool> table-sort-asc: true;
@@ -573,6 +574,7 @@ export component AppWindow inherits Window {
             set-star-display-mode(m) => { root.set-star-display-mode(m); }
             table-restore-y: root.table-restore-y;
             table-restore-tick: root.table-restore-tick;
+            table-center-tick: root.table-center-tick;
             table-scrolled(y) => { root.table-scrolled(y); }
             table-sort-col: root.table-sort-col;
             table-sort-asc: root.table-sort-asc;

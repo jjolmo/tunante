@@ -953,6 +953,9 @@ export component LibraryTab inherits Rectangle {
     // spike: it makes "does the on-screen keyboard come up?" answerable over
     // ssh, without needing someone to put a finger on the glass.
     in property <bool> autofocus-search;
+    // The desktop shell already carries these five as sidebar entries, so it
+    // hides this in-tab row to avoid showing them twice; the search stays.
+    in property <bool> hide-tabs;
     callback activated(int);
     callback search-changed(string);
 
@@ -1012,7 +1015,7 @@ export component LibraryTab inherits Rectangle {
         // Discos y Consolas son índices sobre las mismas filas, y Listas es la
         // única cuyo contenido y orden eligió alguien a mano. El menú de
         // pulsación larga funciona igual en todas.
-        Rectangle {
+        if !root.hide-tabs: Rectangle {
             height: Theme.touch-target - 6px;
             background: Theme.bg-primary;
 

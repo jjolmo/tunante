@@ -7,7 +7,7 @@
 // only a different arrangement of it. The wide track table of fase 3b will
 // replace the centre pane; until then the phone's list *is* the library view.
 
-import { ListView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow, FolderRow, ShortcutRow } from "types.slint";
 import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet, ConsoleArt } from "widgets.slint";
@@ -297,6 +297,7 @@ export component DesktopShell inherits Rectangle {
     callback set-star-display-mode(int);
     in property <length> table-restore-y;
     in property <int> table-restore-tick;
+    in property <int> table-center-tick;
     callback table-scrolled(length);
     in property <int> table-sort-col;
     in property <bool> table-sort-asc;
@@ -543,25 +544,23 @@ export component DesktopShell inherits Rectangle {
                     padding: Theme.compact ? 4px : Theme.gap;
                     spacing: Theme.compact ? 0px : 2px;
 
-                    // The browse sections scroll as one — with the Consolas list and
-                    // the cover, the fixed content outgrew the window and shoved the
-                    // transport bar off the bottom. Ajustes and the cover stay pinned
-                    // below, outside this Flickable.
+                    // The browse sections scroll as one — with the Consolas list
+                    // and the cover, the fixed content outgrows the window, so it
+                    // gets a real ScrollView (wheel + a visible bar). Ajustes and
+                    // the cover stay pinned below, outside it.
                     //
-                    // The Flickable lives inside a stretchy Rectangle: a Flickable
-                    // caps its own height at its content, so when a section is
-                    // collapsed the short content would drag the whole sidebar — and
-                    // with it the transport bar — up, leaving a void below. The
-                    // Rectangle (infinite max-height) claims the space; the Flickable
+                    // Inside a stretchy Rectangle: the scroll area caps its own
+                    // height at its content, so a collapsed section would drag the
+                    // sidebar — and the transport bar — up, leaving a void. The
+                    // Rectangle (infinite max-height) claims the space; the view
                     // fills it explicitly.
                     Rectangle {
                         vertical-stretch: 1;
                         clip: true;
-                    Flickable {
+                    ScrollView {
                         width: 100%;
                         height: 100%;
-                        viewport-height: scroll-inner.preferred-height;
-                        scroll-inner := VerticalLayout {
+                        VerticalLayout {
                             spacing: 2px;
                     SectionHeader {
                         title: "Biblioteca";
@@ -589,42 +588,13 @@ export component DesktopShell inherits Rectangle {
                             root.table-faved-changed(true);
                         }
                     }
-                    // Queue as a sidebar element (placement 0 entry, 1 list),
-                    // only while it has items — the old "Queued" view.
-                    if root.queue-placement == 0 && root.queue-rows.length > 0: SidebarEntry {
+                    // Queue as a sidebar entry (placement 0), only while it has
+                    // items — the old "Queued" view. Placement 2 is the panel.
+                    if root.queue-placement != 2 && root.queue-rows.length > 0: SidebarEntry {
                         label: "Cola";
                         count: root.queue-rows.length;
                         active: root.centre == 0 && root.table-scope-kind == "queue";
                         clicked => { root.centre = 0; root.queue-opened-in-table(); }
-                    }
-                    if root.queue-placement == 1 && root.queue-rows.length > 0: Text {
-                        text: "Cola (" + root.queue-rows.length + ")";
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        height: Theme.compact ? 18px : 26px;
-                        vertical-alignment: center;
-                    }
-                    if root.queue-placement == 1: VerticalLayout {
-                        spacing: 0px;
-                        for qr[qi] in root.queue-rows: Rectangle {
-                        height: Theme.compact ? 24px : 34px;
-                        border-radius: 6px;
-                        background: qt.has-hover ? Theme.bg-hover : transparent;
-                        HorizontalLayout {
-                            padding-left: 12px;
-                            padding-right: 8px;
-                            Text {
-                                text: qr.title;
-                                color: Theme.text-primary;
-                                font-size: Theme.font-small;
-                                vertical-alignment: center;
-                                overflow: elide;
-                            }
-                        }
-                        qt := TouchArea {
-                            clicked => { root.queue-activated(qi); }
-                        }
-                        }
                     }
                     if root.show-files: SidebarEntry {
                         label: "Árbol";
@@ -980,6 +950,7 @@ export component DesktopShell inherits Rectangle {
                     set-star-mode(m) => { root.set-star-display-mode(m); }
                     restore-y: root.table-restore-y;
                     restore-tick: root.table-restore-tick;
+                    center-tick: root.table-center-tick;
                     scrolled(y) => { root.table-scrolled(y); }
                     now-path: root.now-path;
                     sort-col: root.table-sort-col;
@@ -1014,6 +985,7 @@ export component DesktopShell inherits Rectangle {
                     rows: root.library-rows;
                     total: root.library-total;
                     cramped: false;
+                    hide-tabs: true;
                     now-path: root.now-path;
                     mode <=> root.library-mode;
                     mode-changed(i) => { root.library-mode-changed(i); }
@@ -1143,21 +1115,25 @@ export component DesktopShell inherits Rectangle {
                     alignment: center;
                     spacing: 2px;
 
+                    // Fixed-height buttons in a row are top-aligned, so the
+                    // 34px controls floated above the 44px play circle. Each
+                    // sits in its own centring column so every glyph shares one
+                    // baseline.
                     HorizontalLayout {
                         alignment: center;
                         spacing: 6px;
 
-                        IconButton {
+                        VerticalLayout { alignment: center; IconButton {
                             icon: @image-url("icons/shuffle.svg");
                             icon-size: 15px;
                             active: root.shuffle;
                             clicked => { root.toggle-shuffle(); }
-                        }
-                        IconButton {
+                        } }
+                        VerticalLayout { alignment: center; IconButton {
                             icon: @image-url("icons/prev.svg");
                             icon-size: 18px;
                             clicked => { root.prev-track(); }
-                        }
+                        } }
                         Rectangle {
                             width: 44px;
                             height: 44px;
@@ -1175,29 +1151,29 @@ export component DesktopShell inherits Rectangle {
                             }
                             pta := TouchArea { clicked => { root.toggle-play(); } }
                         }
-                        IconButton {
+                        VerticalLayout { alignment: center; IconButton {
                             icon: @image-url("icons/stop.svg");
                             icon-size: 16px;
                             clicked => { root.stop-playback(); }
-                        }
-                        IconButton {
+                        } }
+                        VerticalLayout { alignment: center; IconButton {
                             icon: @image-url("icons/next.svg");
                             icon-size: 18px;
                             clicked => { root.next-track(); }
-                        }
-                        IconButton {
+                        } }
+                        VerticalLayout { alignment: center; IconButton {
                             icon: @image-url("icons/repeat.svg");
                             icon-size: 16px;
                             active: root.repeat != 0;
                             badge: root.repeat == 2 ? "1" : "";
                             clicked => { root.cycle-repeat(); }
-                        }
-                        IconButton {
+                        } }
+                        VerticalLayout { alignment: center; IconButton {
                             icon: @image-url("icons/fade.svg");
                             icon-size: 16px;
                             active: root.crossfade-secs > 0;
                             clicked => { root.toggle-crossfade(); }
-                        }
+                        } }
                     }
 
                     HorizontalLayout {

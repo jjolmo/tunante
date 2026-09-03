@@ -2305,6 +2305,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 repaint_selection(&st, &model);
                 ui.set_table_cursor(-1);
                 ui.set_table_cursor(i as i32);
+                // Centre it, not merely nudge it into view — the click asked to
+                // "go to what is playing", and centre is where the eye looks.
+                ui.set_table_center_tick(ui.get_table_center_tick() + 1);
             } else if !st.filter.is_empty() || st.scope != Scope::Library {
                 // Not in the current narrowing: widen to the whole library
                 // and try again — the old app's fallback chain, first rung.
@@ -2385,7 +2388,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_cycle_queue_placement(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let next = (ui.get_queue_placement() + 1) % 3;
+            // Two placements only: 0 a sidebar entry, 2 the right panel. The
+            // old inline-list mode (1) was dropped.
+            let next = if ui.get_queue_placement() == 2 { 0 } else { 2 };
             ui.set_queue_placement(next);
             let _ = db.set_setting("queue_placement", &next.to_string());
         });
@@ -2701,6 +2706,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak_v = ui.as_weak();
         ui.on_library_mode_changed(move |i| {
             let Some(ui) = weak_v.upgrade() else { return };
+            // Keep the UI property in step: the desktop sidebar fires this
+            // callback without touching library-mode, so without this the
+            // embedded LibraryTab never switched its view (Listas especially).
+            ui.set_library_mode(i);
             tree_v.borrow_mut().mode = library::Mode::from_index(i);
             // Changing view starts at the top of it. Coming back to Consoles
             // three levels into where you were last time is disorienting, and
@@ -6539,6 +6548,7 @@ struct ColumnDef {
 }
 
 const TABLE_COLUMNS: &[ColumnDef] = &[
+    ColumnDef { key: "playing", label: "", fraction: 0.4, right: false },
     ColumnDef { key: "n", label: "#", fraction: 0.5, right: false },
     ColumnDef { key: "title", label: "Título", fraction: 3.4, right: false },
     ColumnDef { key: "artist", label: "Artista", fraction: 2.2, right: false },
@@ -6591,6 +6601,8 @@ fn cell_for(t: &tunante_core::db::models::Track, key: &str, prefers_game: bool, 
             Some(n) => n.to_string(),
             None => String::new(),
         },
+        // Painted by the UI from the now-playing path, not from the track.
+        "playing" => String::new(),
         "stars" => stars_for_mode(t.rating, star_mode),
         "duration" => format!("{}:{:02}", t.duration_ms / 60_000, (t.duration_ms / 1_000) % 60),
         "codec" => t.codec.clone(),
