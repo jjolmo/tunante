@@ -72,13 +72,14 @@ component SidebarEntry inherits Rectangle {
         spacing: 8px;
         if root.glyph != "": Text {
             text: root.glyph;
-            color: root.active ? Theme.accent : Theme.text-muted;
+            // White on the blue selection — accent-on-accent vanished.
+            color: root.active ? #ffffff : Theme.text-muted;
             font-size: Theme.font-small;
             vertical-alignment: center;
         }
         Text {
             text: root.label;
-            color: root.active ? Theme.accent : Theme.text-primary;
+            color: root.active ? #ffffff : Theme.text-primary;
             font-size: Theme.font-body;
             vertical-alignment: center;
             overflow: elide;
@@ -87,7 +88,7 @@ component SidebarEntry inherits Rectangle {
         }
         if root.count != "": Text {
             text: root.count;
-            color: Theme.text-muted;
+            color: root.active ? #ffffffcc : Theme.text-muted;
             font-size: Theme.font-small;
             vertical-alignment: center;
         }
@@ -359,6 +360,7 @@ export component DesktopShell inherits Rectangle {
     in property <length> table-restore-y;
     in property <int> table-restore-tick;
     in property <int> table-center-tick;
+    in property <int> table-center-row;
     callback table-scrolled(length);
     in property <int> table-sort-col;
     in property <bool> table-sort-asc;
@@ -1019,6 +1021,7 @@ export component DesktopShell inherits Rectangle {
                     restore-y: root.table-restore-y;
                     restore-tick: root.table-restore-tick;
                     center-tick: root.table-center-tick;
+                    center-row: root.table-center-row;
                     scrolled(y) => { root.table-scrolled(y); }
                     now-path: root.now-path;
                     sort-col: root.table-sort-col;
@@ -1168,6 +1171,7 @@ export component DesktopShell inherits Rectangle {
                         background: npt.has-hover && root.now-title != "" ? Theme.bg-hover : transparent;
                         border-radius: Theme.radius;
                         npt := TouchArea {
+                            mouse-cursor: root.now-title != "" ? pointer : default;
                             clicked => {
                                 if (root.now-title != "") {
                                     root.centre = 0;

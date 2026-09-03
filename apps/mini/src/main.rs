@@ -2370,39 +2370,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.built = true;
                 st.all = db_now.get_all_tracks().unwrap_or_default();
             }
-            st.filter.clear();
-            // Lists with a hand-made order keep it; the rest sort by column.
-            let keeps_order = matches!(
-                scope,
-                Scope::Playlist { .. } | Scope::Queue { .. }
-            );
-            if keeps_order {
-                st.sort_key = "__scope__".to_string();
-            } else if st.sort_key == "__scope__" {
-                st.sort_key = "title".to_string();
-            }
-            st.scope = scope;
-            let (kind, id) = st.scope.tag();
-            let faved = matches!(st.scope, Scope::Faved);
-            ui.set_table_filter(SharedString::new());
-            ui.set_table_faved(faved);
-            ui.set_table_scope_kind(SharedString::from(kind));
-            ui.set_table_folder_id(SharedString::from(id));
-            ui.set_table_scope_label(SharedString::from(scope_label(&db_now, &st.scope)));
-            rebuild_table(&mut st, &model);
-            ui.set_table_sort_col(
+            // Already showing that list, only scrolled away? Don't rebuild —
+            // rebuilding resets the scroll and races the centre. Just find the
+            // track and centre it. This is the everyday case: play, scroll, click.
+            let already_here = st.scope == scope && st.filter.is_empty();
+            if !already_here {
+                st.filter.clear();
+                // Lists with a hand-made order keep it; the rest sort by column.
+                let keeps_order = matches!(scope, Scope::Playlist { .. } | Scope::Queue { .. });
                 if keeps_order {
+                    st.sort_key = "__scope__".to_string();
+                } else if st.sort_key == "__scope__" {
+                    st.sort_key = "title".to_string();
+                }
+                st.scope = scope;
+                let (kind, id) = st.scope.tag();
+                let faved = matches!(st.scope, Scope::Faved);
+                ui.set_table_filter(SharedString::new());
+                ui.set_table_faved(faved);
+                ui.set_table_scope_kind(SharedString::from(kind));
+                ui.set_table_folder_id(SharedString::from(id));
+                ui.set_table_scope_label(SharedString::from(scope_label(&db_now, &st.scope)));
+                rebuild_table(&mut st, &model);
+                ui.set_table_sort_col(if keeps_order {
                     -1
                 } else {
                     st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1)
-                },
-            );
+                });
+            }
             if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
                 st.selected = std::iter::once(i).collect();
                 st.anchor = i;
                 repaint_selection(&st, &model);
                 ui.set_table_cursor(-1);
                 ui.set_table_cursor(i as i32);
+                ui.set_table_center_row(i as i32);
                 ui.set_table_center_tick(ui.get_table_center_tick() + 1);
             }
         });
