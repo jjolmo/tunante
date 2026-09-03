@@ -181,7 +181,8 @@ export component DesktopShell inherits Rectangle {
     in property <int> focus-filter-tick;
     /// Rust bumps this for Ctrl+P: land in Ajustes.
     in property <int> open-settings-tick;
-    changed open-settings-tick => { root.centre = 2; }
+    in-out property <bool> showing-settings;
+    changed open-settings-tick => { root.showing-settings = true; }
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
@@ -610,7 +611,7 @@ export component DesktopShell inherits Rectangle {
                                 }
                                 MenuItem {
                                     title: "Carátulas…";
-                                    activated => { root.centre = 2; }
+                                    activated => { root.showing-settings = true; }
                                 }
                             }
                         }
@@ -780,8 +781,8 @@ export component DesktopShell inherits Rectangle {
 
                     SidebarEntry {
                         label: "Ajustes";
-                        active: root.centre == 2;
-                        clicked => { root.centre = 2; }
+                        active: root.showing-settings;
+                        clicked => { root.showing-settings = true; }
                     }
                 }
             }
@@ -897,113 +898,6 @@ export component DesktopShell inherits Rectangle {
                     playlist-enqueue-id(id) => { root.playlist-enqueue-id(id); }
                 }
 
-                if root.centre == 2: DesktopSettings {
-                    volume: root.volume;
-                    sleep-running: root.sleep-running;
-                    sleep-minutes: root.sleep-minutes;
-                    library-summary: root.library-summary;
-                    library-folders: root.library-folders;
-                    vgm-loops-label: root.vgm-loops-label;
-                    cycle-vgm-loops => { root.cycle-vgm-loops(); }
-                    auto-covers: root.auto-covers;
-                    toggle-auto-covers => { root.toggle-auto-covers(); }
-                    covers-in-folder: root.covers-in-folder;
-                    toggle-covers-in-folder => { root.toggle-covers-in-folder(); }
-                    titlebar-track: root.titlebar-track;
-                    toggle-titlebar-track => { root.toggle-titlebar-track(); }
-                    album-game-label: root.album-game-label;
-                    toggle-album-game => { root.toggle-album-game(); }
-                    show-cover: root.show-cover;
-                    toggle-show-cover => { root.toggle-show-cover(); }
-                    show-faved: root.show-faved;
-                    toggle-show-faved => { root.toggle-show-faved(); }
-                    show-folders: root.show-folders;
-                    toggle-show-folders => { root.toggle-show-folders(); }
-                    show-playlists: root.show-playlists;
-                    toggle-show-playlists => { root.toggle-show-playlists(); }
-                    about-label: root.about-label;
-                    open-repo => { root.open-repo(); }
-                    shortcut-rows: root.shortcut-rows;
-                    shortcut-capture(id) => { root.shortcut-capture(id); }
-                    folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
-                    folder-removed(id) => { root.folder-removed(id); }
-                    loop-count: root.loop-count;
-                    fade-seconds: root.fade-seconds;
-                    set-volume(v) => { root.set-volume(v); }
-                    cycle-sleep => { root.cycle-sleep(); }
-                    rescan => { root.rescan(); }
-                    descargar-caratulas => { root.descargar-caratulas(); }
-                    add-folder => { root.add-folder(); }
-                    cycle-loops => { root.cycle-loops(); }
-                    cycle-fade => { root.cycle-fade(); }
-                    short-filter-secs: root.short-filter-secs;
-                    cycle-short-filter => { root.cycle-short-filter(); }
-                    crossfade-secs: root.crossfade-secs;
-                    cycle-crossfade => { root.cycle-crossfade(); }
-                    output-label: root.output-label;
-                    ui-mode-label: root.ui-mode-label;
-                    cycle-output => { root.cycle-output(); }
-                    cycle-ui-mode => { root.cycle-ui-mode(); }
-                    update-status: root.update-status;
-                    check-update => { root.check-update(); }
-                    theme-label: root.theme-label;
-                    cycle-theme => { root.cycle-theme(); }
-                    show-log => { root.show-log(); }
-                    close-to-tray <=> root.close-to-tray;
-                    toggle-close-to-tray => { root.toggle-close-to-tray(); }
-                    mouse-buttons-label: root.mouse-buttons-label;
-                    mouse-buttons-on: root.mouse-buttons-on;
-                    toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
-                    global-shortcuts-label: root.global-shortcuts-label;
-                    global-shortcuts-on: root.global-shortcuts-on;
-                    toggle-global-shortcuts => { root.toggle-global-shortcuts(); }
-                    tray-style-label: root.tray-style-label;
-                    cycle-tray-style => { root.cycle-tray-style(); }
-                    tray-click-label: root.tray-click-label;
-                    cycle-tray-click => { root.cycle-tray-click(); }
-                    update-skippable: root.update-skippable;
-                    skip-update => { root.skip-update(); }
-                    desktop-entry-label: root.desktop-entry-label;
-                    make-desktop-entry => { root.make-desktop-entry(); }
-                    add-files-label: root.add-files-label;
-                    add-files => { root.add-files(); }
-                    cover-fit-label: root.cover-fit-label;
-                    cycle-cover-fit => { root.cycle-cover-fit(); }
-                    clear-cache-label: root.clear-cache-label;
-                    clear-cover-cache => { root.clear-cover-cache(); }
-                    undo-covers-label: root.undo-covers-label;
-                    undo-covers => { root.undo-covers(); }
-                    continue-queue <=> root.continue-queue;
-                    toggle-continue-queue => { root.toggle-continue-queue(); }
-                    resume-on-open <=> root.resume-on-open;
-                    toggle-resume-on-open => { root.toggle-resume-on-open(); }
-                    loop-max-mins: root.loop-max-mins;
-                    cycle-loop-max => { root.cycle-loop-max(); }
-                    slow-scan <=> root.slow-scan;
-                    toggle-slow-scan => { root.toggle-slow-scan(); }
-                    dsp-mono-compensate: root.dsp-mono-compensate;
-                    dsp-mono-phase: root.dsp-mono-phase;
-                    toggle-mono-compensate => { root.toggle-mono-compensate(); }
-                    toggle-mono-phase => { root.toggle-mono-phase(); }
-                    eq-enabled: root.eq-enabled;
-                    eq-low: root.eq-low;
-                    eq-mid: root.eq-mid;
-                    eq-high: root.eq-high;
-                    preamp-db: root.preamp-db;
-                    dsp-mono: root.dsp-mono;
-                    dsp-limiter: root.dsp-limiter;
-                    toggle-eq => { root.toggle-eq(); }
-                    set-eq-band(b, v) => { root.set-eq-band(b, v); }
-                    set-preamp(v) => { root.set-preamp(v); }
-                    toggle-mono => { root.toggle-mono(); }
-                    toggle-limiter => { root.toggle-limiter(); }
-                    dsp-balance: root.dsp-balance;
-                    dsp-width: root.dsp-width;
-                    set-balance(v) => { root.set-balance(v); }
-                    set-width(v) => { root.set-width(v); }
-                    rating-priority-label: root.rating-priority-label;
-                    cycle-rating-priority => { root.cycle-rating-priority(); }
-                }
             }
 
             // --- Right: the queue — only while it has something to say.
@@ -1204,8 +1098,8 @@ export component DesktopShell inherits Rectangle {
                         IconButton {
                             icon: @image-url("icons/settings.svg");
                             icon-size: 16px;
-                            active: root.centre == 2;
-                            clicked => { root.centre = 2; }
+                            active: root.showing-settings;
+                            clicked => { root.showing-settings = true; }
                         }
                         IconButton {
                             icon: root.volume <= 0.001
@@ -1285,4 +1179,115 @@ export component DesktopShell inherits Rectangle {
         accepted => { root.metadata-accepted(); }
         cancelled => { root.metadata-cancelled(); }
     }
+
+    // Settings live in a standalone modal over the whole shell (the old
+    // desktop dialog, not a pane). Rendered last so it sits on top.
+                if root.showing-settings: DesktopSettings {
+            close => { root.showing-settings = false; }
+                    volume: root.volume;
+                    sleep-running: root.sleep-running;
+                    sleep-minutes: root.sleep-minutes;
+                    library-summary: root.library-summary;
+                    library-folders: root.library-folders;
+                    vgm-loops-label: root.vgm-loops-label;
+                    cycle-vgm-loops => { root.cycle-vgm-loops(); }
+                    auto-covers: root.auto-covers;
+                    toggle-auto-covers => { root.toggle-auto-covers(); }
+                    covers-in-folder: root.covers-in-folder;
+                    toggle-covers-in-folder => { root.toggle-covers-in-folder(); }
+                    titlebar-track: root.titlebar-track;
+                    toggle-titlebar-track => { root.toggle-titlebar-track(); }
+                    album-game-label: root.album-game-label;
+                    toggle-album-game => { root.toggle-album-game(); }
+                    show-cover: root.show-cover;
+                    toggle-show-cover => { root.toggle-show-cover(); }
+                    show-faved: root.show-faved;
+                    toggle-show-faved => { root.toggle-show-faved(); }
+                    show-folders: root.show-folders;
+                    toggle-show-folders => { root.toggle-show-folders(); }
+                    show-playlists: root.show-playlists;
+                    toggle-show-playlists => { root.toggle-show-playlists(); }
+                    about-label: root.about-label;
+                    open-repo => { root.open-repo(); }
+                    shortcut-rows: root.shortcut-rows;
+                    shortcut-capture(id) => { root.shortcut-capture(id); }
+                    folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
+                    folder-removed(id) => { root.folder-removed(id); }
+                    loop-count: root.loop-count;
+                    fade-seconds: root.fade-seconds;
+                    set-volume(v) => { root.set-volume(v); }
+                    cycle-sleep => { root.cycle-sleep(); }
+                    rescan => { root.rescan(); }
+                    descargar-caratulas => { root.descargar-caratulas(); }
+                    add-folder => { root.add-folder(); }
+                    cycle-loops => { root.cycle-loops(); }
+                    cycle-fade => { root.cycle-fade(); }
+                    short-filter-secs: root.short-filter-secs;
+                    cycle-short-filter => { root.cycle-short-filter(); }
+                    crossfade-secs: root.crossfade-secs;
+                    cycle-crossfade => { root.cycle-crossfade(); }
+                    output-label: root.output-label;
+                    ui-mode-label: root.ui-mode-label;
+                    cycle-output => { root.cycle-output(); }
+                    cycle-ui-mode => { root.cycle-ui-mode(); }
+                    update-status: root.update-status;
+                    check-update => { root.check-update(); }
+                    theme-label: root.theme-label;
+                    cycle-theme => { root.cycle-theme(); }
+                    show-log => { root.show-log(); }
+                    close-to-tray <=> root.close-to-tray;
+                    toggle-close-to-tray => { root.toggle-close-to-tray(); }
+                    mouse-buttons-label: root.mouse-buttons-label;
+                    mouse-buttons-on: root.mouse-buttons-on;
+                    toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
+                    global-shortcuts-label: root.global-shortcuts-label;
+                    global-shortcuts-on: root.global-shortcuts-on;
+                    toggle-global-shortcuts => { root.toggle-global-shortcuts(); }
+                    tray-style-label: root.tray-style-label;
+                    cycle-tray-style => { root.cycle-tray-style(); }
+                    tray-click-label: root.tray-click-label;
+                    cycle-tray-click => { root.cycle-tray-click(); }
+                    update-skippable: root.update-skippable;
+                    skip-update => { root.skip-update(); }
+                    desktop-entry-label: root.desktop-entry-label;
+                    make-desktop-entry => { root.make-desktop-entry(); }
+                    add-files-label: root.add-files-label;
+                    add-files => { root.add-files(); }
+                    cover-fit-label: root.cover-fit-label;
+                    cycle-cover-fit => { root.cycle-cover-fit(); }
+                    clear-cache-label: root.clear-cache-label;
+                    clear-cover-cache => { root.clear-cover-cache(); }
+                    undo-covers-label: root.undo-covers-label;
+                    undo-covers => { root.undo-covers(); }
+                    continue-queue <=> root.continue-queue;
+                    toggle-continue-queue => { root.toggle-continue-queue(); }
+                    resume-on-open <=> root.resume-on-open;
+                    toggle-resume-on-open => { root.toggle-resume-on-open(); }
+                    loop-max-mins: root.loop-max-mins;
+                    cycle-loop-max => { root.cycle-loop-max(); }
+                    slow-scan <=> root.slow-scan;
+                    toggle-slow-scan => { root.toggle-slow-scan(); }
+                    dsp-mono-compensate: root.dsp-mono-compensate;
+                    dsp-mono-phase: root.dsp-mono-phase;
+                    toggle-mono-compensate => { root.toggle-mono-compensate(); }
+                    toggle-mono-phase => { root.toggle-mono-phase(); }
+                    eq-enabled: root.eq-enabled;
+                    eq-low: root.eq-low;
+                    eq-mid: root.eq-mid;
+                    eq-high: root.eq-high;
+                    preamp-db: root.preamp-db;
+                    dsp-mono: root.dsp-mono;
+                    dsp-limiter: root.dsp-limiter;
+                    toggle-eq => { root.toggle-eq(); }
+                    set-eq-band(b, v) => { root.set-eq-band(b, v); }
+                    set-preamp(v) => { root.set-preamp(v); }
+                    toggle-mono => { root.toggle-mono(); }
+                    toggle-limiter => { root.toggle-limiter(); }
+                    dsp-balance: root.dsp-balance;
+                    dsp-width: root.dsp-width;
+                    set-balance(v) => { root.set-balance(v); }
+                    set-width(v) => { root.set-width(v); }
+                    rating-priority-label: root.rating-priority-label;
+                    cycle-rating-priority => { root.cycle-rating-priority(); }
+                }
 }

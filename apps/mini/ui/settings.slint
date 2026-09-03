@@ -1,21 +1,20 @@
-// The grande shell's settings: the old Tauri desktop's seven-tab panel,
-// EXACTLY the sections it had — General, Biblioteca, Carátulas, DSP,
-// Apariencia, Atajos, Acerca de — with a left nav. Every option that lived
-// there lives here; the mini shell keeps its single scrolling SettingsTab.
-// The wiring is shared: same properties and callbacks as SettingsTab, just
-// arranged into tabs.
+// The grande shell's settings, as a standalone modal dialog — the shape the
+// old Tauri desktop used: a dimmed backdrop over the whole app and a centred
+// panel with a left nav and the seven categories. Desktop-flavoured controls
+// (real checkboxes for the toggles) instead of the phone list's sí/no. The
+// mini shell keeps its single scrolling SettingsTab; this is only for grande.
 
-import { ListView, ScrollView } from "std-widgets.slint";
+import { ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { FolderRow, ShortcutRow } from "types.slint";
 import { SettingRow, DbSliderRow } from "widgets.slint";
 
-// One entry in the left navigation rail.
+// Left navigation entry.
 component NavItem inherits Rectangle {
     in property <string> label;
     in property <bool> active;
     callback clicked();
-    height: 40px;
+    height: 38px;
     border-radius: Theme.radius;
     background: root.active ? Theme.bg-selected
         : (t.has-hover ? Theme.bg-hover : transparent);
@@ -36,8 +35,46 @@ component NavItem inherits Rectangle {
 component Section inherits Text {
     color: Theme.text-muted;
     font-size: Theme.font-small;
-    height: 30px;
+    height: 32px;
     vertical-alignment: bottom;
+}
+
+// A desktop-style checkbox row: label left, a real checkbox on the right.
+component CheckRow inherits Rectangle {
+    in property <string> label;
+    in property <bool> checked;
+    callback toggled();
+    height: 38px;
+    border-radius: Theme.radius;
+    background: t.has-hover ? Theme.bg-hover : transparent;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        spacing: 10px;
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Rectangle {
+            width: 20px;
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: root.checked ? Theme.accent : Theme.text-muted;
+            background: root.checked ? Theme.accent : transparent;
+            Text {
+                text: root.checked ? "✓" : "";
+                color: #ffffff;
+                font-size: 13px;
+            }
+        }
+    }
+    t := TouchArea { clicked => { root.toggled(); } }
 }
 
 export component DesktopSettings inherits Rectangle {
@@ -150,403 +187,450 @@ export component DesktopSettings inherits Rectangle {
     callback set-width(float);
     in property <string> rating-priority-label;
     callback cycle-rating-priority();
+    // Closed from the ✕, the backdrop, or Escape.
+    callback close();
 
-    HorizontalLayout {
-        // --- Left nav rail ---
-        Rectangle {
-            width: 180px;
-            background: Theme.bg-secondary;
-            VerticalLayout {
-                padding: Theme.gap;
-                spacing: 2px;
-                Text {
-                    text: "Ajustes";
-                    color: Theme.text-primary;
-                    font-size: Theme.font-title;
-                    height: 44px;
-                    vertical-alignment: center;
-                }
-                NavItem { label: "General"; active: root.tab == 0; clicked => { root.tab = 0; } }
-                NavItem { label: "Biblioteca"; active: root.tab == 1; clicked => { root.tab = 1; } }
-                NavItem { label: "Carátulas"; active: root.tab == 2; clicked => { root.tab = 2; } }
-                NavItem { label: "DSP"; active: root.tab == 3; clicked => { root.tab = 3; } }
-                NavItem { label: "Apariencia"; active: root.tab == 4; clicked => { root.tab = 4; } }
-                NavItem { label: "Atajos"; active: root.tab == 5; clicked => { root.tab = 5; } }
-                NavItem { label: "Acerca de"; active: root.tab == 6; clicked => { root.tab = 6; } }
-            }
+    // The dimmed backdrop over the whole app; clicking it closes.
+    background: #000000cc;
+    TouchArea { clicked => { root.close(); } }
+
+    // Escape closes, like the old dialog. Grabs focus on open.
+    fs := FocusScope {
+        init => { self.focus(); }
+        key-pressed(ev) => {
+            if (ev.text == Key.Escape) { root.close(); return accept; }
+            reject
         }
-        Rectangle { width: 1px; background: Theme.bg-tertiary; }
+    }
 
-        // --- Content ---
-        Rectangle {
-            horizontal-stretch: 1;
-            background: Theme.bg-primary;
-            ScrollView {
-                VerticalLayout {
-                    padding: Theme.gap * 2;
-                    spacing: 2px;
+    // The centred dialog.
+    Rectangle {
+        width: min(940px, root.width - 48px);
+        height: min(700px, root.height - 48px);
+        background: Theme.bg-primary;
+        border-radius: Theme.radius * 2;
+        border-width: 1px;
+        border-color: Theme.bg-tertiary;
+        clip: true;
+        // Swallow clicks so they do not reach the backdrop.
+        TouchArea {}
 
-                    // ===== General =====
-                    if root.tab == 0: VerticalLayout {
-                        spacing: 2px;
-                        Section { text: "Reproducción"; }
-                        SettingRow {
-                            label: "Repeticiones del bucle";
-                            value: root.loop-count == 0 ? "∞" : (root.loop-count == 1 ? "1" : (root.loop-count == 2 ? "2" : "3"));
-                            clicked => { root.cycle-loops(); }
-                        }
-                        SettingRow {
-                            label: "Fundido final";
-                            value: root.fade-seconds == 0 ? "desactivado" : (root.fade-seconds + " s");
-                            clicked => { root.cycle-fade(); }
-                        }
-                        SettingRow {
-                            label: "Crossfade entre pistas";
-                            value: root.crossfade-secs == 0 ? "desactivado" : (root.crossfade-secs + " s");
-                            clicked => { root.cycle-crossfade(); }
-                        }
-                        SettingRow {
-                            label: "Continuar desde lo encolado";
-                            value: root.continue-queue ? "sí" : "no";
-                            highlighted: root.continue-queue;
-                            clicked => { root.toggle-continue-queue(); }
-                        }
-                        SettingRow {
-                            label: "Reanudar reproducción al abrir";
-                            value: root.resume-on-open ? "sí" : "no";
-                            highlighted: root.resume-on-open;
-                            clicked => { root.toggle-resume-on-open(); }
-                        }
-                        SettingRow {
-                            label: "Saltar pistas cortas";
-                            value: root.short-filter-secs == 0 ? "desactivado" : (root.short-filter-secs + " s");
-                            clicked => { root.cycle-short-filter(); }
-                        }
-                        SettingRow {
-                            label: "Salida de audio";
-                            value: root.output-label;
-                            clicked => { root.cycle-output(); }
-                        }
-                        SettingRow {
-                            label: "Apagar la música en";
-                            value: root.sleep-running ? (root.sleep-minutes + " min") : "desactivado";
-                            highlighted: root.sleep-running;
-                            clicked => { root.cycle-sleep(); }
-                        }
-                        Section { text: "Bandeja y ventana"; }
-                        SettingRow {
-                            label: "Título en la barra de la ventana";
-                            value: root.titlebar-track ? "sí" : "no";
-                            highlighted: root.titlebar-track;
-                            clicked => { root.toggle-titlebar-track(); }
-                        }
-                        SettingRow {
-                            label: "Click en el icono de bandeja";
-                            value: root.tray-click-label;
-                            clicked => { root.cycle-tray-click(); }
-                        }
-                        SettingRow {
-                            label: "Icono de bandeja";
-                            value: root.tray-style-label;
-                            clicked => { root.cycle-tray-style(); }
-                        }
-                        SettingRow {
-                            label: "Cerrar a la bandeja";
-                            value: root.close-to-tray ? "sí" : "no";
-                            highlighted: root.close-to-tray;
-                            clicked => { root.toggle-close-to-tray(); }
-                        }
-                        SettingRow {
-                            label: "Modo de interfaz";
-                            value: root.ui-mode-label;
-                            clicked => { root.cycle-ui-mode(); }
-                        }
+        VerticalLayout {
+            // --- Header ---
+            Rectangle {
+                height: 52px;
+                background: Theme.bg-secondary;
+                HorizontalLayout {
+                    padding-left: Theme.gap * 2;
+                    padding-right: Theme.gap;
+                    Text {
+                        text: "Ajustes";
+                        color: Theme.text-primary;
+                        font-size: Theme.font-title;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
                     }
-
-                    // ===== Biblioteca =====
-                    if root.tab == 1: VerticalLayout {
-                        spacing: 2px;
-                        Section { text: "Carpetas analizadas"; }
-                        SettingRow {
-                            label: "Añadir una carpeta";
-                            value: "＋";
-                            clicked => { root.add-folder(); }
+                    Rectangle {
+                        width: 40px;
+                        border-radius: Theme.radius;
+                        background: cx.has-hover ? Theme.bg-hover : transparent;
+                        Text {
+                            text: "✕";
+                            color: cx.has-hover ? Theme.text-primary : Theme.text-muted;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
                         }
-                        for lf in root.library-folders: Rectangle {
-                            height: 40px;
-                            HorizontalLayout {
-                                padding-left: Theme.gap;
-                                padding-right: Theme.gap;
-                                spacing: Theme.gap;
-                                Text {
-                                    text: lf.path;
-                                    color: Theme.text-secondary;
-                                    font-size: Theme.font-small;
-                                    vertical-alignment: center;
-                                    overflow: elide;
-                                    horizontal-stretch: 1;
+                        cx := TouchArea { clicked => { root.close(); } }
+                    }
+                }
+            }
+            Rectangle { height: 1px; background: Theme.bg-tertiary; }
+
+            HorizontalLayout {
+                // --- Left nav rail ---
+                Rectangle {
+                    width: 180px;
+                    background: Theme.bg-secondary;
+                    VerticalLayout {
+                        padding: Theme.gap;
+                        spacing: 2px;
+                        NavItem { label: "General"; active: root.tab == 0; clicked => { root.tab = 0; } }
+                        NavItem { label: "Biblioteca"; active: root.tab == 1; clicked => { root.tab = 1; } }
+                        NavItem { label: "Carátulas"; active: root.tab == 2; clicked => { root.tab = 2; } }
+                        NavItem { label: "DSP"; active: root.tab == 3; clicked => { root.tab = 3; } }
+                        NavItem { label: "Apariencia"; active: root.tab == 4; clicked => { root.tab = 4; } }
+                        NavItem { label: "Atajos"; active: root.tab == 5; clicked => { root.tab = 5; } }
+                        NavItem { label: "Acerca de"; active: root.tab == 6; clicked => { root.tab = 6; } }
+                        Rectangle { vertical-stretch: 1; }
+                    }
+                }
+                Rectangle { width: 1px; background: Theme.bg-tertiary; }
+
+                // --- Content ---
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: Theme.bg-primary;
+                    ScrollView {
+                        VerticalLayout {
+                            padding: Theme.gap * 2;
+                            spacing: 2px;
+
+                            // ===== General =====
+                            if root.tab == 0: VerticalLayout {
+                                spacing: 2px;
+                                Section { text: "Reproducción"; }
+                                SettingRow {
+                                    label: "Repeticiones del bucle";
+                                    value: root.loop-count == 0 ? "∞" : (root.loop-count == 1 ? "1" : (root.loop-count == 2 ? "2" : "3"));
+                                    clicked => { root.cycle-loops(); }
                                 }
-                                Rectangle {
-                                    width: 84px;
-                                    border-radius: Theme.radius;
-                                    background: wt.has-hover ? Theme.bg-hover : transparent;
-                                    Text {
-                                        text: lf.watching ? "vigilada" : "sin vigilar";
-                                        color: lf.watching ? Theme.accent : Theme.text-muted;
-                                        font-size: Theme.font-small;
-                                        vertical-alignment: center;
-                                    }
-                                    wt := TouchArea {
-                                        clicked => { root.folder-watch-toggled(lf.id, !lf.watching); }
-                                    }
+                                SettingRow {
+                                    label: "Fundido final";
+                                    value: root.fade-seconds == 0 ? "desactivado" : (root.fade-seconds + " s");
+                                    clicked => { root.cycle-fade(); }
                                 }
-                                Rectangle {
-                                    width: 32px;
-                                    border-radius: Theme.radius;
-                                    background: xt.has-hover ? Theme.bg-hover : transparent;
-                                    Text {
-                                        text: "✕";
-                                        color: xt.has-hover ? Theme.text-primary : Theme.text-muted;
-                                        font-size: Theme.font-body;
-                                        vertical-alignment: center;
-                                    }
-                                    xt := TouchArea {
-                                        clicked => { root.folder-removed(lf.id); }
-                                    }
+                                SettingRow {
+                                    label: "Crossfade entre pistas";
+                                    value: root.crossfade-secs == 0 ? "desactivado" : (root.crossfade-secs + " s");
+                                    clicked => { root.cycle-crossfade(); }
+                                }
+                                CheckRow {
+                                    label: "Continuar desde lo encolado";
+                                    checked: root.continue-queue;
+                                    toggled => { root.toggle-continue-queue(); }
+                                }
+                                CheckRow {
+                                    label: "Reanudar reproducción al abrir";
+                                    checked: root.resume-on-open;
+                                    toggled => { root.toggle-resume-on-open(); }
+                                }
+                                SettingRow {
+                                    label: "Saltar pistas cortas";
+                                    value: root.short-filter-secs == 0 ? "desactivado" : (root.short-filter-secs + " s");
+                                    clicked => { root.cycle-short-filter(); }
+                                }
+                                SettingRow {
+                                    label: "Salida de audio";
+                                    value: root.output-label;
+                                    clicked => { root.cycle-output(); }
+                                }
+                                SettingRow {
+                                    label: "Apagar la música en";
+                                    value: root.sleep-running ? (root.sleep-minutes + " min") : "desactivado";
+                                    clicked => { root.cycle-sleep(); }
+                                }
+                                Section { text: "Bandeja y ventana"; }
+                                CheckRow {
+                                    label: "Título en la barra de la ventana";
+                                    checked: root.titlebar-track;
+                                    toggled => { root.toggle-titlebar-track(); }
+                                }
+                                SettingRow {
+                                    label: "Click en el icono de bandeja";
+                                    value: root.tray-click-label;
+                                    clicked => { root.cycle-tray-click(); }
+                                }
+                                SettingRow {
+                                    label: "Icono de bandeja";
+                                    value: root.tray-style-label;
+                                    clicked => { root.cycle-tray-style(); }
+                                }
+                                CheckRow {
+                                    label: "Cerrar a la bandeja";
+                                    checked: root.close-to-tray;
+                                    toggled => { root.toggle-close-to-tray(); }
+                                }
+                                SettingRow {
+                                    label: "Modo de interfaz";
+                                    value: root.ui-mode-label;
+                                    clicked => { root.cycle-ui-mode(); }
                                 }
                             }
-                        }
-                        SettingRow {
-                            label: "Volver a analizar";
-                            value: "↻";
-                            clicked => { root.rescan(); }
-                        }
-                        SettingRow {
-                            label: "Añadir ficheros sueltos";
-                            value: root.add-files-label;
-                            clicked => { root.add-files(); }
-                        }
-                        Section { text: "Escaneo"; }
-                        SettingRow {
-                            label: "Escaneo minucioso";
-                            value: root.slow-scan ? "sí" : "no";
-                            highlighted: root.slow-scan;
-                            clicked => { root.toggle-slow-scan(); }
-                        }
-                        SettingRow {
-                            label: "Bucles de formatos streamed";
-                            value: root.vgm-loops-label;
-                            clicked => { root.cycle-vgm-loops(); }
-                        }
-                        SettingRow {
-                            label: "Tope de pistas infinitas";
-                            value: root.loop-max-mins == 0 ? "predeterminado" : (root.loop-max-mins + " min");
-                            clicked => { root.cycle-loop-max(); }
-                        }
-                        Section { text: "Metadatos"; }
-                        SettingRow {
-                            label: "La columna Álbum/Juego enseña";
-                            value: root.album-game-label;
-                            clicked => { root.toggle-album-game(); }
-                        }
-                        SettingRow {
-                            label: "Prioridad de puntuaciones";
-                            value: root.rating-priority-label;
-                            clicked => { root.cycle-rating-priority(); }
-                        }
-                    }
 
-                    // ===== Carátulas =====
-                    if root.tab == 2: VerticalLayout {
-                        spacing: 2px;
-                        SettingRow {
-                            label: "Descargar carátulas";
-                            value: "⬇";
-                            clicked => { root.descargar-caratulas(); }
-                        }
-                        SettingRow {
-                            label: "Descarga automática de carátulas";
-                            value: root.auto-covers ? "sí" : "no";
-                            highlighted: root.auto-covers;
-                            clicked => { root.toggle-auto-covers(); }
-                        }
-                        SettingRow {
-                            label: "Guardar carátula en la carpeta";
-                            value: root.covers-in-folder ? "sí" : "no";
-                            highlighted: root.covers-in-folder;
-                            clicked => { root.toggle-covers-in-folder(); }
-                        }
-                        SettingRow {
-                            label: "Deshacer última descarga";
-                            value: root.undo-covers-label;
-                            clicked => { root.undo-covers(); }
-                        }
-                        SettingRow {
-                            label: "Encaje de carátula";
-                            value: root.cover-fit-label;
-                            clicked => { root.cycle-cover-fit(); }
-                        }
-                        SettingRow {
-                            label: "Limpiar caché de carátulas";
-                            value: root.clear-cache-label;
-                            clicked => { root.clear-cover-cache(); }
-                        }
-                    }
+                            // ===== Biblioteca =====
+                            if root.tab == 1: VerticalLayout {
+                                spacing: 2px;
+                                Section { text: "Carpetas analizadas"; }
+                                SettingRow {
+                                    label: "Añadir una carpeta";
+                                    value: "＋";
+                                    clicked => { root.add-folder(); }
+                                }
+                                for lf in root.library-folders: Rectangle {
+                                    height: 40px;
+                                    HorizontalLayout {
+                                        padding-left: Theme.gap;
+                                        padding-right: Theme.gap;
+                                        spacing: Theme.gap;
+                                        Text {
+                                            text: lf.path;
+                                            color: Theme.text-secondary;
+                                            font-size: Theme.font-small;
+                                            vertical-alignment: center;
+                                            overflow: elide;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Rectangle {
+                                            width: 84px;
+                                            border-radius: Theme.radius;
+                                            background: wt.has-hover ? Theme.bg-hover : transparent;
+                                            Text {
+                                                text: lf.watching ? "vigilada" : "sin vigilar";
+                                                color: lf.watching ? Theme.accent : Theme.text-muted;
+                                                font-size: Theme.font-small;
+                                                vertical-alignment: center;
+                                            }
+                                            wt := TouchArea {
+                                                clicked => { root.folder-watch-toggled(lf.id, !lf.watching); }
+                                            }
+                                        }
+                                        Rectangle {
+                                            width: 32px;
+                                            border-radius: Theme.radius;
+                                            background: xt.has-hover ? Theme.bg-hover : transparent;
+                                            Text {
+                                                text: "✕";
+                                                color: xt.has-hover ? Theme.text-primary : Theme.text-muted;
+                                                font-size: Theme.font-body;
+                                                vertical-alignment: center;
+                                            }
+                                            xt := TouchArea {
+                                                clicked => { root.folder-removed(lf.id); }
+                                            }
+                                        }
+                                    }
+                                }
+                                SettingRow {
+                                    label: "Volver a analizar";
+                                    value: "↻";
+                                    clicked => { root.rescan(); }
+                                }
+                                SettingRow {
+                                    label: "Añadir ficheros sueltos";
+                                    value: root.add-files-label;
+                                    clicked => { root.add-files(); }
+                                }
+                                Section { text: "Escaneo"; }
+                                CheckRow {
+                                    label: "Escaneo minucioso";
+                                    checked: root.slow-scan;
+                                    toggled => { root.toggle-slow-scan(); }
+                                }
+                                SettingRow {
+                                    label: "Bucles de formatos streamed";
+                                    value: root.vgm-loops-label;
+                                    clicked => { root.cycle-vgm-loops(); }
+                                }
+                                SettingRow {
+                                    label: "Tope de pistas infinitas";
+                                    value: root.loop-max-mins == 0 ? "predeterminado" : (root.loop-max-mins + " min");
+                                    clicked => { root.cycle-loop-max(); }
+                                }
+                                Section { text: "Metadatos"; }
+                                SettingRow {
+                                    label: "La columna Álbum/Juego enseña";
+                                    value: root.album-game-label;
+                                    clicked => { root.toggle-album-game(); }
+                                }
+                                SettingRow {
+                                    label: "Prioridad de puntuaciones";
+                                    value: root.rating-priority-label;
+                                    clicked => { root.cycle-rating-priority(); }
+                                }
+                            }
 
-                    // ===== DSP =====
-                    if root.tab == 3: VerticalLayout {
-                        spacing: 2px;
-                        Section { text: "Ecualizador"; }
-                        SettingRow {
-                            label: "Ecualizador";
-                            value: root.eq-enabled ? "activado" : "desactivado";
-                            highlighted: root.eq-enabled;
-                            clicked => { root.toggle-eq(); }
-                        }
-                        DbSliderRow {
-                            label: "Graves";
-                            db: root.eq-low;
-                            active: root.eq-enabled;
-                            changed(v) => { root.set-eq-band(0, v); }
-                        }
-                        DbSliderRow {
-                            label: "Medios";
-                            db: root.eq-mid;
-                            active: root.eq-enabled;
-                            changed(v) => { root.set-eq-band(1, v); }
-                        }
-                        DbSliderRow {
-                            label: "Agudos";
-                            db: root.eq-high;
-                            active: root.eq-enabled;
-                            changed(v) => { root.set-eq-band(2, v); }
-                        }
-                        Section { text: "Ganancia y dinámica"; }
-                        DbSliderRow {
-                            label: "Preamplificador";
-                            db: root.preamp-db;
-                            changed(v) => { root.set-preamp(v); }
-                        }
-                        SettingRow {
-                            label: "Limitador";
-                            value: root.dsp-limiter ? "activado" : "desactivado";
-                            highlighted: root.dsp-limiter;
-                            clicked => { root.toggle-limiter(); }
-                        }
-                        Section { text: "Espacialidad"; }
-                        SettingRow {
-                            label: "Mono";
-                            value: root.dsp-mono ? "activado" : "desactivado";
-                            highlighted: root.dsp-mono;
-                            clicked => { root.toggle-mono(); }
-                        }
-                        DbSliderRow {
-                            label: "Balance";
-                            db: root.dsp-balance;
-                            range-min: -1;
-                            range-max: 1;
-                            unit: "";
-                            changed(v) => { root.set-balance(v); }
-                        }
-                        DbSliderRow {
-                            label: "Anchura estéreo";
-                            db: root.dsp-width;
-                            range-min: 0;
-                            range-max: 2;
-                            unit: "";
-                            changed(v) => { root.set-width(v); }
-                        }
-                    }
+                            // ===== Carátulas =====
+                            if root.tab == 2: VerticalLayout {
+                                spacing: 2px;
+                                SettingRow {
+                                    label: "Descargar carátulas que falten";
+                                    value: "⬇";
+                                    clicked => { root.descargar-caratulas(); }
+                                }
+                                CheckRow {
+                                    label: "Descarga automática de carátulas";
+                                    checked: root.auto-covers;
+                                    toggled => { root.toggle-auto-covers(); }
+                                }
+                                CheckRow {
+                                    label: "Guardar carátula en la carpeta";
+                                    checked: root.covers-in-folder;
+                                    toggled => { root.toggle-covers-in-folder(); }
+                                }
+                                SettingRow {
+                                    label: "Deshacer última descarga";
+                                    value: root.undo-covers-label;
+                                    clicked => { root.undo-covers(); }
+                                }
+                                SettingRow {
+                                    label: "Encaje de carátula";
+                                    value: root.cover-fit-label;
+                                    clicked => { root.cycle-cover-fit(); }
+                                }
+                                SettingRow {
+                                    label: "Limpiar caché de carátulas";
+                                    value: root.clear-cache-label;
+                                    clicked => { root.clear-cover-cache(); }
+                                }
+                            }
 
-                    // ===== Apariencia =====
-                    if root.tab == 4: VerticalLayout {
-                        spacing: 2px;
-                        SettingRow {
-                            label: "Tema";
-                            value: root.theme-label;
-                            clicked => { root.cycle-theme(); }
-                        }
-                        Section { text: "Secciones del sidebar"; }
-                        SettingRow {
-                            label: "Carátula en el sidebar";
-                            value: root.show-cover ? "sí" : "no";
-                            highlighted: root.show-cover;
-                            clicked => { root.toggle-show-cover(); }
-                        }
-                        SettingRow {
-                            label: "Favoritos en el sidebar";
-                            value: root.show-faved ? "sí" : "no";
-                            highlighted: root.show-faved;
-                            clicked => { root.toggle-show-faved(); }
-                        }
-                        SettingRow {
-                            label: "Carpetas en el sidebar";
-                            value: root.show-folders ? "sí" : "no";
-                            highlighted: root.show-folders;
-                            clicked => { root.toggle-show-folders(); }
-                        }
-                        SettingRow {
-                            label: "Listas en el sidebar";
-                            value: root.show-playlists ? "sí" : "no";
-                            highlighted: root.show-playlists;
-                            clicked => { root.toggle-show-playlists(); }
-                        }
-                    }
+                            // ===== DSP =====
+                            if root.tab == 3: VerticalLayout {
+                                spacing: 2px;
+                                Section { text: "Ecualizador"; }
+                                CheckRow {
+                                    label: "Ecualizador";
+                                    checked: root.eq-enabled;
+                                    toggled => { root.toggle-eq(); }
+                                }
+                                DbSliderRow {
+                                    label: "Graves";
+                                    db: root.eq-low;
+                                    active: root.eq-enabled;
+                                    changed(v) => { root.set-eq-band(0, v); }
+                                }
+                                DbSliderRow {
+                                    label: "Medios";
+                                    db: root.eq-mid;
+                                    active: root.eq-enabled;
+                                    changed(v) => { root.set-eq-band(1, v); }
+                                }
+                                DbSliderRow {
+                                    label: "Agudos";
+                                    db: root.eq-high;
+                                    active: root.eq-enabled;
+                                    changed(v) => { root.set-eq-band(2, v); }
+                                }
+                                Section { text: "Ganancia y dinámica"; }
+                                DbSliderRow {
+                                    label: "Preamplificador";
+                                    db: root.preamp-db;
+                                    changed(v) => { root.set-preamp(v); }
+                                }
+                                CheckRow {
+                                    label: "Limitador";
+                                    checked: root.dsp-limiter;
+                                    toggled => { root.toggle-limiter(); }
+                                }
+                                Section { text: "Espacialidad"; }
+                                CheckRow {
+                                    label: "Mono";
+                                    checked: root.dsp-mono;
+                                    toggled => { root.toggle-mono(); }
+                                }
+                                CheckRow {
+                                    label: "Mono · compensación de nivel";
+                                    checked: root.dsp-mono-compensate;
+                                    toggled => { root.toggle-mono-compensate(); }
+                                }
+                                CheckRow {
+                                    label: "Mono · seguro de fase";
+                                    checked: root.dsp-mono-phase;
+                                    toggled => { root.toggle-mono-phase(); }
+                                }
+                                DbSliderRow {
+                                    label: "Balance";
+                                    db: root.dsp-balance;
+                                    range-min: -1;
+                                    range-max: 1;
+                                    unit: "";
+                                    changed(v) => { root.set-balance(v); }
+                                }
+                                DbSliderRow {
+                                    label: "Anchura estéreo";
+                                    db: root.dsp-width;
+                                    range-min: 0;
+                                    range-max: 2;
+                                    unit: "";
+                                    changed(v) => { root.set-width(v); }
+                                }
+                            }
 
-                    // ===== Atajos =====
-                    if root.tab == 5: VerticalLayout {
-                        spacing: 2px;
-                        Section { text: "Globales"; }
-                        SettingRow {
-                            label: "Atajos globales";
-                            value: root.global-shortcuts-label;
-                            highlighted: root.global-shortcuts-on;
-                            clicked => { root.toggle-global-shortcuts(); }
-                        }
-                        SettingRow {
-                            label: "Botones de ratón";
-                            value: root.mouse-buttons-label;
-                            highlighted: root.mouse-buttons-on;
-                            clicked => { root.toggle-mouse-buttons(); }
-                        }
-                        Section { text: "Teclas de la aplicación"; }
-                        for sr in root.shortcut-rows: SettingRow {
-                            label: sr.label;
-                            value: sr.key == "" ? "—" : sr.key;
-                            highlighted: sr.key != "" && sr.key != "pulsa una tecla…";
-                            clicked => { root.shortcut-capture(sr.id); }
-                        }
-                    }
+                            // ===== Apariencia =====
+                            if root.tab == 4: VerticalLayout {
+                                spacing: 2px;
+                                SettingRow {
+                                    label: "Tema";
+                                    value: root.theme-label;
+                                    clicked => { root.cycle-theme(); }
+                                }
+                                Section { text: "Secciones del sidebar"; }
+                                CheckRow {
+                                    label: "Carátula en el sidebar";
+                                    checked: root.show-cover;
+                                    toggled => { root.toggle-show-cover(); }
+                                }
+                                CheckRow {
+                                    label: "Favoritos en el sidebar";
+                                    checked: root.show-faved;
+                                    toggled => { root.toggle-show-faved(); }
+                                }
+                                CheckRow {
+                                    label: "Carpetas en el sidebar";
+                                    checked: root.show-folders;
+                                    toggled => { root.toggle-show-folders(); }
+                                }
+                                CheckRow {
+                                    label: "Listas en el sidebar";
+                                    checked: root.show-playlists;
+                                    toggled => { root.toggle-show-playlists(); }
+                                }
+                            }
 
-                    // ===== Acerca de =====
-                    if root.tab == 6: VerticalLayout {
-                        spacing: 2px;
-                        Section { text: "Actualizaciones"; }
-                        SettingRow {
-                            label: "Buscar actualizaciones";
-                            value: root.update-status;
-                            clicked => { root.check-update(); }
-                        }
-                        if root.update-skippable: SettingRow {
-                            label: "Omitir esta versión";
-                            value: "×";
-                            clicked => { root.skip-update(); }
-                        }
-                        Section { text: "Sistema"; }
-                        SettingRow {
-                            label: "Integrar en el escritorio";
-                            value: root.desktop-entry-label;
-                            clicked => { root.make-desktop-entry(); }
-                        }
-                        SettingRow {
-                            label: "Registro";
-                            value: "≡";
-                            clicked => { root.show-log(); }
-                        }
-                        SettingRow {
-                            label: "Acerca de Tunante";
-                            value: root.about-label;
-                            clicked => { root.open-repo(); }
+                            // ===== Atajos =====
+                            if root.tab == 5: VerticalLayout {
+                                spacing: 2px;
+                                Section { text: "Globales"; }
+                                CheckRow {
+                                    label: "Atajos globales";
+                                    checked: root.global-shortcuts-on;
+                                    toggled => { root.toggle-global-shortcuts(); }
+                                }
+                                CheckRow {
+                                    label: "Botones de ratón";
+                                    checked: root.mouse-buttons-on;
+                                    toggled => { root.toggle-mouse-buttons(); }
+                                }
+                                Section { text: "Teclas de la aplicación"; }
+                                for sr in root.shortcut-rows: SettingRow {
+                                    label: sr.label;
+                                    value: sr.key == "" ? "—" : sr.key;
+                                    highlighted: sr.key != "" && sr.key != "pulsa una tecla…";
+                                    clicked => { root.shortcut-capture(sr.id); }
+                                }
+                            }
+
+                            // ===== Acerca de =====
+                            if root.tab == 6: VerticalLayout {
+                                spacing: 2px;
+                                Section { text: "Actualizaciones"; }
+                                SettingRow {
+                                    label: "Buscar actualizaciones";
+                                    value: root.update-status;
+                                    clicked => { root.check-update(); }
+                                }
+                                if root.update-skippable: SettingRow {
+                                    label: "Omitir esta versión";
+                                    value: "×";
+                                    clicked => { root.skip-update(); }
+                                }
+                                Section { text: "Sistema"; }
+                                SettingRow {
+                                    label: "Integrar en el escritorio";
+                                    value: root.desktop-entry-label;
+                                    clicked => { root.make-desktop-entry(); }
+                                }
+                                SettingRow {
+                                    label: "Registro";
+                                    value: "≡";
+                                    clicked => { root.show-log(); }
+                                }
+                                SettingRow {
+                                    label: "Acerca de Tunante";
+                                    value: root.about-label;
+                                    clicked => { root.open-repo(); }
+                                }
+                            }
                         }
                     }
                 }
