@@ -217,6 +217,8 @@ export component DesktopSettings inherits Rectangle {
     callback reset-shortcuts();
     in property <image> now-art;
     in property <int> cover-fit;
+    in property <int> queue-placement;
+    callback cycle-queue-placement();
     in property <int> ui-mode;
     in-out property <int> ui-mode-pending;
     in property <string> ui-mode-pending-label;
@@ -384,6 +386,13 @@ export component DesktopSettings inherits Rectangle {
                                     value: "Aplicar";
                                     highlighted: true;
                                     clicked => { root.apply-ui-mode(); }
+                                }
+                                SettingRow {
+                                    label: "Cola";
+                                    value: root.queue-placement == 2 ? "panel derecho"
+                                        : (root.queue-placement == 1 ? "lista en el sidebar"
+                                        : "entrada en el sidebar");
+                                    clicked => { root.cycle-queue-placement(); }
                                 }
                             }
 
