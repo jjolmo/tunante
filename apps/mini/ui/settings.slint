@@ -487,26 +487,6 @@ export component DesktopSettings inherits Rectangle {
                             // ===== Carátulas =====
                             if root.tab == 2: VerticalLayout {
                                 spacing: 2px;
-                                if root.now-art.width > 0: HorizontalLayout {
-                                    alignment: start;
-                                    padding-bottom: Theme.gap;
-                                    Rectangle {
-                                        width: 120px;
-                                        height: 120px;
-                                        border-radius: Theme.radius;
-                                        background: Theme.bg-tertiary;
-                                        clip: true;
-                                        Image {
-                                            width: 100%;
-                                            height: 100%;
-                                            source: root.now-art;
-                                            image-fit: root.cover-fit == 1 || root.cover-fit == 2 ? ImageFit.contain
-                                                : root.cover-fit == 3 ? ImageFit.fill
-                                                : root.cover-fit == 4 ? ImageFit.preserve
-                                                : ImageFit.cover;
-                                        }
-                                    }
-                                }
                                 SettingRow {
                                     label: "Descargar carátulas que falten";
                                     value: "⬇";
