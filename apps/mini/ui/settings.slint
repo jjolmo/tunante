@@ -155,9 +155,9 @@ export component DesktopSettings inherits Rectangle {
     callback clear-cover-cache();
     in property <string> undo-covers-label;
     callback undo-covers();
-    in-out property <bool> continue-queue;
+    in property <bool> continue-queue;
     callback toggle-continue-queue();
-    in-out property <bool> resume-on-open;
+    in property <bool> resume-on-open;
     callback toggle-resume-on-open();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
@@ -359,7 +359,7 @@ export component DesktopSettings inherits Rectangle {
                                 }
                                 Section { text: "Bandeja y ventana"; }
                                 CheckRow {
-                                    label: "Título en la barra de la ventana";
+                                    label: "Título de la canción en la ventana";
                                     checked: root.titlebar-track;
                                     toggled => { root.toggle-titlebar-track(); }
                                 }

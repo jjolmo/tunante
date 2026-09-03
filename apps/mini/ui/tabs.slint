@@ -520,7 +520,7 @@ export component SettingsTab inherits Rectangle {
             clicked => { root.toggle-show-playlists(); }
         }
         SettingRow {
-            label: "Título en la barra de la ventana";
+            label: "Título de la canción en la ventana";
             value: root.titlebar-track ? "sí" : "no";
             highlighted: root.titlebar-track;
             clicked => { root.toggle-titlebar-track(); }

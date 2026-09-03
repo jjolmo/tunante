@@ -231,9 +231,9 @@ export component AppWindow inherits Window {
     callback clear-cover-cache();
     in property <string> undo-covers-label;
     callback undo-covers();
-    in-out property <bool> continue-queue;
+    in property <bool> continue-queue;
     callback toggle-continue-queue();
-    in-out property <bool> resume-on-open;
+    in property <bool> resume-on-open;
     callback toggle-resume-on-open();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
@@ -826,7 +826,7 @@ export component AppWindow inherits Window {
                         clear-cover-cache => { root.clear-cover-cache(); }
                         undo-covers-label: root.undo-covers-label;
                         undo-covers => { root.undo-covers(); }
-                        continue-queue <=> root.continue-queue;
+                        continue-queue: root.continue-queue;
                         toggle-continue-queue => { root.toggle-continue-queue(); }
                         loop-max-mins: root.loop-max-mins;
                         cycle-loop-max => { root.cycle-loop-max(); }
@@ -1015,9 +1015,9 @@ export component AppWindow inherits Window {
                     clear-cover-cache => { root.clear-cover-cache(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
-                    continue-queue <=> root.continue-queue;
+                    continue-queue: root.continue-queue;
                     toggle-continue-queue => { root.toggle-continue-queue(); }
-                    resume-on-open <=> root.resume-on-open;
+                    resume-on-open: root.resume-on-open;
                     toggle-resume-on-open => { root.toggle-resume-on-open(); }
                     loop-max-mins: root.loop-max-mins;
                     cycle-loop-max => { root.cycle-loop-max(); }
