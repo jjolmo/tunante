@@ -2793,6 +2793,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak_v = ui.as_weak();
         ui.on_library_grid_tapped(move |path| {
             let Some(ui) = weak_v.upgrade() else { return };
+            // A console card opens all of its tracks. On the desktop that is the
+            // powerful table (Scope::Console); the phone stays in the list view
+            // by navigating into it, which grid_tracks now answers with the
+            // whole console.
+            if let Some(console) = path.strip_prefix("consola:") {
+                if ui.get_desktop() {
+                    ui.invoke_console_opened_in_table(SharedString::from(console));
+                    ui.set_show_table_tick(ui.get_show_table_tick() + 1);
+                    return;
+                }
+            }
             tree_v.borrow_mut().nav.push(path.to_string());
             refresh_library(&ui, &tree_v, &db_v, &views_v);
         });

@@ -741,22 +741,8 @@ impl Tree {
                         .collect(),
                 )
             }
-            (Mode::Consoles, 1) => {
-                let quiero = self.nav[0].trim_start_matches("consola:").to_string();
-                Some(
-                    self.console_index(db)
-                        .into_iter()
-                        .filter(|(c, _, _)| *c == quiero)
-                        .map(|(_, dir, n)| Cell {
-                            title: nombre_de(&dir),
-                            subtitle: pistas(n),
-                            art_dir: dir.clone(),
-                            console: String::new(),
-                            path: dir,
-                        })
-                        .collect(),
-                )
-            }
+            // A console no longer drills into its folders: level 1 is its whole
+            // track list (None → the list view, filled by grid_tracks).
             _ => None,
         }
     }
@@ -782,7 +768,25 @@ impl Tree {
     /// Las pistas del nivel actual, cuando el nivel actual son pistas.
     pub fn grid_tracks(&self, db: &Database, mode: Mode) -> Vec<Row> {
         let Some(dir) = self.nav.last() else { return Vec::new() };
-        if mode == Mode::Consoles && self.nav.len() < 2 {
+        // A console opens straight to every track it holds, flat — not down
+        // into its folders. Desktop shows the same set in the powerful table.
+        if mode == Mode::Consoles && self.nav.len() == 1 {
+            let quiero = self.nav[0].trim_start_matches("consola:").to_string();
+            let tracks: Vec<Track> = self
+                .all_tracks(db)
+                .iter()
+                .filter(|t| console_key(t) == quiero)
+                .cloned()
+                .collect();
+            let mut out = Vec::new();
+            self.push_tracks(tracks, 0, &mut out);
+            if !self.filter.trim().is_empty() {
+                let q = plegar(self.filter.trim());
+                out.retain(|r| plegar(&r.label).contains(&q));
+            }
+            return out;
+        }
+        if mode == Mode::Consoles && self.nav.is_empty() {
             return Vec::new();
         }
         // A game is a name, not a directory, so its tracks cannot come from

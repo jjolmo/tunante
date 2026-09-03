@@ -122,6 +122,7 @@ export component AppWindow inherits Window {
     /// be granted from inside slint).
     in property <int> focus-filter-tick;
     in property <int> open-settings-tick;
+    in property <int> show-table-tick;
     in property <bool> cover-busy;
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
@@ -430,7 +431,9 @@ export component AppWindow inherits Window {
     // `ui-mode` is the manual override from settings: 0 auto · 1 mini · 2
     // desktop. Auto draws the line at 900px of width.
     in-out property <int> ui-mode: 0;
-    property <bool> desktop: false;
+    // Readable from Rust so a grid tap can route a console to the table on the
+    // desktop and to a list on the phone.
+    out property <bool> desktop: false;
     init => { root.reshape(); }
 
     function reshape() {
@@ -754,6 +757,7 @@ export component AppWindow inherits Window {
                         shortcut-capture(id) => { root.shortcut-capture(id); }
                         focus-filter-tick: root.focus-filter-tick;
                         open-settings-tick: root.open-settings-tick;
+                        show-table-tick: root.show-table-tick;
                         folder-watch-toggled(id, on) => { root.folder-watch-toggled(id, on); }
                         folder-removed(id) => { root.folder-removed(id); }
             loop-count: root.loop-count;
