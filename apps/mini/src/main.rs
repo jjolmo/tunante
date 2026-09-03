@@ -2819,35 +2819,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak_v = ui.as_weak();
         ui.on_library_grid_tapped(move |path| {
             let Some(ui) = weak_v.upgrade() else { return };
-            // On the desktop a grid card that holds tracks — a console or a disc
-            // — opens the powerful table filtered to it, not the phone's list.
-            // Games stay a list for now; the phone always navigates in.
+            // On the desktop a grid card that holds tracks — a console, a disc
+            // or a game — opens the powerful table filtered to it, not the
+            // phone's list. The phone always navigates in.
             if ui.get_desktop() {
                 if let Some(console) = path.strip_prefix("consola:") {
                     ui.invoke_console_opened_in_table(SharedString::from(console));
                     ui.set_show_table_tick(ui.get_show_table_tick() + 1);
                     return;
                 }
-                if !path.starts_with("juego:") {
-                    // A disc/album is a real folder: narrow the table to it.
-                    let mut st = table_v.borrow_mut();
-                    if !st.built {
-                        st.built = true;
-                        st.all = db_v.get_all_tracks().unwrap_or_default();
-                    }
-                    st.scope = Scope::Folder(path.to_string());
-                    rebuild_table(&mut st, &tmodel_v);
-                    ui.set_table_faved(false);
-                    ui.set_table_scope_kind(SharedString::from("folder"));
-                    ui.set_table_folder_id(SharedString::from(""));
-                    ui.set_table_scope_label(SharedString::from(scope_label(&db_v, &st.scope)));
-                    ui.set_table_sort_col(
-                        st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
-                    );
-                    drop(st);
-                    ui.set_show_table_tick(ui.get_show_table_tick() + 1);
-                    return;
+                let scope = if let Some(game) = path.strip_prefix("juego:") {
+                    Scope::Game(game.to_string())
+                } else {
+                    // A disc/album is a real folder.
+                    Scope::Folder(path.to_string())
+                };
+                let mut st = table_v.borrow_mut();
+                if !st.built {
+                    st.built = true;
+                    st.all = db_v.get_all_tracks().unwrap_or_default();
                 }
+                if st.sort_key == "__scope__" {
+                    st.sort_key = "title".to_string();
+                }
+                let (kind, _) = scope.tag();
+                st.scope = scope;
+                rebuild_table(&mut st, &tmodel_v);
+                ui.set_table_faved(false);
+                ui.set_table_scope_kind(SharedString::from(kind));
+                ui.set_table_folder_id(SharedString::from(""));
+                ui.set_table_scope_label(SharedString::from(scope_label(&db_v, &st.scope)));
+                ui.set_table_sort_col(
+                    st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
+                );
+                drop(st);
+                ui.set_show_table_tick(ui.get_show_table_tick() + 1);
+                return;
             }
             tree_v.borrow_mut().nav.push(path.to_string());
             refresh_library(&ui, &tree_v, &db_v, &views_v);
@@ -6183,6 +6190,8 @@ enum Scope {
     /// The user queue, by ordered path (the queue is player state, snapshotted
     /// on open and refreshed by the timer while it is the table's scope).
     Queue { paths: Vec<String> },
+    /// One game, by its name — every track `tunante_core::games` groups under it.
+    Game(String),
 }
 
 impl Scope {
@@ -6193,6 +6202,7 @@ impl Scope {
             Scope::Console(id) => ("console", id),
             Scope::Playlist { id, .. } => ("playlist", id),
             Scope::Queue { .. } => ("queue", ""),
+            Scope::Game(_) => ("game", ""),
             _ => ("", ""),
         }
     }
@@ -6916,6 +6926,7 @@ fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
 fn scope_label(db: &Database, scope: &Scope) -> String {
     match scope {
         Scope::Console(id) => format!("Consola · {}", tunante_core::console::label_es(id)),
+        Scope::Game(name) => return format!("Juego · {name}"),
         Scope::Folder(f) => format!(
             "Carpeta · {}",
             std::path::Path::new(f)
@@ -7022,6 +7033,10 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                 .filter_map(|id| by_id.get(id.as_str()).map(|t| (*t).clone()))
                 .collect()
         }
+        Scope::Game(name) => tunante_core::games::tracks_of(&st.all, name)
+            .into_iter()
+            .cloned()
+            .collect(),
         _ => st
             .all
             .iter()
