@@ -384,6 +384,7 @@ export component TrackTable inherits Rectangle {
         }
 
         lv := ListView {
+            changed viewport-y => { root.tip-row = -1; }
 
             for row[i] in root.rows: Rectangle {
                 property <bool> playing: row.path == root.now-path;
@@ -406,6 +407,10 @@ export component TrackTable inherits Rectangle {
                     }
                     pointer-event(ev) => {
                         if (ev.kind == PointerEventKind.down) {
+                            // Any click dismisses a lingering tooltip; the
+                            // hover below re-arms it for wherever the pointer
+                            // actually is now.
+                            root.tip-row = -1;
                             if (ev.button == PointerEventButton.left) {
                                 root.row-clicked(i,
                                     ev.modifiers.control, ev.modifiers.shift);

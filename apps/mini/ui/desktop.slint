@@ -60,19 +60,22 @@ component SidebarEntry inherits Rectangle {
     in property <string> count;
     callback clicked();
 
-    height: 34px;
+    height: Theme.compact ? 28px : 34px;
     background: root.active ? Theme.bg-selected : (t.has-hover ? Theme.bg-hover : transparent);
     border-radius: 6px;
 
     HorizontalLayout {
         padding-left: 12px;
-        padding-right: 8px;
+        padding-right: 10px;
+        spacing: 8px;
         Text {
             text: root.label;
             color: root.active ? Theme.accent : Theme.text-primary;
             font-size: Theme.font-body;
             vertical-alignment: center;
             overflow: elide;
+            // Stretch so the count sits in a right-aligned column.
+            horizontal-stretch: 1;
         }
         if root.count != "": Text {
             text: root.count;
@@ -456,8 +459,8 @@ export component DesktopShell inherits Rectangle {
                 background: Theme.bg-secondary;
 
                 VerticalLayout {
-                    padding: Theme.gap;
-                    spacing: 2px;
+                    padding: Theme.compact ? 6px : Theme.gap;
+                    spacing: Theme.compact ? 1px : 2px;
 
                     // The browse sections scroll as one — with the Consolas list and
                     // the cover, the fixed content outgrew the window and shoved the
@@ -472,7 +475,7 @@ export component DesktopShell inherits Rectangle {
                         text: "Biblioteca";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
-                        height: 26px;
+                        height: Theme.compact ? 20px : 26px;
                         vertical-alignment: center;
                     }
                     SidebarEntry {
@@ -521,12 +524,12 @@ export component DesktopShell inherits Rectangle {
                         clicked => { root.centre = 1; root.library-mode-changed(4); }
                     }
 
-                    if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.gap; }
+                    if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.compact ? 4px : Theme.gap; }
                     if root.show-folders && root.pinned-folders.length > 0: Text {
                         text: "Carpetas";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
-                        height: 26px;
+                        height: Theme.compact ? 20px : 26px;
                         vertical-alignment: center;
                     }
                     for pf in root.show-folders ? root.pinned-folders : []: Rectangle {
@@ -595,12 +598,12 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.gap; }
+                    if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.compact ? 4px : Theme.gap; }
                     if root.show-consoles && root.sidebar-consoles.length > 0: Text {
                         text: "Consolas";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
-                        height: 26px;
+                        height: Theme.compact ? 20px : 26px;
                         vertical-alignment: center;
                     }
                     for sc in root.show-consoles ? root.sidebar-consoles : []: Rectangle {
@@ -658,9 +661,9 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.show-playlists: Rectangle { height: Theme.gap; }
+                    if root.show-playlists: Rectangle { height: Theme.compact ? 4px : Theme.gap; }
                     if root.show-playlists: HorizontalLayout {
-                        height: 26px;
+                        height: Theme.compact ? 20px : 26px;
                         Text {
                             text: "Listas";
                             color: Theme.text-muted;
