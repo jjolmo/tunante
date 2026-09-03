@@ -100,6 +100,7 @@ export component AppWindow inherits Window {
     in property <string> mouse-side-label;
     in property <string> mouse-extra-label;
     callback cycle-mouse-action(string);
+    callback reset-shortcuts();
     in property <string> about-label;
     callback open-repo();
     in property <[ShortcutRow]> shortcut-rows;
@@ -614,6 +615,7 @@ export component AppWindow inherits Window {
             mouse-side-label: root.mouse-side-label;
             mouse-extra-label: root.mouse-extra-label;
             cycle-mouse-action(b) => { root.cycle-mouse-action(b); }
+            reset-shortcuts => { root.reset-shortcuts(); }
             folder-opened(id) => { root.folder-opened(id); }
             folder-unpinned(id) => { root.folder-unpinned(id); }
             folder-revealed(id) => { root.folder-revealed(id); }

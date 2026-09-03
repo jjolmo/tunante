@@ -3789,6 +3789,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     rebuild_shortcuts();
     {
+        let (db, rebuild) = (db.clone(), rebuild_shortcuts.clone());
+        ui.on_reset_shortcuts(move || {
+            for (id, _) in SHORTCUT_ACTIONS {
+                let _ = db.set_setting(&format!("shortcut.{id}"), "");
+            }
+            rebuild();
+        });
+    }
+    {
         let (capturing, rebuild) = (shortcut_capturing.clone(), rebuild_shortcuts.clone());
         ui.on_shortcut_capture(move |id| {
             *capturing.borrow_mut() = Some(id.to_string());
