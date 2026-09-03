@@ -294,6 +294,11 @@ export component AppWindow inherits Window {
     callback stop-playback();
     callback rate-now(int);
     in property <string> table-folder-id;
+    /// "" library/faved · "folder" · "console" · "playlist" — what the table
+    /// is scoped to, so the sidebar lights the right row.
+    in property <string> table-scope-kind;
+    callback console-opened-in-table(string);
+    callback playlist-opened-in-table(string);
     callback folder-opened(string);
     callback folder-unpinned(string);
     callback folder-revealed(string);
@@ -552,6 +557,9 @@ export component AppWindow inherits Window {
             stop-playback => { root.stop-playback(); }
             rate-now(n) => { root.rate-now(n); }
             table-folder-id: root.table-folder-id;
+            table-scope-kind: root.table-scope-kind;
+            console-opened-in-table(id) => { root.console-opened-in-table(id); }
+            playlist-opened-in-table(id) => { root.playlist-opened-in-table(id); }
             folder-opened(id) => { root.folder-opened(id); }
             folder-unpinned(id) => { root.folder-unpinned(id); }
             folder-revealed(id) => { root.folder-revealed(id); }

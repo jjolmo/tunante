@@ -2085,10 +2085,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.built = true;
                 st.all = db_t.get_all_tracks().unwrap_or_default();
             }
-            st.faved = faved;
-            st.folder = None;
+            st.scope = if faved { Scope::Faved } else { Scope::Library };
             rebuild_table(&mut st, &model);
             ui.set_table_faved(faved);
+            ui.set_table_scope_kind(SharedString::from(""));
             ui.set_table_folder_id(SharedString::from(""));
         });
     }
@@ -2223,14 +2223,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 repaint_selection(&st, &model);
                 ui.set_table_cursor(-1);
                 ui.set_table_cursor(i as i32);
-            } else if !st.filter.is_empty() || st.faved || st.folder.is_some() {
+            } else if !st.filter.is_empty() || st.scope != Scope::Library {
                 // Not in the current narrowing: widen to the whole library
                 // and try again — the old app's fallback chain, first rung.
                 st.filter.clear();
-                st.faved = false;
-                st.folder = None;
+                st.scope = Scope::Library;
                 ui.set_table_filter(SharedString::new());
                 ui.set_table_faved(false);
+                ui.set_table_scope_kind(SharedString::from(""));
                 ui.set_table_folder_id(SharedString::from(""));
                 rebuild_table(&mut st, &model);
                 if let Some(i) = st.tracks.iter().position(|t| t.path == path) {
@@ -2286,6 +2286,56 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .filter(|t| tunante_core::console::key_of(t) == id.as_str())
                 .collect();
             play_collection(&ui, &player_c, &queue_c, tracks);
+        });
+    }
+    // The grande shell shows a console or a playlist in the powerful table,
+    // not the phone grid — the old desktop's context-aware TrackList.
+    {
+        let (db_c, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_console_opened_in_table(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            if !st.built {
+                st.built = true;
+                st.all = db_c.get_all_tracks().unwrap_or_default();
+            }
+            st.scope = Scope::Console(id.to_string());
+            rebuild_table(&mut st, &model);
+            ui.set_table_faved(false);
+            ui.set_table_scope_kind(SharedString::from("console"));
+            ui.set_table_folder_id(id);
+            ui.set_table_sort_col(
+                st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
+            );
+        });
+    }
+    {
+        let (db_c, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_playlist_opened_in_table(move |id| {
+            let Some(ui) = weak.upgrade() else { return };
+            // Ordered ids from the playlist, resolved against `all` on rebuild.
+            let ids: Vec<String> = db_c
+                .get_playlist_tracks(&id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|t| t.id)
+                .collect();
+            let mut st = st.borrow_mut();
+            if !st.built {
+                st.built = true;
+                st.all = db_c.get_all_tracks().unwrap_or_default();
+            }
+            st.scope = Scope::Playlist { ids, id: id.to_string() };
+            // Enter on stored order: the sentinel sort shows no column arrow
+            // until the user picks one.
+            st.sort_key = "__scope__".to_string();
+            rebuild_table(&mut st, &model);
+            ui.set_table_faved(false);
+            ui.set_table_scope_kind(SharedString::from("playlist"));
+            ui.set_table_folder_id(id);
+            ui.set_table_sort_col(-1);
         });
     }
     // The folder sheet's four new verbs, path-based.
@@ -2409,13 +2459,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.built = true;
                 st.all = db_p.get_all_tracks().unwrap_or_default();
             }
-            st.folder = folder;
+            st.scope = match folder {
+                Some(f) => Scope::Folder(f),
+                None => Scope::Library,
+            };
             rebuild_table(&mut st, &model);
-            ui.set_table_folder_id(if st.folder.is_some() {
-                id
-            } else {
-                SharedString::from("")
-            });
+            let scoped = matches!(st.scope, Scope::Folder(_));
+            ui.set_table_faved(false);
+            ui.set_table_scope_kind(SharedString::from(if scoped { "folder" } else { "" }));
+            ui.set_table_folder_id(if scoped { id } else { SharedString::from("") });
         });
     }
     {
@@ -2440,8 +2492,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Unpinning the folder that narrows the table widens it back.
             if ui.get_table_folder_id() == id {
                 let mut st = st.borrow_mut();
-                st.folder = None;
+                st.scope = Scope::Library;
                 rebuild_table(&mut st, &tmodel);
+                ui.set_table_scope_kind(SharedString::from(""));
                 ui.set_table_folder_id(SharedString::from(""));
             }
         });
@@ -5374,6 +5427,33 @@ fn output_label(stored: &str) -> String {
 /// first time the pane exists and reused after — a rescan refreshes it the
 /// next time the app starts, which is the same freshness the tree's indexes
 /// live with.
+/// What the desktop table is narrowed to. The old desktop showed every kind
+/// of collection in the one powerful table — playlists and consoles included
+/// — and the grande shell does the same: this is what makes the sidebar's
+/// lists and consoles land in columns-and-sorting instead of the phone grid.
+#[derive(Clone, Default, PartialEq)]
+enum Scope {
+    #[default]
+    Library,
+    Faved,
+    Folder(String),
+    Console(String),
+    /// Ordered track ids, plus the playlist id for the sidebar highlight.
+    Playlist { ids: Vec<String>, id: String },
+}
+
+impl Scope {
+    /// (kind, id) for the sidebar to know what to light up.
+    fn tag(&self) -> (&'static str, &str) {
+        match self {
+            Scope::Folder(_) => ("folder", ""),
+            Scope::Console(id) => ("console", id),
+            Scope::Playlist { id, .. } => ("playlist", id),
+            _ => ("", ""),
+        }
+    }
+}
+
 struct TableState {
     all: Vec<tunante_core::db::models::Track>,
     tracks: Vec<tunante_core::db::models::Track>,
@@ -5387,10 +5467,9 @@ struct TableState {
     /// columns the user has resized by hand; everything else keeps its
     /// default. Persisted as `key:weight` in mini.table_columns.
     widths: std::collections::HashMap<String, f32>,
-    /// Narrowed to rating > 0 — the sidebar's Favoritos entry.
-    faved: bool,
-    /// Narrowed to one pinned folder's subtree; None is the whole library.
-    folder: Option<String>,
+    /// What the table is narrowed to (library / faved / folder / console /
+    /// playlist). The old desktop's context-aware TrackList, one field.
+    scope: Scope,
     built: bool,
     /// Indices into `tracks`. Cleared on every rebuild: a sort or a filter
     /// reshuffles what the indices mean, and a stale selection pointing at
@@ -5418,8 +5497,7 @@ impl Default for TableState {
             filter: String::new(),
             visible: DEFAULT_COLUMNS.split(',').map(str::to_string).collect(),
             widths: std::collections::HashMap::new(),
-            faved: false,
-            folder: None,
+            scope: Scope::Library,
             built: false,
             selected: std::collections::HashSet::new(),
             anchor: 0,
@@ -6140,28 +6218,45 @@ fn refresh_counts(db: &Database, ui: &AppWindow) {
 fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
     st.selected.clear();
     let needle = library::plegar(&st.filter);
-    let mut tracks: Vec<_> = st
-        .all
-        .iter()
-        .filter(|t| !st.faved || t.rating > 0)
-        .filter(|t| match &st.folder {
-            // Boundary-aware: pinning /a/b must not catch /a/bc. The real
-            // path matters, not the #n suffix a multi-track rip carries.
-            Some(f) => {
-                let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
-                real.strip_prefix(f.as_str())
-                    .is_some_and(|rest| rest.starts_with('/'))
-            }
-            None => true,
-        })
+    // The scope decides the base set; a playlist keeps its own order, so it
+    // is built by id rather than filtered out of `all`.
+    let base: Vec<tunante_core::db::models::Track> = match &st.scope {
+        Scope::Playlist { ids, .. } => {
+            let by_id: std::collections::HashMap<&str, &tunante_core::db::models::Track> =
+                st.all.iter().map(|t| (t.id.as_str(), t)).collect();
+            ids.iter()
+                .filter_map(|id| by_id.get(id.as_str()).map(|t| (*t).clone()))
+                .collect()
+        }
+        _ => st
+            .all
+            .iter()
+            .filter(|t| match &st.scope {
+                Scope::Faved => t.rating > 0,
+                Scope::Folder(f) => {
+                    // Boundary-aware: /a/b must not catch /a/bc.
+                    let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
+                    real.strip_prefix(f.as_str())
+                        .is_some_and(|rest| rest.starts_with('/'))
+                }
+                Scope::Console(c) => tunante_core::console::key_of(t) == c.as_str(),
+                _ => true,
+            })
+            .cloned()
+            .collect(),
+    };
+    let mut tracks: Vec<_> = base
+        .into_iter()
         .filter(|t| {
             needle.is_empty()
                 || library::plegar(&t.title).contains(&needle)
                 || library::plegar(&t.artist).contains(&needle)
                 || library::plegar(&t.game).contains(&needle)
         })
-        .cloned()
         .collect();
+    // A playlist with the sentinel sort keeps its stored order untouched.
+    let keep_order = matches!(st.scope, Scope::Playlist { .. }) && st.sort_key == "__scope__";
+    if !keep_order {
 
     match st.sort_key.as_str() {
         "n" => tracks.sort_by_key(|t| t.track_number.unwrap_or(0)),
@@ -6195,6 +6290,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
     }
     if !st.asc {
         tracks.reverse();
+    }
     }
 
     model.set_vec(
@@ -6757,7 +6853,7 @@ mod tests {
                 mk("/a/bc/outside.nsf"),
                 mk("/a/elsewhere.nsf"),
             ],
-            folder: Some("/a/b".to_string()),
+            scope: Scope::Folder("/a/b".to_string()),
             built: true,
             ..TableState::default()
         };
@@ -6769,5 +6865,83 @@ mod tests {
             ["/a/b/deeper/also.nsf", "/a/b/inside.nsf", "/a/b/set.nsf#3"],
             "boundary or vgm-suffix handling broke"
         );
+    }
+
+    /// A Track for scope tests, fields spelled out for the same reason
+    /// bare_track does: adding a field should stop this compiling.
+    fn scoped(path: &str, console: &str, rating: i32) -> Track {
+        Track {
+            id: path.to_string(),
+            path: path.to_string(),
+            title: path.to_string(),
+            artist: String::new(),
+            album: String::new(),
+            album_artist: String::new(),
+            track_number: None,
+            disc_number: None,
+            duration_ms: 1000,
+            sample_rate: None,
+            channels: None,
+            bitrate: None,
+            codec: "test".into(),
+            file_size: 0,
+            has_artwork: false,
+            rating,
+            modified_at: 0,
+            game: String::new(),
+            header_game: String::new(),
+            console_id: console.to_string(),
+        }
+    }
+
+    /// A console scope keeps only that machine's tracks — the grande shell's
+    /// sidebar console lands in the powerful table, not the phone grid.
+    #[test]
+    fn a_console_scope_keeps_only_that_machine() {
+        let mut st = TableState {
+            all: vec![
+                scoped("/a.nsf", "nes", 0),
+                scoped("/b.spc", "snes", 0),
+                scoped("/c.nsf", "nes", 0),
+            ],
+            scope: Scope::Console("nes".to_string()),
+            built: true,
+            ..TableState::default()
+        };
+        let model = VecModel::from(Vec::<TableRow>::new());
+        rebuild_table(&mut st, &model);
+        let mut kept: Vec<_> = st.tracks.iter().map(|t| t.path.as_str()).collect();
+        kept.sort();
+        assert_eq!(kept, ["/a.nsf", "/c.nsf"]);
+    }
+
+    /// A playlist scope keeps its STORED ORDER under the sentinel sort, and
+    /// resolves ids against the whole library — a track missing from the
+    /// library just drops out rather than blanking the row.
+    #[test]
+    fn a_playlist_scope_keeps_its_order() {
+        let mut st = TableState {
+            all: vec![
+                scoped("/x.nsf", "nes", 0),
+                scoped("/y.nsf", "nes", 0),
+                scoped("/z.nsf", "nes", 0),
+            ],
+            scope: Scope::Playlist {
+                // deliberately not library order, and one id that is gone
+                ids: vec![
+                    "/z.nsf".to_string(),
+                    "/gone.nsf".to_string(),
+                    "/x.nsf".to_string(),
+                ],
+                id: "pl1".to_string(),
+            },
+            sort_key: "__scope__".to_string(),
+            built: true,
+            ..TableState::default()
+        };
+        let model = VecModel::from(Vec::<TableRow>::new());
+        rebuild_table(&mut st, &model);
+        let kept: Vec<_> = st.tracks.iter().map(|t| t.path.as_str()).collect();
+        assert_eq!(kept, ["/z.nsf", "/x.nsf"], "playlist order or id resolution broke");
     }
 }
