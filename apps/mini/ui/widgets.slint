@@ -679,7 +679,9 @@ export component SettingRow inherits Rectangle {
         }
         Text {
             text: root.value;
-            color: root.highlighted ? Theme.accent : Theme.text-muted;
+            // Secondary, not muted: the value is the answer, and it was hard to
+            // read at muted grey against the row.
+            color: root.highlighted ? Theme.accent : Theme.text-secondary;
             font-size: Theme.font-body;
             vertical-alignment: center;
         }
