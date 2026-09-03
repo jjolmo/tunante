@@ -243,6 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     ui.global::<Theme>().set_dark(dark);
     ui.set_theme_label(SharedString::from(theme_mode_label(theme_mode.get())));
+    ui.set_theme_mode(theme_mode.get() as i32);
 
     // The tray runs its own GTK thread; clicks come back through tray::poll()
     // in the UI timer, beside the MPRIS commands they resemble.
@@ -665,6 +666,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_dsp_limiter(c.limiter);
         ui.set_dsp_balance(c.balance);
         ui.set_dsp_width(c.width);
+        ui.set_dsp_status(SharedString::from(dsp_status(c)));
     };
     {
         let c = dsp_config.borrow();
@@ -672,6 +674,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             c.apply_to(p.engine_mut().dsp());
         }
         push_dsp_ui(&ui, &c);
+        ui.set_dsp_status(SharedString::from(dsp_status(&c)));
     }
     ui.set_rating_priority_label(SharedString::from(rating_priority_label(
         db.get_setting("rating_source_priority")
@@ -3554,6 +3557,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             ui.global::<Theme>().set_dark(dark);
             ui.set_theme_label(SharedString::from(theme_mode_label(next)));
+            ui.set_theme_mode(next as i32);
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        let theme_mode = theme_mode.clone();
+        ui.on_set_theme(move |mode| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mode = mode.clamp(0, 2) as u8;
+            theme_mode.set(mode);
+            let _ = db.set_setting(
+                "theme",
+                match mode { 1 => "light", 2 => "system", _ => "dark" },
+            );
+            let dark = match mode {
+                1 => false,
+                2 => theme_watch::prefers_dark().unwrap_or(true),
+                _ => true,
+            };
+            ui.global::<Theme>().set_dark(dark);
+            ui.set_theme_label(SharedString::from(theme_mode_label(mode)));
+            ui.set_theme_mode(mode as i32);
         });
     }
     {
@@ -3668,6 +3693,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_show_files(get_bool_setting(&db, "show_files_browser", true));
     sidebar_toggle!(on_toggle_show_consoles, get_show_consoles, set_show_consoles, "show_consoles");
     sidebar_toggle!(on_toggle_show_files, get_show_files, set_show_files, "show_files_browser");
+    ui.set_auto_update(get_bool_setting(&db, "auto_update_on_startup", false));
+    ui.set_ask_update(get_bool_setting(&db, "ask_updates_on_startup", true));
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_auto_update(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_auto_update();
+            ui.set_auto_update(next);
+            let _ = db.set_setting("auto_update_on_startup", if next { "true" } else { "false" });
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_ask_update(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_ask_update();
+            ui.set_ask_update(next);
+            let _ = db.set_setting("ask_updates_on_startup", if next { "true" } else { "false" });
+        });
+    }
     // Cap the endless-track limit over declared lengths too.
     ui.set_caps_all(get_bool_setting(&db, "loop_max_caps_all", false));
     {
@@ -3687,6 +3732,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut c = cfg.borrow_mut();
             *c = tunante_core::dsp::DspConfig::default();
             push_dsp_ui(&ui, &c);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -3794,31 +3840,84 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let action = map.borrow().get(&combo).cloned();
             let Some(action) = action else { return false };
-            match action.as_str() {
-                "play_pause" => ui.invoke_toggle_play(),
-                "stop" => ui.invoke_stop_playback(),
-                "prev_track" => ui.invoke_prev_track(),
-                "next_track" => ui.invoke_next_track(),
-                "volume_up" | "volume_down" => {
-                    if let Some(p) = player.borrow_mut().as_mut() {
-                        let d = if action == "volume_up" { 0.05 } else { -0.05 };
-                        p.set_volume((p.volume() + d).clamp(0.0, 1.0));
-                        ui.set_volume(p.volume());
+            run_action_by_id(&ui, &player, &action)
+        });
+    }
+
+    // Per-button mouse action, the old Shortcuts tab's mouse binds, inverted
+    // to one row per physical button.
+    let mouse_action_label = |a: &str| -> &'static str {
+        match a {
+            "none" => "nada",
+            "play_pause" => "reproducir/pausa",
+            "stop" => "parar",
+            "prev_track" => "anterior",
+            "next_track" => "siguiente",
+            "volume_up" => "subir volumen",
+            "volume_down" => "bajar volumen",
+            "mute" => "silenciar",
+            "toggle_shuffle" => "aleatorio",
+            "cycle_repeat" => "repetir",
+            "focus_search" => "buscar",
+            _ => "anterior",
+        }
+    };
+    let mouse_default = |btn: &str| match btn {
+        "forward" | "extra" => "next_track",
+        _ => "prev_track",
+    };
+    {
+        let refresh = {
+            let db = db.clone();
+            let weak = ui.as_weak();
+            move || {
+                let Some(ui) = weak.upgrade() else { return };
+                for (btn, setter) in [
+                    ("back", 0u8),
+                    ("forward", 1),
+                    ("side", 2),
+                    ("extra", 3),
+                ] {
+                    let a = db
+                        .get_setting(&format!("mouse.{btn}"))
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| mouse_default(btn).to_string());
+                    let label = SharedString::from(mouse_action_label(&a));
+                    match setter {
+                        0 => ui.set_mouse_back_label(label),
+                        1 => ui.set_mouse_forward_label(label),
+                        2 => ui.set_mouse_side_label(label),
+                        _ => ui.set_mouse_extra_label(label),
                     }
                 }
-                "mute" => ui.invoke_toggle_mute(),
-                "toggle_shuffle" => ui.invoke_toggle_shuffle(),
-                "cycle_repeat" => ui.invoke_cycle_repeat(),
-                "focus_search" => {
-                    ui.set_focus_filter_tick(ui.get_focus_filter_tick() + 1)
-                }
-                "toggle_fav" => {
-                    let r = ui.get_now_rating();
-                    ui.invoke_rate_now(if r > 0 { r } else { 5 });
-                }
-                _ => return false,
             }
-            true
+        };
+        refresh();
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_mouse_action(move |btn| {
+            let Some(ui) = weak.upgrade() else { return };
+            let btn = btn.to_string();
+            let order = [
+                "none", "prev_track", "next_track", "play_pause", "stop",
+                "volume_up", "volume_down", "mute", "toggle_shuffle",
+                "cycle_repeat", "focus_search",
+            ];
+            let cur = db
+                .get_setting(&format!("mouse.{btn}"))
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| mouse_default(&btn).to_string());
+            let idx = order.iter().position(|a| *a == cur).unwrap_or(0);
+            let next = order[(idx + 1) % order.len()];
+            let _ = db.set_setting(&format!("mouse.{btn}"), next);
+            let label = SharedString::from(mouse_action_label(next));
+            match btn.as_str() {
+                "back" => ui.set_mouse_back_label(label),
+                "forward" => ui.set_mouse_forward_label(label),
+                "side" => ui.set_mouse_side_label(label),
+                _ => ui.set_mouse_extra_label(label),
+            }
         });
     }
 
@@ -4169,6 +4268,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut c = cfg.borrow_mut();
             c.eq_enabled = !c.eq_enabled;
             ui.set_eq_enabled(c.eq_enabled);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4191,6 +4291,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_eq_low(c.eq_low_db);
             ui.set_eq_mid(c.eq_mid_db);
             ui.set_eq_high(c.eq_high_db);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4205,6 +4306,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // what the bar shows.
             c.preamp_enabled = c.preamp_db.abs() >= 0.5;
             ui.set_preamp_db(c.preamp_db);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4216,6 +4318,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut c = cfg.borrow_mut();
             c.mono = !c.mono;
             ui.set_dsp_mono(c.mono);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4227,6 +4330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut c = cfg.borrow_mut();
             c.mono_compensate = !c.mono_compensate;
             ui.set_dsp_mono_compensate(c.mono_compensate);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4238,6 +4342,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut c = cfg.borrow_mut();
             c.mono_phase_safe = !c.mono_phase_safe;
             ui.set_dsp_mono_phase(c.mono_phase_safe);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4249,6 +4354,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut c = cfg.borrow_mut();
             c.limiter = !c.limiter;
             ui.set_dsp_limiter(c.limiter);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4262,6 +4368,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // balance of 0.03 is indistinguishable from a broken speaker.
             c.balance = if v.abs() < 0.05 { 0.0 } else { v.clamp(-1.0, 1.0) };
             ui.set_dsp_balance(c.balance);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4276,6 +4383,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             c.width = if (v - 1.0).abs() < 0.05 { 1.0 } else { v.clamp(0.0, 2.0) };
             c.width_enabled = (c.width - 1.0).abs() > 0.01;
             ui.set_dsp_width(c.width);
+            ui.set_dsp_status(SharedString::from(dsp_status(&c)));
             store_dsp(&db, &player, &c);
         });
     }
@@ -4493,12 +4601,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // user asked not to hear about again.
                                 continue;
                             }
+                            let was_manual = update_manual.get();
                             update_manual.set(false);
-                            ui.set_update_status(SharedString::from(format!(
-                                "v{version} disponible — toca para instalar"
-                            )));
-                            ui.set_update_skippable(true);
-                            *update_pending.borrow_mut() = Some((version, url));
+                            // Silent startup check + "auto-update on startup":
+                            // install straight away, no tap needed.
+                            if !was_manual && ui.get_auto_update() {
+                                ui.set_update_status(SharedString::from(format!(
+                                    "descargando v{version}…"
+                                )));
+                                update::spawn_install(update_tx.clone(), version, url);
+                            } else {
+                                ui.set_update_status(SharedString::from(format!(
+                                    "v{version} disponible — toca para instalar"
+                                )));
+                                ui.set_update_skippable(true);
+                                *update_pending.borrow_mut() = Some((version, url));
+                            }
                         }
                         update::UpdateMsg::Installed(version) => {
                             ui.set_update_status(SharedString::from(format!(
@@ -4828,14 +4946,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // A thumb button on the mouse, wherever the focus was.
                 while let Ok(cmd) = button_rx.try_recv() {
-                    match cmd {
-                        buttons::ButtonCmd::Next => {
+                    let (btn, default) = match cmd {
+                        buttons::ButtonCmd::Back => ("back", "prev_track"),
+                        buttons::ButtonCmd::Forward => ("forward", "next_track"),
+                        buttons::ButtonCmd::Side => ("side", "prev_track"),
+                        buttons::ButtonCmd::Extra => ("extra", "next_track"),
+                    };
+                    let action = db
+                        .get_setting(&format!("mouse.{btn}"))
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| default.to_string());
+                    // Acts on the already-borrowed player, so it can't go
+                    // through the ui.invoke_* path (that re-borrows player).
+                    match action.as_str() {
+                        "play_pause" => p.toggle_play(),
+                        "stop" => p.stop(),
+                        "prev_track" => {
+                            let _ = p.prev();
+                        }
+                        "next_track" => {
                             let _ = p.next();
                             adopt_pending_context(p, &db);
                         }
-                        buttons::ButtonCmd::Prev => {
-                            let _ = p.prev();
+                        "volume_up" => {
+                            p.set_volume((p.volume() + 0.05).clamp(0.0, 1.0));
+                            ui.set_volume(p.volume());
                         }
+                        "volume_down" => {
+                            p.set_volume((p.volume() - 0.05).clamp(0.0, 1.0));
+                            ui.set_volume(p.volume());
+                        }
+                        "mute" => {
+                            let v = if p.volume() > 0.001 { 0.0 } else { 0.8 };
+                            p.set_volume(v);
+                            ui.set_volume(v);
+                        }
+                        "toggle_shuffle" => p.set_shuffle(!p.shuffle()),
+                        "cycle_repeat" => {
+                            let next = match p.repeat() {
+                                tunante_core::RepeatMode::Off => tunante_core::RepeatMode::All,
+                                tunante_core::RepeatMode::All => tunante_core::RepeatMode::One,
+                                tunante_core::RepeatMode::One => tunante_core::RepeatMode::Off,
+                            };
+                            p.set_repeat(next);
+                        }
+                        "focus_search" => {
+                            ui.set_focus_filter_tick(ui.get_focus_filter_tick() + 1)
+                        }
+                        _ => {}
                     }
                     push_now_playing(&ui, p);
                     sync_queue_marker(p, &queue_model);
@@ -5522,6 +5681,34 @@ fn store_dsp(
     }
     if let Ok(json) = serde_json::to_string(cfg) {
         let _ = db.set_setting("dsp_config", &json);
+    }
+}
+
+/// A human summary of the active DSP chain — the old panel's status line.
+fn dsp_status(cfg: &tunante_core::dsp::DspConfig) -> String {
+    let mut on: Vec<&str> = Vec::new();
+    if cfg.eq_enabled {
+        on.push("ecualizador");
+    }
+    if cfg.preamp_db.abs() > 0.01 {
+        on.push("preamplificador");
+    }
+    if cfg.width != 1.0 {
+        on.push("anchura estéreo");
+    }
+    if cfg.mono {
+        on.push("mono");
+    }
+    if cfg.balance.abs() > 0.001 {
+        on.push("balance");
+    }
+    if cfg.limiter {
+        on.push("limitador");
+    }
+    if on.is_empty() {
+        "En el motor: nada activo — el audio no se toca.".to_string()
+    } else {
+        format!("En el motor: {} (cadena: eq → anchura → mono → balance → preamp → limitador).", on.join(" · "))
     }
 }
 
@@ -6522,6 +6709,38 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
 /// library has never seen it, whatever the decoder says the file contains.
 /// The five cover-fit modes, as the desktop stored them. The ints are what
 /// the UI switches on; the keys are what the database keeps.
+/// Run a shortcut/mouse action by its id, reusing the UI's own callbacks so
+/// there is one implementation of each verb. Returns whether it was handled.
+fn run_action_by_id(
+    ui: &AppWindow,
+    player: &Rc<RefCell<Option<player::Player>>>,
+    action: &str,
+) -> bool {
+    match action {
+        "play_pause" => ui.invoke_toggle_play(),
+        "stop" => ui.invoke_stop_playback(),
+        "prev_track" => ui.invoke_prev_track(),
+        "next_track" => ui.invoke_next_track(),
+        "volume_up" | "volume_down" => {
+            if let Some(p) = player.borrow_mut().as_mut() {
+                let d = if action == "volume_up" { 0.05 } else { -0.05 };
+                p.set_volume((p.volume() + d).clamp(0.0, 1.0));
+                ui.set_volume(p.volume());
+            }
+        }
+        "mute" => ui.invoke_toggle_mute(),
+        "toggle_shuffle" => ui.invoke_toggle_shuffle(),
+        "cycle_repeat" => ui.invoke_cycle_repeat(),
+        "focus_search" => ui.set_focus_filter_tick(ui.get_focus_filter_tick() + 1),
+        "toggle_fav" => {
+            let r = ui.get_now_rating();
+            ui.invoke_rate_now(if r > 0 { r } else { 5 });
+        }
+        _ => return false,
+    }
+    true
+}
+
 /// A playback failure the user can see, not just stderr: the toast in the
 /// corner, dismissed by click or aged out by the timer.
 fn show_play_error(ui: &AppWindow, e: &str) {

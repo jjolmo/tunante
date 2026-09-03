@@ -88,6 +88,18 @@ export component AppWindow inherits Window {
     in property <bool> caps-all;
     callback toggle-caps-all();
     callback reset-dsp();
+    in property <int> theme-mode;
+    callback set-theme(int);
+    in property <string> dsp-status;
+    in property <bool> auto-update;
+    callback toggle-auto-update();
+    in property <bool> ask-update;
+    callback toggle-ask-update();
+    in property <string> mouse-back-label;
+    in property <string> mouse-forward-label;
+    in property <string> mouse-side-label;
+    in property <string> mouse-extra-label;
+    callback cycle-mouse-action(string);
     in property <string> about-label;
     callback open-repo();
     in property <[ShortcutRow]> shortcut-rows;
@@ -583,6 +595,25 @@ export component AppWindow inherits Window {
             table-remove-from-playlist(i) => { root.table-remove-from-playlist(i); }
             table-scope-label: root.table-scope-label;
             table-scope-cleared => { root.table-scope-cleared(); }
+            show-consoles: root.show-consoles;
+            toggle-show-consoles => { root.toggle-show-consoles(); }
+            show-files: root.show-files;
+            toggle-show-files => { root.toggle-show-files(); }
+            caps-all: root.caps-all;
+            toggle-caps-all => { root.toggle-caps-all(); }
+            reset-dsp => { root.reset-dsp(); }
+            theme-mode: root.theme-mode;
+            set-theme(m) => { root.set-theme(m); }
+            dsp-status: root.dsp-status;
+            auto-update: root.auto-update;
+            toggle-auto-update => { root.toggle-auto-update(); }
+            ask-update: root.ask-update;
+            toggle-ask-update => { root.toggle-ask-update(); }
+            mouse-back-label: root.mouse-back-label;
+            mouse-forward-label: root.mouse-forward-label;
+            mouse-side-label: root.mouse-side-label;
+            mouse-extra-label: root.mouse-extra-label;
+            cycle-mouse-action(b) => { root.cycle-mouse-action(b); }
             folder-opened(id) => { root.folder-opened(id); }
             folder-unpinned(id) => { root.folder-unpinned(id); }
             folder-revealed(id) => { root.folder-revealed(id); }
