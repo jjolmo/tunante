@@ -174,6 +174,13 @@ export component DesktopShell inherits Rectangle {
     callback toggle-show-folders();
     in property <bool> show-playlists;
     callback toggle-show-playlists();
+    in property <bool> show-consoles;
+    callback toggle-show-consoles();
+    in property <bool> show-files;
+    callback toggle-show-files();
+    in property <bool> caps-all;
+    callback toggle-caps-all();
+    callback reset-dsp();
     in property <string> about-label;
     callback open-repo();
     in property <[ShortcutRow]> shortcut-rows;
@@ -471,13 +478,30 @@ export component DesktopShell inherits Rectangle {
                             root.table-faved-changed(true);
                         }
                     }
-                    for label[i] in ["Árbol", "Discos", "Consolas", "Juegos", "Listas"]: SidebarEntry {
-                        label: label;
-                        active: root.centre == 1 && root.library-mode == i;
-                        clicked => {
-                            root.centre = 1;
-                            root.library-mode-changed(i);
-                        }
+                    if root.show-files: SidebarEntry {
+                        label: "Árbol";
+                        active: root.centre == 1 && root.library-mode == 0;
+                        clicked => { root.centre = 1; root.library-mode-changed(0); }
+                    }
+                    SidebarEntry {
+                        label: "Discos";
+                        active: root.centre == 1 && root.library-mode == 1;
+                        clicked => { root.centre = 1; root.library-mode-changed(1); }
+                    }
+                    SidebarEntry {
+                        label: "Consolas";
+                        active: root.centre == 1 && root.library-mode == 2;
+                        clicked => { root.centre = 1; root.library-mode-changed(2); }
+                    }
+                    SidebarEntry {
+                        label: "Juegos";
+                        active: root.centre == 1 && root.library-mode == 3;
+                        clicked => { root.centre = 1; root.library-mode-changed(3); }
+                    }
+                    SidebarEntry {
+                        label: "Listas";
+                        active: root.centre == 1 && root.library-mode == 4;
+                        clicked => { root.centre = 1; root.library-mode-changed(4); }
                     }
 
                     if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.gap; }
@@ -554,15 +578,15 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.sidebar-consoles.length > 0: Rectangle { height: Theme.gap; }
-                    if root.sidebar-consoles.length > 0: Text {
+                    if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.gap; }
+                    if root.show-consoles && root.sidebar-consoles.length > 0: Text {
                         text: "Consolas";
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                         height: 26px;
                         vertical-alignment: center;
                     }
-                    for sc in root.sidebar-consoles: Rectangle {
+                    for sc in root.show-consoles ? root.sidebar-consoles : []: Rectangle {
                         height: 34px;
                         border-radius: 6px;
                         background: root.centre == 0 && root.table-scope-kind == "console"
@@ -1207,6 +1231,13 @@ export component DesktopShell inherits Rectangle {
                     toggle-show-folders => { root.toggle-show-folders(); }
                     show-playlists: root.show-playlists;
                     toggle-show-playlists => { root.toggle-show-playlists(); }
+                    show-consoles: root.show-consoles;
+                    toggle-show-consoles => { root.toggle-show-consoles(); }
+                    show-files: root.show-files;
+                    toggle-show-files => { root.toggle-show-files(); }
+                    caps-all: root.caps-all;
+                    toggle-caps-all => { root.toggle-caps-all(); }
+                    reset-dsp => { root.reset-dsp(); }
                     about-label: root.about-label;
                     open-repo => { root.open-repo(); }
                     shortcut-rows: root.shortcut-rows;

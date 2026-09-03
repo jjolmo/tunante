@@ -81,6 +81,13 @@ export component AppWindow inherits Window {
     callback toggle-show-folders();
     in property <bool> show-playlists;
     callback toggle-show-playlists();
+    in property <bool> show-consoles;
+    callback toggle-show-consoles();
+    in property <bool> show-files;
+    callback toggle-show-files();
+    in property <bool> caps-all;
+    callback toggle-caps-all();
+    callback reset-dsp();
     in property <string> about-label;
     callback open-repo();
     in property <[ShortcutRow]> shortcut-rows;
