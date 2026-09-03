@@ -206,6 +206,9 @@ export component DesktopSettings inherits Rectangle {
     in property <string> mouse-side-label;
     in property <string> mouse-extra-label;
     callback cycle-mouse-action(string);
+    callback reset-shortcuts();
+    in property <image> now-art;
+    in property <int> cover-fit;
     // Closed from the ✕, the backdrop, or Escape.
     callback close();
 
@@ -466,6 +469,26 @@ export component DesktopSettings inherits Rectangle {
                             // ===== Carátulas =====
                             if root.tab == 2: VerticalLayout {
                                 spacing: 2px;
+                                if root.now-art.width > 0: HorizontalLayout {
+                                    alignment: start;
+                                    padding-bottom: Theme.gap;
+                                    Rectangle {
+                                        width: 120px;
+                                        height: 120px;
+                                        border-radius: Theme.radius;
+                                        background: Theme.bg-tertiary;
+                                        clip: true;
+                                        Image {
+                                            width: 100%;
+                                            height: 100%;
+                                            source: root.now-art;
+                                            image-fit: root.cover-fit == 1 || root.cover-fit == 2 ? ImageFit.contain
+                                                : root.cover-fit == 3 ? ImageFit.fill
+                                                : root.cover-fit == 4 ? ImageFit.preserve
+                                                : ImageFit.cover;
+                                        }
+                                    }
+                                }
                                 SettingRow {
                                     label: "Descargar carátulas que falten";
                                     value: "⬇";
@@ -566,6 +589,12 @@ export component DesktopSettings inherits Rectangle {
                                     label: "Mono · seguro de fase";
                                     checked: root.dsp-mono-phase;
                                     toggled => { root.toggle-mono-phase(); }
+                                }
+                                if root.dsp-mono && (root.dsp-balance > 0.001 || root.dsp-balance < -0.001): SettingRow {
+                                    label: "Con mono, el balance descentrado silencia un lado";
+                                    value: "Centrar";
+                                    highlighted: true;
+                                    clicked => { root.set-balance(0); }
                                 }
                                 DbSliderRow {
                                     label: "Balance";
@@ -702,6 +731,11 @@ export component DesktopSettings inherits Rectangle {
                                     value: sr.key == "" ? "—" : sr.key;
                                     highlighted: sr.key != "" && sr.key != "pulsa una tecla…";
                                     clicked => { root.shortcut-capture(sr.id); }
+                                }
+                                SettingRow {
+                                    label: "Restablecer todos los atajos";
+                                    value: "↺";
+                                    clicked => { root.reset-shortcuts(); }
                                 }
                             }
 
