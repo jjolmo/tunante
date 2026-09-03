@@ -3707,6 +3707,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_show_files(get_bool_setting(&db, "show_files_browser", true));
     sidebar_toggle!(on_toggle_show_consoles, get_show_consoles, set_show_consoles, "show_consoles");
     sidebar_toggle!(on_toggle_show_files, get_show_files, set_show_files, "show_files_browser");
+    // The five "Biblioteca" mode entries — each hideable from Apariencia.
+    // Árbol reuses show_files above; these are the other four.
+    ui.set_show_discos(get_bool_setting(&db, "lib_show_discos", true));
+    ui.set_show_consoles_view(get_bool_setting(&db, "lib_show_consoles", true));
+    ui.set_show_juegos(get_bool_setting(&db, "lib_show_juegos", true));
+    ui.set_show_listas_view(get_bool_setting(&db, "lib_show_listas", true));
+    sidebar_toggle!(on_toggle_show_discos, get_show_discos, set_show_discos, "lib_show_discos");
+    sidebar_toggle!(on_toggle_show_consoles_view, get_show_consoles_view, set_show_consoles_view, "lib_show_consoles");
+    sidebar_toggle!(on_toggle_show_juegos, get_show_juegos, set_show_juegos, "lib_show_juegos");
+    sidebar_toggle!(on_toggle_show_listas_view, get_show_listas_view, set_show_listas_view, "lib_show_listas");
     ui.set_auto_update(get_bool_setting(&db, "auto_update_on_startup", false));
     ui.set_ask_update(get_bool_setting(&db, "ask_updates_on_startup", true));
     {
