@@ -293,6 +293,8 @@ export component DesktopShell inherits Rectangle {
     in property <[TableColumn]> table-columns;
     in property <[ColumnChoice]> table-column-choices;
     callback table-column-toggled(string);
+    in property <int> star-display-mode;
+    callback set-star-display-mode(int);
     in property <int> table-sort-col;
     in property <bool> table-sort-asc;
     in-out property <string> table-filter;
@@ -959,6 +961,8 @@ export component DesktopShell inherits Rectangle {
                     columns: root.table-columns;
                     column-choices: root.table-column-choices;
                     column-toggled(k) => { root.table-column-toggled(k); }
+                    star-mode: root.star-display-mode;
+                    set-star-mode(m) => { root.set-star-display-mode(m); }
                     now-path: root.now-path;
                     sort-col: root.table-sort-col;
                     sort-asc: root.table-sort-asc;

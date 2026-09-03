@@ -34,6 +34,13 @@ component HeaderCell inherits Rectangle {
     callback resize-started();
     callback resized(length);
     callback resize-done();
+    /// Right-click menu: the full column list to tick on/off, and — on the
+    /// star column — the two rating-display modes.
+    in property <[ColumnChoice]> column-choices;
+    callback column-toggled(string);
+    in property <bool> is-stars;
+    in property <int> star-mode;
+    callback set-star-mode(int);
 
     background: t.has-hover ? Theme.bg-hover : transparent;
     opacity: root.dragging ? 0.5 : 1.0;
@@ -105,6 +112,25 @@ component HeaderCell inherits Rectangle {
         height: 100%;
         background: Theme.accent;
     }
+    // Right-click anywhere on the header: the column list to tick on/off, as
+    // the old desktop did. The star column adds its two display modes below.
+    ContextMenuArea {
+        Menu {
+            for c in root.column-choices: MenuItem {
+                title: (c.shown ? "✓ " : "     ") + c.label;
+                activated => { root.column-toggled(c.key); }
+            }
+            if root.is-stars: MenuSeparator {}
+            if root.is-stars: MenuItem {
+                title: (root.star-mode == 0 ? "✓ " : "     ") + "Mostrar las cinco estrellas";
+                activated => { root.set-star-mode(0); }
+            }
+            if root.is-stars: MenuItem {
+                title: (root.star-mode == 1 ? "✓ " : "     ") + "Una estrella si tiene puntuación";
+                activated => { root.set-star-mode(1); }
+            }
+        }
+    }
 }
 
 export component TrackTable inherits Rectangle {
@@ -159,6 +185,9 @@ export component TrackTable inherits Rectangle {
     callback column-resize-started(int);
     callback column-resized(int, float, float);
     callback column-resize-done();
+    /// Star column display mode: 0 = five stars, 1 = single filled star.
+    in property <int> star-mode;
+    callback set-star-mode(int);
 
     // Header-drag state. The threshold is the old desktop's: 5px from the
     // press point separates a sort click from a reorder gesture.
@@ -293,6 +322,11 @@ export component TrackTable inherits Rectangle {
                     label: col.label;
                     active: root.sort-col == ci;
                     asc: root.sort-asc;
+                    column-choices: root.column-choices;
+                    column-toggled(k) => { root.column-toggled(k); }
+                    is-stars: col.key == "stars";
+                    star-mode: root.star-mode;
+                    set-star-mode(m) => { root.set-star-mode(m); }
                     dragging: root.drag-active && root.drag-src == ci;
                     drop-target: root.drag-active && root.drag-src != ci
                         && root.drag-x >= self.x && root.drag-x < self.x + self.width;

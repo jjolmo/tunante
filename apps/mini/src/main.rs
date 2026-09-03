@@ -952,6 +952,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .flatten()
             .map(|v| v == "game")
             .unwrap_or(false);
+        st.star_mode = db
+            .get_setting("star_display_mode")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        ui.set_star_display_mode(st.star_mode);
         // The search text survives too, under the desktop's key.
         if let Ok(Some(q)) = db.get_setting("search_query") {
             if !q.is_empty() {
@@ -1212,8 +1219,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut st = st.borrow_mut();
             let Some(track) = st.tracks.get(index as usize) else { return };
             // Clicking the star it already has clears it — the second tap on a
-            // toggle, not a way to be stuck at one star forever.
-            let new = if track.rating == stars { 0 } else { stars };
+            // toggle, not a way to be stuck at one star forever. In single-star
+            // mode the whole cell is one toggle between nothing and five.
+            let new = if st.star_mode == 1 {
+                if track.rating > 0 { 0 } else { 5 }
+            } else if track.rating == stars {
+                0
+            } else {
+                stars
+            };
             let (id, path) = (track.id.clone(), track.path.clone());
             if let Err(e) = db_t.set_track_rating(&id, new) {
                 eprintln!("no se pudo guardar la puntuación: {e}");
@@ -1247,7 +1261,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // playing, and Favoritos' number moves either way.
             if ui.get_now_path() == path.as_str() {
                 ui.set_now_rating(new);
-                ui.set_now_stars(SharedString::from(stars_for(new)));
+                ui.set_now_stars(SharedString::from(stars_for_mode(new, st.star_mode)));
             }
             refresh_counts(&db_t, &ui);
         });
@@ -1990,14 +2004,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ));
             // The read-only half of the old Properties dialog, one line.
             let mut tech: Vec<String> = vec![
-                cell_for(t, "duration", false),
+                cell_for(t, "duration", false, 0),
                 t.codec.to_uppercase(),
             ];
             for extra in [
-                cell_for(t, "samplerate", false),
-                cell_for(t, "channels", false),
-                cell_for(t, "bitrate", false),
-                cell_for(t, "size", false),
+                cell_for(t, "samplerate", false, 0),
+                cell_for(t, "channels", false, 0),
+                cell_for(t, "bitrate", false, 0),
+                cell_for(t, "size", false, 0),
             ] {
                 if !extra.is_empty() {
                     tech.push(extra);
@@ -2161,9 +2175,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .as_ref()
                 .and_then(|p| p.current().cloned());
             let Some(track) = track else { return };
-            // Same toggle rule as the table: the star it already has clears.
+            // Same toggle rule as the table: the star it already has clears —
+            // and in single-star mode the one star flips between 0 and 5.
             let current = ui.get_now_rating();
-            let new = if current == stars { 0 } else { stars };
+            let mode = ui.get_star_display_mode();
+            let new = if mode == 1 {
+                if current > 0 { 0 } else { 5 }
+            } else if current == stars {
+                0
+            } else {
+                stars
+            };
             if let Err(e) = db_r.set_track_rating(&track.id, new) {
                 eprintln!("no se pudo guardar la puntuación: {e}");
                 return;
@@ -2186,7 +2208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
             ui.set_now_rating(new);
-            ui.set_now_stars(SharedString::from(stars_for(new)));
+            ui.set_now_stars(SharedString::from(stars_for_mode(new, mode)));
             refresh_counts(&db_r, &ui);
             let mut st = st.borrow_mut();
             if st.built {
@@ -4072,6 +4094,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if st.built {
                 rebuild_table(&mut st, &model);
             }
+        });
+    }
+    {
+        let (db, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_set_star_display_mode(move |mode| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut st = st.borrow_mut();
+            st.star_mode = mode;
+            ui.set_star_display_mode(mode);
+            let _ = db.set_setting("star_display_mode", &mode.to_string());
+            if st.built {
+                rebuild_table(&mut st, &model);
+            }
+            // The transport's stars follow the same mode at once.
+            ui.set_now_stars(SharedString::from(stars_for_mode(ui.get_now_rating(), mode)));
         });
     }
     {
@@ -5968,6 +6006,9 @@ struct TableState {
     /// «Álbum / Juego» shows which of the two first — the old desktop's
     /// `album_game_prefers` setting; the other is the fallback.
     album_game_prefers_game: bool,
+    /// How the ★ column paints a rating: 0 = the full five, 1 = a single
+    /// filled star when rating > 0 (a binary toggle), like the old desktop.
+    star_mode: i32,
     /// Bumped by every rebuild, so the queue-badge pass in the timer knows
     /// the rows are fresh (and badge-less) even when the queue is not.
     stamp: u64,
@@ -5990,6 +6031,7 @@ impl Default for TableState {
             selected: std::collections::HashSet::new(),
             anchor: 0,
             album_game_prefers_game: false,
+            star_mode: 0,
             stamp: 0,
         }
     }
@@ -6467,7 +6509,7 @@ const TABLE_COLUMNS: &[ColumnDef] = &[
 const DEFAULT_COLUMNS: &str = "n,title,artist,game,console,stars,duration";
 
 /// One cell, painted. The UI never computes a cell — the GridLine rule.
-fn cell_for(t: &tunante_core::db::models::Track, key: &str, prefers_game: bool) -> String {
+fn cell_for(t: &tunante_core::db::models::Track, key: &str, prefers_game: bool, star_mode: i32) -> String {
     match key {
         "albumgame" => {
             let (first, second) = if prefers_game {
@@ -6497,7 +6539,7 @@ fn cell_for(t: &tunante_core::db::models::Track, key: &str, prefers_game: bool) 
             Some(n) => n.to_string(),
             None => String::new(),
         },
-        "stars" => stars_for(t.rating),
+        "stars" => stars_for_mode(t.rating, star_mode),
         "duration" => format!("{}:{:02}", t.duration_ms / 60_000, (t.duration_ms / 1_000) % 60),
         "codec" => t.codec.clone(),
         "bitrate" => t
@@ -6596,6 +6638,16 @@ fn repaint_selection(st: &TableState, model: &VecModel<TableRow>) {
 fn stars_for(rating: i32) -> String {
     let r = rating.clamp(0, 5) as usize;
     "★".repeat(r) + &"☆".repeat(5 - r)
+}
+
+/// The rating as the chosen display mode paints it: mode 0 is the full five,
+/// mode 1 is a single star — filled when rated at all, hollow when not.
+fn stars_for_mode(rating: i32, mode: i32) -> String {
+    if mode == 1 {
+        (if rating > 0 { "★" } else { "☆" }).to_string()
+    } else {
+        stars_for(rating)
+    }
 }
 
 fn table_console_label(t: &tunante_core::db::models::Track) -> &'static str {
@@ -6821,7 +6873,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                 cells: ModelRc::new(VecModel::from(
                     st.visible
                         .iter()
-                        .map(|k| SharedString::from(cell_for(t, k, st.album_game_prefers_game)))
+                        .map(|k| SharedString::from(cell_for(t, k, st.album_game_prefers_game, st.star_mode)))
                         .collect::<Vec<_>>(),
                 )),
                 path: SharedString::from(t.path.as_str()),
@@ -7200,8 +7252,9 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
         None => String::new(),
     }));
     ui.set_now_rating(p.current().map(|t| t.rating).unwrap_or(0));
+    let star_mode = ui.get_star_display_mode();
     ui.set_now_stars(SharedString::from(
-        p.current().map(|t| stars_for(t.rating)).unwrap_or_default(),
+        p.current().map(|t| stars_for_mode(t.rating, star_mode)).unwrap_or_default(),
     ));
 
     match p.current() {
