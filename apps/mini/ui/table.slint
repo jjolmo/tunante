@@ -20,6 +20,10 @@ component HeaderCell inherits Rectangle {
     in property <bool> dragging;
     /// The dragged cell would land here.
     in property <bool> drop-target;
+    /// The insertion line: the dragged column would slot in on this cell's
+    /// leading (before) or trailing (after) edge.
+    in property <bool> drop-before;
+    in property <bool> drop-after;
     /// Press/drag/release with the offset from the press point — the parent
     /// decides whether the gesture was a sort click (under the threshold) or
     /// a reorder. Same protocol as the old desktop's raw mouse handlers.
@@ -33,8 +37,22 @@ component HeaderCell inherits Rectangle {
 
     background: t.has-hover ? Theme.bg-hover : transparent;
     opacity: root.dragging ? 0.5 : 1.0;
-    border-width: root.drop-target ? 2px : 0px;
-    border-color: Theme.accent;
+    clip: false;
+
+    // A single vertical accent bar marks exactly where the column lands,
+    // instead of boxing the whole target cell.
+    if root.drop-before: Rectangle {
+        x: -1px;
+        width: 2px;
+        height: 100%;
+        background: Theme.accent;
+    }
+    if root.drop-after: Rectangle {
+        x: parent.width - 1px;
+        width: 2px;
+        height: 100%;
+        background: Theme.accent;
+    }
 
     HorizontalLayout {
         padding-left: 8px;
@@ -278,6 +296,11 @@ export component TrackTable inherits Rectangle {
                     dragging: root.drag-active && root.drag-src == ci;
                     drop-target: root.drag-active && root.drag-src != ci
                         && root.drag-x >= self.x && root.drag-x < self.x + self.width;
+                    // The line sits on the edge the dragged column approaches
+                    // from: coming from the right, it slots in before; from the
+                    // left, after.
+                    drop-before: self.drop-target && root.drag-src > ci;
+                    drop-after: self.drop-target && root.drag-src < ci;
                     changed drop-target => {
                         if (self.drop-target) { root.drop-col = ci; }
                     }
