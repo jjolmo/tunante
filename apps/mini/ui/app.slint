@@ -299,6 +299,7 @@ export component AppWindow inherits Window {
     in property <string> table-scope-kind;
     callback console-opened-in-table(string);
     callback playlist-opened-in-table(string);
+    callback table-remove-from-playlist(int);
     callback folder-opened(string);
     callback folder-unpinned(string);
     callback folder-revealed(string);
@@ -560,6 +561,7 @@ export component AppWindow inherits Window {
             table-scope-kind: root.table-scope-kind;
             console-opened-in-table(id) => { root.console-opened-in-table(id); }
             playlist-opened-in-table(id) => { root.playlist-opened-in-table(id); }
+            table-remove-from-playlist(i) => { root.table-remove-from-playlist(i); }
             folder-opened(id) => { root.folder-opened(id); }
             folder-unpinned(id) => { root.folder-unpinned(id); }
             folder-revealed(id) => { root.folder-revealed(id); }

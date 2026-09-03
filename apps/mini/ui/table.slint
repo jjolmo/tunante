@@ -152,6 +152,9 @@ export component TrackTable inherits Rectangle {
     in property <int> cursor: -1;
 
     property <bool> choosing-columns: false;
+    /// True when the table is showing a playlist — enables "remove from list".
+    in property <bool> playlist-scope;
+    callback remove-from-playlist(int);
     /// Rust bumps this to land focus in the filter box — the focus_search
     /// action; granting focus is slint-only business.
     in property <int> focus-filter-tick;
@@ -313,6 +316,10 @@ export component TrackTable inherits Rectangle {
                     root.select-all();
                     return accept;
                 }
+                if (event.text == Key.Delete && root.playlist-scope && root.cursor >= 0) {
+                    root.remove-from-playlist(root.cursor);
+                    return accept;
+                }
                 reject
             }
 
@@ -397,6 +404,10 @@ export component TrackTable inherits Rectangle {
                         MenuItem {
                             title: "Quitar de la cola";
                             activated => { root.row-middle-clicked(i); }
+                        }
+                        if root.playlist-scope: MenuItem {
+                            title: "Quitar de la lista";
+                            activated => { root.remove-from-playlist(i); }
                         }
                         MenuItem {
                             title: "Añadir a lista…";

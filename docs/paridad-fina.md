@@ -8,12 +8,14 @@
 > mini actual. Es la lista de trabajo. La lista gorda de plan-desktop-slint.md
 > medía capacidades; esta mide comportamiento.
 >
-> **CERRADA (2026-09-02).** Todo migrado. Los dos únicos «[~]» que quedan no
-> son huecos sino decisiones de diseño escritas: «Quitar de la lista» vive
-> donde las listas se ven (la tabla es SIEMPRE la biblioteca, no una lista),
-> y la auto-reanudación restaura pista+posición en pausa a propósito (una app
-> que arranca sonando sola es hostil). Nada del inventario del viejo (79
-> comandos, 21 componentes) se quedó sin equivalente.
+> **CERRADA (2026-09-02).** Todo migrado. Corregido el criterio de «modo
+> grande»: tunante abre de tres formas (mini vertical, mini horizontal,
+> grande), y la grande debe igualar al desktop viejo. Por eso listas y
+> consolas ahora se abren EN la tabla potente (scope), no en la rejilla del
+> teléfono — y con ello «Quitar de la lista» vuelve al menú de la tabla. El
+> único «[~]» que queda es la auto-reanudación: restaura pista+posición en
+> pausa a propósito (una app que arranca sonando sola es hostil). Nada del
+> inventario del viejo (79 comandos, 21 componentes) se quedó sin equivalente.
 
 ## A · Roto o grave (bloquea el uso diario)
 
@@ -63,9 +65,9 @@
       juego · álbum y la ruta — todo lo que la elipsis esconde.
 - [x] Menú contextual de la cabecera: click derecho lista columnas con ✓
       (el multi-tick sin cerrar del viejo lo conserva el ⚙).
-- [~] «Quitar de la lista»: existe donde las listas viven (la hoja de la
-      vista Listas); la tabla no muestra listas, así que ahí no significa
-      nada. «Quitar de la cola» ya está en su menú.
+- [x] «Quitar de la lista» en la tabla — ahora que en el modo grande una
+      lista se abre EN la tabla (scope Playlist), el menú contextual y la
+      tecla Supr la quitan de esa lista, con recuento del sidebar al día.
 - [x] Scroll a la pista al restaurar: en el único evento de «volver» que
       este stack ve — reaparecer desde la bandeja — la tabla aterriza en lo
       que suena (reutiliza el salto de now-clicked). Los demás restores no
