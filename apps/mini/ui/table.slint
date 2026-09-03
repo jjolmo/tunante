@@ -121,13 +121,16 @@ component HeaderCell inherits Rectangle {
                 activated => { root.column-toggled(c.key); }
             }
             if root.is-stars: MenuSeparator {}
-            if root.is-stars: MenuItem {
-                title: (root.star-mode == 0 ? "✓ " : "     ") + "Mostrar las cinco estrellas";
-                activated => { root.set-star-mode(0); }
-            }
-            if root.is-stars: MenuItem {
-                title: (root.star-mode == 1 ? "✓ " : "     ") + "Una estrella si tiene puntuación";
-                activated => { root.set-star-mode(1); }
+            if root.is-stars: Menu {
+                title: "Columna de estrellas";
+                MenuItem {
+                    title: (root.star-mode == 0 ? "✓ " : "     ") + "Mostrar las cinco estrellas";
+                    activated => { root.set-star-mode(0); }
+                }
+                MenuItem {
+                    title: (root.star-mode == 1 ? "✓ " : "     ") + "Una estrella si tiene puntuación";
+                    activated => { root.set-star-mode(1); }
+                }
             }
         }
     }
@@ -188,6 +191,13 @@ export component TrackTable inherits Rectangle {
     /// Star column display mode: 0 = five stars, 1 = single filled star.
     in property <int> star-mode;
     callback set-star-mode(int);
+    /// Scroll position, persisted across runs. `scrolled` reports the current
+    /// offset (positive px from the top); bumping `restore-tick` applies
+    /// `restore-y` to the ListView once its rows exist.
+    callback scrolled(length);
+    in property <length> restore-y;
+    in property <int> restore-tick;
+    changed restore-tick => { lv.viewport-y = -root.restore-y; }
 
     // Header-drag state. The threshold is the old desktop's: 5px from the
     // press point separates a sort click from a reorder gesture.
@@ -441,7 +451,7 @@ export component TrackTable inherits Rectangle {
         }
 
         lv := ListView {
-            changed viewport-y => { root.tip-row = -1; }
+            changed viewport-y => { root.tip-row = -1; root.scrolled(-self.viewport-y); }
 
             for row[i] in root.rows: Rectangle {
                 property <bool> playing: row.path == root.now-path;
@@ -574,7 +584,11 @@ export component TrackTable inherits Rectangle {
                                 height: 100%;
                                 text: row.cells[ci];
                                 color: Theme.accent;
-                                font-size: Theme.font-small;
+                                // Bigger than a text cell: at font-small the
+                                // glyphs read as specks. Letter-spacing gives
+                                // the five room to breathe.
+                                font-size: Theme.compact ? 15px : 17px;
+                                letter-spacing: 1px;
                                 vertical-alignment: center;
                             }
                             TouchArea {
