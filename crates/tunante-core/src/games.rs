@@ -34,6 +34,13 @@ pub struct Game {
 ///
 /// `album` when there is one, else the folder's name, else the file's.
 pub fn game_of(track: &Track) -> String {
+    // The classified game name first — that is the organisation Consolas shows,
+    // and it is what "Juegos" means. Only when a track was never classified do
+    // we fall back to its album, then to the folder it sits in.
+    let game = track.game.trim();
+    if !game.is_empty() {
+        return game.to_string();
+    }
     let album = track.album.trim();
     if !album.is_empty() {
         return album.to_string();

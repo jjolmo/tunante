@@ -332,6 +332,13 @@ export component TrackTable inherits Rectangle {
             background: Theme.bg-secondary;
             border-radius: 8px;
 
+            // A click anywhere on the box focuses the field. The desktop's
+            // FocusScope holds the keyboard by default, and a bare click on the
+            // TextInput was not taking it away — so typing went nowhere.
+            fbox := TouchArea {
+                mouse-cursor: text;
+                clicked => { filter-input.focus(); }
+            }
             HorizontalLayout {
                 padding-left: 12px;
                 padding-right: 12px;
