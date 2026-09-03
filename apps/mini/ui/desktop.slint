@@ -329,6 +329,7 @@ export component DesktopShell inherits Rectangle {
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
+    in property <int> now-rating;
     in-out property <bool> names-fix-lengths;
     in-out property <string> reclass-console-filter;
     callback reclass-console-filter-changed(string);
@@ -1179,20 +1180,27 @@ export component DesktopShell inherits Rectangle {
                             active: root.crossfade-secs > 0;
                             clicked => { root.toggle-crossfade(); }
                         } }
-                        // The rating, right beside the transport buttons.
+                        // The rating, right beside the transport buttons. One
+                        // star needs a button's width, not five's — and a size
+                        // that reads.
                         if root.now-title != "": VerticalLayout {
                             alignment: center;
                             Rectangle {
-                                width: 96px;
+                                width: root.star-display-mode == 1 ? 36px : 96px;
                                 height: 34px;
                                 border-radius: 17px;
                                 background: rateta.has-hover ? Theme.bg-hover : transparent;
                                 Text {
                                     width: parent.width;
                                     height: 100%;
-                                    text: root.now-stars;
+                                    // Single-star mode computed live from
+                                    // the rating, so it never shows a stale five.
+                                    text: root.star-display-mode == 1
+                                        ? (root.now-rating > 0 ? "★" : "☆")
+                                        : root.now-stars;
                                     color: Theme.accent;
-                                    font-size: Theme.font-body;
+                                    font-size: root.star-display-mode == 1 ? 20px : 15px;
+                                    letter-spacing: 1px;
                                     vertical-alignment: center;
                                     horizontal-alignment: center;
                                 }

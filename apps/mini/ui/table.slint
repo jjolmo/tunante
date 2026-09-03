@@ -319,32 +319,9 @@ export component TrackTable inherits Rectangle {
                 padding-right: 12px;
                 spacing: 8px;
 
-                // The desktop's scope chip, inline: label + a way out, left of
-                // the search, so the folder title and the filter share one row.
-                if root.scope-label != "" && Theme.compact: Text {
-                    text: root.scope-label;
-                    color: Theme.accent;
-                    font-size: Theme.font-small;
-                    font-weight: 600;
-                    vertical-alignment: center;
-                }
-                if root.scope-label != "" && Theme.compact: Rectangle {
-                    width: 18px;
-                    border-radius: Theme.radius;
-                    background: scx2.has-hover ? Theme.bg-hover : transparent;
-                    Text {
-                        text: "✕";
-                        color: scx2.has-hover ? Theme.text-primary : Theme.text-muted;
-                        font-size: Theme.font-small;
-                        vertical-alignment: center;
-                    }
-                    scx2 := TouchArea { clicked => { root.scope-cleared(); } }
-                }
-                if root.scope-label != "" && Theme.compact: Rectangle {
-                    width: 1px;
-                    background: Theme.bg-tertiary;
-                }
-
+                // The desktop shows no scope title above the list — clearing a
+                // narrowing is a click on "Pistas" in the sidebar. The phone
+                // keeps its own chip row above (gated on !compact).
                 Text {
                     text: "🔍";
                     color: Theme.text-muted;
