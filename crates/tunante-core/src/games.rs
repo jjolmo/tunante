@@ -56,11 +56,18 @@ pub fn game_of(track: &Track) -> String {
 }
 
 /// Every game in the library, sorted by name.
+///
+/// Only tracks the classifier placed on a console count as games — the rest is
+/// ordinary music (a compilation, an anime OST, a band's album) and belongs in
+/// Discos, not here. Without this filter "Juegos" was just another album list.
 pub fn index(tracks: &[Track]) -> Vec<Game> {
     let mut by_name: std::collections::BTreeMap<String, (usize, String, String)> =
         Default::default();
 
     for t in tracks {
+        if t.console_id.trim().is_empty() {
+            continue;
+        }
         let name = game_of(t);
         let entry = by_name
             .entry(name)

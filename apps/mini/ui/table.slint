@@ -357,6 +357,8 @@ export component TrackTable inherits Rectangle {
                     color: Theme.text-primary;
                     font-size: Theme.font-body;
                     vertical-alignment: center;
+                    horizontal-alignment: left;
+                    horizontal-stretch: 1;
                     single-line: true;
                     text <=> root.filter;
                     edited => { root.filter-changed(self.text); }
