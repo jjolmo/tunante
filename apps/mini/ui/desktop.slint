@@ -137,6 +137,36 @@ component SectionHeader inherits Rectangle {
     }
 }
 
+// One line of text that scrolls, gently and back, when it does not fit — so a
+// long title or a wall of composer credits never spills over the artwork.
+component Marquee inherits Rectangle {
+    in property <string> text;
+    in property <length> font-size;
+    in property <color> text-color;
+    in property <int> weight: 400;
+    clip: true;
+    // A few px of slack so the last glyph is not clipped at rest.
+    property <length> overflow: max(0px, txt.preferred-width - self.width + 4px);
+    property <bool> away;
+    // Only ticks when there is something to scroll; flips the target so the
+    // text eases to the end, holds, and eases back.
+    Timer {
+        interval: 2600ms;
+        running: root.overflow > 0px;
+        triggered => { root.away = !root.away; }
+    }
+    txt := Text {
+        text: root.text;
+        color: root.text-color;
+        font-size: root.font-size;
+        font-weight: root.weight;
+        vertical-alignment: center;
+        height: 100%;
+        x: root.away ? -root.overflow : 0px;
+        animate x { duration: 2000ms; easing: ease-in-out; }
+    }
+}
+
 // A horizontal 0..1 slider in the house style, for the volume.
 component VolumeBar inherits Rectangle {
     in property <float> value;
@@ -1093,11 +1123,16 @@ export component DesktopShell inherits Rectangle {
                     }
                 }
 
+                // Takes the room it can up to 240px and shrinks before it would
+                // ever reach the artwork; the lines scroll instead of spilling.
                 VerticalLayout {
                     alignment: center;
+                    horizontal-stretch: 1;
+                    max-width: 240px;
+                    min-width: 70px;
                     Rectangle {
-                        width: 240px;
                         height: 68px;
+                        clip: true;
                         background: npt.has-hover && root.now-title != "" ? Theme.bg-hover : transparent;
                         border-radius: Theme.radius;
                         npt := TouchArea {
@@ -1108,10 +1143,30 @@ export component DesktopShell inherits Rectangle {
                                 }
                             }
                         }
-                        TrackInfo {
-                            title: root.now-title;
-                            artist: root.now-artist;
-                            album: root.now-album;
+                        VerticalLayout {
+                            alignment: center;
+                            padding-left: 4px;
+                            padding-right: 4px;
+                            spacing: 3px;
+                            Marquee {
+                                text: root.now-title;
+                                text-color: Theme.text-primary;
+                                font-size: Theme.font-title;
+                                weight: 500;
+                                height: Theme.font-title + 4px;
+                            }
+                            Marquee {
+                                text: root.now-artist;
+                                text-color: Theme.text-secondary;
+                                font-size: Theme.font-body;
+                                height: Theme.font-body + 2px;
+                            }
+                            Marquee {
+                                text: root.now-album;
+                                text-color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                                height: Theme.font-small + 2px;
+                            }
                         }
                     }
                 }
