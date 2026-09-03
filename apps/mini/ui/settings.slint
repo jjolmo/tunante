@@ -219,6 +219,8 @@ export component DesktopSettings inherits Rectangle {
     in property <int> cover-fit;
     in property <int> queue-placement;
     callback cycle-queue-placement();
+    in property <int> star-display-mode;
+    callback set-star-display-mode(int);
     in property <int> ui-mode;
     in-out property <int> ui-mode-pending;
     in property <string> ui-mode-pending-label;
@@ -375,24 +377,6 @@ export component DesktopSettings inherits Rectangle {
                                     label: "Cerrar a la bandeja";
                                     checked: root.close-to-tray;
                                     toggled => { root.toggle-close-to-tray(); }
-                                }
-                                SettingRow {
-                                    label: "Modo de interfaz";
-                                    value: root.ui-mode-pending-label;
-                                    clicked => { root.cycle-ui-mode(); }
-                                }
-                                if root.ui-mode-pending != root.ui-mode: SettingRow {
-                                    label: "  ↳ Aplicar (cambia la presentación)";
-                                    value: "Aplicar";
-                                    highlighted: true;
-                                    clicked => { root.apply-ui-mode(); }
-                                }
-                                SettingRow {
-                                    label: "Cola";
-                                    value: root.queue-placement == 2 ? "panel derecho"
-                                        : (root.queue-placement == 1 ? "lista en el sidebar"
-                                        : "entrada en el sidebar");
-                                    clicked => { root.cycle-queue-placement(); }
                                 }
                             }
 
@@ -629,6 +613,30 @@ export component DesktopSettings inherits Rectangle {
                             // ===== Apariencia =====
                             if root.tab == 4: VerticalLayout {
                                 spacing: 2px;
+                                Section { text: "Presentación"; }
+                                SettingRow {
+                                    label: "Modo de interfaz";
+                                    value: root.ui-mode-pending-label;
+                                    clicked => { root.cycle-ui-mode(); }
+                                }
+                                if root.ui-mode-pending != root.ui-mode: SettingRow {
+                                    label: "  ↳ Aplicar (cambia la presentación)";
+                                    value: "Aplicar";
+                                    highlighted: true;
+                                    clicked => { root.apply-ui-mode(); }
+                                }
+                                SettingRow {
+                                    label: "Cola";
+                                    value: root.queue-placement == 2 ? "panel derecho"
+                                        : (root.queue-placement == 1 ? "lista en el sidebar"
+                                        : "entrada en el sidebar");
+                                    clicked => { root.cycle-queue-placement(); }
+                                }
+                                SettingRow {
+                                    label: "Estrellas de puntuación";
+                                    value: root.star-display-mode == 1 ? "una si tiene puntuación" : "las cinco";
+                                    clicked => { root.set-star-display-mode(root.star-display-mode == 1 ? 0 : 1); }
+                                }
                                 Section { text: "Tema"; }
                                 HorizontalLayout {
                                     spacing: Theme.gap;

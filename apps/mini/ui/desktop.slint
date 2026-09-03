@@ -1376,6 +1376,8 @@ export component DesktopShell inherits Rectangle {
                     reset-shortcuts => { root.reset-shortcuts(); }
                     queue-placement: root.queue-placement;
                     cycle-queue-placement => { root.cycle-queue-placement(); }
+                    star-display-mode: root.star-display-mode;
+                    set-star-display-mode(m) => { root.set-star-display-mode(m); }
                     ui-mode: root.ui-mode;
                     ui-mode-pending: root.ui-mode-pending;
                     ui-mode-pending-label: root.ui-mode-pending-label;
