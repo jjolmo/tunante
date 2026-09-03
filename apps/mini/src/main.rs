@@ -2354,10 +2354,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_queue_opened_in_table(move || {
             let Some(ui) = weak.upgrade() else { return };
+            // Mirror what the queue panel shows: the priority queue first,
+            // then the playing context — not just user_queue, which is empty
+            // whenever nothing was hand-queued.
             let paths: Vec<String> = player_q
                 .borrow()
                 .as_ref()
-                .map(|p| p.user_queue().iter().map(|t| t.path.clone()).collect())
+                .map(|p| {
+                    let mut v: Vec<String> =
+                        p.user_queue().iter().map(|t| t.path.clone()).collect();
+                    v.extend(p.queue().tracks().iter().map(|t| t.path.clone()));
+                    v
+                })
                 .unwrap_or_default();
             let mut st = st.borrow_mut();
             if !st.built {
@@ -5005,8 +5013,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         {
                             let mut st = table_state.borrow_mut();
                             if matches!(st.scope, Scope::Queue { .. }) {
-                                let paths: Vec<String> =
+                                let mut paths: Vec<String> =
                                     p.user_queue().iter().map(|t| t.path.clone()).collect();
+                                paths.extend(
+                                    p.queue().tracks().iter().map(|t| t.path.clone()),
+                                );
                                 st.scope = Scope::Queue { paths };
                                 rebuild_table(&mut st, &table_model);
                                 drop(st);
