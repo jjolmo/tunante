@@ -3722,14 +3722,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
         ui.on_cycle_short_filter(move || {
             let Some(ui) = weak.upgrade() else { return };
-            // desactivado → 5 → 10 → 30 → desactivado. Five seconds catches
-            // SFX rows; thirty catches jingles without eating real intros.
-            let next = match ui.get_short_filter_secs() {
-                0 => 5,
-                5 => 10,
-                10 => 30,
-                _ => 0,
-            };
+            // desactivado → 5 → 10 → … → 60 → desactivado, in 5 s steps.
+            let cur = ui.get_short_filter_secs();
+            let next = if cur >= 60 { 0 } else { cur + 5 };
             ui.set_short_filter_secs(next);
             let _ = db.set_setting("mini.short_filter_secs", &next.to_string());
             if let Some(p) = player.borrow_mut().as_mut() {
@@ -5426,7 +5421,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    ui.run()?;
+    // Not `ui.run()`: that returns as soon as the last window is closed, and
+    // close-to-tray *hides* the only window — which the loop counts as closed,
+    // so the process died the instant you closed to the tray. Showing the
+    // window and running until an explicit `quit_event_loop()` (the close
+    // handler calls it only when close-to-tray is off) keeps it alive in the
+    // tray instead.
+    ui.show()?;
+    slint::run_event_loop_until_quit()?;
     Ok(())
 }
 

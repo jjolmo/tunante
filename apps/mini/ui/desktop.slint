@@ -493,9 +493,9 @@ export component DesktopShell inherits Rectangle {
     callback clear-cover-cache();
     in property <string> undo-covers-label;
     callback undo-covers();
-    in-out property <bool> continue-queue;
+    in property <bool> continue-queue;
     callback toggle-continue-queue();
-    in-out property <bool> resume-on-open;
+    in property <bool> resume-on-open;
     callback toggle-resume-on-open();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
@@ -1177,6 +1177,32 @@ export component DesktopShell inherits Rectangle {
                             active: root.crossfade-secs > 0;
                             clicked => { root.toggle-crossfade(); }
                         } }
+                        // The rating, right beside the transport buttons.
+                        if root.now-title != "": VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 96px;
+                                height: 34px;
+                                border-radius: 17px;
+                                background: rateta.has-hover ? Theme.bg-hover : transparent;
+                                Text {
+                                    width: parent.width;
+                                    height: 100%;
+                                    text: root.now-stars;
+                                    color: Theme.accent;
+                                    font-size: Theme.font-body;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                                rateta := TouchArea {
+                                    clicked => {
+                                        root.rate-now(clamp(
+                                            floor(self.mouse-x / (parent.width / 5)) + 1,
+                                            1, 5));
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     HorizontalLayout {
@@ -1210,33 +1236,6 @@ export component DesktopShell inherits Rectangle {
                     HorizontalLayout {
                         spacing: 6px;
                         padding-right: 12px;
-                        // The rating, as a proper button among the rest: hover
-                        // background and one baseline, not a bare strip of text.
-                        if root.now-title != "": VerticalLayout {
-                            alignment: center;
-                            Rectangle {
-                                width: 96px;
-                                height: 34px;
-                                border-radius: 17px;
-                                background: rateta.has-hover ? Theme.bg-hover : transparent;
-                                Text {
-                                    width: parent.width;
-                                    height: 100%;
-                                    text: root.now-stars;
-                                    color: Theme.accent;
-                                    font-size: Theme.font-body;
-                                    vertical-alignment: center;
-                                    horizontal-alignment: center;
-                                }
-                                rateta := TouchArea {
-                                    clicked => {
-                                        root.rate-now(clamp(
-                                            floor(self.mouse-x / (parent.width / 5)) + 1,
-                                            1, 5));
-                                    }
-                                }
-                            }
-                        }
                         IconButton {
                             icon: @image-url("icons/settings.svg");
                             icon-size: 16px;
@@ -1439,9 +1438,9 @@ export component DesktopShell inherits Rectangle {
                     clear-cover-cache => { root.clear-cover-cache(); }
                     undo-covers-label: root.undo-covers-label;
                     undo-covers => { root.undo-covers(); }
-                    continue-queue <=> root.continue-queue;
+                    continue-queue: root.continue-queue;
                     toggle-continue-queue => { root.toggle-continue-queue(); }
-                    resume-on-open <=> root.resume-on-open;
+                    resume-on-open: root.resume-on-open;
                     toggle-resume-on-open => { root.toggle-resume-on-open(); }
                     loop-max-mins: root.loop-max-mins;
                     cycle-loop-max => { root.cycle-loop-max(); }
