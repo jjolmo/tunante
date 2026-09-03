@@ -347,6 +347,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let grid_model = Rc::new(VecModel::from(Vec::<GridLine>::new()));
     let art_cache: Rc<RefCell<Vec<(String, slint::Image)>>> = Rc::new(RefCell::new(Vec::new()));
+    // Grid cover art, decoded off the UI thread. Building a grid used to read a
+    // directory and decode a full-size image for every card before the view
+    // could paint — a thousand cards meant a thousand blocking decodes. Now the
+    // grid paints at once with blank art and a worker fills each card in.
+    //   art_req:  UI → worker, folders whose cover to decode.
+    //   art_done: worker → UI, the decoded RGBA.
+    //   art_seen: folders already requested, so a rebuild does not ask twice.
+    //   art_pos:  folder → the (line, col) cards waiting on it.
+    //   art_lines: each grid line's cell model, so a card can be filled in place.
+    let (art_req_tx, art_req_rx) = std::sync::mpsc::channel::<String>();
+    let (art_done_tx, art_done_rx) =
+        std::sync::mpsc::channel::<(String, u32, u32, Vec<u8>)>();
+    let art_seen: Rc<RefCell<std::collections::HashSet<String>>> =
+        Rc::new(RefCell::new(std::collections::HashSet::new()));
+    let art_pos: Rc<RefCell<std::collections::HashMap<String, Vec<(usize, usize)>>>> =
+        Rc::new(RefCell::new(std::collections::HashMap::new()));
+    let art_lines: Rc<RefCell<Vec<Rc<VecModel<GridCell>>>>> =
+        Rc::new(RefCell::new(Vec::new()));
+    std::thread::spawn(move || {
+        while let Ok(dir) = art_req_rx.recv() {
+            let decoded = library::folder_image(std::path::Path::new(&dir))
+                .and_then(|p| std::fs::read(p).ok())
+                .and_then(|bytes| image::load_from_memory(&bytes).ok())
+                .map(|d| d.thumbnail(ART_SIDE, ART_SIDE).to_rgba8());
+            // Send even a miss (empty bytes), so the UI stops waiting on it.
+            let (w, h, bytes) = match decoded {
+                Some(rgba) => (rgba.width(), rgba.height(), rgba.into_raw()),
+                None => (0, 0, Vec::new()),
+            };
+            if art_done_tx.send((dir, w, h, bytes)).is_err() {
+                return;
+            }
+        }
+    });
     // Set by the cover-download worker, acted on by the UI timer.
     //
     // The cache is an `Rc` owned by the UI thread and the download runs on its
@@ -371,6 +405,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         playlists: playlists_model.clone(),
         all_playlists: all_playlists_model.clone(),
         art: art_cache.clone(),
+        art_req: art_req_tx.clone(),
+        art_seen: art_seen.clone(),
+        art_pos: art_pos.clone(),
+        art_lines: art_lines.clone(),
     };
 
     // El primer dibujado del árbol no pasa por `refresh_library`, así que el
@@ -4773,6 +4811,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.set_add_files_label(SharedString::from(label));
                 }
 
+                // Grid covers decoded off-thread: fill each waiting card in
+                // place, so switching to Discos paints at once and the art
+                // arrives a moment later instead of blocking the whole view.
+                while let Ok((dir, w, h, bytes)) = art_done_rx.try_recv() {
+                    let img = if bytes.is_empty() {
+                        slint::Image::default()
+                    } else {
+                        let mut buf =
+                            slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(w, h);
+                        buf.make_mut_bytes().copy_from_slice(&bytes);
+                        slint::Image::from_rgba8(buf)
+                    };
+                    {
+                        let mut c = views.art.borrow_mut();
+                        if c.len() >= ART_CACHE {
+                            c.remove(0);
+                        }
+                        c.push((dir.clone(), img.clone()));
+                    }
+                    let lines = views.art_lines.borrow();
+                    if let Some(positions) = views.art_pos.borrow().get(&dir) {
+                        for &(li, ci) in positions {
+                            if let Some(line_m) = lines.get(li) {
+                                if let Some(mut cell) = line_m.row_data(ci) {
+                                    cell.art = img.clone();
+                                    line_m.set_row_data(ci, cell);
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // The updater's worker reported in.
                 while let Ok(msg) = update_rx.try_recv() {
                     match msg {
@@ -5504,46 +5574,36 @@ fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
 
 /// Portadas de carpeta ya decodificadas y escaladas.
 ///
-/// Con tope, y el tope es la razón de que exista: una rejilla construye todas
-/// sus celdas de golpe, y sin límite una biblioteca grande dejaría una portada
-/// residente por disco. A 224 px son 200 KB cada una; cuarenta son ocho megas
-/// en el peor caso, y el caso normal es mucho menos porque la mayoría de las
-/// carpetas de música de consola no traen imagen ninguna.
-const ART_SIDE: u32 = 224;
-const ART_CACHE: usize = 40;
+/// Grid thumbnails, small on purpose: a card is drawn a few centimetres wide,
+/// and 160 px keeps a thousand of them near a hundred megs rather than two.
+const ART_SIDE: u32 = 160;
+/// Big enough that a whole grid's covers stay cached, so navigating and
+/// filtering never re-decode. Cheap: a `slint::Image` clone shares its pixel
+/// buffer, so a cached cover and the card showing it are the same bytes.
+const ART_CACHE: usize = 8192;
 
-fn folder_art(
-    cache: &RefCell<Vec<(String, slint::Image)>>,
-    dir: &str,
-) -> slint::Image {
+/// The grid's cover for one card. A cache hit paints immediately; a miss paints
+/// blank, remembers where the card is, and asks the worker to decode it —
+/// [`refresh_library`] wires the answer back through the timer.
+fn grid_art(views: &Views, dir: &str, line: usize, col: usize) -> slint::Image {
     if dir.is_empty() {
         return slint::Image::default();
     }
-    if let Some((_, img)) = cache.borrow().iter().find(|(k, _)| k == dir) {
+    if let Some((_, img)) = views.art.borrow().iter().find(|(k, _)| k == dir) {
         return img.clone();
     }
-
-    let img = library::folder_image(std::path::Path::new(dir))
-        .and_then(|p| std::fs::read(p).ok())
-        .and_then(|bytes| image::load_from_memory(&bytes).ok())
-        .map(|d| d.thumbnail(ART_SIDE, ART_SIDE).to_rgba8())
-        .map(|rgba| {
-            let mut buf =
-                slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(rgba.width(), rgba.height());
-            buf.make_mut_bytes().copy_from_slice(rgba.as_raw());
-            slint::Image::from_rgba8(buf)
-        })
-        // Se cachea también el "no hay portada": si no, cada refresco vuelve a
-        // leer el directorio de todas las carpetas sin imagen, que son la
-        // mayoría.
-        .unwrap_or_default();
-
-    let mut c = cache.borrow_mut();
-    if c.len() >= ART_CACHE {
-        c.remove(0);
+    views
+        .art_pos
+        .borrow_mut()
+        .entry(dir.to_string())
+        .or_default()
+        .push((line, col));
+    // Requested once and remembered: a rebuild re-uses the pending request
+    // rather than flooding the worker with the same folder again.
+    if views.art_seen.borrow_mut().insert(dir.to_string()) {
+        let _ = views.art_req.send(dir.to_string());
     }
-    c.push((dir.to_string(), img.clone()));
-    img
+    slint::Image::default()
 }
 
 /// Everything `refresh_library` writes into.
@@ -5558,6 +5618,11 @@ struct Views {
     playlists: Rc<VecModel<PlaylistRow>>,
     all_playlists: Rc<VecModel<PlaylistRow>>,
     art: Rc<RefCell<Vec<(String, slint::Image)>>>,
+    // Async grid cover art — see where the worker is spawned.
+    art_req: std::sync::mpsc::Sender<String>,
+    art_seen: Rc<RefCell<std::collections::HashSet<String>>>,
+    art_pos: Rc<RefCell<std::collections::HashMap<String, Vec<(usize, usize)>>>>,
+    art_lines: Rc<RefCell<Vec<Rc<VecModel<GridCell>>>>>,
 }
 
 /// "1 pista" y no "1 pistas", igual que en la biblioteca.
@@ -5685,16 +5750,23 @@ fn refresh_library(
         Some(cells) => {
             let columns = ui.get_library_columns().max(1) as usize;
             let total = cells.len();
+            // A fresh grid: forget which cards were waiting on which cover.
+            views.art_pos.borrow_mut().clear();
+            let mut line_models: Vec<Rc<VecModel<GridCell>>> = Vec::new();
             let lines: Vec<GridLine> = cells
                 .chunks(columns)
-                .map(|chunk| {
+                .enumerate()
+                .map(|(li, chunk)| {
                     let mut fila: Vec<GridCell> = chunk
                         .iter()
-                        .map(|c| GridCell {
+                        .enumerate()
+                        .map(|(ci, c)| GridCell {
                             title: SharedString::from(c.title.as_str()),
                             subtitle: SharedString::from(c.subtitle.as_str()),
                             path: SharedString::from(c.path.as_str()),
-                            art: folder_art(art_cache, &c.art_dir),
+                            // Cache hit paints now; a miss paints blank and asks
+                            // the worker, filled in place when it answers.
+                            art: grid_art(views, &c.art_dir, li, ci),
                             console: SharedString::from(c.console.as_str()),
                             playing: false,
                         })
@@ -5706,9 +5778,12 @@ fn refresh_library(
                     while fila.len() < columns {
                         fila.push(GridCell::default());
                     }
-                    GridLine { cells: ModelRc::from(Rc::new(VecModel::from(fila))) }
+                    let m = Rc::new(VecModel::from(fila));
+                    line_models.push(m.clone());
+                    GridLine { cells: ModelRc::from(m) }
                 })
                 .collect();
+            *views.art_lines.borrow_mut() = line_models;
             grid_model.set_vec(lines);
             rows_model.set_vec(Vec::new());
             ui.set_library_grid(true);
