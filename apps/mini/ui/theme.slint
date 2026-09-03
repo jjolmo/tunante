@@ -6,6 +6,9 @@
 
 export global Theme {
     in-out property <bool> dark: true;
+    // Set true for the desktop (grande) shell: the old Tauri desktop used
+    // smaller type than a phone wants. The mini shells keep the larger sizes.
+    in-out property <bool> compact: false;
 
     out property <color> bg-primary:     self.dark ? #1e1e1e : #ffffff;
     out property <color> bg-secondary:   self.dark ? #252526 : #f3f3f3;
@@ -28,9 +31,9 @@ export global Theme {
     out property <length> gap: 12px;
     out property <length> radius: 8px;
 
-    out property <length> font-title: 17px;
-    out property <length> font-body: 15px;
-    out property <length> font-small: 13px;
+    out property <length> font-title: self.compact ? 14px : 17px;
+    out property <length> font-body: self.compact ? 13px : 15px;
+    out property <length> font-small: self.compact ? 11px : 13px;
 }
 
 // Small formatting helpers, so the same clock is written the same way wherever

@@ -224,6 +224,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_ui_mode(1);
     }
     ui.set_ui_mode_label(SharedString::from(ui_mode_label(ui.get_ui_mode())));
+    ui.set_ui_mode_pending(ui.get_ui_mode());
+    ui.set_ui_mode_pending_label(SharedString::from(ui_mode_label(ui.get_ui_mode())));
 
     // The palette always had both values; this is just the switch. Persisted
     // under the desktop's key, so the unified database keeps one opinion.
@@ -3585,10 +3587,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_cycle_ui_mode(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let next = (ui.get_ui_mode() + 1) % 3;
-            ui.set_ui_mode(next);
-            let _ = db.set_setting("mini.ui_mode", &next.to_string());
-            ui.set_ui_mode_label(SharedString::from(ui_mode_label(next)));
+            // Cycle the PENDING choice only — applying it switches the whole
+            // shell (and, from the desktop modal, would yank you out), so it
+            // waits for a deliberate "Aplicar".
+            let next = (ui.get_ui_mode_pending() + 1) % 3;
+            ui.set_ui_mode_pending(next);
+            ui.set_ui_mode_pending_label(SharedString::from(ui_mode_label(next)));
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_apply_ui_mode(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let mode = ui.get_ui_mode_pending();
+            ui.set_ui_mode(mode);
+            let _ = db.set_setting("mini.ui_mode", &mode.to_string());
+            ui.set_ui_mode_label(SharedString::from(ui_mode_label(mode)));
         });
     }
 

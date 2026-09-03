@@ -209,6 +209,10 @@ export component DesktopSettings inherits Rectangle {
     callback reset-shortcuts();
     in property <image> now-art;
     in property <int> cover-fit;
+    in property <int> ui-mode;
+    in-out property <int> ui-mode-pending;
+    in property <string> ui-mode-pending-label;
+    callback apply-ui-mode();
     // Closed from the ✕, the backdrop, or Escape.
     callback close();
 
@@ -364,8 +368,14 @@ export component DesktopSettings inherits Rectangle {
                                 }
                                 SettingRow {
                                     label: "Modo de interfaz";
-                                    value: root.ui-mode-label;
+                                    value: root.ui-mode-pending-label;
                                     clicked => { root.cycle-ui-mode(); }
+                                }
+                                if root.ui-mode-pending != root.ui-mode: SettingRow {
+                                    label: "  ↳ Aplicar (cambia la presentación)";
+                                    value: "Aplicar";
+                                    highlighted: true;
+                                    clicked => { root.apply-ui-mode(); }
                                 }
                             }
 

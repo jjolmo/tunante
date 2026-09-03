@@ -188,6 +188,9 @@ export component AppWindow inherits Window {
     callback cycle-crossfade();
     in property <string> output-label: "sistema";
     in property <string> ui-mode-label: "auto";
+    in-out property <int> ui-mode-pending;
+    in property <string> ui-mode-pending-label;
+    callback apply-ui-mode();
     in property <string> update-status;
     callback check-update();
     in property <string> theme-label;
@@ -409,11 +412,14 @@ export component AppWindow inherits Window {
     // desktop. Auto draws the line at 900px of width.
     in-out property <int> ui-mode: 0;
     property <bool> desktop: false;
+    init => { root.reshape(); }
 
     function reshape() {
         root.portrait = root.height >= root.width;
         root.desktop = root.ui-mode == 2
             || (root.ui-mode == 0 && root.width >= 900px);
+        // Desktop uses the old, tighter type scale.
+        Theme.compact = root.desktop;
     }
 
     changed width => {
@@ -616,6 +622,10 @@ export component AppWindow inherits Window {
             mouse-extra-label: root.mouse-extra-label;
             cycle-mouse-action(b) => { root.cycle-mouse-action(b); }
             reset-shortcuts => { root.reset-shortcuts(); }
+            ui-mode: root.ui-mode;
+            ui-mode-pending: root.ui-mode-pending;
+            ui-mode-pending-label: root.ui-mode-pending-label;
+            apply-ui-mode => { root.apply-ui-mode(); }
             folder-opened(id) => { root.folder-opened(id); }
             folder-unpinned(id) => { root.folder-unpinned(id); }
             folder-revealed(id) => { root.folder-revealed(id); }
@@ -939,6 +949,9 @@ export component AppWindow inherits Window {
                         ui-mode-label: root.ui-mode-label;
                         cycle-output => { root.cycle-output(); }
                         cycle-ui-mode => { root.cycle-ui-mode(); }
+                    ui-mode-pending: root.ui-mode-pending;
+                    ui-mode-pending-label: root.ui-mode-pending-label;
+                    apply-ui-mode => { root.apply-ui-mode(); }
                     update-status: root.update-status;
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
