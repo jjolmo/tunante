@@ -544,8 +544,19 @@ export component DesktopShell inherits Rectangle {
                     // the cover, the fixed content outgrew the window and shoved the
                     // transport bar off the bottom. Ajustes and the cover stay pinned
                     // below, outside this Flickable.
-                    Flickable {
+                    //
+                    // The Flickable lives inside a stretchy Rectangle: a Flickable
+                    // caps its own height at its content, so when a section is
+                    // collapsed the short content would drag the whole sidebar — and
+                    // with it the transport bar — up, leaving a void below. The
+                    // Rectangle (infinite max-height) claims the space; the Flickable
+                    // fills it explicitly.
+                    Rectangle {
                         vertical-stretch: 1;
+                        clip: true;
+                    Flickable {
+                        width: 100%;
+                        height: 100%;
                         viewport-height: scroll-inner.preferred-height;
                         scroll-inner := VerticalLayout {
                             spacing: 2px;
@@ -880,6 +891,7 @@ export component DesktopShell inherits Rectangle {
                                 }
                             }
                         }
+                    }
                     }
                     }
                     }
