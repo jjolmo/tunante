@@ -332,6 +332,9 @@ export component DesktopShell inherits Rectangle {
     in property <int> open-settings-tick;
     in-out property <bool> showing-settings;
     changed open-settings-tick => { root.showing-settings = true; }
+    // Bumped by Rust when a console is opened from the grid: show the table.
+    in property <int> show-table-tick;
+    changed show-table-tick => { root.centre = 0; }
     callback folder-watch-toggled(string, bool);
     callback folder-removed(string);
     in property <int> loop-count;
