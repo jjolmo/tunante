@@ -4682,6 +4682,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             table_scroll_restored.clone(),
         );
         let art_try: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
+        // The last track path written to the session, so a change can be saved
+        // the instant it happens rather than waiting for the 5 s heartbeat.
+        let last_saved_path: RefCell<Option<String>> = RefCell::new(None);
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
@@ -5341,6 +5344,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(name) = p.reconcile_output() {
                         eprintln!("salida de audio recuperada: {name}");
                     }
+                }
+                // The session heartbeat every 5 s, but also the very moment the
+                // track changes: a song played and closed inside the 5 s window
+                // would otherwise reopen as the previous one.
+                let cur_path = p.current().map(|t| t.path.to_string());
+                let track_changed = *last_saved_path.borrow() != cur_path;
+                if ticks % 10 == 0 || track_changed {
+                    *last_saved_path.borrow_mut() = cur_path;
                     let _ = db.set_setting(
                         "mini.was_playing",
                         if p.is_playing() { "true" } else { "false" },
