@@ -133,6 +133,8 @@ export component DesktopSettings inherits Rectangle {
     callback show-log();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
+    in property <bool> show-in-tray;
+    callback toggle-show-in-tray();
     in property <string> mouse-buttons-label;
     in property <bool> mouse-buttons-on;
     callback toggle-mouse-buttons();
@@ -372,6 +374,11 @@ export component DesktopSettings inherits Rectangle {
                                     label: "Icono de bandeja";
                                     value: root.tray-style-label;
                                     clicked => { root.cycle-tray-style(); }
+                                }
+                                CheckRow {
+                                    label: "Mostrar icono en la bandeja (requiere reiniciar)";
+                                    checked: root.show-in-tray;
+                                    toggled => { root.toggle-show-in-tray(); }
                                 }
                                 CheckRow {
                                     label: "Cerrar a la bandeja";

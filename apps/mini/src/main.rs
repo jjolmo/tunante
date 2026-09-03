@@ -259,7 +259,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("logo") => 2,
         _ => 0,
     };
-    tray::spawn(tray_style);
+    // The tray can be turned off entirely. Spawning it is a startup decision —
+    // the GTK thread cannot be torn down cleanly at runtime — so toggling this
+    // takes effect on the next launch. Close-to-tray is inert without it.
+    let show_in_tray = db
+        .get_setting("show_in_tray")
+        .ok()
+        .flatten()
+        .map(|v| v != "false")
+        .unwrap_or(true);
+    if show_in_tray {
+        tray::spawn(tray_style);
+    }
+    ui.set_show_in_tray(show_in_tray);
     ui.set_tray_style_label(SharedString::from(tray_style_label(tray_style)));
 
     if focus_search {
@@ -1165,8 +1177,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })
                 })
                 .sum();
-            // 40px minimum, the old desktop's floor.
-            let min_w = 40.0 / total_px * total_weight;
+            // 16px minimum: enough for the ▶ marker, and looser than
+            // the old 40px floor so narrow columns can actually be narrow.
+            let min_w = 16.0 / total_px * total_weight;
             let pair = w_a + w_b;
             let new_a = (w_a + dx_px / total_px * total_weight)
                 .clamp(min_w, (pair - min_w).max(min_w));
@@ -4224,7 +4237,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let flag = close_to_tray.clone();
         ui.window().on_close_requested(move || {
-            if cfg!(all(target_os = "linux", feature = "tray")) && flag.get() {
+            // Only hide to the tray if there IS a tray: no icon means no way
+            // back, so without one the close button quits, as it always did.
+            if cfg!(all(target_os = "linux", feature = "tray")) && show_in_tray && flag.get() {
                 slint::CloseRequestResponse::HideWindow
             } else {
                 let _ = slint::quit_event_loop();
@@ -4241,6 +4256,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             flag.set(next);
             ui.set_close_to_tray(next);
             let _ = db.set_setting("close_to_tray", if next { "true" } else { "false" });
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_show_in_tray(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_show_in_tray();
+            ui.set_show_in_tray(next);
+            let _ = db.set_setting("show_in_tray", if next { "true" } else { "false" });
         });
     }
 
@@ -6550,7 +6574,7 @@ struct ColumnDef {
 }
 
 const TABLE_COLUMNS: &[ColumnDef] = &[
-    ColumnDef { key: "playing", label: "", fraction: 0.4, right: false },
+    ColumnDef { key: "playing", label: "▶", fraction: 0.4, right: false },
     ColumnDef { key: "n", label: "#", fraction: 0.5, right: false },
     ColumnDef { key: "title", label: "Título", fraction: 3.4, right: false },
     ColumnDef { key: "artist", label: "Artista", fraction: 2.2, right: false },
@@ -6570,7 +6594,7 @@ const TABLE_COLUMNS: &[ColumnDef] = &[
     ColumnDef { key: "path", label: "Ruta", fraction: 3.4, right: false },
 ];
 
-const DEFAULT_COLUMNS: &str = "n,title,artist,game,console,stars,duration";
+const DEFAULT_COLUMNS: &str = "playing,n,title,artist,game,console,stars,duration";
 
 /// One cell, painted. The UI never computes a cell — the GridLine rule.
 fn cell_for(t: &tunante_core::db::models::Track, key: &str, prefers_game: bool, star_mode: i32) -> String {
@@ -6671,7 +6695,8 @@ fn rebuild_columns(
             .iter()
             .map(|d| ColumnChoice {
                 key: SharedString::from(d.key),
-                label: SharedString::from(d.label),
+                // The header wears a glyph; the chooser needs a word.
+                label: SharedString::from(if d.key == "playing" { "Reproduciendo" } else { d.label }),
                 shown: st.visible.iter().any(|k| k == d.key),
             })
             .collect::<Vec<_>>(),

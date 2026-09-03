@@ -471,6 +471,8 @@ export component DesktopShell inherits Rectangle {
     callback show-log();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
+    in property <bool> show-in-tray;
+    callback toggle-show-in-tray();
     in property <string> mouse-buttons-label;
     in property <bool> mouse-buttons-on;
     callback toggle-mouse-buttons();
@@ -1416,6 +1418,8 @@ export component DesktopShell inherits Rectangle {
                     show-log => { root.show-log(); }
                     close-to-tray <=> root.close-to-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
+                    show-in-tray: root.show-in-tray;
+                    toggle-show-in-tray => { root.toggle-show-in-tray(); }
                     mouse-buttons-label: root.mouse-buttons-label;
                     mouse-buttons-on: root.mouse-buttons-on;
                     toggle-mouse-buttons => { root.toggle-mouse-buttons(); }
