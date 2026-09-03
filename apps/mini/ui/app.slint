@@ -539,12 +539,18 @@ export component AppWindow inherits Window {
         height: root.height;
         init => { self.focus(); }
         key-pressed(ev) => {
+            // Ctrl+P opens Ajustes, set straight on the shell — the tick round
+            // trip through Rust was not reaching the modal.
+            if (ev.modifiers.control && ev.text == "p") {
+                ds.showing-settings = true;
+                return accept;
+            }
             if (root.shortcut-key(ev.text, ev.modifiers.control, ev.modifiers.alt, ev.modifiers.shift)) {
                 return accept;
             }
             reject
         }
-        DesktopShell {
+        ds := DesktopShell {
             width: parent.width;
             height: parent.height;
             scan-status: root.scan-status;
