@@ -1579,12 +1579,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cover_target: Rc<RefCell<Option<tunante_core::db::models::Track>>> =
         Rc::new(RefCell::new(None));
     let cover_urls: Rc<RefCell<Vec<String>>> = Rc::new(RefCell::new(Vec::new()));
+    // Bumped on every new cover search; results carry the value and the
+    // drain drops any that are not the latest.
+    let cover_gen: Rc<std::cell::Cell<u64>> = Rc::new(std::cell::Cell::new(0));
     let cover_model = Rc::new(VecModel::from(Vec::<CoverCandidate>::new()));
     ui.set_cover_candidates(ModelRc::from(cover_model.clone()));
 
     {
         let (st, target, tx) = (table_state.clone(), cover_target.clone(), cover_tx.clone());
         let (urls, model) = (cover_urls.clone(), cover_model.clone());
+        let cover_gen = cover_gen.clone();
         let weak = ui.as_weak();
         ui.on_table_cover_requested(move |index| {
             let Some(ui) = weak.upgrade() else { return };
@@ -1601,18 +1605,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             model.set_vec(Vec::new());
             *target.borrow_mut() = Some(t.clone());
             ui.set_covering(true);
-            spawn_cover_search(tx.clone(), t, None);
+            let g = cover_gen.get() + 1;
+            cover_gen.set(g);
+            spawn_cover_search(tx.clone(), t, None, g);
         });
     }
     {
         let (target, tx) = (cover_target.clone(), cover_tx.clone());
+        let cover_gen = cover_gen.clone();
         let weak = ui.as_weak();
         ui.on_cover_search(move |q| {
             let Some(ui) = weak.upgrade() else { return };
             let Some(t) = target.borrow().clone() else { return };
             ui.set_cover_status(SharedString::from("Buscando…"));
             let q = q.trim().to_string();
-            spawn_cover_search(tx.clone(), t, (!q.is_empty()).then_some(q));
+            let g = cover_gen.get() + 1;
+            cover_gen.set(g);
+            spawn_cover_search(tx.clone(), t, (!q.is_empty()).then_some(q), g);
         });
     }
     {
@@ -4554,6 +4563,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let consoles_side = consoles_side.clone();
         let badge_fp = badge_fp.clone();
         let tray_click = tray_click.clone();
+        let cover_gen = cover_gen.clone();
         let vol_tooltip_hold = Rc::new(std::cell::Cell::new(0u8));
         let pending_search = pending_search.clone();
         let art_try: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
@@ -4674,7 +4684,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         CoverMsg::Status(text) => {
                             ui.set_cover_status(SharedString::from(text));
                         }
-                        CoverMsg::Options(list) => {
+                        CoverMsg::Options { generation, hits: list } => {
+                            // Drop a stale search's results (they'd paint one
+                            // game's covers under another game's title).
+                            if generation != cover_gen.get() {
+                                continue;
+                            }
+                            if list.is_empty() {
+                                ui.set_cover_status(SharedString::from(
+                                    "Sin resultados. Prueba con otro nombre.",
+                                ));
+                                cover_model.set_vec(Vec::new());
+                                cover_urls.borrow_mut().clear();
+                                continue;
+                            }
+                            ui.set_cover_status(SharedString::new());
                             let mut u = cover_urls.borrow_mut();
                             u.clear();
                             let rows: Vec<CoverCandidate> = list
@@ -5905,7 +5929,10 @@ struct CoverHit {
 
 enum CoverMsg {
     Status(String),
-    Options(Vec<CoverHit>),
+    /// Generation-stamped: a search's async results must never overwrite a
+    /// fresher search's — the picker showed one game's covers under another
+    /// game's title otherwise.
+    Options { generation: u64, hits: Vec<CoverHit> },
     Saved,
     BulkStatus(String),
     /// game, console label, source, action — the dry run's findings.
@@ -6265,17 +6292,12 @@ fn spawn_cover_search(
     tx: std::sync::mpsc::Sender<CoverMsg>,
     track: tunante_core::db::models::Track,
     query: Option<String>,
+    generation: u64,
 ) {
     std::thread::spawn(move || {
         use tunante_art::http::Http;
         let req = cover_request_for(&track, false);
         let hits = cover_resolver().options(&req, query.as_deref(), 12);
-        if hits.is_empty() {
-            let _ = tx.send(CoverMsg::Status(
-                "Sin resultados. Prueba con otro nombre.".to_string(),
-            ));
-            return;
-        }
         let http = tunante_art::http::UreqHttp::default();
         let out = hits
             .into_iter()
@@ -6297,7 +6319,7 @@ fn spawn_cover_search(
                 url: h.url,
             })
             .collect();
-        let _ = tx.send(CoverMsg::Options(out));
+        let _ = tx.send(CoverMsg::Options { generation, hits: out });
     });
 }
 
