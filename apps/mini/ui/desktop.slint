@@ -295,6 +295,9 @@ export component DesktopShell inherits Rectangle {
     callback table-column-toggled(string);
     in property <int> star-display-mode;
     callback set-star-display-mode(int);
+    in property <length> table-restore-y;
+    in property <int> table-restore-tick;
+    callback table-scrolled(length);
     in property <int> table-sort-col;
     in property <bool> table-sort-asc;
     in-out property <string> table-filter;
@@ -975,6 +978,9 @@ export component DesktopShell inherits Rectangle {
                     column-toggled(k) => { root.table-column-toggled(k); }
                     star-mode: root.star-display-mode;
                     set-star-mode(m) => { root.set-star-display-mode(m); }
+                    restore-y: root.table-restore-y;
+                    restore-tick: root.table-restore-tick;
+                    scrolled(y) => { root.table-scrolled(y); }
                     now-path: root.now-path;
                     sort-col: root.table-sort-col;
                     sort-asc: root.table-sort-asc;

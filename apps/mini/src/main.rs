@@ -918,6 +918,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The search box's latest text, flushed to the database by the timer —
     // a write per keystroke would be noise, the old app debounced too.
     let pending_search: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
+    // The table's scroll offset, persisted so the view reopens where it was.
+    // `table_scroll` holds the latest live value; `table_scroll_dirty` gates
+    // the debounced write; `table_scroll_restored` fires the one-shot restore.
+    let saved_scroll: f32 = db
+        .get_setting("table_scroll_y")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.0);
+    let table_scroll = Rc::new(std::cell::Cell::new(saved_scroll));
+    let table_scroll_dirty = Rc::new(std::cell::Cell::new(false));
+    let table_scroll_restored = Rc::new(std::cell::Cell::new(false));
+    {
+        let (ts, dirty) = (table_scroll.clone(), table_scroll_dirty.clone());
+        ui.on_table_scrolled(move |y| {
+            ts.set(y);
+            dirty.set(true);
+        });
+    }
     let columns_model = Rc::new(VecModel::from(Vec::<TableColumn>::new()));
     let choices_model = Rc::new(VecModel::from(Vec::<ColumnChoice>::new()));
     ui.set_table_columns(ModelRc::from(columns_model.clone()));
@@ -4657,6 +4676,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let cover_gen = cover_gen.clone();
         let vol_tooltip_hold = Rc::new(std::cell::Cell::new(0u8));
         let pending_search = pending_search.clone();
+        let (table_scroll, table_scroll_dirty, table_scroll_restored) = (
+            table_scroll.clone(),
+            table_scroll_dirty.clone(),
+            table_scroll_restored.clone(),
+        );
         let art_try: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
@@ -4997,6 +5021,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if let Some(q) = pending_search.borrow_mut().take() {
                     let _ = db.set_setting("search_query", &q);
+                }
+
+                // Restore the table's scroll once its rows exist (the ListView
+                // clamps to content, so this must wait for the first build),
+                // then persist later scrolling, debounced to this 500 ms tick.
+                if !table_scroll_restored.get() && table_state.borrow().built {
+                    table_scroll_restored.set(true);
+                    let y = table_scroll.get();
+                    if y > 0.0 {
+                        ui.set_table_restore_y(y);
+                        ui.set_table_restore_tick(ui.get_table_restore_tick() + 1);
+                    }
+                    // The restore's own scrolled() callback re-marks dirty with
+                    // the same value; drop it so the first tick writes nothing.
+                    table_scroll_dirty.set(false);
+                } else if table_scroll_dirty.replace(false) {
+                    let _ = db.set_setting("table_scroll_y", &table_scroll.get().to_string());
                 }
 
                 // A fresh track with no art, and permission to go get it:
