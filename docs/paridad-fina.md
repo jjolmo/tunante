@@ -12,10 +12,10 @@
 > grande»: tunante abre de tres formas (mini vertical, mini horizontal,
 > grande), y la grande debe igualar al desktop viejo. Por eso listas y
 > consolas ahora se abren EN la tabla potente (scope), no en la rejilla del
-> teléfono — y con ello «Quitar de la lista» vuelve al menú de la tabla. El
-> único «[~]» que queda es la auto-reanudación: restaura pista+posición en
-> pausa a propósito (una app que arranca sonando sola es hostil). Nada del
-> inventario del viejo (79 comandos, 21 componentes) se quedó sin equivalente.
+> teléfono — y con ello «Quitar de la lista» vuelve al menú de la tabla. La
+> auto-reanudación del viejo (<5 min sonando) es ahora una fila opcional,
+> off por defecto. La lista está entera en [x]: nada del inventario del
+> viejo (79 comandos, 21 componentes) se quedó sin equivalente.
 
 ## A · Roto o grave (bloquea el uso diario)
 
