@@ -779,10 +779,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .unwrap_or_default();
             let tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
             if let Some(start) = tracks.iter().position(|t| t.path == path) {
+                // Opt-in resume: only if the user asked, the app was playing
+                // when it went away, and that was less than five minutes ago.
+                let resume = db
+                    .get_setting("resume_playback_on_open")
+                    .ok()
+                    .flatten()
+                    .map(|v| v == "true")
+                    .unwrap_or(false)
+                    && db.get_setting("mini.was_playing").ok().flatten().as_deref() == Some("true")
+                    && db
+                        .get_setting("mini.closed_at")
+                        .ok()
+                        .flatten()
+                        .and_then(|v| v.parse::<u64>().ok())
+                        .zip(
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .ok()
+                                .map(|d| d.as_secs()),
+                        )
+                        .is_some_and(|(closed, now)| now.saturating_sub(closed) < 300);
                 if let Some(p) = player.borrow_mut().as_mut() {
                     p.set_tracks(tracks.clone());
                     if p.play_index(start).is_ok() {
-                        p.toggle_play();               // straight to paused
+                        if !resume {
+                            p.toggle_play();           // straight to paused
+                        }
                         p.seek(saved.position_ms);
                         push_now_playing(&ui, p);
                     }
@@ -3573,6 +3596,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    ui.set_resume_on_open(
+        db.get_setting("resume_playback_on_open")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false),
+    );
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_resume_on_open(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_resume_on_open();
+            ui.set_resume_on_open(next);
+            let _ = db.set_setting("resume_playback_on_open", if next { "true" } else { "false" });
+        });
+    }
     {
         let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_cycle_loop_max(move || {
@@ -4904,6 +4943,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // atomic swap and a device-name lookup.
                     if let Some(name) = p.reconcile_output() {
                         eprintln!("salida de audio recuperada: {name}");
+                    }
+                    let _ = db.set_setting(
+                        "mini.was_playing",
+                        if p.is_playing() { "true" } else { "false" },
+                    );
+                    if let Ok(now) = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                    {
+                        let _ = db.set_setting("mini.closed_at", &now.as_secs().to_string());
                     }
                     session::Session::save(
                         &db,
