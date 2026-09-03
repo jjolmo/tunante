@@ -867,8 +867,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         p.seek(saved.position_ms);
                         push_now_playing(&ui, p);
                     }
+                    refresh_queue(p, &queue_model);
                 }
-                queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
             }
         }
     }
@@ -951,8 +951,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
                 push_now_playing(&ui, p);
+                refresh_queue(p, &queue_model);
             }
-            queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
         });
     }
 
@@ -1276,8 +1276,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
                 push_now_playing(&ui, p);
+                refresh_queue(p, &queue_model_t);
             }
-            queue_model_t.set_vec(to_queue_rows(&tracks, Some(index)));
         });
     }
 
@@ -1435,7 +1435,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(()) => push_now_playing(ui, p),
                 Err(e) => show_play_error(ui, &e),
             }
-            queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
+            refresh_queue(p, queue_model);
         }
     }
     {
@@ -2451,18 +2451,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_queue_opened_in_table(move || {
             let Some(ui) = weak.upgrade() else { return };
-            // Mirror what the queue panel shows: the priority queue first,
-            // then the playing context — not just user_queue, which is empty
-            // whenever nothing was hand-queued.
+            // The queue is what was hand-queued, nothing more — the playing
+            // context is not part of it.
             let paths: Vec<String> = player_q
                 .borrow()
                 .as_ref()
-                .map(|p| {
-                    let mut v: Vec<String> =
-                        p.user_queue().iter().map(|t| t.path.clone()).collect();
-                    v.extend(p.queue().tracks().iter().map(|t| t.path.clone()));
-                    v
-                })
+                .map(|p| p.user_queue().iter().map(|t| t.path.clone()).collect())
                 .unwrap_or_default();
             let mut st = st.borrow_mut();
             if !st.built {
@@ -2790,16 +2784,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
+        let (table_v, tmodel_v) = (table_state.clone(), table_model.clone());
         let weak_v = ui.as_weak();
         ui.on_library_grid_tapped(move |path| {
             let Some(ui) = weak_v.upgrade() else { return };
-            // A console card opens all of its tracks. On the desktop that is the
-            // powerful table (Scope::Console); the phone stays in the list view
-            // by navigating into it, which grid_tracks now answers with the
-            // whole console.
-            if let Some(console) = path.strip_prefix("consola:") {
-                if ui.get_desktop() {
+            // On the desktop a grid card that holds tracks — a console or a disc
+            // — opens the powerful table filtered to it, not the phone's list.
+            // Games stay a list for now; the phone always navigates in.
+            if ui.get_desktop() {
+                if let Some(console) = path.strip_prefix("consola:") {
                     ui.invoke_console_opened_in_table(SharedString::from(console));
+                    ui.set_show_table_tick(ui.get_show_table_tick() + 1);
+                    return;
+                }
+                if !path.starts_with("juego:") {
+                    // A disc/album is a real folder: narrow the table to it.
+                    let mut st = table_v.borrow_mut();
+                    if !st.built {
+                        st.built = true;
+                        st.all = db_v.get_all_tracks().unwrap_or_default();
+                    }
+                    st.scope = Scope::Folder(path.to_string());
+                    rebuild_table(&mut st, &tmodel_v);
+                    ui.set_table_faved(false);
+                    ui.set_table_scope_kind(SharedString::from("folder"));
+                    ui.set_table_folder_id(SharedString::from(""));
+                    ui.set_table_scope_label(SharedString::from(scope_label(&db_v, &st.scope)));
+                    ui.set_table_sort_col(
+                        st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
+                    );
+                    drop(st);
                     ui.set_show_table_tick(ui.get_show_table_tick() + 1);
                     return;
                 }
@@ -5207,11 +5221,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         {
                             let mut st = table_state.borrow_mut();
                             if matches!(st.scope, Scope::Queue { .. }) {
-                                let mut paths: Vec<String> =
+                                let paths: Vec<String> =
                                     p.user_queue().iter().map(|t| t.path.clone()).collect();
-                                paths.extend(
-                                    p.queue().tracks().iter().map(|t| t.path.clone()),
-                                );
                                 st.scope = Scope::Queue { paths };
                                 rebuild_table(&mut st, &table_model);
                                 drop(st);
@@ -5696,7 +5707,7 @@ fn refresh_library(
     db: &Rc<Database>,
     views: &Views,
 ) {
-    let (rows_model, grid_model, art_cache) = (&views.rows, &views.grid, &views.art);
+    let (rows_model, grid_model) = (&views.rows, &views.grid);
     let t = tree.borrow();
     let mode = t.mode;
 
@@ -7339,35 +7350,10 @@ fn play_from_path(
             Ok(()) => push_now_playing(ui, p),
             Err(e) => show_play_error(ui, &e),
         }
+        // The context walks in order; the queue shows only what was hand-queued.
+        refresh_queue(p, queue_model);
     }
-    queue_model.set_vec(to_queue_rows(&tracks, Some(start)));
     ui.set_setup_mode(false);
-}
-
-fn to_queue_rows(
-    tracks: &[tunante_core::db::models::Track],
-    playing: Option<usize>,
-) -> Vec<QueueRow> {
-    tracks
-        .iter()
-        .enumerate()
-        .map(|(i, t)| QueueRow {
-            title: SharedString::from(if t.title.is_empty() {
-                t.path.as_str()
-            } else {
-                t.title.as_str()
-            }),
-            subtitle: SharedString::from(
-                [t.artist.as_str(), t.album.as_str()]
-                    .iter()
-                    .filter(|s| !s.is_empty())
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join(" — "),
-            ),
-            playing: Some(i) == playing,
-        })
-        .collect()
 }
 
 /// Move the "now playing" marker to wherever the queue says we are.
@@ -7380,7 +7366,10 @@ fn to_queue_rows(
 /// user section shrinks every time a row of it plays, so a marker alone
 /// cannot keep the pane honest.
 fn refresh_queue(p: &player::Player, model: &VecModel<QueueRow>) {
-    let mut rows: Vec<QueueRow> = p
+    // Only what was hand-queued. Playing a console or a disc sets the playing
+    // context so it walks in order, but that context is NOT the queue: the user
+    // asked that selecting a list never fill the queue with all of it.
+    let rows: Vec<QueueRow> = p
         .user_queue()
         .iter()
         .map(|t| QueueRow {
@@ -7392,13 +7381,6 @@ fn refresh_queue(p: &player::Player, model: &VecModel<QueueRow>) {
             playing: false,
         })
         .collect();
-    // While a user-queued track sounds, the context marker must not claim it.
-    let marker = if p.playing_from_user_queue() {
-        None
-    } else {
-        p.current_index()
-    };
-    rows.extend(to_queue_rows(p.queue().tracks(), marker));
     model.set_vec(rows);
 }
 

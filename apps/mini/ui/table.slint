@@ -650,7 +650,9 @@ export component TrackTable inherits Rectangle {
                                 width: parent.width;
                                 height: 100%;
                                 text: row.cells[ci];
-                                color: row.selected || playing ? #ffffff : Theme.accent;
+                                // Always the accent, full or empty — the stars
+                                // never change colour with selection or play.
+                                color: Theme.accent;
                                 // Bigger than a text cell: at font-small the
                                 // glyphs read as specks. Letter-spacing gives
                                 // the five room to breathe.
