@@ -1207,24 +1207,30 @@ export component DesktopShell inherits Rectangle {
                     HorizontalLayout {
                         spacing: 6px;
                         padding-right: 12px;
-                        if root.now-title != "": Rectangle {
-                            width: 96px;
-                            height: 34px;
-                            Text {
-                                x: 0;
-                                width: parent.width;
-                                height: 100%;
-                                text: root.now-stars;
-                                color: Theme.accent;
-                                font-size: Theme.font-body;
-                                vertical-alignment: center;
-                                horizontal-alignment: center;
-                            }
-                            TouchArea {
-                                clicked => {
-                                    root.rate-now(clamp(
-                                        floor(self.mouse-x / (parent.width / 5)) + 1,
-                                        1, 5));
+                        // The rating, as a proper button among the rest: hover
+                        // background and one baseline, not a bare strip of text.
+                        if root.now-title != "": VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 96px;
+                                height: 34px;
+                                border-radius: 17px;
+                                background: rateta.has-hover ? Theme.bg-hover : transparent;
+                                Text {
+                                    width: parent.width;
+                                    height: 100%;
+                                    text: root.now-stars;
+                                    color: Theme.accent;
+                                    font-size: Theme.font-body;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+                                rateta := TouchArea {
+                                    clicked => {
+                                        root.rate-now(clamp(
+                                            floor(self.mouse-x / (parent.width / 5)) + 1,
+                                            1, 5));
+                                    }
                                 }
                             }
                         }
