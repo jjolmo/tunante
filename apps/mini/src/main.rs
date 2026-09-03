@@ -2348,10 +2348,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_table_remove_from_playlist(move |index| {
             let mut st = st.borrow_mut();
             let Scope::Playlist { id, .. } = st.scope.clone() else { return };
-            let Some(track) = st.tracks.get(index as usize) else { return };
-            let track_id = track.id.clone();
-            if db_c.remove_track_from_playlist(&id, &track_id).is_err() {
+            let i = index as usize;
+            // The whole selection when the clicked row is in it, else just it
+            // — the old desktop's Delete removed everything selected.
+            let ids: Vec<String> = if st.selected.len() > 1 && st.selected.contains(&i) {
+                let mut idx: Vec<usize> = st.selected.iter().copied().collect();
+                idx.sort_unstable();
+                idx.iter().filter_map(|&j| st.tracks.get(j).map(|t| t.id.clone())).collect()
+            } else {
+                st.tracks.get(i).map(|t| t.id.clone()).into_iter().collect()
+            };
+            if ids.is_empty() {
                 return;
+            }
+            for track_id in &ids {
+                let _ = db_c.remove_track_from_playlist(&id, track_id);
             }
             // Re-resolve the playlist's ids and rebuild in place.
             let ids: Vec<String> = db_c
