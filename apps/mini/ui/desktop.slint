@@ -58,6 +58,8 @@ component SidebarEntry inherits Rectangle {
     /// The old desktop put a number beside every entry; the answer to
     /// "how big is my library" should not need a click.
     in property <string> count;
+    /// An optional leading glyph, e.g. a ★ on Favoritos.
+    in property <string> glyph;
     callback clicked();
 
     height: Theme.compact ? 24px : 34px;
@@ -68,6 +70,12 @@ component SidebarEntry inherits Rectangle {
         padding-left: 12px;
         padding-right: 10px;
         spacing: 8px;
+        if root.glyph != "": Text {
+            text: root.glyph;
+            color: root.active ? Theme.accent : Theme.text-muted;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+        }
         Text {
             text: root.label;
             color: root.active ? Theme.accent : Theme.text-primary;
@@ -640,6 +648,7 @@ export component DesktopShell inherits Rectangle {
                     }
                     if root.show-faved: SidebarEntry {
                         label: "Favoritos";
+                        glyph: "★";
                         count: root.faved-count;
                         active: root.centre == 0 && root.table-faved;
                         clicked => {
