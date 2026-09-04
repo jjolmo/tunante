@@ -1,0 +1,30 @@
+name: i18n
+
+# A string that never reaches @tr/i18n::tr, or a msgid missing from a catalog,
+# falls back to Spanish at runtime — silently, in a build that is green and in
+# an app that starts fine. There is nothing to notice until somebody running
+# the app in another language notices. This is that somebody.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/tunante/src/**'
+      - 'apps/tunante/ui/**'
+      - 'apps/tunante/translations/**'
+      - 'scripts/check-i18n.py'
+      - '.github/workflows/i18n.yml'
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Every catalog covers every msgid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # Standard library only. Names every msgid that is missing, empty, or
+      # whose translation dropped a {} placeholder.
+      - run: python3 scripts/check-i18n.py

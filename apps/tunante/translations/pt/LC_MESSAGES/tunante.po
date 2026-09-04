@@ -2,7 +2,7 @@
 # Source strings are Spanish. Missing entries fall back to them.
 msgid ""
 msgstr ""
-"Project-Id-Version: tunante-mini\n"
+"Project-Id-Version: tunante\n"
 "Language: pt\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -263,12 +263,6 @@ msgstr "Redefinir todos os efeitos"
 msgid "Presentación"
 msgstr "Apresentação"
 
-msgid "Modo de interfaz"
-msgstr "Modo de interface"
-
-msgid "  ↳ Aplicar (cambia la presentación)"
-msgstr "  ↳ Aplicar (muda a apresentação)"
-
 msgid "Aplicar"
 msgstr "Aplicar"
 
@@ -443,9 +437,6 @@ msgstr "Fixar pasta"
 msgid "Columnas"
 msgstr "Colunas"
 
-msgid "auto"
-msgstr "auto"
-
 msgid "Sonido"
 msgstr "Som"
 
@@ -481,9 +472,6 @@ msgstr "Pastas na barra lateral"
 
 msgid "Listas en el sidebar"
 msgstr "Listas na barra lateral"
-
-msgid "↳ Aplicar (cambia la presentación)"
-msgstr "↳ Aplicar (muda a apresentação)"
 
 msgid "Acerca de Tunante"
 msgstr "Sobre o Tunante"
@@ -695,15 +683,6 @@ msgstr "Anterior"
 msgid "Salir"
 msgstr "Sair"
 
-msgid "Compacto"
-msgstr "Compacto"
-
-msgid "Escritorio"
-msgstr "Área de trabalho"
-
-msgid "Automático"
-msgstr "Automático"
-
 msgid "solo error"
 msgstr "apenas erros"
 
@@ -796,3 +775,312 @@ msgstr "1 jogo"
 
 msgid "{} juegos"
 msgstr "{} jogos"
+
+msgid "(automática)"
+msgstr "(automático)"
+
+msgid "1 tema"
+msgstr "1 faixa"
+
+msgid "Abajo"
+msgstr "Baixo"
+
+msgid "Analizando {}/{}\n{} pistas encontradas"
+msgstr "Analisando {}/{}\n{} faixas encontradas"
+
+msgid "Analizando…"
+msgstr "Analisando…"
+
+msgid "Arriba"
+msgstr "Cima"
+
+msgid "AvPág"
+msgstr "Page Down"
+
+msgid "Buscando"
+msgstr "Procurando"
+
+msgid "Buscando…"
+msgstr "Procurando…"
+
+msgid "Carpeta · {}"
+msgstr "Pasta · {}"
+
+msgid "Cola · {} pistas"
+msgstr "Fila · {} faixas"
+
+msgid "Comprobando…"
+msgstr "Verificando…"
+
+msgid "Consola · {}"
+msgstr "Console · {}"
+
+msgid "Consultando el archivo…"
+msgstr "Consultando o arquivo…"
+
+msgid "Derecha"
+msgstr "Direita"
+
+msgid "Descargando"
+msgstr "Baixando"
+
+msgid "Descargando la mejor…"
+msgstr "Baixando a melhor…"
+
+msgid "Descargando v{}…"
+msgstr "Baixando v{}…"
+
+msgid "Descargando…"
+msgstr "Baixando…"
+
+msgid "El archivo lista {} pistas de «{}» pero no ha nombrado ninguna — todo son «Track N». No hay nada que renombrar."
+msgstr "O arquivo lista {} faixas de «{}» mas não nomeou nenhuma — são todas «Track N». Não há nada para renomear."
+
+msgid "El archivo lista {} pistas y este fichero tiene {}. La posición es todo el mapeo: otra cuenta es otro rip, y aplicarlo renombraría cada pista mal."
+msgstr "O arquivo lista {} faixas e este tem {}. A posição é todo o mapeamento: outra contagem é outro rip, e aplicá-lo renomearia cada faixa errado."
+
+msgid "En el motor: nada activo — el audio no se toca."
+msgstr "No motor: nada ativo — o áudio não é alterado."
+
+msgid "En el motor: {} (cadena: eq → anchura → mono → balance → preamp → limitador)."
+msgstr "No motor: {} (cadeia: eq → largura → mono → balanço → preamp → limitador)."
+
+msgid "Escribiendo…"
+msgstr "Escrevendo…"
+
+msgid "Espacio"
+msgstr "Espaço"
+
+msgid "Este fichero lleva una sola canción."
+msgstr "Este arquivo contém uma única música."
+
+msgid "Fin"
+msgstr "Fim"
+
+msgid "Inicio"
+msgstr "Início"
+
+msgid "Izquierda"
+msgstr "Esquerda"
+
+msgid "Juego · {}"
+msgstr "Jogo · {}"
+
+msgid "Lista · {}"
+msgstr "Lista · {}"
+
+msgid "Nada sonando"
+msgstr "Nada tocando"
+
+msgid "No hay listado para «{}» en el archivo."
+msgstr "Não há listagem para «{}» no arquivo."
+
+msgid "No se pudo guardar"
+msgstr "Não foi possível salvar"
+
+msgid "No se pudo reproducir"
+msgstr "Não foi possível reproduzir"
+
+msgid "RePág"
+msgstr "Page Up"
+
+msgid "Sin resultados. Prueba con otro nombre."
+msgstr "Sem resultados. Tente outro nome."
+
+msgid "Sin salida de audio"
+msgstr "Sem saída de áudio"
+
+msgid "Tecla · Aleatorio"
+msgstr "Tecla · Aleatório"
+
+msgid "Tecla · Anterior"
+msgstr "Tecla · Anterior"
+
+msgid "Tecla · Bajar volumen"
+msgstr "Tecla · Baixar volume"
+
+msgid "Tecla · Buscar"
+msgstr "Tecla · Buscar"
+
+msgid "Tecla · Favorito"
+msgstr "Tecla · Favorito"
+
+msgid "Tecla · Repetir"
+msgstr "Tecla · Repetir"
+
+msgid "Tecla · Reproducir/Pausa"
+msgstr "Tecla · Reproduzir/Pausar"
+
+msgid "Tecla · Siguiente"
+msgstr "Tecla · Próximo"
+
+msgid "Tecla · Silenciar"
+msgstr "Tecla · Silenciar"
+
+msgid "Tecla · Stop"
+msgstr "Tecla · Parar"
+
+msgid "Tecla · Subir volumen"
+msgstr "Tecla · Aumentar volume"
+
+msgid "Un campo vacío no toca nada."
+msgstr "Um campo vazio não altera nada."
+
+msgid "Volumen {}%"
+msgstr "Volume {}%"
+
+msgid "a continuación"
+msgstr "a seguir"
+
+msgid "al día (v{})"
+msgstr "atualizado (v{})"
+
+msgid "aleatorio"
+msgstr "aleatório"
+
+msgid "alta"
+msgstr "alta"
+
+msgid "anchura estéreo"
+msgstr "largura estéreo"
+
+msgid "anterior"
+msgstr "anterior"
+
+msgid "baja"
+msgstr "baixa"
+
+msgid "bajar volumen"
+msgstr "baixar volume"
+
+msgid "balance"
+msgstr "balanço"
+
+msgid "buscar"
+msgstr "buscar"
+
+msgid "descargando v{}…"
+msgstr "baixando v{}…"
+
+msgid "ecualizador"
+msgstr "equalizador"
+
+msgid "el juego"
+msgstr "o jogo"
+
+msgid "el m3u se escribió, pero la relectura falló"
+msgstr "o m3u foi escrito, mas a releitura falhou"
+
+msgid "el álbum"
+msgstr "o álbum"
+
+msgid "estéreo"
+msgstr "estéreo"
+
+msgid "exacta"
+msgstr "exata"
+
+msgid "falló"
+msgstr "falhou"
+
+msgid "hecho ✓"
+msgstr "feito ✓"
+
+msgid "limitador"
+msgstr "limitador"
+
+msgid "media"
+msgstr "média"
+
+msgid "menos de un minuto"
+msgstr "menos de um minuto"
+
+msgid "mono"
+msgstr "mono"
+
+msgid "nada"
+msgstr "nada"
+
+msgid "nada que deshacer"
+msgstr "nada para desfazer"
+
+msgid "nada reconocible"
+msgstr "nada reconhecível"
+
+msgid "no es un fichero"
+msgstr "não é um arquivo"
+
+msgid "no se pudo escribir {}"
+msgstr "não foi possível escrever {}"
+
+msgid "parar"
+msgstr "parar"
+
+msgid "preamplificador"
+msgstr "pré-amplificador"
+
+msgid "pulsa una tecla…"
+msgstr "prima uma tecla…"
+
+msgid "repetir"
+msgstr "repetir"
+
+msgid "se escribiría"
+msgstr "seria escrita"
+
+msgid "silenciar"
+msgstr "silenciar"
+
+msgid "sin base de datos"
+msgstr "sem banco de dados"
+
+msgid "sin resultado"
+msgstr "sem resultado"
+
+msgid "subir volumen"
+msgstr "aumentar volume"
+
+msgid "v{} disponible — toca para instalar"
+msgstr "v{} disponível — toque para instalar"
+
+msgid "v{} instalada — reinicia la app"
+msgstr "v{} instalada — reinicie o app"
+
+msgid "v{} — toca para comprobar"
+msgstr "v{} — toque para verificar"
+
+msgid "ya tiene (se conserva)"
+msgstr "já tem (mantém-se)"
+
+msgid "{} añadidas"
+msgstr "{} adicionadas"
+
+msgid "{} borradas"
+msgstr "{} excluídas"
+
+msgid "{} carátulas escritas"
+msgstr "{} capas escritas"
+
+msgid "{} de {} con nombre. Se escribe un .m3u junto al fichero."
+msgstr "{} de {} com nome. Um .m3u é escrito junto ao arquivo."
+
+msgid "{} fuera"
+msgstr "{} removidas"
+
+msgid "{} juegos · {} se escribirían"
+msgstr "{} jogos · {} seriam escritas"
+
+msgid "{} pistas renombradas."
+msgstr "{} faixas renomeadas."
+
+msgid "{} pistas seleccionadas"
+msgstr "{} faixas selecionadas"
+
+msgid "{} temas"
+msgstr "{} faixas"
+
+msgid "{} ya existe junto al fichero y no lo escribió Tunante. Reemplazarlo tiraría el trabajo de alguien."
+msgstr "{} já existe junto ao arquivo e não foi o Tunante que o escreveu. Substituí-lo jogaria fora o trabalho de alguém."
+
+msgid "{}/{} · {} encontradas"
+msgstr "{}/{} · {} encontradas"
