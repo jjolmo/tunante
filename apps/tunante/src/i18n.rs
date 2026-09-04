@@ -15,11 +15,11 @@ use std::sync::OnceLock;
 
 /// The embedded catalogs, by language code. Mirrors `translations/`.
 const CATALOGS: &[(&str, &str)] = &[
-    ("en", include_str!("../translations/en/LC_MESSAGES/tunante-mini.po")),
-    ("fr", include_str!("../translations/fr/LC_MESSAGES/tunante-mini.po")),
-    ("de", include_str!("../translations/de/LC_MESSAGES/tunante-mini.po")),
-    ("it", include_str!("../translations/it/LC_MESSAGES/tunante-mini.po")),
-    ("pt", include_str!("../translations/pt/LC_MESSAGES/tunante-mini.po")),
+    ("en", include_str!("../translations/en/LC_MESSAGES/tunante.po")),
+    ("fr", include_str!("../translations/fr/LC_MESSAGES/tunante.po")),
+    ("de", include_str!("../translations/de/LC_MESSAGES/tunante.po")),
+    ("it", include_str!("../translations/it/LC_MESSAGES/tunante.po")),
+    ("pt", include_str!("../translations/pt/LC_MESSAGES/tunante.po")),
 ];
 
 static ACTIVE: OnceLock<HashMap<String, String>> = OnceLock::new();

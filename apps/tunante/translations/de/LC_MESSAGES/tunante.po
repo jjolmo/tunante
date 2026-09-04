@@ -2,7 +2,7 @@
 # Source strings are Spanish. Missing entries fall back to them.
 msgid ""
 msgstr ""
-"Project-Id-Version: tunante-mini\n"
+"Project-Id-Version: tunante\n"
 "Language: de\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -263,12 +263,6 @@ msgstr "Alle Effekte zurücksetzen"
 msgid "Presentación"
 msgstr "Darstellung"
 
-msgid "Modo de interfaz"
-msgstr "Oberflächenmodus"
-
-msgid "  ↳ Aplicar (cambia la presentación)"
-msgstr "  ↳ Anwenden (ändert die Darstellung)"
-
 msgid "Aplicar"
 msgstr "Anwenden"
 
@@ -443,9 +437,6 @@ msgstr "Ordner anheften"
 msgid "Columnas"
 msgstr "Spalten"
 
-msgid "auto"
-msgstr "auto"
-
 msgid "Sonido"
 msgstr "Ton"
 
@@ -481,9 +472,6 @@ msgstr "Ordner in der Seitenleiste"
 
 msgid "Listas en el sidebar"
 msgstr "Wiedergabelisten in der Seitenleiste"
-
-msgid "↳ Aplicar (cambia la presentación)"
-msgstr "↳ Anwenden (ändert die Darstellung)"
 
 msgid "Acerca de Tunante"
 msgstr "Über Tunante"
@@ -695,15 +683,6 @@ msgstr "Zurück"
 msgid "Salir"
 msgstr "Beenden"
 
-msgid "Compacto"
-msgstr "Kompakt"
-
-msgid "Escritorio"
-msgstr "Desktop"
-
-msgid "Automático"
-msgstr "Automatisch"
-
 msgid "solo error"
 msgstr "nur Fehler"
 
@@ -796,3 +775,312 @@ msgstr "1 Spiel"
 
 msgid "{} juegos"
 msgstr "{} Spiele"
+
+msgid "(automática)"
+msgstr "(automatisch)"
+
+msgid "1 tema"
+msgstr "1 Song"
+
+msgid "Abajo"
+msgstr "Ab"
+
+msgid "Analizando {}/{}\n{} pistas encontradas"
+msgstr "Scanne {}/{}\n{} Titel gefunden"
+
+msgid "Analizando…"
+msgstr "Scanne…"
+
+msgid "Arriba"
+msgstr "Auf"
+
+msgid "AvPág"
+msgstr "Bild ab"
+
+msgid "Buscando"
+msgstr "Suche"
+
+msgid "Buscando…"
+msgstr "Suche…"
+
+msgid "Carpeta · {}"
+msgstr "Ordner · {}"
+
+msgid "Cola · {} pistas"
+msgstr "Warteschlange · {} Titel"
+
+msgid "Comprobando…"
+msgstr "Prüfe…"
+
+msgid "Consola · {}"
+msgstr "Konsole · {}"
+
+msgid "Consultando el archivo…"
+msgstr "Frage das Archiv ab…"
+
+msgid "Derecha"
+msgstr "Rechts"
+
+msgid "Descargando"
+msgstr "Lade herunter"
+
+msgid "Descargando la mejor…"
+msgstr "Lade das beste Cover herunter…"
+
+msgid "Descargando v{}…"
+msgstr "Lade v{} herunter…"
+
+msgid "Descargando…"
+msgstr "Lade herunter…"
+
+msgid "El archivo lista {} pistas de «{}» pero no ha nombrado ninguna — todo son «Track N». No hay nada que renombrar."
+msgstr "Das Archiv listet {} Titel von „{}“, hat aber keinen benannt — alles heißt „Track N“. Es gibt nichts umzubenennen."
+
+msgid "El archivo lista {} pistas y este fichero tiene {}. La posición es todo el mapeo: otra cuenta es otro rip, y aplicarlo renombraría cada pista mal."
+msgstr "Das Archiv listet {} Titel und diese Datei hat {}. Die Position ist die ganze Zuordnung: eine andere Anzahl ist ein anderer Rip, und das Anwenden würde jeden Titel falsch benennen."
+
+msgid "En el motor: nada activo — el audio no se toca."
+msgstr "In der Engine: nichts aktiv — das Audio bleibt unberührt."
+
+msgid "En el motor: {} (cadena: eq → anchura → mono → balance → preamp → limitador)."
+msgstr "In der Engine: {} (Kette: eq → Breite → Mono → Balance → preamp → Limiter)."
+
+msgid "Escribiendo…"
+msgstr "Schreibe…"
+
+msgid "Espacio"
+msgstr "Leertaste"
+
+msgid "Este fichero lleva una sola canción."
+msgstr "Diese Datei enthält nur einen einzigen Song."
+
+msgid "Fin"
+msgstr "Ende"
+
+msgid "Inicio"
+msgstr "Pos1"
+
+msgid "Izquierda"
+msgstr "Links"
+
+msgid "Juego · {}"
+msgstr "Spiel · {}"
+
+msgid "Lista · {}"
+msgstr "Wiedergabeliste · {}"
+
+msgid "Nada sonando"
+msgstr "Nichts läuft"
+
+msgid "No hay listado para «{}» en el archivo."
+msgstr "Keine Titelliste für „{}“ im Archiv."
+
+msgid "No se pudo guardar"
+msgstr "Speichern fehlgeschlagen"
+
+msgid "No se pudo reproducir"
+msgstr "Wiedergabe fehlgeschlagen"
+
+msgid "RePág"
+msgstr "Bild auf"
+
+msgid "Sin resultados. Prueba con otro nombre."
+msgstr "Keine Ergebnisse. Versuch es mit einem anderen Namen."
+
+msgid "Sin salida de audio"
+msgstr "Keine Audioausgabe"
+
+msgid "Tecla · Aleatorio"
+msgstr "Taste · Zufall"
+
+msgid "Tecla · Anterior"
+msgstr "Taste · Zurück"
+
+msgid "Tecla · Bajar volumen"
+msgstr "Taste · Leiser"
+
+msgid "Tecla · Buscar"
+msgstr "Taste · Suchen"
+
+msgid "Tecla · Favorito"
+msgstr "Taste · Favorit"
+
+msgid "Tecla · Repetir"
+msgstr "Taste · Wiederholen"
+
+msgid "Tecla · Reproducir/Pausa"
+msgstr "Taste · Wiedergabe/Pause"
+
+msgid "Tecla · Siguiente"
+msgstr "Taste · Weiter"
+
+msgid "Tecla · Silenciar"
+msgstr "Taste · Stumm"
+
+msgid "Tecla · Stop"
+msgstr "Taste · Stopp"
+
+msgid "Tecla · Subir volumen"
+msgstr "Taste · Lauter"
+
+msgid "Un campo vacío no toca nada."
+msgstr "Ein leeres Feld ändert nichts."
+
+msgid "Volumen {}%"
+msgstr "Lautstärke {}%"
+
+msgid "a continuación"
+msgstr "als Nächstes"
+
+msgid "al día (v{})"
+msgstr "aktuell (v{})"
+
+msgid "aleatorio"
+msgstr "Zufall"
+
+msgid "alta"
+msgstr "hoch"
+
+msgid "anchura estéreo"
+msgstr "Stereobreite"
+
+msgid "anterior"
+msgstr "zurück"
+
+msgid "baja"
+msgstr "niedrig"
+
+msgid "bajar volumen"
+msgstr "leiser"
+
+msgid "balance"
+msgstr "Balance"
+
+msgid "buscar"
+msgstr "Suchen"
+
+msgid "descargando v{}…"
+msgstr "lade v{} herunter…"
+
+msgid "ecualizador"
+msgstr "Equalizer"
+
+msgid "el juego"
+msgstr "das Spiel"
+
+msgid "el m3u se escribió, pero la relectura falló"
+msgstr "die .m3u wurde geschrieben, aber das erneute Einlesen ist fehlgeschlagen"
+
+msgid "el álbum"
+msgstr "das Album"
+
+msgid "estéreo"
+msgstr "Stereo"
+
+msgid "exacta"
+msgstr "exakt"
+
+msgid "falló"
+msgstr "fehlgeschlagen"
+
+msgid "hecho ✓"
+msgstr "fertig ✓"
+
+msgid "limitador"
+msgstr "Limiter"
+
+msgid "media"
+msgstr "mittel"
+
+msgid "menos de un minuto"
+msgstr "weniger als eine Minute"
+
+msgid "mono"
+msgstr "Mono"
+
+msgid "nada"
+msgstr "nichts"
+
+msgid "nada que deshacer"
+msgstr "nichts rückgängig zu machen"
+
+msgid "nada reconocible"
+msgstr "nichts Erkennbares"
+
+msgid "no es un fichero"
+msgstr "keine Datei"
+
+msgid "no se pudo escribir {}"
+msgstr "{} konnte nicht geschrieben werden"
+
+msgid "parar"
+msgstr "Stopp"
+
+msgid "preamplificador"
+msgstr "Vorverstärker"
+
+msgid "pulsa una tecla…"
+msgstr "Taste drücken…"
+
+msgid "repetir"
+msgstr "Wiederholen"
+
+msgid "se escribiría"
+msgstr "würde geschrieben"
+
+msgid "silenciar"
+msgstr "Stumm"
+
+msgid "sin base de datos"
+msgstr "keine Datenbank"
+
+msgid "sin resultado"
+msgstr "kein Treffer"
+
+msgid "subir volumen"
+msgstr "lauter"
+
+msgid "v{} disponible — toca para instalar"
+msgstr "v{} verfügbar — zum Installieren tippen"
+
+msgid "v{} instalada — reinicia la app"
+msgstr "v{} installiert — App neu starten"
+
+msgid "v{} — toca para comprobar"
+msgstr "v{} — zum Prüfen tippen"
+
+msgid "ya tiene (se conserva)"
+msgstr "hat schon eins (bleibt)"
+
+msgid "{} añadidas"
+msgstr "{} hinzugefügt"
+
+msgid "{} borradas"
+msgstr "{} gelöscht"
+
+msgid "{} carátulas escritas"
+msgstr "{} Cover geschrieben"
+
+msgid "{} de {} con nombre. Se escribe un .m3u junto al fichero."
+msgstr "{} von {} benannt. Eine .m3u wird neben die Datei geschrieben."
+
+msgid "{} fuera"
+msgstr "{} entfernt"
+
+msgid "{} juegos · {} se escribirían"
+msgstr "{} Spiele · {} würden geschrieben"
+
+msgid "{} pistas renombradas."
+msgstr "{} Titel umbenannt."
+
+msgid "{} pistas seleccionadas"
+msgstr "{} Titel ausgewählt"
+
+msgid "{} temas"
+msgstr "{} Songs"
+
+msgid "{} ya existe junto al fichero y no lo escribió Tunante. Reemplazarlo tiraría el trabajo de alguien."
+msgstr "{} existiert bereits neben der Datei und wurde nicht von Tunante geschrieben. Es zu ersetzen würde jemandes Arbeit wegwerfen."
+
+msgid "{}/{} · {} encontradas"
+msgstr "{}/{} · {} gefunden"

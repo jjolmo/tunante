@@ -22,7 +22,7 @@ strings. So Spanish needs no file; every other language is a `.po`.
 Drop a file at:
 
 ```
-translations/<lang>/LC_MESSAGES/tunante-mini.po
+translations/<lang>/LC_MESSAGES/tunante.po
 ```
 
 where `<lang>` is the locale code the system reports (`fr`, `de`, `pt`, `pt_BR`,
@@ -35,7 +35,7 @@ exactly as it appears in the UI; `msgstr` is your translation. A minimal file:
 ```po
 msgid ""
 msgstr ""
-"Project-Id-Version: tunante-mini\n"
+"Project-Id-Version: tunante\n"
 "Language: fr\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -46,7 +46,7 @@ msgstr "Filtrer les pistes…"
 ```
 
 You don't have to translate everything — any missing `msgid` falls back to the
-Spanish source. Rebuild the app (`cargo build -p tunante-mini`) for the change
+Spanish source. Rebuild the app (`cargo build -p tunante`) for the change
 to take effect; the `.po` is bundled at compile time, not read at run time.
 
 Strings with a placeholder keep the `{}` in the translation, e.g.
@@ -54,12 +54,12 @@ Strings with a placeholder keep the `{}` in the translation, e.g.
 
 ## Regenerating the string list
 
-The translatable strings are the `@tr("…")` calls in `apps/mini/ui/*.slint`. To
+The translatable strings are the `@tr("…")` calls in `apps/tunante/ui/*.slint`. To
 produce a fresh `.pot` template you can install and run Slint's extractor:
 
 ```
 cargo install slint-tr-extractor
-find apps/mini/ui -name '*.slint' | xargs slint-tr-extractor --no-default-translation-context -o apps/mini/translations/tunante-mini.pot
+find apps/tunante/ui -name '*.slint' | xargs slint-tr-extractor --no-default-translation-context -o apps/tunante/translations/tunante.pot
 ```
 
 Then merge it into each `.po` with `msgmerge`.
