@@ -29,6 +29,8 @@ export component AppWindow inherits Window {
     // alt-tab tell you what is on without a glance inside.
     title: root.window-title == "" ? "Tunante" : root.window-title;
     in property <string> window-title;
+    // The window/taskbar icon — the logo, not the toolkit's placeholder "W".
+    icon: @image-url("../dist/icons/256x256/tunante-mini.png");
     background: Theme.bg-primary;
     // A sensible size for development — phone-shaped, unless the desktop shell
     // was forced from the command line before the window mapped. On the phone
