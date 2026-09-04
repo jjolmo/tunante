@@ -9,12 +9,12 @@ name: Release
 #
 # The bump and the tag stay inside this workflow, so that one command still
 # does the whole thing: it tags, creates the release, and the tag push is
-# what starts the real builds — mini.yml (Linux tarballs, the Windows zip,
-# the Alpine package) and android.yml — which then attach themselves to it.
+# what starts the real builds — tunante.yml (Linux tarballs, the Windows zip,
+# the Alpine package) and tunante-android.yml — which then attach themselves to it.
 #
 # The Tauri desktop jobs that used to live here are gone with the app they
 # built: the Slint player *is* the
-# desktop app now, and its builds were always mini.yml's. The last Tauri
+# desktop app now, and its builds were always tunante.yml's. The last Tauri
 # release remains v0.1.283; anyone on an AppImage moves to the tarball by
 # hand once — the release notes say so.
 on:
@@ -70,8 +70,8 @@ jobs:
           echo "version=${MAJOR}.${MINOR}.${PATCH}" >> "$GITHUB_OUTPUT"
           echo "should_release=true" >> "$GITHUB_OUTPUT"
 
-  # The release has to exist before the builds go looking for it: mini.yml
-  # and android.yml fire on the tag and poll `gh release view` until this
+  # The release has to exist before the builds go looking for it: tunante.yml
+  # and tunante-android.yml fire on the tag and poll `gh release view` until this
   # job has done its part.
   release:
     needs: version
@@ -90,7 +90,7 @@ jobs:
           #
           # Two of them are called ".apk" and only one installs on a phone:
           # tunante-android-<v>.apk is the Android app, tunante-<v>-r0.apk
-          # is an Alpine package for postmarketOS. The android.yml comment has
+          # is an Alpine package for postmarketOS. The tunante-android.yml comment has
           # warned about that confusion since it was written; the person it
           # confuses is the one reading this page, so it belongs here.
           #

@@ -155,4 +155,5 @@ Cargo commands run from the repository root, which is the workspace root.
   for "no regression" — CI runs it before every build. Release mode is required;
   the cores are far too slow in debug.
 - `gh workflow run release.yml` - Publish: bumps the patch version, tags,
-  creates the release; mini.yml and android.yml attach their builds to the tag.
+  creates the release; tunante.yml and tunante-android.yml attach their builds
+  to the tag.
