@@ -646,3 +646,51 @@ msgstr "Leeren"
 
 msgid "Idioma"
 msgstr "Sprache"
+
+msgid "Álbum / Juego"
+msgstr "Album / Spiel"
+
+msgid "Artista del álbum"
+msgstr "Album-Künstler"
+
+msgid "Disco"
+msgstr "Disc"
+
+msgid "Duración"
+msgstr "Dauer"
+
+msgid "Códec"
+msgstr "Codec"
+
+msgid "Bitrate"
+msgstr "Bitrate"
+
+msgid "Muestreo"
+msgstr "Abtastrate"
+
+msgid "Canales"
+msgstr "Kanäle"
+
+msgid "Tamaño"
+msgstr "Größe"
+
+msgid "Ruta"
+msgstr "Pfad"
+
+msgid "Reproduciendo"
+msgstr "Wird abgespielt"
+
+msgid "Mostrar/Ocultar"
+msgstr "Ein-/Ausblenden"
+
+msgid "Reproducir/Pausa"
+msgstr "Wiedergabe/Pause"
+
+msgid "Siguiente"
+msgstr "Weiter"
+
+msgid "Anterior"
+msgstr "Zurück"
+
+msgid "Salir"
+msgstr "Beenden"
