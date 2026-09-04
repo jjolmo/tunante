@@ -68,10 +68,12 @@ component HeaderCell inherits Rectangle {
         // the label stretch and float the arrow out to the column's middle.
         alignment: start;
         Text {
-            text: root.label;
+            // Uppercase and bold, the old desktop's column headers.
+            text: root.label.to-uppercase();
             color: root.active ? Theme.accent : Theme.text-secondary;
             font-size: Theme.font-small;
-            font-weight: 600;
+            font-weight: 700;
+            letter-spacing: 0.4px;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -378,7 +380,9 @@ export component TrackTable inherits Rectangle {
         // --- Header ---
         header := Rectangle {
             height: 30px;
-            background: Theme.bg-primary;
+            // A lighter grey bar, the way the old Tunante set the header off from
+            // the rows instead of letting it blend into the background.
+            background: Theme.bg-tertiary;
 
             // Right-click lists every column, ticked when visible — the old
             // desktop's header menu. (Its trick of staying open between
