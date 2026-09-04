@@ -94,13 +94,12 @@ slint = { version = "1.17", default-features = false, features = [
 libc = "0.2"
 # The system tray, behind the `tray` feature: a desktop nicety, and the phone
 # builds (Alpine/musl, the APKBUILD) switch it off with --no-default-features,
-# which also keeps GTK out of that image. default-features = false on
-# tray-icon is load-bearing for the same reason it is in the desktop app: the
-# default set includes libxdo, whose absence at link time killed release jobs
-# before. The workspace [patch] swaps in vendor/tray-icon-patch. GTK is only
-# for the tray's own thread — the shell stays winit.
-tray-icon = { version = "0.21", default-features = false, optional = true }
-gtk = { version = "0.18", optional = true }
+# which keeps D-Bus and ksni out of that image. ksni is a native
+# StatusNotifierItem over zbus (the async-io reactor MPRIS already runs), so it
+# needs no GTK and no libdbus — and, unlike libayatana, it hands us the
+# left-click `Activate` instead of forcing the context menu open. async-io to
+# match the rest of the app's zbus; blocking for its spawn/handle API.
+ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"], optional = true }
 # Self-update from GitHub releases, behind the `updater` feature for the same
 # reason the tray hides behind its own: the Alpine package updates through
 # apk, and a package-managed binary must not overwrite itself. Same ureq the
@@ -113,7 +112,7 @@ futures-lite = "2"
 
 [features]
 default = ["tray", "updater"]
-tray = ["dep:tray-icon", "dep:gtk"]
+tray = ["dep:ksni"]
 updater = ["dep:ureq"]
 
 [build-dependencies]
