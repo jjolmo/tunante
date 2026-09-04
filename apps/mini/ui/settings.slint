@@ -221,6 +221,8 @@ export component DesktopSettings inherits Rectangle {
     in property <int> cover-fit;
     in property <int> queue-placement;
     callback cycle-queue-placement();
+    in property <bool> queue-always-visible;
+    callback toggle-queue-always-visible();
     in property <int> star-display-mode;
     callback set-star-display-mode(int);
     in property <int> ui-mode;
@@ -636,6 +638,11 @@ export component DesktopSettings inherits Rectangle {
                                     label: "Cola";
                                     value: root.queue-placement == 2 ? "panel derecho" : "entrada en el sidebar";
                                     clicked => { root.cycle-queue-placement(); }
+                                }
+                                SettingRow {
+                                    label: "  ↳ Visibilidad de la cola";
+                                    value: root.queue-always-visible ? "siempre visible" : "solo cuando hay cola";
+                                    clicked => { root.toggle-queue-always-visible(); }
                                 }
                                 SettingRow {
                                     label: "Estrellas de puntuación";

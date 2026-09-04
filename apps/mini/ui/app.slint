@@ -40,6 +40,8 @@ export component AppWindow inherits Window {
     in property <[QueueRow]> queue-rows;
     in property <int> queue-placement;
     callback cycle-queue-placement();
+    in property <bool> queue-always-visible;
+    callback toggle-queue-always-visible();
     callback queue-opened-in-table();
     in property <string> now-title: "Nothing playing";
     in property <string> now-artist;
@@ -534,7 +536,7 @@ export component AppWindow inherits Window {
     // shell, holds focus by default (forward-focus below), and receives
     // whatever the table's own FocusScope rejects — while a TextInput with
     // focus keeps its keys, exactly like the old app ignored inputs.
-    if !root.setup-mode && root.desktop: FocusScope {
+    if !root.setup-mode && root.desktop: fs := FocusScope {
         // A FocusScope is not a layout: it will not stretch its child, so the
         // shell must be pinned to the window explicitly or the transport bar
         // and artwork drop off the bottom edge (the shell would size to its
@@ -542,10 +544,21 @@ export component AppWindow inherits Window {
         width: root.width;
         height: root.height;
         init => { self.focus(); }
+        // On Wayland the init focus above does not always stick — the window is
+        // not mapped yet — leaving nothing focused, so every bare shortcut
+        // (Ctrl+P first of all) fell on the floor until something was clicked.
+        // Re-grab focus once, a beat after startup, when the surface exists.
+        Timer {
+            interval: 150ms;
+            running: true;
+            triggered => { fs.focus(); self.running = false; }
+        }
         key-pressed(ev) => {
             // Ctrl+P opens Ajustes, set straight on the shell — the tick round
-            // trip through Rust was not reaching the modal.
-            if (ev.modifiers.control && ev.text == "p") {
+            // trip through Rust was not reaching the modal. With Ctrl held,
+            // winit/X11 delivers the control byte (Ctrl+P = U+0010), not "p",
+            // so match both spellings or the key would never land.
+            if (ev.modifiers.control && (ev.text == "p" || ev.text == "\u{10}")) {
                 ds.showing-settings = true;
                 return accept;
             }
@@ -669,6 +682,8 @@ export component AppWindow inherits Window {
             reset-shortcuts => { root.reset-shortcuts(); }
             queue-placement: root.queue-placement;
             cycle-queue-placement => { root.cycle-queue-placement(); }
+            queue-always-visible: root.queue-always-visible;
+            toggle-queue-always-visible => { root.toggle-queue-always-visible(); }
             queue-opened-in-table => { root.queue-opened-in-table(); }
             ui-mode: root.ui-mode;
             ui-mode-pending: root.ui-mode-pending;
