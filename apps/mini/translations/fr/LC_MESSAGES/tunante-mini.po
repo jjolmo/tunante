@@ -576,7 +576,7 @@ msgid "Guardar"
 msgstr "Enregistrer"
 
 msgid "Sonando"
-msgstr "En lecture"
+msgstr "Lecture"
 
 msgid "Nombre de la lista"
 msgstr "Nom de la liste"
@@ -703,3 +703,84 @@ msgstr "Bureau"
 
 msgid "Automático"
 msgstr "Automatique"
+
+msgid "solo error"
+msgstr "erreurs seulement"
+
+msgid "aviso+"
+msgstr "avertissements+"
+
+msgid "todo"
+msgstr "tout"
+
+msgid "fichero primero"
+msgstr "fichier d’abord"
+
+msgid "carpeta primero"
+msgstr "dossier d’abord"
+
+msgid "BD manda"
+msgstr "la base décide"
+
+msgid "reproducir/pausa"
+msgstr "lecture/pause"
+
+msgid "stop"
+msgstr "arrêt"
+
+msgid "siguiente"
+msgstr "suivant"
+
+msgid "siguiente con fundido"
+msgstr "suivant avec fondu"
+
+msgid "mostrar/ocultar"
+msgstr "afficher/masquer"
+
+msgid "simbólico"
+msgstr "symbolique"
+
+msgid "logo"
+msgstr "logo"
+
+msgid "claro"
+msgstr "clair"
+
+msgid "oscuro"
+msgstr "sombre"
+
+msgid "1 pasada"
+msgstr "1 passage"
+
+msgid "{} pasadas"
+msgstr "{} passages"
+
+msgid "entera"
+msgstr "entière"
+
+msgid "con fondo"
+msgstr "avec fond"
+
+msgid "estirada"
+msgstr "étirée"
+
+msgid "original"
+msgstr "originale"
+
+msgid "recortada"
+msgstr "rognée"
+
+msgid "vinculando…"
+msgstr "liaison…"
+
+msgid "eligiendo…"
+msgstr "choix…"
+
+msgid "disponible"
+msgstr "disponible"
+
+msgid "sin acceso (grupo input)"
+msgstr "pas d’accès (groupe input)"
+
+msgid "sí ({} dispositivos)"
+msgstr "oui ({} appareils)"

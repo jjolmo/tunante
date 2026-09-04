@@ -576,7 +576,7 @@ msgid "Guardar"
 msgstr "Save"
 
 msgid "Sonando"
-msgstr "Now playing"
+msgstr "Playing"
 
 msgid "Nombre de la lista"
 msgstr "Playlist name"
@@ -703,3 +703,84 @@ msgstr "Desktop"
 
 msgid "Automático"
 msgstr "Automatic"
+
+msgid "solo error"
+msgstr "errors only"
+
+msgid "aviso+"
+msgstr "warnings+"
+
+msgid "todo"
+msgstr "all"
+
+msgid "fichero primero"
+msgstr "file first"
+
+msgid "carpeta primero"
+msgstr "folder first"
+
+msgid "BD manda"
+msgstr "database wins"
+
+msgid "reproducir/pausa"
+msgstr "play/pause"
+
+msgid "stop"
+msgstr "stop"
+
+msgid "siguiente"
+msgstr "next"
+
+msgid "siguiente con fundido"
+msgstr "next with fade"
+
+msgid "mostrar/ocultar"
+msgstr "show/hide"
+
+msgid "simbólico"
+msgstr "symbolic"
+
+msgid "logo"
+msgstr "logo"
+
+msgid "claro"
+msgstr "light"
+
+msgid "oscuro"
+msgstr "dark"
+
+msgid "1 pasada"
+msgstr "1 pass"
+
+msgid "{} pasadas"
+msgstr "{} passes"
+
+msgid "entera"
+msgstr "whole"
+
+msgid "con fondo"
+msgstr "with background"
+
+msgid "estirada"
+msgstr "stretched"
+
+msgid "original"
+msgstr "original"
+
+msgid "recortada"
+msgstr "cropped"
+
+msgid "vinculando…"
+msgstr "binding…"
+
+msgid "eligiendo…"
+msgstr "choosing…"
+
+msgid "disponible"
+msgstr "available"
+
+msgid "sin acceso (grupo input)"
+msgstr "no access (input group)"
+
+msgid "sí ({} dispositivos)"
+msgstr "yes ({} devices)"

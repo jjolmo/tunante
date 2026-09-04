@@ -594,7 +594,14 @@ export component Transport inherits VerticalLayout {
     }
 
     HorizontalLayout {
-        padding: Theme.gap;
+        // Horizontal padding only: the vertical padding was Theme.gap top and
+        // bottom, ~24px that a short landscape window has no room for — enough
+        // to slide the play button off the bottom edge. The buttons keep their
+        // size; they just sit closer to the seek bar.
+        padding-left: Theme.gap;
+        padding-right: Theme.gap;
+        padding-top: 2px;
+        padding-bottom: 2px;
         alignment: root.wide ? center : space-around;
         spacing: root.wide ? Theme.gap * 2 : 0px;
 
