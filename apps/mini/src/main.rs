@@ -7525,7 +7525,16 @@ fn toggle_window(ui: &AppWindow) {
     } else {
         let _ = ui.window().show();
         if !ui.get_now_path().is_empty() {
-            ui.invoke_now_clicked();
+            // Re-centre on the playing track — but on the next event-loop turn,
+            // not now: this runs from the tray poll inside `player.borrow_mut()`,
+            // and `on_now_clicked` borrows the player again. Deferring lets the
+            // mutable borrow drop first, or the re-entrant borrow panics.
+            let weak = ui.as_weak();
+            let _ = slint::invoke_from_event_loop(move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.invoke_now_clicked();
+                }
+            });
         }
     }
 }
