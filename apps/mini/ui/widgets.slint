@@ -734,6 +734,9 @@ export component MenuAction inherits Rectangle {
 export component ConsoleArt inherits Rectangle {
     in property <string> console;
     property <length> u: root.width / 100;   // unidad: la centésima del ancho
+    // La tinta de los SVG de Controllercons: un gris claro que se lee tanto
+    // sobre el fondo oscuro de la rejilla como sobre el azul de la fila activa.
+    property <color> ink: #c7cdd7;
 
     // Qué ids de consola tienen dibujo propio. Ordenados como aparecen abajo.
     property <bool> tiene-silueta:
@@ -757,27 +760,28 @@ export component ConsoleArt inherits Rectangle {
     // Un botón: un círculo.
     // Se repiten lo justo; hacer componentes de esto costaría más de lo que ahorra.
 
-    // NES: el mando rectangular, cruceta y dos botones rojos.
-    if root.console == "nes": Rectangle {
-        width: 74 * root.u; height: 34 * root.u;
-        background: #3a3a3c; border-radius: 3 * root.u;
-        Rectangle { x: 10 * root.u; y: 13 * root.u; width: 20 * root.u; height: 7 * root.u; background: #17171a; }
-        Rectangle { x: 16.5 * root.u; y: 6.5 * root.u; width: 7 * root.u; height: 20 * root.u; background: #17171a; }
-        Rectangle { x: 44 * root.u; y: 13 * root.u; width: 9 * root.u; height: 9 * root.u; border-radius: 4.5 * root.u; background: #c0392b; }
-        Rectangle { x: 57 * root.u; y: 13 * root.u; width: 9 * root.u; height: 9 * root.u; border-radius: 4.5 * root.u; background: #c0392b; }
-    }
+    // --- Consolas con dibujo del pack Controllercons -----------------------
+    // Mandos duotono en SVG, teñidos con `ink`. Cada consola es un fichero
+    // literal porque @image-url exige una ruta constante en tiempo de compilar,
+    // así que no hay forma de plegar los quince en un bucle: uno por consola.
+    if root.console == "nes": Image { source: @image-url("consoles/nes.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "snes": Image { source: @image-url("consoles/snes.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "n64": Image { source: @image-url("consoles/n64.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "genesis": Image { source: @image-url("consoles/genesis.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "mastersystem": Image { source: @image-url("consoles/mastersystem.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "saturn": Image { source: @image-url("consoles/saturn.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "dreamcast": Image { source: @image-url("consoles/dreamcast.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "gamecube": Image { source: @image-url("consoles/gamecube.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "wii": Image { source: @image-url("consoles/wii.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "wiiu": Image { source: @image-url("consoles/wiiu.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "switch": Image { source: @image-url("consoles/switch.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "ps1": Image { source: @image-url("consoles/ps1.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "ps2": Image { source: @image-url("consoles/ps2.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "ps3": Image { source: @image-url("consoles/ps3.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
+    if root.console == "ps4": Image { source: @image-url("consoles/ps4.svg"); colorize: root.ink; width: 90%; height: 90%; image-fit: contain; }
 
-    // Super Nintendo: mando redondeado y los cuatro botones en rombo.
-    if root.console == "snes": Rectangle {
-        width: 76 * root.u; height: 32 * root.u;
-        background: #cfcfd6; border-radius: 16 * root.u;
-        Rectangle { x: 9 * root.u; y: 12 * root.u; width: 19 * root.u; height: 7 * root.u; background: #4a4a55; }
-        Rectangle { x: 15 * root.u; y: 6 * root.u; width: 7 * root.u; height: 19 * root.u; background: #4a4a55; }
-        Rectangle { x: 55 * root.u; y: 5 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #8e79c4; }
-        Rectangle { x: 55 * root.u; y: 19 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #6f5aa8; }
-        Rectangle { x: 48 * root.u; y: 12 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #6f5aa8; }
-        Rectangle { x: 62 * root.u; y: 12 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #8e79c4; }
-    }
+    // --- Portátiles y PC: el pack son mandos, y una portátil no tiene mando.
+    // Estas se quedan dibujadas a mano hasta que aparezca un pack que las cubra.
 
     // Game Boy: de pie, con su pantalla verde.
     if root.console == "gameboy" || root.console == "gbc": Rectangle {
@@ -812,35 +816,10 @@ export component ConsoleArt inherits Rectangle {
         }
     }
 
-    // Nintendo 64: el logotipo de las tres aspas, una por color, girando en
-    // torno al centro. Path por aspa, que es lo único que dibuja ángulos.
-    if root.console == "n64": Rectangle {
-        width: 62 * root.u; height: 62 * root.u;
-        // Tres aspas idénticas giradas 120°, que se juntan en el centro.
-        Path {
-            width: 100%; height: 100%;
-            viewbox-width: 100; viewbox-height: 100;
-            fill: #e2483f;
-            commands: "M 50 50 L 59 23 L 47 9 L 38 36 Z";
-        }
-        Path {
-            width: 100%; height: 100%;
-            viewbox-width: 100; viewbox-height: 100;
-            fill: #46b04a;
-            commands: "M 50 50 L 68.9 71.3 L 87 67.9 L 68.1 46.6 Z";
-        }
-        Path {
-            width: 100%; height: 100%;
-            viewbox-width: 100; viewbox-height: 100;
-            fill: #3f8fe0;
-            commands: "M 50 50 L 22.1 55.7 L 16 73.1 L 43.9 67.4 Z";
-        }
-    }
-
-    // PlayStation: sus cuatro símbolos. Es lo que cualquiera reconoce de lejos.
-    if root.console == "ps1" || root.console == "ps2" || root.console == "ps3"
-        || root.console == "ps4" || root.console == "psp" || root.console == "psvita": Rectangle {
-        property <color> tinte: root.console == "ps1" ? #d5d5dd : #6ea8ff;
+    // PlayStation portátil (PSP, PS Vita): sus cuatro símbolos, que es lo que
+    // cualquiera reconoce de lejos. Las de sobremesa usan ya el SVG del pack.
+    if root.console == "psp" || root.console == "psvita": Rectangle {
+        property <color> tinte: #6ea8ff;
         width: 60 * root.u; height: 60 * root.u;
         Text { x: 22 * root.u; y: 0; text: "△"; color: tinte; font-size: 20 * root.u; }
         Text { x: 0; y: 20 * root.u; text: "□"; color: tinte; font-size: 20 * root.u; }
@@ -848,10 +827,8 @@ export component ConsoleArt inherits Rectangle {
         Text { x: 22 * root.u; y: 40 * root.u; text: "✕"; color: tinte; font-size: 20 * root.u; }
     }
 
-    // Sega: el mando negro de tres botones del Mega Drive.
-    if root.console == "genesis"
-        || root.console == "gamegear" || root.console == "saturn"
-        || root.console == "dreamcast": Rectangle {
+    // Game Gear: la portátil negra de Sega, con el mando de tres botones.
+    if root.console == "gamegear": Rectangle {
         width: 74 * root.u; height: 32 * root.u;
         background: #1f1f22; border-radius: 14 * root.u;
         Rectangle { x: 9 * root.u; y: 12 * root.u; width: 19 * root.u; height: 7 * root.u; background: #4f4f57; }
@@ -859,48 +836,6 @@ export component ConsoleArt inherits Rectangle {
         Rectangle { x: 42 * root.u; y: 13 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
         Rectangle { x: 52 * root.u; y: 11 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
         Rectangle { x: 62 * root.u; y: 9 * root.u; width: 8 * root.u; height: 8 * root.u; border-radius: 4 * root.u; background: #4f4f57; }
-    }
-
-    // Master System: la consola plana negra con la franja roja y la ranura.
-    if root.console == "mastersystem": Rectangle {
-        width: 72 * root.u; height: 34 * root.u;
-        background: #17171a; border-radius: 4 * root.u;
-        // Franja roja característica.
-        Rectangle { x: 6 * root.u; y: 6 * root.u; width: 60 * root.u; height: 4 * root.u; background: #c0392b; }
-        // Ranura del cartucho.
-        Rectangle { x: 14 * root.u; y: 15 * root.u; width: 44 * root.u; height: 5 * root.u; background: #3a3a40; border-radius: 2 * root.u; }
-        // Botón de pausa/reset.
-        Rectangle { x: 54 * root.u; y: 24 * root.u; width: 6 * root.u; height: 6 * root.u; border-radius: 3 * root.u; background: #c0392b; }
-    }
-
-    // GameCube: un cubo con el asa; y el disco pequeño.
-    if root.console == "gamecube": Rectangle {
-        width: 44 * root.u; height: 44 * root.u;
-        background: #6b5aa8; border-radius: 5 * root.u;
-        Rectangle { x: 13 * root.u; y: 13 * root.u; width: 18 * root.u; height: 18 * root.u;
-                    border-radius: 9 * root.u; background: #2a2350; }
-    }
-
-    // Wii: la torre blanca vertical con la ranura azul del disco.
-    if root.console == "wii" || root.console == "wiiu": Rectangle {
-        width: 20 * root.u; height: 58 * root.u;
-        background: #eef1f6; border-radius: 3 * root.u;
-        // Ranura del disco, con su línea azul luminosa.
-        Rectangle { x: 3 * root.u; y: 12 * root.u; width: 14 * root.u; height: 3 * root.u; background: #2b3038; border-radius: 1.5 * root.u; }
-        Rectangle { x: 4 * root.u; y: 12.5 * root.u; width: 12 * root.u; height: 2 * root.u; background: #29b6f6; }
-        // Botón de encendido.
-        Rectangle { x: 8 * root.u; y: 48 * root.u; width: 4 * root.u; height: 4 * root.u; border-radius: 2 * root.u; background: #b8c0cc; }
-    }
-
-    // Nintendo Switch: la tableta central con un Joy-Con a cada lado.
-    if root.console == "switch": Rectangle {
-        width: 56 * root.u; height: 44 * root.u;
-        // Pantalla central.
-        Rectangle { x: 15 * root.u; y: 4 * root.u; width: 26 * root.u; height: 36 * root.u; background: #23262e; border-radius: 3 * root.u; }
-        // Joy-Con izquierdo (azul).
-        Rectangle { x: 4 * root.u; y: 2 * root.u; width: 12 * root.u; height: 40 * root.u; background: #00a2d4; border-radius: 6 * root.u; }
-        // Joy-Con derecho (rojo).
-        Rectangle { x: 40 * root.u; y: 2 * root.u; width: 12 * root.u; height: 40 * root.u; background: #ff4b52; border-radius: 6 * root.u; }
     }
 
     // PC: un monitor sobre su peana.
