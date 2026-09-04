@@ -703,6 +703,8 @@ export component NowPlayingTab inherits Rectangle {
         VerticalLayout {
             width: max(root.art-landscape, 264px);
             spacing: Theme.gap;
+            // A little breathing room so the transport does not sit on the edge.
+            padding-bottom: Theme.gap;
 
             // Centre the cover: on a short window it is narrower than the column.
             HorizontalLayout {
@@ -791,14 +793,17 @@ export component NowPlayingTab inherits Rectangle {
                             spacing: 1px;
                             Text {
                                 text: row.title;
-                                color: i == root.now-index ? Theme.accent : Theme.text-primary;
+                                // White on the blue selection — accent-on-accent
+                                // has almost no contrast (the same trap the
+                                // sidebar hit).
+                                color: i == root.now-index ? #ffffff : Theme.text-primary;
                                 font-size: Theme.font-body;
                                 overflow: elide;
                                 animate color { duration: 220ms; easing: ease-out; }
                             }
                             Text {
                                 text: row.subtitle;
-                                color: Theme.text-muted;
+                                color: i == root.now-index ? #ffffffcc : Theme.text-muted;
                                 font-size: Theme.font-small;
                                 overflow: elide;
                             }
