@@ -553,11 +553,23 @@ export component AppWindow inherits Window {
             running: true;
             triggered => { fs.focus(); self.running = false; }
         }
+        // Ctrl+P is a GLOBAL shortcut: it must open Ajustes no matter which
+        // inner scope holds focus. The capture phase runs from the root down
+        // toward the focused item, so this fires before the track list or the
+        // Árbol tree can swallow the key — which is exactly what "ignored
+        // depending on where you press it" was. Only claim Ctrl+P here; let
+        // every other key fall through to normal focus dispatch.
+        capture-key-pressed(ev) => {
+            if (ev.modifiers.control && (ev.text == "p" || ev.text == "\u{10}")) {
+                ds.showing-settings = true;
+                return accept;
+            }
+            reject
+        }
         key-pressed(ev) => {
-            // Ctrl+P opens Ajustes, set straight on the shell — the tick round
-            // trip through Rust was not reaching the modal. With Ctrl held,
-            // winit/X11 delivers the control byte (Ctrl+P = U+0010), not "p",
-            // so match both spellings or the key would never land.
+            // Ctrl+P also handled here for completeness, but the capture handler
+            // above is what makes it global. With Ctrl held, winit/X11 delivers
+            // the control byte (Ctrl+P = U+0010), not "p", so match both.
             if (ev.modifiers.control && (ev.text == "p" || ev.text == "\u{10}")) {
                 ds.showing-settings = true;
                 return accept;
