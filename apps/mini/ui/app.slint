@@ -582,6 +582,9 @@ export component AppWindow inherits Window {
         ds := DesktopShell {
             width: parent.width;
             height: parent.height;
+            // A grid view destroys the table's FocusScope; without this the
+            // keyboard would be left focus-less and Ctrl+P would stop working.
+            request-focus => { fs.focus(); }
             scan-status: root.scan-status;
             library-rows: root.library-rows;
             library-total: root.library-total;
