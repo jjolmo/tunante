@@ -40,6 +40,11 @@ export component AppWindow inherits Window {
 
     in property <[LibraryRow]> library-rows;
     in property <[QueueRow]> queue-rows;
+    // The whole playing context and the current index, for the landscape
+    // now-playing queue list (distinct from queue-rows, the hand-queued items).
+    in property <[QueueRow]> context-rows;
+    in property <int> context-index;
+    callback context-activated(int);
     in property <int> queue-placement;
     callback cycle-queue-placement();
     in property <bool> queue-always-visible;
@@ -969,6 +974,9 @@ export component AppWindow inherits Window {
                         position-ms: root.position-ms;
                         duration-ms: root.duration-ms;
                         portrait: root.portrait;
+                        queue-rows: root.context-rows;
+                        now-index: root.context-index;
+                        queue-activated(i) => { root.context-activated(i); }
                         toggle-play => { root.toggle-play(); }
                         next-track => { root.next-track(); }
                         prev-track => { root.prev-track(); }

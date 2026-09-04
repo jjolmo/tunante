@@ -647,6 +647,11 @@ export component NowPlayingTab inherits Rectangle {
     callback cycle-repeat();
     callback toggle-shuffle();
     callback seek(int);
+    // Landscape's right column is the queue; tapping a row plays it. `now-index`
+    // is the currently-playing row (from Rust), so the list can keep it centred.
+    in property <[QueueRow]> queue-rows;
+    in property <int> now-index;
+    callback queue-activated(int);
 
     // Portrait: cover on top, text under it, transport at the bottom.
     if root.portrait: VerticalLayout {
@@ -684,31 +689,26 @@ export component NowPlayingTab inherits Rectangle {
         }
     }
 
-    // Landscape: cover on the leading edge, everything else beside it. Turning
-    // the phone buys width, not height, so stacking would only shrink the cover.
+    // Landscape: three columns — cover on the leading edge, the info and the
+    // centred transport in the middle, and the playing context as a list on the
+    // right, kept centred on the current track.
     if !root.portrait: HorizontalLayout {
         padding: Theme.gap;
         spacing: Theme.gap;
-        // No `alignment` on purpose. Setting one — this said `start` — makes
-        // Slint give every child its preferred width and pack them, which
-        // silently voids the `horizontal-stretch` below: the whole right-hand
-        // third of the screen stayed empty while the seek bar sat squeezed in
-        // the middle. The default is stretch, and the cover keeps its size
-        // regardless because Artwork binds its own width.
 
         Artwork { side: root.art-landscape; art: root.art; fit: root.art-fit; }
 
+        // Middle: track info at the top, the transport (seek bar over the
+        // centred buttons) filling the rest so the controls sit centred.
         VerticalLayout {
             horizontal-stretch: 1;
             spacing: Theme.gap;
-
-            Rectangle { vertical-stretch: 1; }
 
             TrackInfo {
                 title: root.title;
                 artist: root.artist;
                 album: root.album;
-                centered: false;
+                centered: true;
             }
 
             Rectangle { vertical-stretch: 1; }
@@ -726,6 +726,72 @@ export component NowPlayingTab inherits Rectangle {
                 cycle-repeat => { root.cycle-repeat(); }
                 toggle-shuffle => { root.toggle-shuffle(); }
                 seek(ms) => { root.seek(ms); }
+            }
+
+            Rectangle { vertical-stretch: 1; }
+        }
+
+        // Right: the playing context. The current track is kept in the middle;
+        // a scroll browses the list, and 10 s after the last touch it eases
+        // back to centre — a track change re-centres at once.
+        if root.queue-rows.length > 1: qcol := Rectangle {
+            width: min(320px, root.width * 0.34);
+            property <length> row-h: 46px;
+            // Mirror of now-index, so `changed` can watch it from in here and
+            // re-centre the moment the engine moves to the next track.
+            property <int> ni: root.now-index;
+
+            public function recenter() {
+                if (root.now-index >= 0 && qlv.visible-height > 0) {
+                    qlv.viewport-y = -(root.now-index * qcol.row-h
+                        - (qlv.visible-height - qcol.row-h) / 2);
+                }
+            }
+            changed ni => { qcol.recenter(); }
+
+            qlv := ListView {
+                // Any scroll — the user's or the re-centre's — restarts the idle
+                // countdown; the re-centre while idle is a harmless no-op.
+                changed viewport-y => { idle.restart(); }
+                for row[i] in root.queue-rows: Rectangle {
+                    height: qcol.row-h;
+                    background: i == root.now-index ? Theme.bg-selected
+                        : (qt.has-hover ? Theme.bg-hover : transparent);
+                    HorizontalLayout {
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+                            Text {
+                                text: row.title;
+                                color: i == root.now-index ? Theme.accent : Theme.text-primary;
+                                font-size: Theme.font-body;
+                                overflow: elide;
+                            }
+                            Text {
+                                text: row.subtitle;
+                                color: Theme.text-muted;
+                                font-size: Theme.font-small;
+                                overflow: elide;
+                            }
+                        }
+                    }
+                    qt := TouchArea { clicked => { root.queue-activated(i); } }
+                }
+            }
+
+            // Ease back to the current track 10 s after the last scroll.
+            idle := Timer {
+                interval: 10s;
+                running: true;
+                triggered => { qcol.recenter(); }
+            }
+            // Centre once the list has a height to measure (init is too early).
+            settle := Timer {
+                interval: 80ms;
+                running: true;
+                triggered => { qcol.recenter(); settle.running = false; }
             }
         }
     }
