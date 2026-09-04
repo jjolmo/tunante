@@ -51,8 +51,7 @@ vendor/                 # Third-party C and the crates that wrap it
   viogsf/, vgmstream/   #   Vendored C. vgmstream is a submodule; viogsf is not —
                         #   see vendor/viogsf/README.upstream.md for why.
   *-rs/, *-patch/       #   viogsf-rs, vio2sf-rs, hepsf-rs, lazyusf2-rs,
-                        #   vgmstream-rs, game-music-emu-patch, opus-decoder-patch,
-                        #   tray-icon-patch, libappindicator-patch
+                        #   vgmstream-rs, game-music-emu-patch, opus-decoder-patch
 ```
 
 Keep `vendor/` flat. `viogsf-rs/CMakeLists.txt` reaches for `../viogsf/vbam` and
@@ -63,7 +62,9 @@ an error that names a header rather than a directory.
 `tunante-core`, `tunante-audio`, `tunante-codec` and `tunante-helper` are shared.
 **None of them may depend on any GUI toolkit.** `tunante-mini` gates its desktop
 niceties behind cargo features (`tray`, `updater`, both default-on); the phone
-builds pass `--no-default-features`, which keeps GTK and ureq out of that image.
+builds pass `--no-default-features`, which keeps ureq (and the tray's D-Bus
+`ksni`) out of that image. The tray is a native StatusNotifierItem over zbus —
+no GTK anywhere in the tree.
 
 Where something belongs, when in doubt: **`tunante-core` if it only needs the
 database or pure logic** (that is why `session.rs` and the queue live there);
@@ -141,7 +142,7 @@ Cargo commands run from the repository root, which is the workspace root.
   enough; `ring` and `libsqlite3-sys` build C and need the NDK toolchain that
   `cargo ndk` sets up.
 - `cargo build --release --no-default-features -p tunante-mini` - The phone
-  configuration (no tray, no updater, no GTK/ureq). CI builds both; breakage in
+  configuration (no tray, no updater, no ureq). CI builds both; breakage in
   either is breakage.
 - `cd apps/android && ./build.sh` - Build the Android APK. Compiles the Rust for
   both ABIs with cargo-ndk, stages the `.so` files into `jniLibs`, then runs Gradle.

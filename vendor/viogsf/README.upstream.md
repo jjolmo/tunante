@@ -12,10 +12,9 @@ inside the submodule on every build, so the checkout was permanently dirty, the
 build was not reproducible, and a read-only source tree could not build at all.
 
 Pointing the submodule at a fork would have fixed it too, but this repository
-already solves exactly this problem four other times — `game-music-emu-patch`,
-`opus-decoder-patch`, `tray-icon-patch`, `libappindicator-patch` are all
-vendored, patched copies of upstream C. At 512 KB across 32 files this is
-smaller than two of them. Same problem, same answer.
+already solves exactly this problem elsewhere — `game-music-emu-patch` and
+`opus-decoder-patch` are vendored, patched copies of upstream C. Same problem,
+same answer.
 
 ## What we changed
 
