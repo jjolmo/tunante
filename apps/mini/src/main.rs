@@ -210,15 +210,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // a Spanish (or unshipped) locale keeps them and only a shipped `.po` for
     // another language switches. Must run after the first component exists.
     {
-        let lang = db
-            .get_setting("language")
-            .ok()
-            .flatten()
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(ui_language_from_env);
-        if !lang.is_empty() {
-            let _ = slint::select_bundled_translation(&lang);
-        }
+        let saved = db.get_setting("language").ok().flatten().unwrap_or_default();
+        apply_language(&saved);
+        ui.set_language_label(SharedString::from(language_label(&saved)));
     }
 
     // The presentation override: auto picks by window width (>= 900px means
@@ -3842,6 +3836,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.global::<Theme>().set_dark(dark);
             ui.set_theme_label(SharedString::from(theme_mode_label(mode)));
             ui.set_theme_mode(mode as i32);
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_language(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // Next language in the ring; "" (system) is the first entry, so a
+            // fresh install lands there. Applied live — Slint re-renders the
+            // @tr strings — and saved so it survives a restart. Strings set from
+            // Rust (the column headers, the tray menu) update on next launch.
+            let cur = db.get_setting("language").ok().flatten().unwrap_or_default();
+            let idx = UI_LANGS.iter().position(|(c, _)| *c == cur).unwrap_or(0);
+            let next = UI_LANGS[(idx + 1) % UI_LANGS.len()].0;
+            let _ = db.set_setting("language", next);
+            apply_language(next);
+            ui.set_language_label(SharedString::from(language_label(next)));
         });
     }
     {
@@ -7531,6 +7541,40 @@ fn sync_queue_marker(p: &player::Player, model: &Rc<VecModel<QueueRow>>) {
 
 /// How big a cover is ever drawn. Anything larger is memory nobody sees.
 const MAX_ART_SIDE: u32 = 720;
+
+/// The languages the settings selector cycles through: a stored code and the
+/// name shown for it. `""` is "follow the system" (the UI localises the word
+/// "Sistema" itself); the rest are native names, as language menus usually are.
+/// `es` and `""`/system-Spanish both resolve to the bundled Spanish source.
+const UI_LANGS: &[(&str, &str)] = &[
+    ("", ""),
+    ("es", "Español"),
+    ("en", "English"),
+    ("fr", "Français"),
+    ("de", "Deutsch"),
+    ("it", "Italiano"),
+    ("pt", "Português"),
+];
+
+/// The name shown for a stored language code (empty for "system").
+fn language_label(code: &str) -> &'static str {
+    UI_LANGS.iter().find(|(c, _)| *c == code).map_or("", |(_, l)| *l)
+}
+
+/// Select the bundled translation for a stored code. `""` follows the system
+/// locale; `""`/`es`/an unshipped locale all fall back to the Spanish source.
+fn apply_language(code: &str) {
+    let lang = if code.is_empty() {
+        ui_language_from_env()
+    } else {
+        code.to_string()
+    };
+    if lang.is_empty() || lang == "es" {
+        let _ = slint::select_bundled_translation("");
+    } else {
+        let _ = slint::select_bundled_translation(&lang);
+    }
+}
 
 /// The UI language from the environment: the primary subtag of the first set
 /// locale variable (`es_ES.UTF-8` → `es`). Empty for the neutral `C`/`POSIX`

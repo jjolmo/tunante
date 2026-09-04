@@ -643,3 +643,6 @@ msgstr "Copia"
 
 msgid "Limpiar"
 msgstr "Pulisci"
+
+msgid "Idioma"
+msgstr "Lingua"

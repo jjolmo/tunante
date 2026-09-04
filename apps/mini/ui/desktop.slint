@@ -535,6 +535,8 @@ export component DesktopShell inherits Rectangle {
     callback cycle-crossfade();
     in property <string> output-label;
     in property <string> ui-mode-label;
+    in property <string> language-label;
+    callback cycle-language();
     in property <int> ui-mode;
     in-out property <int> ui-mode-pending;
     in property <string> ui-mode-pending-label;
@@ -1522,6 +1524,8 @@ export component DesktopShell inherits Rectangle {
                     cycle-crossfade => { root.cycle-crossfade(); }
                     output-label: root.output-label;
                     ui-mode-label: root.ui-mode-label;
+                    language-label: root.language-label;
+                    cycle-language => { root.cycle-language(); }
                     cycle-output => { root.cycle-output(); }
                     cycle-ui-mode => { root.cycle-ui-mode(); }
                     update-status: root.update-status;
