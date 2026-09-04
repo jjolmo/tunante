@@ -1,6 +1,6 @@
 // The building blocks every screen shares: rows, buttons, the transport,
-// the artwork frame, the long-press sheets. Split out of app.slint in fase 2
-// of docs/plan-desktop-slint.md — bodies verbatim, only the export changed.
+// the artwork frame, the long-press sheets. Split out of app.slint — bodies
+// verbatim, only the export changed.
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
@@ -1901,7 +1901,7 @@ export component CoversPlanSheet inherits Rectangle {
                         }
                         Text {
                             text: plan.action;
-                            color: plan.action == "se escribiría" ? Theme.accent : Theme.text-muted;
+                            color: plan.will-write ? Theme.accent : Theme.text-muted;
                             font-size: Theme.font-small;
                             vertical-alignment: center;
                         }

@@ -1,4 +1,4 @@
-// The tunante-mini shell: three tabs, a mini-player, and a switcher that moves
+// The tunante shell: three tabs, a mini-player, and a switcher that moves
 // to a side rail when the phone is turned.
 //
 // Deliberately built out of primitives (Rectangle, Text, TextInput, TouchArea)
@@ -30,13 +30,14 @@ export component AppWindow inherits Window {
     title: root.window-title == "" ? "Tunante" : root.window-title;
     in property <string> window-title;
     // The window/taskbar icon — the logo, not the toolkit's placeholder "W".
-    icon: @image-url("../dist/icons/256x256/tunante-mini.png");
+    icon: @image-url("../dist/icons/256x256/tunante.png");
     background: Theme.bg-primary;
-    // A sensible size for development — phone-shaped, unless the desktop shell
-    // was forced from the command line before the window mapped. On the phone
-    // the compositor makes it fullscreen and this is ignored.
-    preferred-width: root.ui-mode == 2 ? 1400px : 400px;
-    preferred-height: root.ui-mode == 2 ? 850px : 800px;
+    // Wide enough to open in the desktop shell on a desktop. On a phone the
+    // compositor makes the window fullscreen and this is ignored; if it does
+    // not, the screen clamps the width and the narrow shell takes over — which
+    // is the whole point of there being one binary and no mode to pick.
+    preferred-width: 1200px;
+    preferred-height: 850px;
 
     in property <[LibraryRow]> library-rows;
     in property <[QueueRow]> queue-rows;
@@ -50,7 +51,7 @@ export component AppWindow inherits Window {
     in property <bool> queue-always-visible;
     callback toggle-queue-always-visible();
     callback queue-opened-in-table();
-    in property <string> now-title: "Nothing playing";
+    in property <string> now-title: @tr("Nada sonando");
     in property <string> now-artist;
     in property <string> now-album;
     in property <int> library-total;
@@ -207,13 +208,9 @@ export component AppWindow inherits Window {
     callback cycle-short-filter();
     in property <int> crossfade-secs;
     callback cycle-crossfade();
-    in property <string> output-label: "sistema";
-    in property <string> ui-mode-label: "auto";
+    in property <string> output-label: @tr("sistema");
     in property <string> language-label;
     callback cycle-language();
-    in-out property <int> ui-mode-pending;
-    in property <string> ui-mode-pending-label;
-    callback apply-ui-mode();
     in property <string> update-status;
     callback check-update();
     in property <string> theme-label;
@@ -264,7 +261,7 @@ export component AppWindow inherits Window {
     in-out property <string> error-toast;
     in-out property <int> error-toast-age;
     in property <[string]> log-lines;
-    in property <string> log-level-label: "todo";
+    in property <string> log-level-label: @tr("todo");
     callback cycle-log-level();
     callback log-filter-changed(string);
     callback copy-log();
@@ -282,7 +279,6 @@ export component AppWindow inherits Window {
     in property <int> output-current;
     in-out property <bool> output-picking;
     callback pick-output(int);
-    callback cycle-ui-mode();
     in property <bool> eq-enabled;
     in property <float> eq-low;
     in property <float> eq-mid;
@@ -446,9 +442,6 @@ export component AppWindow inherits Window {
     // `portrait`: snapshotted from `changed`, never derived, because whether
     // the shell exists decides the layout that sizes the window.
     //
-    // `ui-mode` is the manual override from settings: 0 auto · 1 mini · 2
-    // desktop. Auto draws the line at 900px of width.
-    in-out property <int> ui-mode: 0;
     // Readable from Rust so a grid tap can route a console to the table on the
     // desktop and to a list on the phone.
     out property <bool> desktop: false;
@@ -456,8 +449,7 @@ export component AppWindow inherits Window {
 
     function reshape() {
         root.portrait = root.height >= root.width;
-        root.desktop = root.ui-mode == 2
-            || (root.ui-mode == 0 && root.width >= 900px);
+        root.desktop = root.width >= 900px;
         // Desktop uses the old, tighter type scale.
         Theme.compact = root.desktop;
     }
@@ -482,11 +474,6 @@ export component AppWindow inherits Window {
         root.cramped = root.height < 300px;
         root.retile();
     }
-    changed ui-mode => {
-        root.reshape();
-        root.retile();
-    }
-
     // Changing tab slides the new one in from the edge it came from, so the
     // gesture and the tab bar agree about which way the app just moved.
     //
@@ -715,10 +702,6 @@ export component AppWindow inherits Window {
             queue-always-visible: root.queue-always-visible;
             toggle-queue-always-visible => { root.toggle-queue-always-visible(); }
             queue-opened-in-table => { root.queue-opened-in-table(); }
-            ui-mode: root.ui-mode;
-            ui-mode-pending: root.ui-mode-pending;
-            ui-mode-pending-label: root.ui-mode-pending-label;
-            apply-ui-mode => { root.apply-ui-mode(); }
             folder-opened(id) => { root.folder-opened(id); }
             folder-unpinned(id) => { root.folder-unpinned(id); }
             folder-revealed(id) => { root.folder-revealed(id); }
@@ -856,11 +839,9 @@ export component AppWindow inherits Window {
             crossfade-secs: root.crossfade-secs;
             cycle-crossfade => { root.cycle-crossfade(); }
             output-label: root.output-label;
-            ui-mode-label: root.ui-mode-label;
             language-label: root.language-label;
             cycle-language => { root.cycle-language(); }
             cycle-output => { root.cycle-output(); }
-            cycle-ui-mode => { root.cycle-ui-mode(); }
                         update-status: root.update-status;
                         check-update => { root.check-update(); }
                         theme-label: root.theme-label;
@@ -1053,12 +1034,7 @@ export component AppWindow inherits Window {
                         crossfade-secs: root.crossfade-secs;
                         cycle-crossfade => { root.cycle-crossfade(); }
                         output-label: root.output-label;
-                        ui-mode-label: root.ui-mode-label;
                         cycle-output => { root.cycle-output(); }
-                        cycle-ui-mode => { root.cycle-ui-mode(); }
-                    ui-mode-pending: root.ui-mode-pending;
-                    ui-mode-pending-label: root.ui-mode-pending-label;
-                    apply-ui-mode => { root.apply-ui-mode(); }
                     update-status: root.update-status;
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;

@@ -1,5 +1,5 @@
-// The four screens of the phone shell. Split out of app.slint in fase 2 of
-// docs/plan-desktop-slint.md — bodies verbatim, only the export changed.
+// The four screens of the narrow shell. Split out of app.slint — bodies
+// verbatim, only the export changed.
 
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
@@ -50,11 +50,6 @@ export component SettingsTab inherits Rectangle {
     in property <int> crossfade-secs;
     callback cycle-crossfade();
     in property <string> output-label: @tr("sistema");
-    in property <string> ui-mode-label: @tr("auto");
-    in property <int> ui-mode;
-    in-out property <int> ui-mode-pending;
-    in property <string> ui-mode-pending-label;
-    callback apply-ui-mode();
     in property <string> update-status;
     callback check-update();
     in property <string> theme-label;
@@ -97,7 +92,6 @@ export component SettingsTab inherits Rectangle {
     callback toggle-mono-compensate();
     callback toggle-mono-phase();
     callback cycle-output();
-    callback cycle-ui-mode();
     in property <bool> eq-enabled;
     in property <float> eq-low;
     in property <float> eq-mid;
@@ -127,7 +121,13 @@ export component SettingsTab inherits Rectangle {
         // lateral y el dedo no hace nada. Lo mismo que en las listas.
         mouse-drag-pan-enabled: true;
 
-    VerticalLayout {
+        // Without this the ScrollView hands the layout its own visible height,
+        // not the height the rows actually need. Slint then squeezes below the
+        // minimum and the rows draw ON TOP OF EACH OTHER — three settings piled
+        // on one line. The viewport has to be told how tall the content is.
+        viewport-height: rows.preferred-height;
+
+    rows := VerticalLayout {
         padding-top: Theme.gap;
 
         Text {
@@ -529,6 +529,7 @@ export component SettingsTab inherits Rectangle {
             label: @tr("Tema");
             value: root.theme-label;
             clicked => { root.cycle-theme(); }
+        }
         // Only meaningful when the tray is compiled in; without it the row
         // still toggles but the close button keeps quitting.
         // Global keys through the desktop portal: rebindable by the user
@@ -568,20 +569,6 @@ export component SettingsTab inherits Rectangle {
             highlighted: root.close-to-tray;
             clicked => { root.toggle-close-to-tray(); }
         }
-        }
-        // The manual override docs/plan-desktop-slint.md promised: auto picks
-        // by window width, the other two force a shell.
-        SettingRow {
-            label: @tr("Modo de interfaz");
-            value: root.ui-mode-pending-label;
-            clicked => { root.cycle-ui-mode(); }
-        }
-        if root.ui-mode-pending != root.ui-mode: SettingRow {
-            label: @tr("↳ Aplicar (cambia la presentación)");
-            value: @tr("Aplicar");
-            highlighted: true;
-            clicked => { root.apply-ui-mode(); }
-        }
         SettingRow {
             label: @tr("Buscar actualizaciones");
             value: root.update-status;
@@ -619,7 +606,9 @@ export component SettingsTab inherits Rectangle {
             clicked => { root.open-repo(); }
         }
 
-        Rectangle { vertical-stretch: 1; }
+        // A fixed tail, not a stretch: the viewport is exactly as tall as the
+        // rows now, so a stretching spacer would have nothing to stretch into.
+        Rectangle { height: Theme.gap * 2; }
     }
     }
 }
@@ -1040,6 +1029,16 @@ export component LibraryTab inherits Rectangle {
     in-out property <string> search;
     in-out property <int> mode;
     callback mode-changed(int);
+    // Switch view and clear the filter — a filter typed for one section has no
+    // meaning in the next, and carrying it over hid most of the new view.
+    function switch-mode(m: int) {
+        if (root.search != "") {
+            root.search = "";
+            root.search-changed("");
+        }
+        root.mode = m;
+        root.mode-changed(m);
+    }
     // Discos, Juegos y Consolas se dibujan en rejilla; el nivel de pistas, en lista.
     in property <[GridLine]> grid-lines;
     in property <bool> grid;
@@ -1135,20 +1134,17 @@ export component LibraryTab inherits Rectangle {
                 padding-right: Theme.gap;
                 spacing: 4px;
 
-                ModeTab {
-                    label: @tr("Árbol");
-                    selected: root.mode == 0;
-                    clicked => { root.mode = 0; root.mode-changed(0); }
-                }
+                // Display order: Discos first, Árbol last (the mode indices stay
+                // as they are — the whole app maps a view to its number).
                 ModeTab {
                     label: @tr("Discos");
                     selected: root.mode == 1;
-                    clicked => { root.mode = 1; root.mode-changed(1); }
+                    clicked => { root.switch-mode(1); }
                 }
                 ModeTab {
                     label: @tr("Consolas");
                     selected: root.mode == 2;
-                    clicked => { root.mode = 2; root.mode-changed(2); }
+                    clicked => { root.switch-mode(2); }
                 }
                 ModeTab {
                     // Por la etiqueta de álbum, no por carpeta: Discos dice lo
@@ -1157,12 +1153,17 @@ export component LibraryTab inherits Rectangle {
                     // guarda varios juegos.
                     label: @tr("Juegos");
                     selected: root.mode == 3;
-                    clicked => { root.mode = 3; root.mode-changed(3); }
+                    clicked => { root.switch-mode(3); }
                 }
                 ModeTab {
                     label: @tr("Listas");
                     selected: root.mode == 4;
-                    clicked => { root.mode = 4; root.mode-changed(4); }
+                    clicked => { root.switch-mode(4); }
+                }
+                ModeTab {
+                    label: @tr("Árbol");
+                    selected: root.mode == 0;
+                    clicked => { root.switch-mode(0); }
                 }
             }
         }

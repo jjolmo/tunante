@@ -1,7 +1,6 @@
 // The desktop shell: sidebar | library | queue, over one transport bar.
 //
-// Fase 2 of docs/plan-desktop-slint.md. Deliberately built from the same
-// screens the phone uses — LibraryTab, QueueTab and SettingsTab are
+// Deliberately built from the same screens the narrow shell uses — LibraryTab, QueueTab and SettingsTab are
 // instantiated whole, fed by the same models and firing the same callbacks,
 // so there is exactly one implementation of every behaviour and the shell is
 // only a different arrangement of it. The wide track table of fase 3b will
@@ -534,13 +533,8 @@ export component DesktopShell inherits Rectangle {
     in property <int> crossfade-secs;
     callback cycle-crossfade();
     in property <string> output-label;
-    in property <string> ui-mode-label;
     in property <string> language-label;
     callback cycle-language();
-    in property <int> ui-mode;
-    in-out property <int> ui-mode-pending;
-    in property <string> ui-mode-pending-label;
-    callback apply-ui-mode();
     in property <string> update-status;
     callback check-update();
     in property <string> theme-label;
@@ -585,7 +579,6 @@ export component DesktopShell inherits Rectangle {
     callback toggle-mono-compensate();
     callback toggle-mono-phase();
     callback cycle-output();
-    callback cycle-ui-mode();
     in property <bool> eq-enabled;
     in property <float> eq-low;
     in property <float> eq-mid;
@@ -1497,10 +1490,6 @@ export component DesktopShell inherits Rectangle {
                     toggle-queue-always-visible => { root.toggle-queue-always-visible(); }
                     star-display-mode: root.star-display-mode;
                     set-star-display-mode(m) => { root.set-star-display-mode(m); }
-                    ui-mode: root.ui-mode;
-                    ui-mode-pending: root.ui-mode-pending;
-                    ui-mode-pending-label: root.ui-mode-pending-label;
-                    apply-ui-mode => { root.apply-ui-mode(); }
                     now-art: root.now-art;
                     cover-fit: root.cover-fit;
                     about-label: root.about-label;
@@ -1523,11 +1512,9 @@ export component DesktopShell inherits Rectangle {
                     crossfade-secs: root.crossfade-secs;
                     cycle-crossfade => { root.cycle-crossfade(); }
                     output-label: root.output-label;
-                    ui-mode-label: root.ui-mode-label;
                     language-label: root.language-label;
                     cycle-language => { root.cycle-language(); }
                     cycle-output => { root.cycle-output(); }
-                    cycle-ui-mode => { root.cycle-ui-mode(); }
                     update-status: root.update-status;
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;

@@ -1,7 +1,7 @@
 // The desktop shell's track table: every track in the library as sortable,
 // filterable columns — what the Tauri desktop calls "All Tracks".
 //
-// The spike (apps/mini/examples/table_spike.rs) proved the shape first: a
+// The spike (apps/tunante/examples/table_spike.rs) proved the shape first: a
 // ListView over fixed-height rows holds 30 000 × 17 at the panel's refresh
 // rate on both renderers, and a full sort-and-rebuild costs 11–21 ms. The
 // columns are a model now, the GridLine trick sideways: Rust owns the catalog
@@ -155,7 +155,7 @@ export component TrackTable inherits Rectangle {
     /// Row index and which star (1..5) was under the pointer; Rust decides
     /// whether that means set or clear.
     callback rated(int, int);
-    /// "Y después esta": append to the queue context, mini's own enqueue.
+    /// "Y después esta": append to the queue context, the phone shell's enqueue.
     callback enqueued(int);
     /// "Y *justo* después": the priority queue next() consumes first.
     callback play-next(int);
