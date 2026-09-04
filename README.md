@@ -89,17 +89,16 @@ it draws straight to the GPU through GLES2.
 ```bash
 # Ubuntu / Debian
 sudo apt install build-essential pkg-config cmake \
-  libfontconfig1-dev libasound2-dev zlib1g-dev \
-  libgtk-3-dev libappindicator3-dev
+  libfontconfig1-dev libasound2-dev zlib1g-dev
 
 # Fedora
 sudo dnf install gcc-c++ cmake pkg-config \
-  fontconfig-devel alsa-lib-devel zlib-devel \
-  gtk3-devel libappindicator-gtk3-devel
+  fontconfig-devel alsa-lib-devel zlib-devel
 ```
 
-GTK is only for the tray icon's own thread — the app itself is winit — and the
-phone builds compile without it (`--no-default-features`).
+No GTK: the tray icon is a native StatusNotifierItem over D-Bus (the `ksni`
+crate on zbus), and the app itself is winit. The phone builds drop the tray
+altogether (`--no-default-features`).
 
 ## Quick Start
 
