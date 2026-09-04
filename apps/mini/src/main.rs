@@ -5419,8 +5419,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = p.prev();
                         }
                         tray::TrayAction::ToggleWindow => {
-                            // The configurable click action rides the one
-                            // channel ayatana gives us.
+                            // Left-click and the menu's Mostrar/Ocultar: always
+                            // show or hide the window. A tray icon exists to
+                            // bring the window back — that is not a preference.
+                            toggle_window(&ui);
+                        }
+                        tray::TrayAction::MiddleClick => {
+                            // Middle-click runs the configurable action; its
+                            // default ("toggle") is the same show/hide.
                             match tray_click.borrow().as_str() {
                                 "play_pause" => p.toggle_play(),
                                 "stop" => p.stop(),
@@ -5444,19 +5450,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         p.engine_mut().set_fade_on_track_change(false);
                                     }
                                 }
-                                _ => {
-                                    if ui.window().is_visible() {
-                                        let _ = ui.window().hide();
-                                    } else {
-                                        let _ = ui.window().show();
-                                        // Coming back, land on what plays —
-                                        // the old restore-scroll, on the one
-                                        // event this stack can actually see.
-                                        if !ui.get_now_path().is_empty() {
-                                            ui.invoke_now_clicked();
-                                        }
-                                    }
-                                }
+                                _ => toggle_window(&ui),
                             }
                         }
                         tray::TrayAction::Quit => {
@@ -7521,6 +7515,20 @@ fn sync_queue_marker(p: &player::Player, model: &Rc<VecModel<QueueRow>>) {
 
 /// How big a cover is ever drawn. Anything larger is memory nobody sees.
 const MAX_ART_SIDE: u32 = 720;
+
+/// Show the window if it is hidden, hide it if it is shown — the tray's
+/// left-click and Mostrar/Ocultar. On the way back it re-centres on what is
+/// playing, the way reopening always has.
+fn toggle_window(ui: &AppWindow) {
+    if ui.window().is_visible() {
+        let _ = ui.window().hide();
+    } else {
+        let _ = ui.window().show();
+        if !ui.get_now_path().is_empty() {
+            ui.invoke_now_clicked();
+        }
+    }
+}
 
 fn push_now_playing(ui: &AppWindow, p: &player::Player) {
     let art_path = p.current().map(|t| t.path.clone());

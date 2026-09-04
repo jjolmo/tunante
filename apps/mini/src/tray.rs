@@ -14,7 +14,14 @@
 /// What a tray interaction asks for, in the UI thread's terms.
 #[derive(Clone, Copy, Debug)]
 pub enum TrayAction {
+    /// Left-click and the "Mostrar/Ocultar" menu item: always show or hide the
+    /// window. Not configurable — restoring the window is what a tray icon is
+    /// for, and the old build only tied it to a setting because libayatana gave
+    /// it a single click channel to share.
     ToggleWindow,
+    /// Middle-click: the configurable action (`tray_middle_click_action`) —
+    /// play/pause, next, or, by default, toggle the window.
+    MiddleClick,
     PlayPause,
     Next,
     Prev,
@@ -135,9 +142,9 @@ mod imp {
             let _ = self.tx.send(TrayAction::ToggleWindow);
         }
 
-        // Middle-click, kept doing the same as before.
+        // Middle-click runs the configurable action, kept as it was.
         fn secondary_activate(&mut self, _x: i32, _y: i32) {
-            let _ = self.tx.send(TrayAction::ToggleWindow);
+            let _ = self.tx.send(TrayAction::MiddleClick);
         }
 
         fn scroll(&mut self, delta: i32, orientation: ksni::Orientation) {
