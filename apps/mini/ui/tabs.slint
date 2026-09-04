@@ -696,13 +696,13 @@ export component NowPlayingTab inherits Rectangle {
         padding: Theme.gap;
         spacing: Theme.gap;
 
-        Artwork { side: root.art-landscape; art: root.art; fit: root.art-fit; }
-
-        // Middle: track info at the top, the transport (seek bar over the
-        // centred buttons) filling the rest so the controls sit centred.
+        // Left: the cover, with the info, seek bar and transport stacked under
+        // it — kept to the cover's width so the list on the right has the room.
         VerticalLayout {
-            horizontal-stretch: 1;
+            width: root.art-landscape;
             spacing: Theme.gap;
+
+            Artwork { side: root.art-landscape; art: root.art; fit: root.art-fit; }
 
             TrackInfo {
                 title: root.title;
@@ -714,7 +714,9 @@ export component NowPlayingTab inherits Rectangle {
             Rectangle { vertical-stretch: 1; }
 
             Transport {
-                wide: true;
+                // Narrow column: space the buttons across it rather than
+                // clustering them in a centre that isn't wide.
+                wide: false;
                 playing: root.playing;
                 shuffle: root.shuffle;
                 repeat: root.repeat;
@@ -727,15 +729,13 @@ export component NowPlayingTab inherits Rectangle {
                 toggle-shuffle => { root.toggle-shuffle(); }
                 seek(ms) => { root.seek(ms); }
             }
-
-            Rectangle { vertical-stretch: 1; }
         }
 
-        // Right: the playing context. The current track is kept in the middle;
-        // a scroll browses the list, and 10 s after the last touch it eases
-        // back to centre — a track change re-centres at once.
+        // Right: the playing context, taking the rest of the width. The current
+        // track is kept centred; a scroll browses the list, and 10 s after the
+        // last touch it eases back to centre — a track change re-centres at once.
         if root.queue-rows.length > 1: qcol := Rectangle {
-            width: min(320px, root.width * 0.34);
+            horizontal-stretch: 1;
             property <length> row-h: 46px;
             // Mirror of now-index, so `changed` can watch it from in here and
             // re-centre the moment the engine moves to the next track.
