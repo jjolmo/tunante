@@ -32,7 +32,7 @@ import kotlinx.coroutines.withContext
  *
  * Bounded by bytes rather than by entry count: a 1600×1600 front cover and a
  * 200×200 thumbnail are both "one entry" and differ by sixty times the memory.
- * `tunante-mini` keeps forty entries at 224 px for the same job; this is the
+ * `tunante` keeps forty entries at 224 px for the same job; this is the
  * same idea with the units that actually matter on a phone.
  */
 private object ArtCache : LruCache<String, Bitmap>(12 * 1024 * 1024) {

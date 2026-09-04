@@ -10,7 +10,7 @@ on:
     paths:
       - 'assets/logo.png'
       - 'scripts/gen-icons.py'
-      - 'apps/mini/dist/icons/**'
+      - 'apps/tunante/dist/icons/**'
       - 'apps/android/app/src/main/res/mipmap-**'
       - '.github/workflows/icons.yml'
   pull_request:

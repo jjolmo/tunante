@@ -13,7 +13,7 @@ name: Release
 # the Alpine package) and android.yml — which then attach themselves to it.
 #
 # The Tauri desktop jobs that used to live here are gone with the app they
-# built (fase 4 of docs/plan-desktop-slint.md): the Slint player *is* the
+# built: the Slint player *is* the
 # desktop app now, and its builds were always mini.yml's. The last Tauri
 # release remains v0.1.283; anyone on an AppImage moves to the tarball by
 # hand once — the release notes say so.
@@ -89,7 +89,7 @@ jobs:
           # A short guide to the assets, above the generated changelog.
           #
           # Two of them are called ".apk" and only one installs on a phone:
-          # tunante-android-<v>.apk is the Android app, tunante-mini-<v>-r0.apk
+          # tunante-android-<v>.apk is the Android app, tunante-<v>-r0.apk
           # is an Alpine package for postmarketOS. The android.yml comment has
           # warned about that confusion since it was written; the person it
           # confuses is the one reading this page, so it belongs here.
@@ -101,10 +101,10 @@ jobs:
           body: |
             | Asset | What it is |
             |---|---|
-            | `tunante-mini-*-linux-gnu.tar.gz` | **Linux desktop.** Unpack, run `tunante-mini`; it self-updates from here on (`--update`, or Ajustes) |
-            | `tunante-mini-*-windows.zip` | Windows desktop |
+            | `tunante-*-linux-gnu.tar.gz` | **Linux desktop.** Unpack, run `tunante`; it self-updates from here on (`--update`, or Ajustes) |
+            | `tunante-*-windows.zip` | Windows desktop |
             | `tunante-android-*.apk` | **Android phone.** Sideload; not on Play |
-            | `tunante-mini-*-r0.apk` | postmarketOS package, *not* an Android app |
+            | `tunante-*-r0.apk` | postmarketOS package, *not* an Android app |
 
             One player, every screen: wide window (or `--desktop`) is the
             desktop shell, narrow is the phone one.

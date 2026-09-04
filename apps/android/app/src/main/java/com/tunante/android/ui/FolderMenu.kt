@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
  * is gone.
  *
  * U+0001 joins the console to its directory because it is the one byte a path
- * cannot contain. tunante-mini encodes the same pair the same way.
+ * cannot contain. tunante encodes the same pair the same way.
  */
 fun rowKey(tab: Tab, here: String, folderPath: String): String = when {
     tab == Tab.Games -> "juego:$folderPath"
@@ -42,7 +42,7 @@ fun rowKey(tab: Tab, here: String, folderPath: String): String = when {
  * Without it the only way to queue a game's soundtrack was to open it and swipe
  * every track, which for a rip of any size is not a way at all.
  *
- * The four actions and their wording are tunante-mini's. The two "sólo esta
+ * The four actions and their wording are tunante's. The two "sólo esta
  * carpeta" ones appear only where they mean something different from the deep
  * ones: on a real directory. A game and a console are not directories and have
  * no subfolders to leave out, so offering the distinction there would be two

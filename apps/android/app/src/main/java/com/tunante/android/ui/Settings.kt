@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * Ajustes, with the same rows and the same words as tunante-mini's.
+ * Ajustes, with the same rows and the same words as tunante's.
  *
  * This screen not existing is why the player looked the way it did: loops and
  * fade had nowhere to go, so they became chips under the transport, and Scan

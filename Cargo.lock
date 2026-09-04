@@ -5947,6 +5947,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "tunante"
+version = "0.1.0"
+dependencies = [
+ "async-io",
+ "base64 0.22.1",
+ "futures-lite",
+ "image",
+ "ksni",
+ "libc",
+ "log",
+ "mpris-server",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "tunante-art",
+ "tunante-audio",
+ "tunante-core",
+ "tunante-helper",
+ "ureq",
+ "uuid",
+ "walkdir",
+ "zbus",
+]
+
+[[package]]
 name = "tunante-android"
 version = "0.1.0"
 dependencies = [
@@ -6040,31 +6065,6 @@ dependencies = [
  "serde_json",
  "tunante-core",
  "walkdir",
-]
-
-[[package]]
-name = "tunante-mini"
-version = "0.1.0"
-dependencies = [
- "async-io",
- "base64 0.22.1",
- "futures-lite",
- "image",
- "ksni",
- "libc",
- "log",
- "mpris-server",
- "serde_json",
- "slint",
- "slint-build",
- "tunante-art",
- "tunante-audio",
- "tunante-core",
- "tunante-helper",
- "ureq",
- "uuid",
- "walkdir",
- "zbus",
 ]
 
 [[package]]

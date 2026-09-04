@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/mini",
+    "apps/tunante",
     "crates/tunante-core",
     "crates/tunante-audio",
     "crates/tunante-codec",
@@ -16,7 +16,7 @@ members = [
 
 [profile.release]
 # Debug symbols are a quarter of the shipped binary — 29 MB down to 22 MB for
-# tunante-mini — and nothing on a phone reads them. A backtrace from the field
+# tunante — and nothing on a phone reads them. A backtrace from the field
 # would need the unstripped build anyway, which is what `cargo build` leaves in
 # target/ before packaging.
 #

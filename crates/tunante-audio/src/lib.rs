@@ -1,11 +1,11 @@
 //! The playback engine, shared by every app.
 //!
-//! Born in `apps/desktop/src-tauri/src/audio/engine.rs` and moved here as the
-//! first step of docs/plan-desktop-slint.md, with one structural change on the
-//! way: decoding now happens **out of process**. The desktop engine used to
+//! Born in `apps/desktop/src-tauri/src/audio/engine.rs` and moved here when
+//! the Tauri app was retired, with one structural change on the way: decoding
+//! now happens **out of process**. The desktop engine used to
 //! call `tunante_codec::open_source` in-process; this one spawns
 //! `tunante-decoder` per track and reads PCM through
-//! [`tunante_helper::PipeSource`], the model `tunante-mini` proved on the
+//! [`tunante_helper::PipeSource`], the model `tunante` proved on the
 //! phone. What the desktop engine knew and mini's player did not — output
 //! device selection, recovery from a stream that dies under us, the DSP chain
 //! installed over every source — survives unchanged.

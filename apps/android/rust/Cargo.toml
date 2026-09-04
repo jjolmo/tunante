@@ -14,7 +14,7 @@ name = "tunante_android"
 crate-type = ["cdylib"]
 
 [dependencies]
-# The decoder client, shared with tunante-mini: probe, artwork, PCM over a pipe.
+# The decoder client, shared with tunante: probe, artwork, PCM over a pipe.
 # The library database and the play queue. No Tauri, no GUI — that is the whole
 # point of the crate, and it is why the Android app gets it for free.
 tunante-core = { path = "../../../crates/tunante-core", default-features = false }

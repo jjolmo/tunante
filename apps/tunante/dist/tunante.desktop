@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Tunante
+GenericName=Music player
+Comment=Reproductor de música de videojuegos
+Exec=tunante
+Icon=tunante
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;audio;chiptune;vgm;player;música;
+StartupNotify=true
+# Plasma Mobile reads this to decide an app is phone-shaped. Without it the app
+# is filed with the desktop ones and does not get the mobile treatment.
+X-KDE-FormFactor=handset;tablet;desktop
+X-Purism-FormFactor=Workstation;Mobile;
+MimeType=audio/mpeg;audio/flac;audio/ogg;audio/x-vorbis+ogg;audio/mp4;audio/x-wav;audio/x-spc;audio/x-nsf;audio/x-gsf;audio/x-psf;

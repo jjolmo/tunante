@@ -1,7 +1,7 @@
 //! Cover art on disk: finding what is already there, and adding to it.
 //!
 //! [`folder_image`] moved here from `tunante-helper`, which is where it moved
-//! to from `tunante-mini`. It has now been needed by four things, so it lives
+//! to from `tunante`. It has now been needed by four things, so it lives
 //! at the bottom.
 //!
 //! [`store_cover`] is the only function in this crate that writes anywhere the

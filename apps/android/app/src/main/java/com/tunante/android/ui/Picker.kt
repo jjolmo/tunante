@@ -28,7 +28,7 @@ data class DirListing(
 /**
  * Choosing where the music is.
  *
- * A plain directory browser over real paths, the same as `tunante-mini`'s
+ * A plain directory browser over real paths, the same as `tunante`'s
  * `picker.rs`, and not Android's `ACTION_OPEN_DOCUMENT_TREE`. The document
  * picker hands back a `content://` URI with no path behind it, and every layer
  * under this — `walkdir`, the database, the C decoders that `fopen` by name —

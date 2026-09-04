@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
  * The Playing screen.
  *
  * Cover, name, seek bar, and one row of controls — shuffle, the transport,
- * repeat — laid out exactly as tunante-mini's Transport lays them out. Shuffle
+ * repeat — laid out exactly as tunante's Transport lays them out. Shuffle
  * and repeat sit *in* that row rather than under it: they are things you do to
  * playback, and putting them on their own line as labelled chips was what made
  * the player read as a settings form.

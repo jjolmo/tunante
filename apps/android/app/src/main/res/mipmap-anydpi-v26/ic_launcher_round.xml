@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  The same icon the desktop app and tunante-mini use: one program, one face.
+  The same icon the desktop app and tunante use: one program, one face.
 
   Adaptive rather than only a bitmap, because from API 26 a launcher masks the
   legacy icon into whatever shape it likes and pads it with white — which puts

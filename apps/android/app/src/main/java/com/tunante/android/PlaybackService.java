@@ -36,7 +36,7 @@ import org.json.JSONObject;
  *       play audio in the background. The failure is silent —
  *       {@code requestAudioFocus()} just returns {@code AUDIOFOCUS_REQUEST_FAILED}
  *       and nothing throws.</li>
- *   <li>It owns the 500 ms tick. In {@code tunante-mini} that clock is a
+ *   <li>It owns the 500 ms tick. In {@code tunante} that clock is a
  *       {@code slint::Timer} on the UI thread, so advancing the queue, saving the
  *       session and the sleep timer all stop when the window does. Here it keeps
  *       running with the screen off, which is the point of a music player.</li>
@@ -153,7 +153,7 @@ public class PlaybackService extends Service {
         // The CPU only. A foreground service of type mediaPlayback is already
         // most of what keeps decoding alive; this covers the gap on devices that
         // are aggressive about dozing, and it is the direct equivalent of the
-        // logind sleep inhibitor tunante-mini takes on postmarketOS.
+        // logind sleep inhibitor tunante takes on postmarketOS.
         wakeLock = power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "tunante:playback");
         wakeLock.setReferenceCounted(false);
 

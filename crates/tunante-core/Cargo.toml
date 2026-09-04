@@ -8,7 +8,7 @@ license = "GPL-2.0-or-later"
 [features]
 default = ["dsp"]
 # The DSP chain wraps a `rodio::Source`, so it is the only part of the core that
-# needs an audio backend. tunante-mini does not use it — leaving the feature off
+# needs an audio backend. tunante does not use it — leaving the feature off
 # keeps rodio and cpal out of that build entirely.
 dsp = ["rodio"]
 

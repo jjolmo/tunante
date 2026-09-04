@@ -7,7 +7,7 @@
 //!
 //! Small enough to look obviously right and it was not: the Android player
 //! restarted the clock on every seek, so dragging the bar on a paused track
-//! left the position climbing with nothing playing. `tunante-mini` had it right
+//! left the position climbing with nothing playing. `tunante` had it right
 //! — this is mini's version, with tests, in one place so the two cannot drift
 //! apart again.
 

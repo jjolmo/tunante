@@ -3,7 +3,7 @@
 //!
 //! # Why this is its own crate
 //!
-//! All of it used to live in the Tauri crate, which meant `tunante-mini` and the
+//! All of it used to live in the Tauri crate, which meant `tunante` and the
 //! Android app could not fetch a cover at all — `reqwest` appears in no other
 //! crate in this workspace. This one is shared by all three.
 //!

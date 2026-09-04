@@ -1,0 +1,54 @@
+#!/bin/sh
+# Long-listen sampler: one line a minute, so a degradation shows as a trend.
+#
+# The question a long listen answers is not "does it play" — that is settled in
+# the first minute — but "does anything creep": memory climbing track after
+# track, a pause nobody asked for, a decoder that stops being replaced. One
+# line a minute for a few hours makes that visible; watching does not.
+#
+# Run it detached, or the ssh session's scope takes it down with it:
+#
+#     systemd-run --user --unit=escucha /path/to/escucha
+#     journalctl --user -u escucha
+#
+# What each field is for:
+#   ui_pss   the number that must not climb. The whole reason decoding happens
+#            in another process is that this stays flat whatever is playing.
+#   dec_pss  swings with the format — a few MB for mp3, tens for a DS core —
+#            and goes away with the process.
+#   pcm      ALSA's own view. "Playing" with the PCM not RUNNING means the UI
+#            believes something the hardware does not.
+#   bat      plugged in is not the same as charging on this phone.
+
+set -u
+
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+
+N=org.mpris.MediaPlayer2.com.tunante.mini
+O=/org/mpris/MediaPlayer2
+I=org.mpris.MediaPlayer2.Player
+
+prop() {
+	busctl --user get-property "$N" "$O" "$I" "$1" 2>/dev/null
+}
+
+while :; do
+	pid=$(pgrep -x tunante | head -1)
+	if [ -z "$pid" ]; then
+		# Worth a line of its own: a gap in the log reads like the sampler
+		# died, and this says it was the app that went.
+		echo "$(date +%H:%M:%S) UI GONE"
+	else
+		pss=$(awk '/^Pss:/{print $2}' "/proc/$pid/smaps_rollup")
+		dpid=$(pgrep -x tunante-decoder | head -1)
+		dpss=$(awk '/^Pss:/{print $2}' "/proc/$dpid/smaps_rollup" 2>/dev/null)
+		st=$(prop PlaybackStatus | awk -F'"' '{print $2}')
+		pos=$(prop Position | awk '{print int($2/1000000)}')
+		title=$(prop Metadata | grep -oE 'xesam:title" s "[^"]*' | cut -c16- | cut -c1-40)
+		pcm=$(awk '/^state:/{print $2}' /proc/asound/card0/pcm0p/sub0/status 2>/dev/null)
+		bat=$(cat /sys/class/power_supply/qcom_qg/capacity 2>/dev/null)
+		echo "$(date +%H:%M:%S) ui_pss=${pss}kB dec_pss=${dpss}kB $st pos=${pos}s pcm=$pcm bat=${bat}% | $title"
+	fi
+	sleep 60
+done

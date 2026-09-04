@@ -1,6 +1,6 @@
 //! The player: one audio device, one queue, one decoder process at a time.
 //!
-//! Modelled on `tunante-mini/src/player.rs`, minus everything that was really
+//! Modelled on `tunante/src/player.rs`, minus everything that was really
 //! about Slint. The important difference is who drives it: in mini a 500 ms
 //! `slint::Timer` on the UI thread ticks the queue, saves the session and polls
 //! for the end of a track, so all of it stops when the window does. Here
@@ -274,7 +274,7 @@ impl Player {
     /// Without this "Añadir a la cola" on an idle player was indistinguishable
     /// from a button that does nothing: the count went up and the phone stayed
     /// silent, with no way to start what had just been added except finding one
-    /// of the tracks again in the library and tapping it. tunante-mini's
+    /// of the tracks again in the library and tapping it. tunante's
     /// `enqueue_all` has always taken the first one in this case.
     ///
     /// A playlist is deliberately not routed through here -- see
@@ -360,7 +360,7 @@ impl Player {
         // which is what the user means: "in twenty minutes", not "after twenty
         // minutes of audio".
         if self.sleep.tick(TICK_MS) {
-            // Stopped, not paused, which is what tunante-mini does. Pausing
+            // Stopped, not paused, which is what tunante does. Pausing
             // would leave the decoder process alive all night holding its
             // console's RAM — killing it is how that memory comes back.
             self.stop();
