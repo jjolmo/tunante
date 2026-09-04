@@ -1,0 +1,645 @@
+# Portuguese translation for Tunante.
+# Source strings are Spanish. Missing entries fall back to them.
+msgid ""
+msgstr ""
+"Project-Id-Version: tunante-mini\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Biblioteca"
+msgstr "Biblioteca"
+
+msgid "Pistas"
+msgstr "Faixas"
+
+msgid "Favoritos"
+msgstr "Favoritos"
+
+msgid "Cola"
+msgstr "Fila"
+
+msgid "Árbol"
+msgstr "Árvore"
+
+msgid "Discos"
+msgstr "Álbuns"
+
+msgid "Consolas"
+msgstr "Consoles"
+
+msgid "Juegos"
+msgstr "Jogos"
+
+msgid "Listas"
+msgstr "Listas"
+
+msgid "Carpetas"
+msgstr "Pastas"
+
+msgid "Reproducir"
+msgstr "Reproduzir"
+
+msgid "Abrir en el gestor de archivos"
+msgstr "Abrir no gerenciador de arquivos"
+
+msgid "Quitar de aquí"
+msgstr "Remover daqui"
+
+msgid "Carátulas…"
+msgstr "Capas…"
+
+msgid "Encolar todo"
+msgstr "Enfileirar tudo"
+
+msgid "Renombrar…"
+msgstr "Renomear…"
+
+msgid "Borrar"
+msgstr "Excluir"
+
+msgid "buscando carátula…"
+msgstr "procurando capa…"
+
+msgid "Ajustes"
+msgstr "Configurações"
+
+msgid "¿Dónde está tu música?"
+msgstr "Onde está a sua música?"
+
+msgid "Subir un nivel"
+msgstr "Subir um nível"
+
+msgid "Marca al menos una carpeta"
+msgstr "Marque ao menos uma pasta"
+
+msgid "{} carpeta(s) elegidas"
+msgstr "{} pasta(s) selecionadas"
+
+msgid "Analizar"
+msgstr "Analisar"
+
+msgid "sistema"
+msgstr "sistema"
+
+msgid "General"
+msgstr "Geral"
+
+msgid "Carátulas"
+msgstr "Capas"
+
+msgid "DSP"
+msgstr "DSP"
+
+msgid "Apariencia"
+msgstr "Aparência"
+
+msgid "Atajos"
+msgstr "Atalhos"
+
+msgid "Acerca de"
+msgstr "Sobre"
+
+msgid "Reproducción"
+msgstr "Reprodução"
+
+msgid "Repeticiones del bucle"
+msgstr "Repetições do loop"
+
+msgid "Fundido final"
+msgstr "Fade final"
+
+msgid "desactivado"
+msgstr "desativado"
+
+msgid "Crossfade entre pistas"
+msgstr "Crossfade entre faixas"
+
+msgid "Continuar desde lo encolado"
+msgstr "Continuar a partir da fila"
+
+msgid "Reanudar reproducción al abrir"
+msgstr "Retomar reprodução ao abrir"
+
+msgid "Saltar pistas cortas"
+msgstr "Pular faixas curtas"
+
+msgid "Salida de audio"
+msgstr "Saída de áudio"
+
+msgid "Apagar la música en"
+msgstr "Desligar a música em"
+
+msgid "Bandeja y ventana"
+msgstr "Bandeja e janela"
+
+msgid "Título de la canción en la ventana"
+msgstr "Título da música na janela"
+
+msgid "Click en el icono de bandeja"
+msgstr "Clique no ícone da bandeja"
+
+msgid "Icono de bandeja"
+msgstr "Ícone da bandeja"
+
+msgid "Mostrar icono en la bandeja (requiere reiniciar)"
+msgstr "Mostrar ícone na bandeja (requer reiniciar)"
+
+msgid "Cerrar a la bandeja"
+msgstr "Fechar para a bandeja"
+
+msgid "Carpetas analizadas"
+msgstr "Pastas analisadas"
+
+msgid "Añadir una carpeta"
+msgstr "Adicionar uma pasta"
+
+msgid "vigilada"
+msgstr "monitorada"
+
+msgid "sin vigilar"
+msgstr "sem monitorar"
+
+msgid "Volver a analizar"
+msgstr "Analisar de novo"
+
+msgid "Añadir ficheros sueltos"
+msgstr "Adicionar arquivos avulsos"
+
+msgid "Escaneo"
+msgstr "Varredura"
+
+msgid "Escaneo minucioso"
+msgstr "Varredura minuciosa"
+
+msgid "Bucles de formatos streamed"
+msgstr "Loops de formatos em streaming"
+
+msgid "Tope de pistas infinitas"
+msgstr "Limite de faixas infinitas"
+
+msgid "predeterminado"
+msgstr "padrão"
+
+msgid "Aplicar el tope a todas las pistas"
+msgstr "Aplicar o limite a todas as faixas"
+
+msgid "Metadatos"
+msgstr "Metadados"
+
+msgid "La columna Álbum/Juego enseña"
+msgstr "A coluna Álbum/Jogo mostra"
+
+msgid "Prioridad de puntuaciones"
+msgstr "Prioridade das avaliações"
+
+msgid "Descargar carátulas que falten"
+msgstr "Baixar capas ausentes"
+
+msgid "Descarga automática de carátulas"
+msgstr "Download automático de capas"
+
+msgid "Guardar carátula en la carpeta"
+msgstr "Salvar capa na pasta"
+
+msgid "Deshacer última descarga"
+msgstr "Desfazer último download"
+
+msgid "Encaje de carátula"
+msgstr "Ajuste da capa"
+
+msgid "Limpiar caché de carátulas"
+msgstr "Limpar cache de capas"
+
+msgid "Ecualizador"
+msgstr "Equalizador"
+
+msgid "Graves"
+msgstr "Graves"
+
+msgid "Medios"
+msgstr "Médios"
+
+msgid "Agudos"
+msgstr "Agudos"
+
+msgid "Ganancia y dinámica"
+msgstr "Ganho e dinâmica"
+
+msgid "Preamplificador"
+msgstr "Pré-amplificador"
+
+msgid "Limitador"
+msgstr "Limitador"
+
+msgid "Espacialidad"
+msgstr "Espacialidade"
+
+msgid "Mono"
+msgstr "Mono"
+
+msgid "Mono · compensación de nivel"
+msgstr "Mono · compensação de nível"
+
+msgid "Mono · seguro de fase"
+msgstr "Mono · segurança de fase"
+
+msgid "Con mono, el balance descentrado silencia un lado"
+msgstr "Em mono, o balanço descentralizado silencia um lado"
+
+msgid "Centrar"
+msgstr "Centralizar"
+
+msgid "Balance"
+msgstr "Balanço"
+
+msgid "Anchura estéreo"
+msgstr "Largura estéreo"
+
+msgid "Restablecer todos los efectos"
+msgstr "Redefinir todos os efeitos"
+
+msgid "Presentación"
+msgstr "Apresentação"
+
+msgid "Modo de interfaz"
+msgstr "Modo de interface"
+
+msgid "  ↳ Aplicar (cambia la presentación)"
+msgstr "  ↳ Aplicar (muda a apresentação)"
+
+msgid "Aplicar"
+msgstr "Aplicar"
+
+msgid "panel derecho"
+msgstr "painel direito"
+
+msgid "entrada en el sidebar"
+msgstr "entrada na barra lateral"
+
+msgid "  ↳ Visibilidad de la cola"
+msgstr "  ↳ Visibilidade da fila"
+
+msgid "siempre visible"
+msgstr "sempre visível"
+
+msgid "solo cuando hay cola"
+msgstr "só quando há fila"
+
+msgid "Estrellas de puntuación"
+msgstr "Estrelas de avaliação"
+
+msgid "una si tiene puntuación"
+msgstr "uma se avaliada"
+
+msgid "las cinco"
+msgstr "as cinco"
+
+msgid "Tema"
+msgstr "Tema"
+
+msgid "Oscuro"
+msgstr "Escuro"
+
+msgid "Claro"
+msgstr "Claro"
+
+msgid "Sistema"
+msgstr "Sistema"
+
+msgid "Vistas de la biblioteca"
+msgstr "Visões da biblioteca"
+
+msgid "Secciones del sidebar"
+msgstr "Seções da barra lateral"
+
+msgid "Carátula del reproductor"
+msgstr "Capa do reprodutor"
+
+msgid "Consolas (acceso rápido)"
+msgstr "Consoles (acesso rápido)"
+
+msgid "Listas (acceso rápido)"
+msgstr "Listas (acesso rápido)"
+
+msgid "Globales"
+msgstr "Globais"
+
+msgid "Atajos globales"
+msgstr "Atalhos globais"
+
+msgid "Botones de ratón"
+msgstr "Botões do mouse"
+
+msgid "Ratón · Atrás"
+msgstr "Mouse · Voltar"
+
+msgid "Ratón · Adelante"
+msgstr "Mouse · Avançar"
+
+msgid "Ratón · Lateral"
+msgstr "Mouse · Lateral"
+
+msgid "Ratón · Extra"
+msgstr "Mouse · Extra"
+
+msgid "Teclas de la aplicación"
+msgstr "Teclas do aplicativo"
+
+msgid "Restablecer todos los atajos"
+msgstr "Redefinir todos os atalhos"
+
+msgid "Un reproductor multiplataforma centrado en la música de videojuegos, inspirado en foobar2000."
+msgstr "Um reprodutor multiplataforma focado em música de videogames, inspirado no foobar2000."
+
+msgid "Actualizaciones"
+msgstr "Atualizações"
+
+msgid "Buscar actualizaciones"
+msgstr "Verificar atualizações"
+
+msgid "Omitir esta versión"
+msgstr "Ignorar esta versão"
+
+msgid "Auto-actualizar al arrancar"
+msgstr "Atualizar automaticamente ao iniciar"
+
+msgid "Avisar de actualizaciones al arrancar"
+msgstr "Avisar de atualizações ao iniciar"
+
+msgid "Integrar en el escritorio"
+msgstr "Integrar na área de trabalho"
+
+msgid "Registro"
+msgstr "Registro"
+
+msgid "Código fuente"
+msgstr "Código-fonte"
+
+msgid "Construido con"
+msgstr "Construído com"
+
+msgid "Vibecoded por jjolmo."
+msgstr "Vibecoded por jjolmo."
+
+msgid "Columna de estrellas"
+msgstr "Coluna de estrelas"
+
+msgid "Mostrar las cinco estrellas"
+msgstr "Mostrar as cinco estrelas"
+
+msgid "Una estrella si tiene puntuación"
+msgstr "Uma estrela se avaliado"
+
+msgid "Filtrar pistas…"
+msgstr "Filtrar faixas…"
+
+msgid "Nada casa con la búsqueda."
+msgstr "Nada corresponde à busca."
+
+msgid "No hay pistas en la biblioteca."
+msgstr "Nenhuma faixa na biblioteca."
+
+msgid "Prueba con menos letras."
+msgstr "Tente com menos letras."
+
+msgid "Añade carpetas desde Ajustes."
+msgstr "Adicione pastas em Configurações."
+
+msgid "Reproducir a continuación"
+msgstr "Reproduzir a seguir"
+
+msgid "Encolar"
+msgstr "Enfileirar"
+
+msgid "Quitar de la cola"
+msgstr "Remover da fila"
+
+msgid "Quitar de la lista"
+msgstr "Remover da lista"
+
+msgid "Añadir a lista…"
+msgstr "Adicionar à lista…"
+
+msgid "Editar metadatos…"
+msgstr "Editar metadados…"
+
+msgid "Reclasificar…"
+msgstr "Reclassificar…"
+
+msgid "Nombres de pistas…"
+msgstr "Nomes das faixas…"
+
+msgid "Buscar carátula…"
+msgstr "Buscar capa…"
+
+msgid "Abrir carpeta"
+msgstr "Abrir pasta"
+
+msgid "Fijar carpeta"
+msgstr "Fixar pasta"
+
+msgid "Columnas"
+msgstr "Colunas"
+
+msgid "auto"
+msgstr "auto"
+
+msgid "Sonido"
+msgstr "Som"
+
+msgid "Música de consola"
+msgstr "Música de console"
+
+msgid "sin fundido"
+msgstr "sem fade"
+
+msgid "sí"
+msgstr "sim"
+
+msgid "no"
+msgstr "não"
+
+msgid "activado"
+msgstr "ativado"
+
+msgid "Mono · compensación"
+msgstr "Mono · compensação"
+
+msgid "Descargar carátulas"
+msgstr "Baixar capas"
+
+msgid "Carátula en el sidebar"
+msgstr "Capa na barra lateral"
+
+msgid "Favoritos en el sidebar"
+msgstr "Favoritos na barra lateral"
+
+msgid "Carpetas en el sidebar"
+msgstr "Pastas na barra lateral"
+
+msgid "Listas en el sidebar"
+msgstr "Listas na barra lateral"
+
+msgid "↳ Aplicar (cambia la presentación)"
+msgstr "↳ Aplicar (muda a apresentação)"
+
+msgid "Acerca de Tunante"
+msgstr "Sobre o Tunante"
+
+msgid "¿Seguro? Toca otra vez"
+msgstr "Tem certeza? Toque de novo"
+
+msgid "Vaciar la cola ({})"
+msgstr "Limpar a fila ({})"
+
+msgid "Quitar"
+msgstr "Remover"
+
+msgid "Buscar…"
+msgstr "Buscar…"
+
+msgid "Filtrar lo que se ve…"
+msgstr "Filtrar o que aparece…"
+
+msgid "Encolar todas ({})"
+msgstr "Enfileirar todas ({})"
+
+msgid "Nueva lista"
+msgstr "Nova lista"
+
+msgid "A la cola"
+msgstr "Para a fila"
+
+msgid "1 elemento"
+msgstr "1 item"
+
+msgid "{} elementos"
+msgstr "{} itens"
+
+msgid "Añadir todo, con las subcarpetas"
+msgstr "Adicionar tudo, com as subpastas"
+
+msgid "Añadir a la cola"
+msgstr "Adicionar à fila"
+
+msgid "Añadir sólo esta carpeta"
+msgstr "Adicionar só esta pasta"
+
+msgid "Añadir carpeta y subcarpetas a lista"
+msgstr "Adicionar pasta e subpastas à lista"
+
+msgid "Añadir a una lista"
+msgstr "Adicionar a uma lista"
+
+msgid "Añadir carpeta a lista"
+msgstr "Adicionar pasta à lista"
+
+msgid "Reproducir carpeta"
+msgstr "Reproduzir pasta"
+
+msgid "Fijar en el sidebar"
+msgstr "Fixar na barra lateral"
+
+msgid "Cancelar"
+msgstr "Cancelar"
+
+msgid "Encolar todas"
+msgstr "Enfileirar todas"
+
+msgid "Renombrar"
+msgstr "Renomear"
+
+msgid "Borrar la lista"
+msgstr "Excluir a lista"
+
+msgid "Añadir a…"
+msgstr "Adicionar a…"
+
+msgid "Crear lista nueva…"
+msgstr "Criar nova lista…"
+
+msgid "Crear"
+msgstr "Criar"
+
+msgid "Nueva lista, con lo elegido dentro"
+msgstr "Nova lista, com o que foi escolhido"
+
+msgid "Crear y añadir"
+msgstr "Criar e adicionar"
+
+msgid "Renombrar la lista"
+msgstr "Renomear a lista"
+
+msgid "Guardar"
+msgstr "Salvar"
+
+msgid "Sonando"
+msgstr "Tocando"
+
+msgid "Nombre de la lista"
+msgstr "Nome da lista"
+
+msgid "Título"
+msgstr "Título"
+
+msgid "Artista"
+msgstr "Artista"
+
+msgid "Álbum"
+msgstr "Álbum"
+
+msgid "Nº de pista"
+msgstr "Nº da faixa"
+
+msgid "Toda la carpeta"
+msgstr "A pasta inteira"
+
+msgid "Solo esta pista"
+msgstr "Só esta faixa"
+
+msgid "Consola"
+msgstr "Console"
+
+msgid "filtra: nombre o códec (spc…)"
+msgstr "filtro: nome ou codec (spc…)"
+
+msgid "Juego"
+msgstr "Jogo"
+
+msgid "En la biblioteca:"
+msgstr "Na biblioteca:"
+
+msgid "Buscar por nombre"
+msgstr "Buscar por nome"
+
+msgid "Buscar"
+msgstr "Buscar"
+
+msgid "Descargar automáticamente"
+msgstr "Baixar automaticamente"
+
+msgid "…o una lista nueva"
+msgstr "…ou uma nova lista"
+
+msgid "Descarga de carátulas"
+msgstr "Download de capas"
+
+msgid "Parar"
+msgstr "Parar"
+
+msgid "Cerrar"
+msgstr "Fechar"
+
+msgid "Arreglar también las duraciones"
+msgstr "Corrigir também as durações"
+
+msgid "Filtrar…"
+msgstr "Filtrar…"
+
+msgid "Copiar"
+msgstr "Copiar"
+
+msgid "Limpiar"
+msgstr "Limpar"

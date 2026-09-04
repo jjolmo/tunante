@@ -643,13 +643,13 @@ export component DesktopShell inherits Rectangle {
                             // gutter it sits over the counts and the selection.
                             padding-right: 10px;
                     SectionHeader {
-                        title: "Biblioteca";
+                        title: @tr("Biblioteca");
                         collapsed <=> root.collapse-biblioteca;
                     }
                     if !root.collapse-biblioteca: VerticalLayout {
                         spacing: 2px;
                     SidebarEntry {
-                        label: "Pistas";
+                        label: @tr("Pistas");
                         count: root.total-count;
                         active: root.centre == 0 && !root.table-faved
                             && root.table-scope-kind == "";
@@ -660,7 +660,7 @@ export component DesktopShell inherits Rectangle {
                         played => { root.sidebar-play-all(); }
                     }
                     if root.show-faved: SidebarEntry {
-                        label: "Favoritos";
+                        label: @tr("Favoritos");
                         glyph: "★";
                         count: root.faved-count;
                         active: root.centre == 0 && root.table-faved;
@@ -673,33 +673,33 @@ export component DesktopShell inherits Rectangle {
                     // items — the old "Queued" view — or always, if the user
                     // pinned it. Placement 2 is the panel.
                     if root.queue-placement != 2 && (root.queue-always-visible || root.queue-rows.length > 0): SidebarEntry {
-                        label: "Cola";
+                        label: @tr("Cola");
                         count: root.queue-rows.length;
                         active: root.centre == 0 && root.table-scope-kind == "queue";
                         clicked => { root.centre = 0; root.queue-opened-in-table(); }
                     }
                     if root.show-files: SidebarEntry {
-                        label: "Árbol";
+                        label: @tr("Árbol");
                         active: root.centre == 1 && root.library-mode == 0;
                         clicked => { root.centre = 1; root.library-mode-changed(0); }
                     }
                     if root.show-discos: SidebarEntry {
-                        label: "Discos";
+                        label: @tr("Discos");
                         active: root.centre == 1 && root.library-mode == 1;
                         clicked => { root.centre = 1; root.library-mode-changed(1); }
                     }
                     if root.show-consoles-view: SidebarEntry {
-                        label: "Consolas";
+                        label: @tr("Consolas");
                         active: root.centre == 1 && root.library-mode == 2;
                         clicked => { root.centre = 1; root.library-mode-changed(2); }
                     }
                     if root.show-juegos: SidebarEntry {
-                        label: "Juegos";
+                        label: @tr("Juegos");
                         active: root.centre == 1 && root.library-mode == 3;
                         clicked => { root.centre = 1; root.library-mode-changed(3); }
                     }
                     if root.show-listas-view: SidebarEntry {
-                        label: "Listas";
+                        label: @tr("Listas");
                         active: root.centre == 1 && root.library-mode == 4;
                         clicked => { root.centre = 1; root.library-mode-changed(4); }
                     }
@@ -707,7 +707,7 @@ export component DesktopShell inherits Rectangle {
 
                     if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-folders && root.pinned-folders.length > 0: SectionHeader {
-                        title: "Carpetas";
+                        title: @tr("Carpetas");
                         collapsed <=> root.collapse-carpetas;
                     }
                     for pf in (root.show-folders && !root.collapse-carpetas) ? root.pinned-folders : []: Rectangle {
@@ -729,15 +729,15 @@ export component DesktopShell inherits Rectangle {
                         ContextMenuArea {
                             Menu {
                                 MenuItem {
-                                    title: "Reproducir";
+                                    title: @tr("Reproducir");
                                     activated => { root.folder-played(pf.id); }
                                 }
                                 MenuItem {
-                                    title: "Abrir en el gestor de archivos";
+                                    title: @tr("Abrir en el gestor de archivos");
                                     activated => { root.folder-revealed(pf.id); }
                                 }
                                 MenuItem {
-                                    title: "Quitar de aquí";
+                                    title: @tr("Quitar de aquí");
                                     activated => { root.folder-unpinned(pf.id); }
                                 }
                             }
@@ -778,7 +778,7 @@ export component DesktopShell inherits Rectangle {
 
                     if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-consoles && root.sidebar-consoles.length > 0: SectionHeader {
-                        title: "Consolas";
+                        title: @tr("Consolas");
                         collapsed <=> root.collapse-consolas;
                     }
                     for sc in (root.show-consoles && !root.collapse-consolas) ? root.sidebar-consoles : []: Rectangle {
@@ -825,11 +825,11 @@ export component DesktopShell inherits Rectangle {
                         ContextMenuArea {
                             Menu {
                                 MenuItem {
-                                    title: "Reproducir";
+                                    title: @tr("Reproducir");
                                     activated => { root.console-played(sc.id); }
                                 }
                                 MenuItem {
-                                    title: "Carátulas…";
+                                    title: @tr("Carátulas…");
                                     activated => { root.showing-settings = true; }
                                 }
                             }
@@ -838,7 +838,7 @@ export component DesktopShell inherits Rectangle {
 
                     if root.show-playlists: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-playlists: SectionHeader {
-                        title: "Listas";
+                        title: @tr("Listas");
                         collapsed <=> root.collapse-listas;
                         has-add: true;
                         // "+" lands you where lists are born and managed.
@@ -925,22 +925,22 @@ export component DesktopShell inherits Rectangle {
                             ContextMenuArea {
                                 Menu {
                                     MenuItem {
-                                        title: "Reproducir";
+                                        title: @tr("Reproducir");
                                         activated => { root.playlist-played(pl.id); }
                                     }
                                     MenuItem {
-                                        title: "Encolar todo";
+                                        title: @tr("Encolar todo");
                                         activated => { root.playlist-enqueue-id(pl.id); }
                                     }
                                     MenuItem {
-                                        title: "Renombrar…";
+                                        title: @tr("Renombrar…");
                                         activated => {
                                             root.centre = 1;
                                             root.playlist-open-requested(pl.id);
                                         }
                                     }
                                     MenuItem {
-                                        title: "Borrar";
+                                        title: @tr("Borrar");
                                         activated => { root.playlist-delete(pl.id); }
                                     }
                                 }
@@ -962,7 +962,7 @@ export component DesktopShell inherits Rectangle {
                     }
 
                     if root.show-cover && root.now-art.width == 0 && root.cover-busy: Text {
-                        text: "buscando carátula…";
+                        text: @tr("buscando carátula…");
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                         horizontal-alignment: center;
@@ -983,7 +983,7 @@ export component DesktopShell inherits Rectangle {
                     }
 
                     SidebarEntry {
-                        label: "Ajustes";
+                        label: @tr("Ajustes");
                         active: root.showing-settings;
                         clicked => { root.showing-settings = true; }
                     }
