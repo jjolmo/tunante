@@ -202,6 +202,8 @@ export component AppWindow inherits Window {
     callback cycle-crossfade();
     in property <string> output-label: "sistema";
     in property <string> ui-mode-label: "auto";
+    in property <string> language-label;
+    callback cycle-language();
     in-out property <int> ui-mode-pending;
     in property <string> ui-mode-pending-label;
     callback apply-ui-mode();
@@ -842,6 +844,8 @@ export component AppWindow inherits Window {
             cycle-crossfade => { root.cycle-crossfade(); }
             output-label: root.output-label;
             ui-mode-label: root.ui-mode-label;
+            language-label: root.language-label;
+            cycle-language => { root.cycle-language(); }
             cycle-output => { root.cycle-output(); }
             cycle-ui-mode => { root.cycle-ui-mode(); }
                         update-status: root.update-status;

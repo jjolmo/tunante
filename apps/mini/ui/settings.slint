@@ -126,6 +126,9 @@ export component DesktopSettings inherits Rectangle {
     callback cycle-crossfade();
     in property <string> output-label: @tr("sistema");
     in property <string> ui-mode-label: "auto";
+    /// The UI language: "" means follow the system, otherwise a native name.
+    in property <string> language-label;
+    callback cycle-language();
     in property <string> update-status;
     callback check-update();
     in property <string> theme-label;
@@ -623,6 +626,13 @@ export component DesktopSettings inherits Rectangle {
                             if root.tab == 4: VerticalLayout {
                                 spacing: 2px;
                                 Section { text: @tr("Presentación"); }
+                                SettingRow {
+                                    label: @tr("Idioma");
+                                    // Native language names stay in their own
+                                    // language; only "System" gets translated.
+                                    value: root.language-label == "" ? @tr("Sistema") : root.language-label;
+                                    clicked => { root.cycle-language(); }
+                                }
                                 SettingRow {
                                     label: @tr("Modo de interfaz");
                                     value: root.ui-mode-pending-label;
