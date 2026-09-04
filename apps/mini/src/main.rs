@@ -3728,13 +3728,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // The audio-output row opens a picker (this callback is still named
+    // cycle-output — the row triggers it — but clicking through a list of
+    // devices one at a time was the thing to leave behind). The device list is
+    // asked for fresh here, not cached: plugging headphones in is exactly the
+    // moment this row gets used.
     {
-        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_cycle_output(move || {
             let Some(ui) = weak.upgrade() else { return };
-            // system, then every device, round and round. The list is asked
-            // for on each press rather than cached: plugging headphones in is
-            // exactly the moment this row gets used.
             let mut ring = vec!["system".to_string()];
             ring.extend(tunante_audio::list_output_devices());
             let current = db
@@ -3743,8 +3745,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .flatten()
                 .unwrap_or_else(|| "system".to_string());
             let idx = ring.iter().position(|d| *d == current).unwrap_or(0);
-            let next = ring[(idx + 1) % ring.len()].clone();
-
+            let labels: Vec<SharedString> =
+                ring.iter().map(|d| SharedString::from(output_label(d))).collect();
+            ui.set_output_options(ModelRc::from(Rc::new(VecModel::from(labels))));
+            ui.set_output_current(idx as i32);
+            ui.set_output_picking(true);
+        });
+    }
+    {
+        let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        ui.on_pick_output(move |idx| {
+            let Some(ui) = weak.upgrade() else { return };
+            let mut ring = vec!["system".to_string()];
+            ring.extend(tunante_audio::list_output_devices());
+            let next = ring
+                .get(idx as usize)
+                .cloned()
+                .unwrap_or_else(|| "system".to_string());
             let sel = tunante_audio::OutputSelection::from_setting(&next);
             let _ = db.set_setting("audio_output_device", &sel.to_setting());
             if let Some(p) = player.borrow_mut().as_mut() {
@@ -3753,6 +3770,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
             ui.set_output_label(SharedString::from(output_label(&next)));
+            ui.set_output_picking(false);
         });
     }
     ui.set_sidebar_width(

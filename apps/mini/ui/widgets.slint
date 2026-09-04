@@ -1762,6 +1762,86 @@ export component PlaylistPickSheet inherits Rectangle {
 }
 
 
+// The audio output as a list rather than a click-through: system first, then
+// every device, the current one ticked. Clicking one selects it and closes.
+export component OutputPickSheet inherits Rectangle {
+    in property <[string]> options;
+    in property <int> current;
+    callback picked(int);
+    callback cancelled();
+
+    background: #000000bb;
+
+    TouchArea { clicked => { root.cancelled(); } }
+
+    Rectangle {
+        width: 340px;
+        height: min(520px, card.preferred-height);
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+        TouchArea { }
+
+        card := VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: @tr("Salida de audio");
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                overflow: elide;
+            }
+
+            ListView {
+                height: min(400px, root.options.length * 44px + 4px);
+                for opt[i] in root.options: Rectangle {
+                    height: 44px;
+                    border-radius: Theme.radius;
+                    background: i == root.current ? Theme.bg-selected
+                        : (ot.has-hover ? Theme.bg-hover : transparent);
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
+                        Text {
+                            text: i == root.current ? "✓" : "";
+                            color: Theme.accent;
+                            font-size: Theme.font-body;
+                            width: 16px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: opt;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+                    }
+                    ot := TouchArea { clicked => { root.picked(i); } }
+                }
+            }
+
+            HorizontalLayout {
+                alignment: end;
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: opc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    Text {
+                        text: @tr("Cancelar");
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    opc := TouchArea { clicked => { root.cancelled(); } }
+                }
+            }
+        }
+    }
+}
+
 // The bulk cover download, dry by default: what a run WOULD write, reviewed
 // before anything touches a synced folder. Apply is the second decision.
 export component CoversPlanSheet inherits Rectangle {
