@@ -1084,3 +1084,84 @@ msgstr "{} existe déjà à côté du fichier et n’a pas été écrit par Tuna
 
 msgid "{}/{} · {} encontradas"
 msgstr "{}/{} · {} trouvées"
+
+msgid "1 carpeta"
+msgstr "1 dossier"
+
+msgid "{} carpetas"
+msgstr "{} dossiers"
+
+msgid "Añade pistas con ＋ desde la biblioteca."
+msgstr "Ajoutez des pistes avec ＋ depuis la bibliothèque."
+
+msgid "Buscando “{}”"
+msgstr "Recherche de « {} »"
+
+msgid "Carpetas de música"
+msgstr "Dossiers de musique"
+
+msgid "Créala arriba y añade pistas desde la biblioteca."
+msgstr "Créez-en une ci-dessus et ajoutez des pistes depuis la bibliothèque."
+
+msgid "Dar acceso"
+msgstr "Autoriser l’accès"
+
+msgid "Desliza una pista en la biblioteca para ponerla en cola."
+msgstr "Faites glisser une piste dans la bibliothèque pour la mettre en file."
+
+msgid "Elige algo en la biblioteca."
+msgstr "Choisissez quelque chose dans la bibliothèque."
+
+msgid "Lista nueva…"
+msgstr "Nouvelle liste…"
+
+msgid "Lista vacía"
+msgstr "Liste vide"
+
+msgid "Listo"
+msgstr "Terminé"
+
+msgid "Nada coincide"
+msgstr "Aucun résultat"
+
+msgid "Ninguna lista todavía"
+msgstr "Aucune liste pour l’instant"
+
+msgid "No hay nada esperando"
+msgstr "Rien en attente"
+
+msgid "No hay nada todavía"
+msgstr "Rien pour l’instant"
+
+msgid "No suena nada"
+msgstr "Rien ne joue"
+
+msgid "Nueva lista…"
+msgstr "Nouvelle liste…"
+
+msgid "Prueba con otra cosa."
+msgstr "Essayez autre chose."
+
+msgid "Pulsa Escanear para leer tu carpeta de música."
+msgstr "Touchez Analyser pour lire votre dossier de musique."
+
+msgid "Quitar esta carpeta de la biblioteca"
+msgstr "Retirer ce dossier de la bibliothèque"
+
+msgid "Sin acceso a los ficheros"
+msgstr "Pas d’accès aux fichiers"
+
+msgid "Tunante necesita leer carpetas enteras: los formatos de consola no se indexan como audio."
+msgstr "Tunante doit lire des dossiers entiers : les formats console ne sont pas indexés comme de l’audio."
+
+msgid "Usar esta carpeta"
+msgstr "Utiliser ce dossier"
+
+msgid "ninguna"
+msgstr "aucun"
+
+msgid "sin biblioteca"
+msgstr "pas de bibliothèque"
+
+msgid "¿Seguro?"
+msgstr "Vraiment ?"

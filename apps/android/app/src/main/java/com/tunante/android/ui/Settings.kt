@@ -38,31 +38,31 @@ fun SettingsScreen(
     coverStatus: String,
 ) {
     Column(Modifier.fillMaxSize().background(T.bgPrimary).verticalScroll(rememberScrollState())) {
-        Heading("Música de consola")
+        Heading(tr("Música de consola"))
         // What decides how long a track that never ends actually lasts.
-        SettingRow("Repeticiones del bucle", "${state.loops}×", onClick = onLoops)
+        SettingRow(tr("Repeticiones del bucle"), "${state.loops}×", onClick = onLoops)
         SettingRow(
-            "Fundido final",
-            if (state.fadeSeconds == 0) "sin fundido" else "${state.fadeSeconds} s",
+            tr("Fundido final"),
+            if (state.fadeSeconds == 0) tr("sin fundido") else "${state.fadeSeconds} s",
             onClick = onFade,
         )
 
         Rule()
-        Heading("Biblioteca")
+        Heading(tr("Biblioteca"))
         SettingRow(
-            "Carpetas analizadas",
+            tr("Carpetas analizadas"),
             when (roots.size) {
-                0 -> "ninguna"
-                1 -> "1 carpeta"
-                else -> "${roots.size} carpetas"
+                0 -> tr("ninguna")
+                1 -> tr("1 carpeta")
+                else -> tr("{} carpetas").replace("{}", "${roots.size}")
             },
         )
-        SettingRow("Añadir una carpeta", "＋", onClick = onPickFolders)
-        SettingRow("Volver a analizar", "↻", onClick = onScan)
+        SettingRow(tr("Añadir una carpeta"), "＋", onClick = onPickFolders)
+        SettingRow(tr("Volver a analizar"), "↻", onClick = onScan)
         // Tapping again while it runs cancels it, which is why the value doubles
         // as the status line.
         SettingRow(
-            "Descargar carátulas",
+            tr("Descargar carátulas"),
             if (coverStatus.isEmpty()) "⬇" else coverStatus,
             highlighted = coverStatus.isNotEmpty(),
             onClick = onDownloadCovers,
@@ -74,8 +74,8 @@ fun SettingsScreen(
         // ones mini offers: a picker for four choices costs more taps than
         // tapping through them.
         SettingRow(
-            "Apagar la música en",
-            if (state.sleepMinutes > 0) "${state.sleepMinutes} min" else "desactivado",
+            tr("Apagar la música en"),
+            if (state.sleepMinutes > 0) "${state.sleepMinutes} min" else tr("desactivado"),
             highlighted = state.sleepMinutes > 0,
         ) {
             onSleep(

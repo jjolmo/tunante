@@ -72,17 +72,17 @@ impl Mode {
 /// "1 pista" y no "1 pistas". Translated like the rest of the UI.
 pub fn pistas(n: usize) -> String {
     if n == 1 {
-        crate::i18n::tr("1 pista")
+        tunante_core::i18n::tr("1 pista")
     } else {
-        crate::i18n::tr("{} pistas").replace("{}", &n.to_string())
+        tunante_core::i18n::tr("{} pistas").replace("{}", &n.to_string())
     }
 }
 
 fn juegos(n: usize) -> String {
     if n == 1 {
-        crate::i18n::tr("1 juego")
+        tunante_core::i18n::tr("1 juego")
     } else {
-        crate::i18n::tr("{} juegos").replace("{}", &n.to_string())
+        tunante_core::i18n::tr("{} juegos").replace("{}", &n.to_string())
     }
 }
 
@@ -549,9 +549,9 @@ impl Tree {
             out.push(Row {
                 label: nombre,
                 detail: if subs.len() == 1 {
-                    crate::i18n::tr("1 tema")
+                    tunante_core::i18n::tr("1 tema")
                 } else {
-                    crate::i18n::tr("{} temas").replace("{}", &subs.len().to_string())
+                    tunante_core::i18n::tr("{} temas").replace("{}", &subs.len().to_string())
                 },
                 depth,
                 is_folder: true,

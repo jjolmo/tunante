@@ -54,7 +54,7 @@ fun FolderPicker(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
-                Label("Carpetas de música", T.textPrimary, T.fontBody, maxLines = 1)
+                Label(tr("Carpetas de música"), T.textPrimary, T.fontBody, maxLines = 1)
                 Label(listing.here, T.textSecondary, T.fontSmall, maxLines = 1)
             }
             Box(
@@ -63,7 +63,7 @@ fun FolderPicker(
                     .clickable(onClick = onDone)
                     .padding(horizontal = T.gap),
                 contentAlignment = Alignment.Center,
-            ) { Label("Listo", T.accent, T.fontBody) }
+            ) { Label(tr("Listo"), T.accent, T.fontBody) }
         }
         Rule()
 
@@ -80,8 +80,8 @@ fun FolderPicker(
             Label(if (chosen) "✓" else "＋", T.accent, T.fontTitle)
             Spacer(Modifier.width(T.gap))
             Label(
-                if (chosen) "Quitar esta carpeta de la biblioteca"
-                else "Usar esta carpeta",
+                if (chosen) tr("Quitar esta carpeta de la biblioteca")
+                else tr("Usar esta carpeta"),
                 T.textPrimary,
                 T.fontBody,
                 maxLines = 1,

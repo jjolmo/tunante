@@ -87,7 +87,7 @@ fun Breadcrumb(view: LibraryView, onUp: () -> Unit) {
         Label("◂", T.accent, T.fontTitle)
         Spacer(Modifier.width(T.gap))
         Label(
-            if (view.searching) "Buscando “${view.query}”" else view.crumb,
+            if (view.searching) tr("Buscando “{}”").replace("{}", view.query) else view.crumb,
             T.textPrimary,
             T.fontBody,
             maxLines = 1,
@@ -97,7 +97,7 @@ fun Breadcrumb(view: LibraryView, onUp: () -> Unit) {
 }
 
 @Composable
-fun SearchBox(query: String, hint: String = "Buscar…", onQuery: (String) -> Unit) {
+fun SearchBox(query: String, hint: String = tr("Buscar…"), onQuery: (String) -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -148,12 +148,18 @@ fun FolderRow(folder: Folder, onClick: () -> Unit, onLongClick: () -> Unit = {})
             .padding(horizontal = T.gap, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Label("▸", T.textMuted, T.fontBody)
+        // The row tabs.slint draws: chevron, a glyph for the kind, the name,
+        // and the count on the right — as words, through the same msgid the
+        // desktop's `pistas()` uses, not a bare number. The folder glyph is a
+        // path rather than `🗀`, which came out as an empty box on a real phone.
+        Label("▸", T.textSecondary, T.fontBody)
+        Spacer(Modifier.width(6.dp))
+        Icon(IconKind.Library, T.textMuted, size = 18.dp)
         Spacer(Modifier.width(T.gap))
         Column(Modifier.weight(1f)) {
             Label(folder.name, T.textPrimary, T.fontBody, maxLines = 1)
         }
-        Label("${folder.count}", T.textMuted, T.fontSmall)
+        Label(pistas(folder.count), T.textMuted, T.fontSmall)
     }
     Rule()
 }
@@ -161,10 +167,11 @@ fun FolderRow(folder: Folder, onClick: () -> Unit, onLongClick: () -> Unit = {})
 /**
  * Folders as a grid of covers.
  *
- * Three columns upright, eight on its side — the same numbers `tunante`
- * retiles to. They are not a ratio: a phone turned sideways is much wider than
- * it is tall, and a grid that only doubled would leave tiles the size of a
- * thumbnail's thumbnail.
+ * Three columns upright, six on its side — the same numbers `tunante` retiles
+ * to. They are not a ratio: a phone turned sideways is much wider than it is
+ * tall, and a grid that only doubled would leave tiles the size of a
+ * thumbnail's thumbnail. Sideways was eight until the covers got too small to
+ * recognise, which is the whole job of a cover.
  *
  * The cover shown for a folder is the cover of its first track, which for an
  * album folder is the album's, and for a console folder is whatever the first
@@ -180,7 +187,7 @@ fun FolderGrid(
 ) {
     val columns = if (LocalConfiguration.current.orientation ==
         android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    ) 8 else 3
+    ) 6 else 3
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),

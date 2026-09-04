@@ -73,6 +73,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val decoder = File(applicationInfo.nativeLibraryDir, "libtunante_decoder.so").absolutePath
+        // The interface language, before any screen asks for a string.
+        NativeBridge.nativeInitI18n(java.util.Locale.getDefault().language)
         if (!NativeBridge.nativeInit(this, decoder)) {
             Log.e(TAG, "native init failed — see the lines above")
         }
@@ -243,6 +245,7 @@ class MainActivity : ComponentActivity() {
             hasSource = s.optBoolean("hasSource"),
             title = s.optString("title"),
             artist = s.optString("artist"),
+            album = s.optString("album"),
             positionMs = s.optLong("positionMs"),
             durationMs = s.optLong("durationMs"),
             index = s.optInt("index", -1),

@@ -1084,3 +1084,84 @@ msgstr "{} já existe junto ao arquivo e não foi o Tunante que o escreveu. Subs
 
 msgid "{}/{} · {} encontradas"
 msgstr "{}/{} · {} encontradas"
+
+msgid "1 carpeta"
+msgstr "1 pasta"
+
+msgid "{} carpetas"
+msgstr "{} pastas"
+
+msgid "Añade pistas con ＋ desde la biblioteca."
+msgstr "Adicione faixas com ＋ a partir da biblioteca."
+
+msgid "Buscando “{}”"
+msgstr "A procurar “{}”"
+
+msgid "Carpetas de música"
+msgstr "Pastas de música"
+
+msgid "Créala arriba y añade pistas desde la biblioteca."
+msgstr "Crie uma acima e adicione faixas a partir da biblioteca."
+
+msgid "Dar acceso"
+msgstr "Dar acesso"
+
+msgid "Desliza una pista en la biblioteca para ponerla en cola."
+msgstr "Deslize uma faixa na biblioteca para a pôr na fila."
+
+msgid "Elige algo en la biblioteca."
+msgstr "Escolha algo na biblioteca."
+
+msgid "Lista nueva…"
+msgstr "Nova lista…"
+
+msgid "Lista vacía"
+msgstr "Lista vazia"
+
+msgid "Listo"
+msgstr "Concluído"
+
+msgid "Nada coincide"
+msgstr "Nada corresponde"
+
+msgid "Ninguna lista todavía"
+msgstr "Ainda sem listas"
+
+msgid "No hay nada esperando"
+msgstr "Nada à espera"
+
+msgid "No hay nada todavía"
+msgstr "Ainda nada"
+
+msgid "No suena nada"
+msgstr "Nada a tocar"
+
+msgid "Nueva lista…"
+msgstr "Nova lista…"
+
+msgid "Prueba con otra cosa."
+msgstr "Tente outra coisa."
+
+msgid "Pulsa Escanear para leer tu carpeta de música."
+msgstr "Toque em Analisar para ler a sua pasta de música."
+
+msgid "Quitar esta carpeta de la biblioteca"
+msgstr "Remover esta pasta da biblioteca"
+
+msgid "Sin acceso a los ficheros"
+msgstr "Sem acesso aos ficheiros"
+
+msgid "Tunante necesita leer carpetas enteras: los formatos de consola no se indexan como audio."
+msgstr "O Tunante precisa de ler pastas inteiras: os formatos de consola não são indexados como áudio."
+
+msgid "Usar esta carpeta"
+msgstr "Usar esta pasta"
+
+msgid "ninguna"
+msgstr "nenhuma"
+
+msgid "sin biblioteca"
+msgstr "sem biblioteca"
+
+msgid "¿Seguro?"
+msgstr "De certeza?"

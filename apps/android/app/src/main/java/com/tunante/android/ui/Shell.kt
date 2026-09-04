@@ -11,12 +11,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * Where the app can be.
@@ -46,13 +57,16 @@ fun BottomNav(current: Dest, queued: Int, onGo: (Dest) -> Unit) {
             Column(
                 Modifier
                     .weight(1f)
+                    .padding(horizontal = 4.dp)
+                    .clip(RoundedCornerShape(T.radius))
+                    .background(if (on) T.bgSelected else Color.Transparent)
                     .heightIn(min = 56.dp)
                     .clickable { onGo(d) },
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(contentAlignment = Alignment.TopEnd) {
-                    Icon(d.icon, if (on) T.accent else T.textMuted)
+                    Icon(d.icon, if (on) T.textPrimary else T.textSecondary)
                     // How many are waiting, where it is legible without opening
                     // the queue. mini has no badge, but mini is also never the
                     // app you left in a pocket.
@@ -61,7 +75,12 @@ fun BottomNav(current: Dest, queued: Int, onGo: (Dest) -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(2.dp))
-                Label(d.label, if (on) T.accent else T.textMuted, T.fontSmall, maxLines = 1)
+                Label(
+                    tr(d.label),
+                    if (on) T.textPrimary else T.textSecondary,
+                    T.fontSmall,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -108,44 +127,150 @@ fun MiniPlayer(
             .fillMaxWidth()
             .background(T.bgSecondary)
             .clickable(onClick = onOpen)
-            .padding(horizontal = T.gap, vertical = 6.dp),
+            .heightIn(min = 66.dp)
+            .padding(horizontal = T.gap),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Cover(state.path, 40.dp)
+        Cover(state.path, 44.dp)
         Spacer(Modifier.width(T.gap))
         Column(Modifier.weight(1f)) {
             Label(
-                if (state.hasSource) state.label else "Nada sonando",
+                if (state.hasSource) state.label else tr("Nada sonando"),
                 if (state.hasSource) T.textPrimary else T.textMuted,
                 T.fontBody,
                 maxLines = 1,
             )
-            if (state.hasSource) {
-                Label(
-                    "${mmss(state.positionMs)} / ${mmss(state.durationMs)}" +
-                        if (state.artist.isNotEmpty()) "  ·  ${state.artist}" else "",
-                    T.textSecondary,
-                    T.fontSmall,
-                    maxLines = 1,
-                )
+            if (state.hasSource && state.artist.isNotEmpty()) {
+                Label(state.artist, T.textSecondary, T.fontSmall, maxLines = 1)
             }
         }
-        TransportButton("◀◀", onPrev)
-        TransportButton(if (state.playing) "❚❚" else "▶", onTogglePlay)
-        TransportButton("▶▶", onNext)
+        StripButton("◀◀", T.textSecondary, 14.sp, onPrev)
+        StripPlayPause(state.playing, onTogglePlay)
+        StripButton("▶▶", T.textSecondary, 14.sp, onNext)
     }
 }
 
 /**
- * The transport glyphs stay characters.
+ * A glyph in the playing strip.
  *
- * Unlike the shuffle and repeat arrows, these four are in every font on every
- * Android there is — they were never the ones that came out as empty boxes.
+ * The transport characters stay characters: unlike the shuffle and repeat
+ * arrows, these are in every font on every Android there is — they were never
+ * the ones that came out as empty boxes.
  */
 @Composable
-fun TransportButton(glyph: String, onClick: () -> Unit) {
+fun StripButton(
+    glyph: String,
+    color: Color,
+    size: androidx.compose.ui.unit.TextUnit,
+    onClick: () -> Unit,
+) {
     Box(
         Modifier.width(T.touchTarget).heightIn(min = T.touchTarget).clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) { Label(glyph, T.textPrimary, T.fontTitle) }
+    ) { Label(glyph, color, size) }
+}
+
+/**
+ * Play and pause in the strip: a glyph, not the filled disc.
+ *
+ * The disc belongs to the Playing screen, where it is the one thing a thumb
+ * aims at. Here it would shout over the cover and the title, which are what
+ * this bar is for. Pause is drawn rather than typed for the usual reason —
+ * U+23F8 is not a character a phone can be relied on to have.
+ */
+@Composable
+fun StripPlayPause(playing: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.width(T.touchTarget).heightIn(min = T.touchTarget).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (playing) {
+            Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                repeat(2) {
+                    Box(Modifier.width(5.dp).height(20.dp).background(T.textPrimary))
+                }
+            }
+        } else {
+            Label("▶", T.textPrimary, 22.sp)
+        }
+    }
+}
+
+/**
+ * The round control, transcribed from `RoundButton` in `tunante/ui/widgets.slint`.
+ *
+ * A circle that is invisible until it means something: transparent at rest,
+ * [T.bgHover] while a finger is down, [T.bgSelected] when the thing it toggles
+ * is on. That last state is the whole point — shuffle and repeat have to say
+ * whether they are on from across a room, and a colour change on a bare glyph
+ * did not.
+ *
+ * `size` is the circle; the content is centred in it and sized by the caller,
+ * the same 0.38 ratio the Slint version uses for its glyph.
+ */
+@Composable
+fun RoundButton(
+    size: Dp,
+    active: Boolean = false,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(
+                when {
+                    active -> T.bgSelected
+                    pressed -> T.bgHover
+                    else -> Color.Transparent
+                }
+            )
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+/** [RoundButton] carrying one of the transport glyphs. */
+@Composable
+fun RoundGlyph(size: Dp, glyph: String, active: Boolean = false, onClick: () -> Unit) =
+    RoundButton(size, active, onClick) {
+        Label(glyph, if (active) T.accent else T.textPrimary, (size.value * 0.38f).sp)
+    }
+
+/**
+ * Play and pause, as the one control that is filled rather than outlined.
+ *
+ * The accent disc is what tells a thumb where to land without reading anything,
+ * and it is the shape the Slint transport has always had. Play is the `▶`
+ * glyph, which every Android has; pause is two drawn bars, because U+23F8 is
+ * exactly the kind of character that came out as an empty box on a real phone.
+ */
+@Composable
+fun PlayCircle(size: Dp, playing: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(T.accent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (playing) {
+            Row(horizontalArrangement = Arrangement.spacedBy(size * 0.09f)) {
+                repeat(2) {
+                    Box(
+                        Modifier
+                            .width(size * 0.088f)
+                            .height(size * 0.353f)
+                            .background(Color.White)
+                    )
+                }
+            }
+        } else {
+            Label("▶", Color.White, (size.value * 0.38f).sp)
+        }
+    }
 }

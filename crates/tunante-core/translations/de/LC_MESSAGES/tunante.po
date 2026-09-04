@@ -1084,3 +1084,84 @@ msgstr "{} existiert bereits neben der Datei und wurde nicht von Tunante geschri
 
 msgid "{}/{} · {} encontradas"
 msgstr "{}/{} · {} gefunden"
+
+msgid "1 carpeta"
+msgstr "1 Ordner"
+
+msgid "{} carpetas"
+msgstr "{} Ordner"
+
+msgid "Añade pistas con ＋ desde la biblioteca."
+msgstr "Titel mit ＋ aus der Bibliothek hinzufügen."
+
+msgid "Buscando “{}”"
+msgstr "Suche nach „{}“"
+
+msgid "Carpetas de música"
+msgstr "Musikordner"
+
+msgid "Créala arriba y añade pistas desde la biblioteca."
+msgstr "Oben eine anlegen und Titel aus der Bibliothek hinzufügen."
+
+msgid "Dar acceso"
+msgstr "Zugriff erlauben"
+
+msgid "Desliza una pista en la biblioteca para ponerla en cola."
+msgstr "Einen Titel in der Bibliothek wischen, um ihn einzureihen."
+
+msgid "Elige algo en la biblioteca."
+msgstr "Etwas in der Bibliothek auswählen."
+
+msgid "Lista nueva…"
+msgstr "Neue Wiedergabeliste…"
+
+msgid "Lista vacía"
+msgstr "Leere Wiedergabeliste"
+
+msgid "Listo"
+msgstr "Fertig"
+
+msgid "Nada coincide"
+msgstr "Keine Treffer"
+
+msgid "Ninguna lista todavía"
+msgstr "Noch keine Wiedergabelisten"
+
+msgid "No hay nada esperando"
+msgstr "Nichts wartet"
+
+msgid "No hay nada todavía"
+msgstr "Noch nichts da"
+
+msgid "No suena nada"
+msgstr "Nichts läuft"
+
+msgid "Nueva lista…"
+msgstr "Neue Wiedergabeliste…"
+
+msgid "Prueba con otra cosa."
+msgstr "Etwas anderes versuchen."
+
+msgid "Pulsa Escanear para leer tu carpeta de música."
+msgstr "Auf Scannen tippen, um den Musikordner einzulesen."
+
+msgid "Quitar esta carpeta de la biblioteca"
+msgstr "Diesen Ordner aus der Bibliothek entfernen"
+
+msgid "Sin acceso a los ficheros"
+msgstr "Kein Zugriff auf Dateien"
+
+msgid "Tunante necesita leer carpetas enteras: los formatos de consola no se indexan como audio."
+msgstr "Tunante muss ganze Ordner lesen: Konsolenformate werden nicht als Audio indiziert."
+
+msgid "Usar esta carpeta"
+msgstr "Diesen Ordner verwenden"
+
+msgid "ninguna"
+msgstr "keiner"
+
+msgid "sin biblioteca"
+msgstr "keine Bibliothek"
+
+msgid "¿Seguro?"
+msgstr "Sicher?"

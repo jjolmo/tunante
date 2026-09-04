@@ -72,7 +72,7 @@ fun FolderMenu(
             Rule()
             Action(
                 { Label("≡", T.accent, T.fontBody) },
-                if (isDirectory) "Añadir todo, con las subcarpetas" else "Añadir a la cola",
+                if (isDirectory) tr("Añadir todo, con las subcarpetas") else tr("Añadir a la cola"),
             ) { onEnqueue(true) }
             if (isDirectory) {
                 // Drawn, not typed. mini writes this one as `🗀` and can; here it
@@ -81,20 +81,20 @@ fun FolderMenu(
                 // system font. The three below it -- U+2261, U+266B, U+2715 --
                 // are, and were checked on the screen rather than assumed.
                 Action({ Icon(IconKind.Library, T.accent, size = 18.dp) },
-                    "Añadir sólo esta carpeta") { onEnqueue(false) }
+                    tr("Añadir sólo esta carpeta")) { onEnqueue(false) }
             }
             Rule()
             Action(
                 { Label("♫", T.accent, T.fontBody) },
-                if (isDirectory) "Añadir carpeta y subcarpetas a lista" else "Añadir a una lista",
+                if (isDirectory) tr("Añadir carpeta y subcarpetas a lista") else tr("Añadir a una lista"),
             ) { onAddToPlaylist(true) }
             if (isDirectory) {
-                Action({ Label("♫", T.accent, T.fontBody) }, "Añadir carpeta a lista") {
+                Action({ Label("♫", T.accent, T.fontBody) }, tr("Añadir carpeta a lista")) {
                     onAddToPlaylist(false)
                 }
             }
             Rule()
-            Action({ Label("✕", T.accent, T.fontBody) }, "Cancelar", onDismiss)
+            Action({ Label("✕", T.accent, T.fontBody) }, tr("Cancelar"), onDismiss)
         }
     }
 }

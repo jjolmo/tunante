@@ -1084,3 +1084,84 @@ msgstr "Pag su"
 
 msgid "AvPág"
 msgstr "Pag giù"
+
+msgid "1 carpeta"
+msgstr "1 cartella"
+
+msgid "{} carpetas"
+msgstr "{} cartelle"
+
+msgid "Añade pistas con ＋ desde la biblioteca."
+msgstr "Aggiungi tracce con ＋ dalla libreria."
+
+msgid "Buscando “{}”"
+msgstr "Ricerca di “{}”"
+
+msgid "Carpetas de música"
+msgstr "Cartelle musicali"
+
+msgid "Créala arriba y añade pistas desde la biblioteca."
+msgstr "Creane una sopra e aggiungi tracce dalla libreria."
+
+msgid "Dar acceso"
+msgstr "Consenti l’accesso"
+
+msgid "Desliza una pista en la biblioteca para ponerla en cola."
+msgstr "Scorri una traccia nella libreria per metterla in coda."
+
+msgid "Elige algo en la biblioteca."
+msgstr "Scegli qualcosa nella libreria."
+
+msgid "Lista nueva…"
+msgstr "Nuova playlist…"
+
+msgid "Lista vacía"
+msgstr "Playlist vuota"
+
+msgid "Listo"
+msgstr "Fatto"
+
+msgid "Nada coincide"
+msgstr "Nessuna corrispondenza"
+
+msgid "Ninguna lista todavía"
+msgstr "Ancora nessuna playlist"
+
+msgid "No hay nada esperando"
+msgstr "Niente in attesa"
+
+msgid "No hay nada todavía"
+msgstr "Ancora niente"
+
+msgid "No suena nada"
+msgstr "Niente in riproduzione"
+
+msgid "Nueva lista…"
+msgstr "Nuova playlist…"
+
+msgid "Prueba con otra cosa."
+msgstr "Prova con altro."
+
+msgid "Pulsa Escanear para leer tu carpeta de música."
+msgstr "Tocca Scansiona per leggere la cartella musicale."
+
+msgid "Quitar esta carpeta de la biblioteca"
+msgstr "Rimuovi questa cartella dalla libreria"
+
+msgid "Sin acceso a los ficheros"
+msgstr "Nessun accesso ai file"
+
+msgid "Tunante necesita leer carpetas enteras: los formatos de consola no se indexan como audio."
+msgstr "Tunante deve leggere intere cartelle: i formati console non sono indicizzati come audio."
+
+msgid "Usar esta carpeta"
+msgstr "Usa questa cartella"
+
+msgid "ninguna"
+msgstr "nessuna"
+
+msgid "sin biblioteca"
+msgstr "nessuna libreria"
+
+msgid "¿Seguro?"
+msgstr "Sicuro?"

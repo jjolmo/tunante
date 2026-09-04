@@ -1306,6 +1306,32 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCancelCovers(
 /// Blocking — it can spawn a helper — so call it off the main looper. Java
 /// caches the result; nothing is cached here, because the only sensible cache
 /// key is the one the screen already has.
+/// Load the catalog for the phone's language. Kotlin passes
+/// `Locale.getDefault().language`; `""`, `"es"` and any code we do not ship
+/// leave the Spanish source. Once per process, like the desktop's.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeInitI18n(
+    mut env: JNIEnv,
+    _class: JClass,
+    lang: JString,
+) {
+    let lang = jstring_to_string(&mut env, &lang).unwrap_or_default();
+    tunante_core::i18n::init(&lang);
+}
+
+/// One source string in, its translation out — or the source itself when the
+/// catalog has none. The Compose side wraps every visible literal in this, the
+/// way the Slint side wraps them in `@tr`.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeTr<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    source: JString,
+) -> jni::objects::JString<'a> {
+    let source = jstring_to_string(&mut env, &source).unwrap_or_default();
+    env.new_string(tunante_core::i18n::tr(&source)).expect("new_string")
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeArtwork<'a>(
     mut env: JNIEnv<'a>,
