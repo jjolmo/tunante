@@ -703,3 +703,84 @@ msgstr "Área de trabalho"
 
 msgid "Automático"
 msgstr "Automático"
+
+msgid "solo error"
+msgstr "apenas erros"
+
+msgid "aviso+"
+msgstr "avisos+"
+
+msgid "todo"
+msgstr "tudo"
+
+msgid "fichero primero"
+msgstr "arquivo primeiro"
+
+msgid "carpeta primero"
+msgstr "pasta primeiro"
+
+msgid "BD manda"
+msgstr "o banco decide"
+
+msgid "reproducir/pausa"
+msgstr "reproduzir/pausar"
+
+msgid "stop"
+msgstr "parar"
+
+msgid "siguiente"
+msgstr "próximo"
+
+msgid "siguiente con fundido"
+msgstr "próximo com fade"
+
+msgid "mostrar/ocultar"
+msgstr "mostrar/ocultar"
+
+msgid "simbólico"
+msgstr "simbólico"
+
+msgid "logo"
+msgstr "logo"
+
+msgid "claro"
+msgstr "claro"
+
+msgid "oscuro"
+msgstr "escuro"
+
+msgid "1 pasada"
+msgstr "1 passagem"
+
+msgid "{} pasadas"
+msgstr "{} passagens"
+
+msgid "entera"
+msgstr "inteira"
+
+msgid "con fondo"
+msgstr "com fundo"
+
+msgid "estirada"
+msgstr "esticada"
+
+msgid "original"
+msgstr "original"
+
+msgid "recortada"
+msgstr "cortada"
+
+msgid "vinculando…"
+msgstr "vinculando…"
+
+msgid "eligiendo…"
+msgstr "escolhendo…"
+
+msgid "disponible"
+msgstr "disponível"
+
+msgid "sin acceso (grupo input)"
+msgstr "sem acesso (grupo input)"
+
+msgid "sí ({} dispositivos)"
+msgstr "sim ({} dispositivos)"

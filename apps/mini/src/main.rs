@@ -3462,9 +3462,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = integrate::make_desktop_entry();
             shortcut_forward.store(true, std::sync::atomic::Ordering::Relaxed);
             *shortcut_rx.borrow_mut() = Some(shortcuts::spawn(shortcut_forward.clone()));
-            ui.set_global_shortcuts_label(SharedString::from("vinculando…"));
+            ui.set_global_shortcuts_label(SharedString::from(i18n::tr("vinculando…")));
         } else {
-            ui.set_global_shortcuts_label(SharedString::from("no"));
+            ui.set_global_shortcuts_label(SharedString::from(i18n::tr("no")));
         }
     }
     {
@@ -3483,12 +3483,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if rx_slot.borrow().is_none() {
                     let _ = integrate::make_desktop_entry();
                     *rx_slot.borrow_mut() = Some(shortcuts::spawn(flag.clone()));
-                    ui.set_global_shortcuts_label(SharedString::from("vinculando…"));
+                    ui.set_global_shortcuts_label(SharedString::from(i18n::tr("vinculando…")));
                 } else {
-                    ui.set_global_shortcuts_label(SharedString::from("sí"));
+                    ui.set_global_shortcuts_label(SharedString::from(i18n::tr("sí")));
                 }
             } else {
-                ui.set_global_shortcuts_label(SharedString::from("no"));
+                ui.set_global_shortcuts_label(SharedString::from(i18n::tr("no")));
             }
         });
     }
@@ -3504,9 +3504,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Rc::new(RefCell::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))));
     let buttons_label = |n: usize| -> String {
         if n == 0 {
-            "sin acceso (grupo input)".to_string()
+            i18n::tr("sin acceso (grupo input)")
         } else {
-            format!("sí ({n} dispositivos)")
+            i18n::tr("sí ({} dispositivos)").replace("{}", &n.to_string())
         }
     };
     {
@@ -3521,7 +3521,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let n = buttons::spawn(button_tx.clone(), button_stop.borrow().clone());
             ui.set_mouse_buttons_label(SharedString::from(buttons_label(n)));
         } else {
-            ui.set_mouse_buttons_label(SharedString::from("no"));
+            ui.set_mouse_buttons_label(SharedString::from(i18n::tr("no")));
         }
     }
     {
@@ -3539,7 +3539,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let n = buttons::spawn(tx.clone(), fresh);
                 ui.set_mouse_buttons_label(SharedString::from(buttons_label(n)));
             } else {
-                ui.set_mouse_buttons_label(SharedString::from("no"));
+                ui.set_mouse_buttons_label(SharedString::from(i18n::tr("no")));
             }
         });
     }
@@ -3646,7 +3646,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_add_files(move || {
             let Some(ui) = weak.upgrade() else { return };
-            ui.set_add_files_label(SharedString::from("eligiendo…"));
+            ui.set_add_files_label(SharedString::from(i18n::tr("eligiendo…")));
             let (dbfile, dirty, tx) = (dbfile.clone(), dirty.clone(), tx.clone());
             std::thread::spawn(move || {
                 let picked = pick_files();
@@ -4440,12 +4440,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // both applied at refresh time so the ring itself stays raw.
     let log_level = Rc::new(std::cell::Cell::new(0u8));
     let log_filter: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
-    fn log_level_label(l: u8) -> &'static str {
-        match l {
+    fn log_level_label(l: u8) -> String {
+        i18n::tr(match l {
             1 => "solo error",
             2 => "aviso+",
             _ => "todo",
-        }
+        })
     }
     fn refresh_log(
         model: &VecModel<SharedString>,
@@ -5156,7 +5156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             )));
                             ui.set_bulk_busy(false);
                             let _ = db.set_setting("mini.last_cover_run", &stamp.to_string());
-                            ui.set_undo_covers_label(SharedString::from("disponible"));
+                            ui.set_undo_covers_label(SharedString::from(i18n::tr("disponible")));
                             art_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                     }
@@ -6226,38 +6226,38 @@ fn get_bool_setting(db: &Database, key: &str, default: bool) -> bool {
         .unwrap_or(default)
 }
 
-fn rating_priority_label(raw: Option<&str>) -> &'static str {
-    match raw {
+fn rating_priority_label(raw: Option<&str>) -> String {
+    i18n::tr(match raw {
         Some("file,folder,db") => "fichero primero",
         Some("folder,file,db") => "carpeta primero",
         _ => "BD manda",
-    }
+    })
 }
 
-fn tray_click_label(a: &str) -> &'static str {
-    match a {
+fn tray_click_label(a: &str) -> String {
+    i18n::tr(match a {
         "play_pause" => "reproducir/pausa",
         "stop" => "stop",
         "next_track" => "siguiente",
         "next_track_with_fade" => "siguiente con fundido",
         _ => "mostrar/ocultar",
-    }
+    })
 }
 
-fn tray_style_label(style: u8) -> &'static str {
-    match style {
+fn tray_style_label(style: u8) -> String {
+    i18n::tr(match style {
         1 => "simbólico",
         2 => "logo",
         _ => "sistema",
-    }
+    })
 }
 
-fn theme_mode_label(mode: u8) -> &'static str {
-    match mode {
+fn theme_mode_label(mode: u8) -> String {
+    i18n::tr(match mode {
         1 => "claro",
         2 => "sistema",
         _ => "oscuro",
-    }
+    })
 }
 
 fn ui_mode_label(mode: i32) -> String {
@@ -6273,7 +6273,7 @@ fn ui_mode_label(mode: i32) -> String {
 /// label from eating the whole width first.
 fn output_label(stored: &str) -> String {
     if stored == "system" {
-        return "sistema".to_string();
+        return i18n::tr("sistema");
     }
     let mut label: String = stored.chars().take(34).collect();
     if label.len() < stored.len() {
@@ -7411,9 +7411,9 @@ fn consoles_for_filter(q: &str) -> Vec<ConsoleOption> {
 
 fn vgm_loops_label(v: Option<f64>) -> String {
     match v {
-        None => "predeterminado".to_string(),
-        Some(v) if v <= 1.0 => "1 pasada".to_string(),
-        Some(v) => format!("{} pasadas", v as i64),
+        None => i18n::tr("predeterminado"),
+        Some(v) if v <= 1.0 => i18n::tr("1 pasada"),
+        Some(v) => i18n::tr("{} pasadas").replace("{}", &(v as i64).to_string()),
     }
 }
 
@@ -7437,14 +7437,14 @@ fn cover_fit_key(fit: i32) -> &'static str {
     }
 }
 
-fn cover_fit_label(fit: i32) -> &'static str {
-    match fit {
+fn cover_fit_label(fit: i32) -> String {
+    i18n::tr(match fit {
         1 => "entera",
         2 => "con fondo",
         3 => "estirada",
         4 => "original",
         _ => "recortada",
-    }
+    })
 }
 
 /// Ask the desktop for files, with whichever picker it ships. Returns empty

@@ -576,7 +576,7 @@ msgid "Guardar"
 msgstr "Speichern"
 
 msgid "Sonando"
-msgstr "Läuft gerade"
+msgstr "Läuft"
 
 msgid "Nombre de la lista"
 msgstr "Name der Wiedergabeliste"
@@ -703,3 +703,84 @@ msgstr "Desktop"
 
 msgid "Automático"
 msgstr "Automatisch"
+
+msgid "solo error"
+msgstr "nur Fehler"
+
+msgid "aviso+"
+msgstr "Warnungen+"
+
+msgid "todo"
+msgstr "alle"
+
+msgid "fichero primero"
+msgstr "Datei zuerst"
+
+msgid "carpeta primero"
+msgstr "Ordner zuerst"
+
+msgid "BD manda"
+msgstr "Datenbank entscheidet"
+
+msgid "reproducir/pausa"
+msgstr "Wiedergabe/Pause"
+
+msgid "stop"
+msgstr "Stopp"
+
+msgid "siguiente"
+msgstr "weiter"
+
+msgid "siguiente con fundido"
+msgstr "weiter mit Blende"
+
+msgid "mostrar/ocultar"
+msgstr "ein-/ausblenden"
+
+msgid "simbólico"
+msgstr "symbolisch"
+
+msgid "logo"
+msgstr "Logo"
+
+msgid "claro"
+msgstr "hell"
+
+msgid "oscuro"
+msgstr "dunkel"
+
+msgid "1 pasada"
+msgstr "1 Durchlauf"
+
+msgid "{} pasadas"
+msgstr "{} Durchläufe"
+
+msgid "entera"
+msgstr "ganz"
+
+msgid "con fondo"
+msgstr "mit Hintergrund"
+
+msgid "estirada"
+msgstr "gestreckt"
+
+msgid "original"
+msgstr "Original"
+
+msgid "recortada"
+msgstr "beschnitten"
+
+msgid "vinculando…"
+msgstr "verknüpfe…"
+
+msgid "eligiendo…"
+msgstr "wähle…"
+
+msgid "disponible"
+msgstr "verfügbar"
+
+msgid "sin acceso (grupo input)"
+msgstr "kein Zugriff (input-Gruppe)"
+
+msgid "sí ({} dispositivos)"
+msgstr "ja ({} Geräte)"

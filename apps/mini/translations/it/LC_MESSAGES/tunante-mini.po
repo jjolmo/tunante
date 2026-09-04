@@ -576,7 +576,7 @@ msgid "Guardar"
 msgstr "Salva"
 
 msgid "Sonando"
-msgstr "In riproduzione"
+msgstr "Ascolto"
 
 msgid "Nombre de la lista"
 msgstr "Nome della playlist"
@@ -703,3 +703,84 @@ msgstr "Desktop"
 
 msgid "Automático"
 msgstr "Automatico"
+
+msgid "solo error"
+msgstr "solo errori"
+
+msgid "aviso+"
+msgstr "avvisi+"
+
+msgid "todo"
+msgstr "tutto"
+
+msgid "fichero primero"
+msgstr "file prima"
+
+msgid "carpeta primero"
+msgstr "cartella prima"
+
+msgid "BD manda"
+msgstr "decide il DB"
+
+msgid "reproducir/pausa"
+msgstr "riproduci/pausa"
+
+msgid "stop"
+msgstr "ferma"
+
+msgid "siguiente"
+msgstr "successivo"
+
+msgid "siguiente con fundido"
+msgstr "successivo con dissolvenza"
+
+msgid "mostrar/ocultar"
+msgstr "mostra/nascondi"
+
+msgid "simbólico"
+msgstr "simbolico"
+
+msgid "logo"
+msgstr "logo"
+
+msgid "claro"
+msgstr "chiaro"
+
+msgid "oscuro"
+msgstr "scuro"
+
+msgid "1 pasada"
+msgstr "1 passaggio"
+
+msgid "{} pasadas"
+msgstr "{} passaggi"
+
+msgid "entera"
+msgstr "intera"
+
+msgid "con fondo"
+msgstr "con sfondo"
+
+msgid "estirada"
+msgstr "stirata"
+
+msgid "original"
+msgstr "originale"
+
+msgid "recortada"
+msgstr "ritagliata"
+
+msgid "vinculando…"
+msgstr "collegamento…"
+
+msgid "eligiendo…"
+msgstr "scelta…"
+
+msgid "disponible"
+msgstr "disponibile"
+
+msgid "sin acceso (grupo input)"
+msgstr "nessun accesso (gruppo input)"
+
+msgid "sí ({} dispositivos)"
+msgstr "sì ({} dispositivi)"
