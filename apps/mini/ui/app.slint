@@ -13,7 +13,7 @@ import { Theme, Fmt } from "theme.slint";
 import { TabSwitcher, MiniPlayer } from "widgets.slint";
 import { NowPlayingTab, QueueTab, SettingsTab, LibraryTab } from "tabs.slint";
 import { FolderPicker } from "picker.slint";
-import { CoversPlanSheet, LogSheet } from "widgets.slint";
+import { CoversPlanSheet, LogSheet, OutputPickSheet } from "widgets.slint";
 import { DesktopShell } from "desktop.slint";
 
 // Imported for AppWindow's own properties, and re-exported so
@@ -271,6 +271,12 @@ export component AppWindow inherits Window {
     callback bulk-apply();
     callback bulk-cancelled();
     callback cycle-output();
+    // The audio-output picker: cycle-output now opens it (Rust fills these and
+    // flips output-picking); pick-output applies the chosen index.
+    in property <[string]> output-options;
+    in property <int> output-current;
+    in-out property <bool> output-picking;
+    callback pick-output(int);
     callback cycle-ui-mode();
     in property <bool> eq-enabled;
     in property <float> eq-low;
@@ -1214,6 +1220,13 @@ export component AppWindow inherits Window {
         busy: root.bulk-busy;
         apply => { root.bulk-apply(); }
         cancelled => { root.bulk-cancelled(); }
+    }
+
+    if root.output-picking: OutputPickSheet {
+        options: root.output-options;
+        current: root.output-current;
+        picked(i) => { root.pick-output(i); }
+        cancelled => { root.output-picking = false; }
     }
 
     if root.error-toast != "": Rectangle {
