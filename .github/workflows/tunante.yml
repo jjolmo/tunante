@@ -47,7 +47,7 @@ on:
       - 'crates/**'
       - 'vendor/*-rs/**'
       - 'vendor/*-patch/**'
-      - '.github/workflows/mini.yml'
+      - '.github/workflows/tunante.yml'
   workflow_dispatch:
 
 # To attach the apk to the release. Read-only is the default for everything
@@ -440,7 +440,7 @@ jobs:
           # The version comes from the tags, like everywhere else.
           fetch-depth: 0
 
-      # The same race android.yml lost the first time its attach step ran.
+      # The same race tunante-android.yml lost the first time its attach step ran.
       #
       # release.yml creates the tag in its first job, which can finish after
       # this job has checked out, so `git describe --tags` returns whichever tag
@@ -566,7 +566,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: tunante-apk-aarch64
+          name: tunante-alpine-aarch64
           path: out/*.apk
 
       # And onto the release, so the package is installable without a GitHub

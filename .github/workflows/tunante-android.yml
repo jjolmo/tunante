@@ -1,4 +1,4 @@
-name: tunante-android (arm64-v8a)
+name: tunante-android
 
 # Builds the Android app and attaches the APK to the release.
 #
@@ -51,7 +51,7 @@ on:
       - 'vendor/*-patch/**'
       - 'vendor/viogsf/**'
       - 'apps/android/**'
-      - '.github/workflows/android.yml'
+      - '.github/workflows/tunante-android.yml'
   workflow_dispatch:
 
 # To attach the apk to the release. Read-only is the default for everything else.
