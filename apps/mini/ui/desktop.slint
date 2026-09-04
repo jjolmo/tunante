@@ -344,6 +344,14 @@ export component DesktopShell inherits Rectangle {
     in property <int> open-settings-tick;
     in-out property <bool> showing-settings;
     changed open-settings-tick => { root.showing-settings = true; }
+    /// Ask the shell's FocusScope (in app.slint) to take the keyboard back.
+    /// Navigating to a grid view destroys the TrackTable and its FocusScope,
+    /// which leaves Slint with nothing focused — and with no focused item there
+    /// is neither a capture nor a bubble phase, so global keys like Ctrl+P die.
+    /// Re-grabbing focus on every navigation keeps a live focus path alive.
+    callback request-focus();
+    changed centre => { if (!root.showing-settings) { root.request-focus(); } }
+    changed library-mode => { if (!root.showing-settings) { root.request-focus(); } }
     // Bumped by Rust when a console is opened from the grid: show the table.
     in property <int> show-table-tick;
     changed show-table-tick => { root.centre = 0; }
