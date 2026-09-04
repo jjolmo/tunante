@@ -5604,6 +5604,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // handler calls it only when close-to-tray is off) keeps it alive in the
     // tray instead.
     ui.show()?;
+
+    // Ctrl+P as a true global shortcut. Slint only delivers keys to whatever
+    // holds keyboard focus, and navigating to a grid view destroys the focused
+    // scope and leaves nothing focused — so a Slint-side handler misses the key
+    // exactly where the user expects it. Hooking winit's window events catches
+    // the key before Slint's focus dispatch, so it fires whenever the window
+    // has OS focus regardless of the internal focus (or the lack of one).
+    //
+    // (This covers the window while it is up. A shortcut that works with the
+    // window hidden in the tray would need an OS-level global shortcut, which on
+    // Wayland means the desktop portal — a separate, compositor-dependent job.)
+    {
+        // on_winit_window_event is a no-op until the window is winit-backed,
+        // and after show() alone it is not yet — the event loop must pump once
+        // to create it. winit_window().await resolves when it exists, so we
+        // register the hook from there.
+        let weak = ui.as_weak();
+        let spawned = slint::spawn_local(async move {
+            use slint::winit_030::{winit, WinitWindowAccessor};
+            use winit::event::{ElementState, WindowEvent};
+            use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
+
+            let Some(ui) = weak.upgrade() else { return };
+            if ui.window().winit_window().await.is_err() {
+                return;
+            }
+            let weak = ui.as_weak();
+            let mods = std::rc::Rc::new(std::cell::Cell::new(ModifiersState::empty()));
+            ui.window().on_winit_window_event(move |_win, event| {
+                match event {
+                    WindowEvent::ModifiersChanged(m) => {
+                        mods.set(m.state());
+                    }
+                    WindowEvent::KeyboardInput { event, .. } => {
+                        if event.state == ElementState::Pressed
+                            && mods.get().control_key()
+                            && event.physical_key == PhysicalKey::Code(KeyCode::KeyP)
+                        {
+                            if let Some(ui) = weak.upgrade() {
+                                ui.set_open_settings_tick(ui.get_open_settings_tick() + 1);
+                            }
+                            return slint::winit_030::EventResult::PreventDefault;
+                        }
+                    }
+                    _ => {}
+                }
+                slint::winit_030::EventResult::Propagate
+            });
+        });
+        if let Err(e) = spawned {
+            eprintln!("[ctrlp] could not spawn winit hook task: {e}");
+        }
+    }
+
     slint::run_event_loop_until_quit()?;
     Ok(())
 }
