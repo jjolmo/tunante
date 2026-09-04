@@ -8,7 +8,7 @@ license = "GPL-2.0-or-later"
 [dependencies]
 # For the DSP chain (the `dsp` default feature). This crate is the layer that
 # marries the desktop's engine to the out-of-process decoding model, so unlike
-# tunante-mini it wants the chain compiled in.
+# tunante it wants the chain compiled in.
 tunante-core = { path = "../tunante-core" }
 
 # PipeSource: the decoder helper's PCM, wearing a rodio::Source. This crate

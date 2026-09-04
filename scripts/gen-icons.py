@@ -34,8 +34,8 @@ SOURCE = ROOT / "assets" / "logo.png"
 # The tray wants a silhouette, not a picture. See the tray section of build().
 TRAY_SOURCE = ROOT / "assets" / "system.svg"
 
-MINI = ROOT / "apps/mini/dist/icons"
-TRAY = MINI / "tray"
+ICONS = ROOT / "apps/tunante/dist/icons"
+TRAY = ICONS / "tray"
 ANDROID = ROOT / "apps/android/app/src/main/res"
 
 # Android ships one bitmap per density. The launcher bitmap is 48dp and the
@@ -177,8 +177,8 @@ def build(src: Image.Image, rasterise: bool = True) -> dict[Path, bytes]:
     out: dict[Path, bytes] = {}
 
     # The Tauri desktop's icon set (ICO, ICNS, favicon, the macOS/Windows
-    # tray renderings) left with the app that used it — fase 4 of
-    # docs/plan-desktop-slint.md. What returned is the Linux tray pair
+    # tray renderings) left with the app that used it. What returned is the
+    # Linux tray pair
     # below: the app's styles row needs a recolourable name and a white
     # pixmap beside the pixel-art logo.
 
@@ -198,7 +198,7 @@ def build(src: Image.Image, rasterise: bool = True) -> dict[Path, bytes]:
 
     # --- mini ------------------------------------------------------------
     for n in (48, 64, 128, 256, 512):
-        out[MINI / f"{n}x{n}" / "tunante-mini.png"] = png(scale(src, n))
+        out[ICONS / f"{n}x{n}" / "tunante.png"] = png(scale(src, n))
 
     # --- android ---------------------------------------------------------
     for density, factor in DENSITIES.items():

@@ -33,7 +33,7 @@ const STANDARD_EXTENSIONS: &[&str] = &[
 /// This is the static list. It is not the whole truth: vgmstream carries its own,
 /// much broader list built into the library, and a scanner should consult that
 /// too for anything this misses — see `tunante_codec::vgmstream_accepts`. Kept
-/// here, in the core, because both the desktop app and tunante-mini scan folders.
+/// here, in the core, because both the desktop app and tunante scan folders.
 pub const AUDIO_EXTENSIONS: &[&str] = &[
     // Standard audio
     "mp3", "flac", "ogg", "wav", "aac", "aiff", "wma", "m4a", "opus", "ape", "wv",

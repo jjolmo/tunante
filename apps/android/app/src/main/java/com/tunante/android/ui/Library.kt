@@ -41,7 +41,7 @@ data class Folder(
  * What the library tab is showing.
  *
  * A search with text in it replaces the tree rather than filtering it, which is
- * what `tunante-mini` does too: when you are looking for a title you do not care
+ * what `tunante` does too: when you are looking for a title you do not care
  * which folder it was in.
  */
 data class LibraryView(
@@ -67,8 +67,8 @@ data class LibraryView(
 /**
  * The breadcrumb.
  *
- * `tunante-mini` carries its own `◂` because Plasma Mobile has no back button
- * (see its HANDOVER.md). Android does have one, and it is wired to the same
+ * `tunante` carries its own `◂` because Plasma Mobile has no back button
+ * Android does have one, and it is wired to the same
  * action — but the affordance stays: a gesture you cannot see is not a way of
  * telling someone where they are.
  */
@@ -161,7 +161,7 @@ fun FolderRow(folder: Folder, onClick: () -> Unit, onLongClick: () -> Unit = {})
 /**
  * Folders as a grid of covers.
  *
- * Three columns upright, eight on its side — the same numbers `tunante-mini`
+ * Three columns upright, eight on its side — the same numbers `tunante`
  * retiles to. They are not a ratio: a phone turned sideways is much wider than
  * it is tall, and a grid that only doubled would leave tiles the size of a
  * thumbnail's thumbnail.
@@ -214,7 +214,7 @@ fun FolderGrid(
  *
  * Accent-insensitive because nobody types "Pokémon" with the accent when they
  * are looking for it, and the tags in a rip are inconsistent about it anyway.
- * `plegar` in tunante-mini does the same job.
+ * `plegar` in tunante does the same job.
  */
 fun folds(haystack: String, needle: String): Boolean {
     if (needle.isBlank()) return true

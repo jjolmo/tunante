@@ -57,7 +57,7 @@ struct Decoded {
     samples: Vec<f32>,
 }
 
-/// Decode through the helper process, exactly as tunante-mini will.
+/// Decode through the helper process, exactly as tunante will.
 ///
 /// Reads at most `max_samples`, stopping early once `stop` says the samples so
 /// far are enough — that is how the async backends get given the wall-clock time

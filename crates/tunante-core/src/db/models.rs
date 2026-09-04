@@ -22,7 +22,7 @@ pub struct Track {
     pub rating: i32,
     /// Not sent to a UI, which has no use for it. The `default` matters as much
     /// as the `skip_serializing`: without it a Track that went out over a wire —
-    /// as it does between tunante-mini and its decoder helper — could not be
+    /// as it does between tunante and its decoder helper — could not be
     /// read back, because the field would be missing rather than absent.
     #[serde(skip_serializing, default)]
     pub modified_at: i64,

@@ -12,8 +12,7 @@ one is a phone player built for a thumb. No web view, no JavaScript engine —
 it draws straight to the GPU through GLES2.
 
 > The first desktop app was Tauri v2 + SvelteKit. It was retired once the
-> Slint player reached parity (`docs/plan-desktop-slint.md` tells the whole
-> story); its last release is
+> Slint player reached parity; its last release is
 > [v0.1.283](https://github.com/jjolmo/tunante/releases/tag/v0.1.283).
 
 ![License](https://img.shields.io/badge/license-GPL--2.0-blue)
@@ -79,7 +78,7 @@ it draws straight to the GPU through GLES2.
 - **Single instance**: a second launch focuses the first; opening a file from a
   file manager hands it to the running player
 - **Metadata editor** from the context menu
-- **Self-updating**: from Ajustes, or headless with `tunante-mini --update`
+- **Self-updating**: from Ajustes, or headless with `tunante --update`
 
 ## Prerequisites (building from source)
 
@@ -109,10 +108,11 @@ cd tunante
 
 # Build and run the desktop shell (the decoder must exist as a sibling)
 cargo build --release -p tunante-decoder
-cargo run --release -p tunante-mini -- --desktop
+cargo run --release -p tunante
 ```
 
-`--mini` forces the phone shell; with neither flag the window's width decides.
+The window's width picks the shell — wide is the desktop one, narrow the
+phone one. There is no flag and no setting: resize the window.
 If you already cloned without `--recurse-submodules`:
 
 ```bash
@@ -125,15 +125,15 @@ Grab the newest [release](https://github.com/jjolmo/tunante/releases):
 
 | Asset | For |
 |-------|-----|
-| `tunante-mini-x86_64-linux-gnu.tar.gz` | An ordinary desktop or laptop |
-| `tunante-mini-aarch64-linux-gnu.tar.gz` | ARM boards, ARM laptops, an ARM desktop |
-| `tunante-mini-x86_64-windows.zip` | Windows |
-| `tunante-mini-*-r0.apk` (Alpine, musl, aarch64) | postmarketOS and any Alpine phone |
+| `tunante-x86_64-linux-gnu.tar.gz` | An ordinary desktop or laptop |
+| `tunante-aarch64-linux-gnu.tar.gz` | ARM boards, ARM laptops, an ARM desktop |
+| `tunante-x86_64-windows.zip` | Windows |
+| `tunante-*-r0.apk` (Alpine, musl, aarch64) | postmarketOS and any Alpine phone |
 | `tunante-android-*.apk` | Android — see below |
 
-Unpack the tarball anywhere and run `tunante-mini`. It self-updates from then
-on (Ajustes → Buscar actualizaciones, or `tunante-mini --update` from a cron
-job). Each tarball carries both `tunante-mini` and `tunante-decoder`, and they
+Unpack the tarball anywhere and run `tunante`. It self-updates from then
+on (Ajustes → Buscar actualizaciones, or `tunante --update` from a cron
+job). Each tarball carries both `tunante` and `tunante-decoder`, and they
 must stay side by side: the player looks for the decoder as a sibling of
 itself, and splitting them breaks playback with a message that does not
 explain why.
@@ -182,7 +182,7 @@ Two apps under `apps/`, what they share under `crates/`, third-party C under
 `vendor/`. The Cargo workspace root is the repository root.
 
 ```
-apps/mini/                    # The player (Slint): desktop shell + phone shell
+apps/tunante/                    # The player (Slint): desktop shell + phone shell
 apps/android/                 # Android app (Gradle, Kotlin, Compose)
   rust/                       #   Its JNI half (cdylib)
 
@@ -204,7 +204,7 @@ vendor/opus-decoder-patch/    # Pure Rust Opus decoder (patched)
 ```
 
 `assets/logo.png` is the only drawing in the repository. All 20 icons —
-tunante-mini's hicolor set, Android's launcher and adaptive mipmaps — are
+tunante's hicolor set, Android's launcher and adaptive mipmaps — are
 generated from it by `scripts/gen-icons.py`, checked in CI, and never edited
 by hand.
 
@@ -223,7 +223,7 @@ cargo check --workspace --all-targets --exclude tunante-android
 cargo test -p tunante-codec -p tunante-decoder --release
 
 # The phone configuration (no tray, no updater, no GTK)
-cargo build --release --no-default-features -p tunante-mini
+cargo build --release --no-default-features -p tunante
 ```
 
 ## Tech Stack

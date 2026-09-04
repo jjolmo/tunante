@@ -306,7 +306,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeBrowse<'a>(
 /// that forgot where it was.
 ///
 /// The queue is rebuilt as the saved track's whole folder, which is the same
-/// approximation `tunante-mini` makes — the queue itself is not persisted, only
+/// approximation `tunante` makes — the queue itself is not persisted, only
 /// the track.
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRestoreSession<'a>(
@@ -461,7 +461,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeEnqueue<'a>(
 /// Every track a library row stands for.
 ///
 /// A row's `path` is not always a path. The index views build synthetic keys
-/// the same way tunante-mini does, because in both apps a row can be something
+/// the same way tunante does, because in both apps a row can be something
 /// the filesystem has no name for:
 ///
 /// * `juego:Nombre`    — a game, which is an album tag and may be spread over
@@ -777,7 +777,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeGames<'a>(
 
 /// One row per console, from the format of the files.
 ///
-/// Three levels, the same as tunante-mini's: empty lists the consoles, a
+/// Three levels, the same as tunante's: empty lists the consoles, a
 /// console name lists its games, and `console\u{1}/dir` lists that game's
 /// tracks. The middle level is what makes the tab usable at all -- a console
 /// with a real collection under it is thousands of tracks, and a flat list of
@@ -787,7 +787,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeGames<'a>(
 /// alone: a directory holding both .spc rips and mp3s appears under two
 /// consoles, and only the pair says which of the two was opened.
 ///
-/// The mapping is `tunante_core::console`, shared with tunante-mini so the two
+/// The mapping is `tunante_core::console`, shared with tunante so the two
 /// group the library the same way.
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeConsoles<'a>(
@@ -888,7 +888,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeClearQueue(
 
 /// Cycle how many times a looping track plays: 1, 2, 3, then forever.
 ///
-/// The same four steps `tunante-mini` offers, stored under the same settings
+/// The same four steps `tunante` offers, stored under the same settings
 /// key, so a shared library does not change how it sounds when you change which
 /// program is reading it.
 #[no_mangle]
@@ -1594,7 +1594,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeStop(
 
 /// The heartbeat, called by the foreground service.
 ///
-/// This is the clock that in `tunante-mini` lives in a `slint::Timer` on the UI
+/// This is the clock that in `tunante` lives in a `slint::Timer` on the UI
 /// thread — which is exactly why it stops there when the window does. Driving it
 /// from the service is the whole reason the queue keeps advancing with the
 /// screen off.

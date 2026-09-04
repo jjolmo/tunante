@@ -1,7 +1,7 @@
 //! UI-agnostic core of Tunante.
 //!
 //! Everything here is free of Tauri, of any GUI toolkit, and of the vendored
-//! C/C++ emulator cores. It is what the desktop app and `tunante-mini` share:
+//! C/C++ emulator cores. It is what the desktop app and `tunante` share:
 //! the library database, the play queue, the `path#subsong` virtual-path scheme,
 //! and the DSP chain.
 //!

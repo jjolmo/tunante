@@ -3,7 +3,7 @@
 //! # Why this is not `AppHandle::app_data_dir()`
 //!
 //! That is how the desktop app used to find `covers/`, and it is why neither
-//! `tunante-mini` nor the Android app could cache anything: there is no Tauri
+//! `tunante` nor the Android app could cache anything: there is no Tauri
 //! handle on a phone. The resolver here is the same shape as
 //! `tunante_helper::decoder_path` — an explicit setter, then an environment
 //! variable, then the platform's own convention — so there is only one idiom in

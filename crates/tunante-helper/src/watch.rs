@@ -1,7 +1,7 @@
 //! Watching library folders for changes: the scan that never ends.
 //!
-//! Moved here from the desktop app (fase 1 of docs/plan-desktop-slint.md) with
-//! its couplings turned into parameters. This module owns what is generic —
+//! Moved here from the retired desktop app with its couplings turned into
+//! parameters. This module owns what is generic —
 //! choosing a backend per platform, falling back to polling when inotify runs
 //! out of watches, and debouncing the storm of events a single file copy
 //! produces — and hands each settled change to a callback. What to *do* about

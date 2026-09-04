@@ -668,7 +668,7 @@ class MainActivity : ComponentActivity() {
          * Joins a console to one of its directories in a single row key.
          *
          * U+0001 because it is the one byte a path cannot contain, so the two
-         * halves always split back apart cleanly. tunante-mini encodes the same
+         * halves always split back apart cleanly. tunante encodes the same
          * pair the same way.
          */
         private const val CONSOLE_SEP = '\u0001'

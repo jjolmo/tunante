@@ -26,7 +26,7 @@ import kotlin.math.roundToInt
 /**
  * A row you can swipe sideways to act on, with a label showing underneath.
  *
- * The same gesture `tunante-mini` puts on its list rows: swipe a library track
+ * The same gesture `tunante` puts on its list rows: swipe a library track
  * to queue it, swipe one inside a playlist to take it out. Either direction
  * does the same thing — asking which way you swiped is a quiz, not an
  * interface.

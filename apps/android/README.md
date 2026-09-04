@@ -1,7 +1,6 @@
 # tunante-android
 
-Build: `./build.sh` (see `CLAUDE.md`). Design and decisions:
-[`docs/plan-android.md`](../docs/plan-android.md).
+Build: `./build.sh` (see `CLAUDE.md`).
 
 ## The release signing key is not in this repository
 

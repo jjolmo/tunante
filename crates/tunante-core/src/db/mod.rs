@@ -517,7 +517,7 @@ impl Database {
     /// Create a playlist and hand back the id it was given.
     ///
     /// The id is minted in SQL rather than by the caller so that crates without a
-    /// uuid dependency — `tunante-mini` — can create playlists too.
+    /// uuid dependency — `tunante` — can create playlists too.
     pub fn create_playlist_named(&self, name: &str) -> Result<String, DbError> {
         let id: String = self.conn.query_row(
             "INSERT INTO playlists (id, name, position)

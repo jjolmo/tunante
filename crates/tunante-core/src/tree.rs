@@ -1,6 +1,6 @@
 //! Deriving a browsable tree from the paths the library already knows.
 //!
-//! Not from `read_dir`. `tunante-mini` walks the disk for its tree, which is
+//! Not from `read_dir`. `tunante` walks the disk for its tree, which is
 //! honest and needs the files to still be mounted; this builds the same shape
 //! out of what was scanned, so the library still browses with the SD card out
 //! and a folder that vanished still shows until the next scan prunes it.

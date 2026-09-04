@@ -81,7 +81,7 @@ data class PlayerState(
 /**
  * The whole screen.
  *
- * A first pass, not the finished article: `tunante-mini/ui/app.slint` is 2938
+ * A first pass, not the finished article: `tunante/ui/app.slint` is 2938
  * lines and has a folder tree, playlists, a search box, swipe-to-act rows and a
  * sleep timer. What is here is the spine — the library, the transport and the
  * now-playing bar — with the palette and the 48 dp touch targets already right,

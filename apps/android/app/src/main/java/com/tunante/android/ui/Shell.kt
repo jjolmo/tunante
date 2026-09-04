@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 /**
  * Where the app can be.
  *
- * The same four tunante-mini has, in the same order. This is the structure of
+ * The same four tunante has, in the same order. This is the structure of
  * the app and not a menu: the library is one of four places, not the app with
  * three extras bolted to it, and the previous shape here — a library screen
  * with a title bar, a Scan button and two rows of chips under the player — was

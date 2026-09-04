@@ -15,8 +15,8 @@
       open() gives EACCES.
 
       Play forbids MANAGE_EXTERNAL_STORAGE for media players, so this build can
-      never ship there. That is a decision the plan makes explicitly — see
-      docs/plan-android.md. It is a distribution policy, not a platform limit:
+      never ship there. That is a deliberate decision, and it is a
+      distribution policy, not a platform limit:
       sideload and F-Droid grant it identically.
     -->
     <!-- Downloading cover art. A normal permission: granted at install, no

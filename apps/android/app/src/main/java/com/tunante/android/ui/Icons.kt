@@ -15,7 +15,7 @@ import androidx.compose.ui.unit.dp
 /**
  * The icons, drawn rather than typed.
  *
- * tunante-mini writes these as glyphs — `⤨` for shuffle, `↻` for repeat, `☾`
+ * tunante writes these as glyphs — `⤨` for shuffle, `↻` for repeat, `☾`
  * for the sleep timer — and it can, because its package depends on DejaVu and
  * so the characters are always there. Android gives no such promise: the moon
  * came out as an empty box on a real phone, and the fix at the time was to

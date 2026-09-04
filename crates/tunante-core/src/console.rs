@@ -4,7 +4,7 @@
 //! # Why this is one table and not four
 //!
 //! It used to be four. This module held a Spanish name keyed by extension for
-//! `tunante-mini` and `tunante-android`; the desktop kept an English one in
+//! `tunante` and `tunante-android`; the desktop kept an English one in
 //! `consoles.svelte.ts`; the cover-art code kept a third mapping Libretro
 //! repository names, keyed on the *display strings minted in TypeScript* — so
 //! renaming a label in a `.ts` file silently disabled every box-art lookup; and
@@ -516,7 +516,7 @@ pub fn key_of(track: &crate::db::models::Track) -> &str {
     }
 }
 
-/// Spanish display name for a console key. Used by `tunante-mini` and Android.
+/// Spanish display name for a console key. Used by `tunante` and Android.
 pub fn label_es(key: &str) -> &'static str {
     by_id(key).map(|c| c.name_es).unwrap_or("Otros")
 }

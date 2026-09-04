@@ -196,7 +196,7 @@ public final class NativeBridge {
     /**
      * The heartbeat, driven by {@link PlaybackService} every 500 ms.
      *
-     * In tunante-mini this clock is a Slint timer on the UI thread, which is why
+     * In tunante this clock is a Slint timer on the UI thread, which is why
      * everything time-based there stops when the window does. Here it belongs to
      * the service, so the queue keeps advancing with the screen off.
      */

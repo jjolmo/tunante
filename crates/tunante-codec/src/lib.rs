@@ -4,7 +4,7 @@
 //! Highly Experimental, lazyusf2 and vgmstream — plus the pure-Rust Opus decoder
 //! and the symphonia-backed standard formats.
 //!
-//! It is deliberately separate from [`tunante_core`]: `tunante-mini` links this
+//! It is deliberately separate from [`tunante_core`]: `tunante` links this
 //! crate only into its small `tunante-decoder` helper process, so the tens of
 //! megabytes of console RAM these cores allocate never land in the UI process.
 //!

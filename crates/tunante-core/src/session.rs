@@ -3,7 +3,7 @@
 //! Both live in the `settings` table the core schema already has, so there is no
 //! new storage and no new file to lose.
 //!
-//! Shared by `tunante-mini` and `tunante-android`. The keys still say `mini.`
+//! Shared by `tunante` and `tunante-android`. The keys still say `mini.`
 //! because they are already written in the databases on the phone that runs it,
 //! and renaming them would silently lose everyone's resume position for the
 //! sake of a tidier string. Each app has its own database file anyway.

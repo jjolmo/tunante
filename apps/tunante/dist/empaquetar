@@ -1,0 +1,65 @@
+#!/bin/sh
+# Build the Alpine package on the phone itself, and install it.
+#
+# The same sequence as the CI job, for the same reasons — including copying the
+# public key into /etc/apk/keys, without which apk refuses the package abuild
+# has just signed. What CI cannot do, and this can, is `apk add` the result on
+# a real device and launch it.
+#
+#   ./empaquetar 0.1.249 [/path/to/repo]
+#
+# Run it from the phone, as a user with sudo. The repo defaults to $HOME/fuente.
+
+set -eu
+
+VERSION="${1:?usage: empaquetar <version> [repo]}"
+REPO="${2:-$HOME/fuente}"
+TARBALL="/tmp/tunante-$VERSION.tar.gz"
+
+# Laid out exactly as GitHub's release archive would be, so `builddir` in the
+# recipe finds what it expects. git archive is no good here: it does not carry
+# submodules, and the emulator cores are submodules.
+tar czf "$TARBALL" -C "$REPO" \
+	--exclude=.git --exclude=target --exclude=node_modules \
+	--transform "s,^\.,tunante-$VERSION," .
+
+sudo apk add --no-cache --quiet alpine-sdk
+
+# abuild refuses to run as root, so it gets a user of its own.
+id empaqueta >/dev/null 2>&1 || sudo adduser -D empaqueta
+sudo addgroup empaqueta abuild 2>/dev/null || true
+grep -q '^empaqueta ' /etc/sudoers || \
+	echo 'empaqueta ALL=(ALL) NOPASSWD: ALL' | sudo tee -a /etc/sudoers >/dev/null
+
+sudo mkdir -p /home/empaqueta/recipe /var/cache/distfiles
+sudo chgrp abuild /var/cache/distfiles
+sudo chmod g+w /var/cache/distfiles
+
+sudo cp "$REPO/apps/tunante/dist/APKBUILD" /home/empaqueta/recipe/
+sudo sed -i "s/^pkgver=.*/pkgver=$VERSION/" /home/empaqueta/recipe/APKBUILD
+sudo chown -R empaqueta:empaqueta /home/empaqueta
+
+sudo cp "$TARBALL" "/var/cache/distfiles/"
+sudo chgrp abuild "/var/cache/distfiles/tunante-$VERSION.tar.gz"
+
+# abuild-keygen says so in its own output: the public key has to be somewhere
+# apk trusts, or the last step of `abuild -r` rejects its own signature.
+sudo su empaqueta -c 'cd ~/recipe && abuild-keygen -a -n'
+sudo cp /home/empaqueta/.config/abuild/*.rsa.pub /etc/apk/keys/
+
+# -j2: eight cores flat out on this charger have brought the phone down three
+# times, with no oops, no panic and nothing in pstore.
+sudo su empaqueta -c "cd ~/recipe && export JOBS=2 MAKEFLAGS=-j2 CARGO_BUILD_JOBS=2 && abuild checksum && abuild -r"
+
+# Searched for, not guessed at. REPODEST is not $HOME/packages on recent
+# abuild — it follows XDG, so $HOME/.local/share/abuild. Searching the home
+# directory covers both layouts.
+APK=$(find /home/empaqueta -name "tunante-$VERSION-*.apk" | head -1)
+[ -n "$APK" ] || { echo "abuild produced no .apk" >&2; exit 1; }
+
+echo "=== the package ==="
+ls -l "$APK"
+# No --allow-untrusted: the point of the key above is that this works without
+# it. If it does not, the signing step is what is broken, and saying so here is
+# better than papering over it.
+sudo apk add "$APK"

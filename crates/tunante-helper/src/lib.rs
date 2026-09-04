@@ -7,7 +7,7 @@
 //! is the whole point of the arrangement: an NDS core costs ~43 MB while it
 //! plays and nothing at all a moment later.
 //!
-//! Shared by `tunante-mini` and `tunante-android`, which need the same client
+//! Shared by `tunante` and `tunante-android`, which need the same client
 //! but find the helper in very different places — see [`set_decoder_path`].
 
 use std::io::{BufRead, BufReader, Read};

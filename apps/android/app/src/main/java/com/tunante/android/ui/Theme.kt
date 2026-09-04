@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Tunante's palette, transcribed from `tunante-mini/ui/theme.slint`, which in
+ * Tunante's palette, transcribed from `tunante/ui/theme.slint`, which in
  * turn came from the desktop app's `app.css`. Three programs, one look.
  *
  * Same rule as there: **no literal colour anywhere else in the UI**. Re-theming
@@ -102,6 +102,6 @@ fun Rule() = Box(
  *
  * A helper rather than the same ternary in three files, which is how the
  * playlist row came to say "1 pistas" while the queue two screens away said
- * "1 pista". tunante-mini has had `pistas()` from the start.
+ * "1 pista". tunante has had `pistas()` from the start.
  */
 fun pistas(n: Int): String = if (n == 1) "1 pista" else "$n pistas"
