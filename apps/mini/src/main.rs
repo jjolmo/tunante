@@ -204,6 +204,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("escaneo terminado: {added} pistas");
     }
 
+    // A stable toplevel app_id / WM_CLASS, set before the window is created, so
+    // the compositor matches tunante.desktop (StartupWMClass=tunante-mini) and
+    // dresses the window in its icon instead of a placeholder. Wayland has no
+    // per-window icon to set directly; the .desktop is the way in. Keeps
+    // Slint's own backend/renderer selection — this only adds the hook.
+    #[cfg(target_os = "linux")]
+    {
+        use slint::winit_030::winit::platform::wayland::WindowAttributesExtWayland;
+        use slint::winit_030::winit::platform::x11::WindowAttributesExtX11;
+        let _ = slint::BackendSelector::new()
+            .with_winit_window_attributes_hook(|attrs| {
+                let attrs = WindowAttributesExtWayland::with_name(attrs, "tunante-mini", "tunante-mini");
+                WindowAttributesExtX11::with_name(attrs, "tunante-mini", "tunante-mini")
+            })
+            .select();
+    }
+
     let ui = AppWindow::new()?;
 
     // i18n: choose the UI language. A saved override wins; otherwise the system
