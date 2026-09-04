@@ -984,11 +984,11 @@ export component AppWindow inherits Window {
                         // width-bound cover ran too tall and slid the play button
                         // behind the tab bar; 380px lets the cover shrink instead.
                         art-portrait: min(root.width - Theme.gap * 4, root.height - 380px);
-                        // Everything the window has, minus what sits under it:
-                        // the mini-player is 68px and the tab pads by `gap` top
-                        // and bottom. The old figure, 190px, left the cover at
-                        // little over half the height it could have had.
-                        art-landscape: root.height - 68px - Theme.gap * 2;
+                        // Height-bound, but never more than ~30% of the window
+                        // wide: on a wide screen a purely height-sized square
+                        // cover ate two thirds of the width and squeezed the
+                        // track info and transport into what was left.
+                        art-landscape: min(root.height - 68px - Theme.gap * 2, root.width * 0.3);
                     }
 
                     if root.tab == 1: QueueTab {
