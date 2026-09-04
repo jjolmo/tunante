@@ -2865,6 +2865,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (db_v, tree_v, views_v) = (db.clone(), tree.clone(), views.clone());
         let (table_v, tmodel_v) = (table_state.clone(), table_model.clone());
+        let (player_v, queue_model_v, played_scope_v) =
+            (player.clone(), queue_model.clone(), played_scope.clone());
         let weak_v = ui.as_weak();
         ui.on_library_grid_tapped(move |path| {
             let Some(ui) = weak_v.upgrade() else { return };
@@ -2905,8 +2907,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ui.set_show_table_tick(ui.get_show_table_tick() + 1);
                 return;
             }
-            tree_v.borrow_mut().nav.push(path.to_string());
-            refresh_library(&ui, &tree_v, &db_v, &views_v);
+            // The phone plays the tapped collection — a disc, a game or a
+            // console — and its tracks become the playing context, which the
+            // Now Playing queue list shows. Resolve them by the card's prefix.
+            let tracks: Vec<_> = if let Some(console) = path.strip_prefix("consola:") {
+                db_v
+                    .get_all_tracks()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|t| tunante_core::console::key_of(t) == console)
+                    .collect()
+            } else if let Some(game) = path.strip_prefix("juego:") {
+                let all = db_v.get_all_tracks().unwrap_or_default();
+                tunante_core::games::tracks_of(&all, game)
+                    .into_iter()
+                    .cloned()
+                    .collect()
+            } else {
+                db_v.get_tracks_by_folder(&path).unwrap_or_default()
+            };
+            if tracks.is_empty() {
+                // A parent with no direct tracks (or nothing found): navigate in
+                // instead, so the grid still drills down where there is nothing
+                // to play.
+                tree_v.borrow_mut().nav.push(path.to_string());
+                refresh_library(&ui, &tree_v, &db_v, &views_v);
+                return;
+            }
+            *played_scope_v.borrow_mut() = if let Some(c) = path.strip_prefix("consola:") {
+                Scope::Console(c.to_string())
+            } else if let Some(g) = path.strip_prefix("juego:") {
+                Scope::Game(g.to_string())
+            } else {
+                Scope::Folder(path.to_string())
+            };
+            play_collection(&ui, &player_v, &queue_model_v, tracks);
+            ui.set_tab(0);
         });
     }
 

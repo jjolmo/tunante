@@ -472,8 +472,8 @@ export component AppWindow inherits Window {
     // avisa a Rust sólo cuando cambia de verdad: cada píxel de redimensionado
     // dispara `changed`.
     function retile() {
-        if (root.library-columns != (root.desktop ? 5 : (root.portrait ? 3 : 8))) {
-            root.library-columns = root.desktop ? 5 : (root.portrait ? 3 : 8);
+        if (root.library-columns != (root.desktop ? 5 : (root.portrait ? 3 : 6))) {
+            root.library-columns = root.desktop ? 5 : (root.portrait ? 3 : 6);
             root.library-columns-changed(root.library-columns);
         }
     }
@@ -995,9 +995,10 @@ export component AppWindow inherits Window {
                         // Never more than ~30% of the window wide (so the queue
                         // list keeps the rest), and never so tall that the info,
                         // seek bar and transport stacked under it in the left
-                        // column fall off the bottom — those need ~270px, so on
-                        // a short window the cover shrinks to leave them room.
-                        art-landscape: min(root.width * 0.3, root.height - 270px);
+                        // column fall off the bottom — those need ~285px (with
+                        // the bottom margin), so on a short window the cover
+                        // shrinks to leave them room.
+                        art-landscape: min(root.width * 0.3, root.height - 285px);
                     }
 
                     if root.tab == 1: QueueTab {
