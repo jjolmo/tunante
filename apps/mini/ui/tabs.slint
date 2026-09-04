@@ -746,11 +746,21 @@ export component NowPlayingTab inherits Rectangle {
             // Mirror of now-index, so `changed` can watch it from in here and
             // re-centre the moment the engine moves to the next track.
             property <int> ni: root.now-index;
+            // Animation off until the first (instant) centring is done, so
+            // opening the tab lands already centred instead of scrolling into
+            // place; then re-centres ease.
+            property <duration> anim-dur: 0ms;
 
             public function recenter() {
                 if (root.now-index >= 0 && qlv.visible-height > 0) {
-                    qlv.viewport-y = -(root.now-index * qcol.row-h
-                        - (qlv.visible-height - qcol.row-h) / 2);
+                    // Clamp to the scrollable range: a track near the top or
+                    // bottom cannot truly centre (there is nothing to fill the
+                    // half above/below it), so it settles against the edge
+                    // rather than the list scrolling past and snapping back.
+                    qlv.viewport-y = clamp(
+                        -(root.now-index * qcol.row-h - (qlv.visible-height - qcol.row-h) / 2),
+                        min(0px, qlv.visible-height - root.queue-rows.length * qcol.row-h),
+                        0px);
                 }
             }
             changed ni => { qcol.recenter(); }
@@ -762,7 +772,7 @@ export component NowPlayingTab inherits Rectangle {
                 // the re-centre eases into place instead of jumping. A finger
                 // drag moves the viewport directly (no lag) — this smooths the
                 // programmatic snap-back and the track-change re-centre.
-                animate viewport-y { duration: 260ms; easing: ease-in-out; }
+                animate viewport-y { duration: qcol.anim-dur; easing: ease-in-out; }
                 // Any scroll — the user's or the re-centre's — restarts the idle
                 // countdown; the re-centre while idle is a harmless no-op.
                 changed viewport-y => { idle.restart(); }
@@ -804,11 +814,24 @@ export component NowPlayingTab inherits Rectangle {
                 running: true;
                 triggered => { qcol.recenter(); }
             }
-            // Centre once the list has a height to measure (init is too early).
+            // Centre once the list has a height to measure (init is too early),
+            // instantly, then switch the easing on for later re-centres.
             settle := Timer {
                 interval: 80ms;
                 running: true;
-                triggered => { qcol.recenter(); settle.running = false; }
+                triggered => {
+                    qcol.recenter();
+                    enable-anim.running = true;
+                    settle.running = false;
+                }
+            }
+            enable-anim := Timer {
+                interval: 60ms;
+                running: false;
+                triggered => {
+                    qcol.anim-dur = 260ms;
+                    enable-anim.running = false;
+                }
             }
         }
     }
