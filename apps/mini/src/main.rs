@@ -397,9 +397,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Rc::new(RefCell::new(Vec::new()));
     std::thread::spawn(move || {
         while let Ok(dir) = art_req_rx.recv() {
-            let decoded = library::folder_image(std::path::Path::new(&dir))
+            let dir_path = std::path::Path::new(&dir);
+            let decoded = library::folder_image(dir_path)
                 .and_then(|p| std::fs::read(p).ok())
                 .and_then(|bytes| image::load_from_memory(&bytes).ok())
+                // No cover file: fall back to the embedded art of the first
+                // tag-carrying track, the way Now Playing does — an MP3/FLAC OST
+                // keeps its cover in the tag, not as a folder image. Only the
+                // rich formats are probed, so chiptune folders (which never have
+                // embedded art) do not spawn a decoder for nothing.
+                .or_else(|| {
+                    first_embedded_art_candidate(dir_path).and_then(|f| {
+                        tunante_helper::artwork(&f, std::time::Duration::from_secs(5))
+                            .as_deref()
+                            .and_then(|uri| uri.split(',').nth(1))
+                            .and_then(|b64| {
+                                use base64::Engine;
+                                base64::engine::general_purpose::STANDARD
+                                    .decode(b64.as_bytes())
+                                    .ok()
+                            })
+                            .and_then(|bytes| image::load_from_memory(&bytes).ok())
+                    })
+                })
                 .map(|d| d.thumbnail(ART_SIDE, ART_SIDE).to_rgba8());
             // Send even a miss (empty bytes), so the UI stops waiting on it.
             let (w, h, bytes) = match decoded {
@@ -5828,6 +5848,29 @@ const ART_CACHE: usize = 8192;
 /// The grid's cover for one card. A cache hit paints immediately; a miss paints
 /// blank, remembers where the card is, and asks the worker to decode it —
 /// [`refresh_library`] wires the answer back through the timer.
+/// The first track in a folder whose format can carry embedded cover art
+/// (MP3/FLAC/…), for the grid's art fallback. Chiptune formats are skipped on
+/// purpose: they never embed art, so probing them would spawn the decoder for
+/// nothing across a whole console's worth of folders.
+fn first_embedded_art_candidate(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    const RICH: &[&str] = &[
+        "mp3", "flac", "ogg", "oga", "m4a", "mp4", "opus", "wav", "aac", "wma",
+    ];
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase())
+                .is_some_and(|e| RICH.contains(&e.as_str()))
+        })
+        .collect();
+    files.sort();
+    files.into_iter().next()
+}
+
 fn grid_art(views: &Views, dir: &str, line: usize, col: usize) -> slint::Image {
     if dir.is_empty() {
         return slint::Image::default();
