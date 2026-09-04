@@ -694,3 +694,12 @@ msgstr "Previous"
 
 msgid "Salir"
 msgstr "Quit"
+
+msgid "Compacto"
+msgstr "Compact"
+
+msgid "Escritorio"
+msgstr "Desktop"
+
+msgid "Automático"
+msgstr "Automatic"

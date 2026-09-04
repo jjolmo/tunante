@@ -6260,12 +6260,12 @@ fn theme_mode_label(mode: u8) -> &'static str {
     }
 }
 
-fn ui_mode_label(mode: i32) -> &'static str {
-    match mode {
-        1 => "mini",
-        2 => "escritorio",
-        _ => "auto",
-    }
+fn ui_mode_label(mode: i32) -> String {
+    i18n::tr(match mode {
+        1 => "Compacto",
+        2 => "Escritorio",
+        _ => "Automático",
+    })
 }
 
 /// What the output row shows. Device names are ALSA/Pulse strings that can
