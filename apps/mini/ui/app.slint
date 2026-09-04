@@ -971,9 +971,13 @@ export component AppWindow inherits Window {
                         seek(ms) => { root.seek-to(ms); }
                         // Derived from the window, which the compositor imposes, so
                         // these never feed back into the layout that sizes the tab.
-                        // Portrait leaves room under the cover for three lines of
-                        // text and the two bars; landscape is simply height-bound.
-                        art-portrait: min(root.width - Theme.gap * 4, root.height - 300px);
+                        // Portrait reserves the height everything under the cover
+                        // needs — three lines of text, the whole transport (a 68px
+                        // play button and its seek bar and times) and the tab bar.
+                        // 300px was ~40px short on a short-but-wide window, so the
+                        // width-bound cover ran too tall and slid the play button
+                        // behind the tab bar; 380px lets the cover shrink instead.
+                        art-portrait: min(root.width - Theme.gap * 4, root.height - 380px);
                         // Everything the window has, minus what sits under it:
                         // the mini-player is 68px and the tab pads by `gap` top
                         // and bottom. The old figure, 190px, left the cover at
