@@ -646,3 +646,51 @@ msgstr "Pulisci"
 
 msgid "Idioma"
 msgstr "Lingua"
+
+msgid "Álbum / Juego"
+msgstr "Album / Gioco"
+
+msgid "Artista del álbum"
+msgstr "Artista dell’album"
+
+msgid "Disco"
+msgstr "Disco"
+
+msgid "Duración"
+msgstr "Durata"
+
+msgid "Códec"
+msgstr "Codec"
+
+msgid "Bitrate"
+msgstr "Bitrate"
+
+msgid "Muestreo"
+msgstr "Campionamento"
+
+msgid "Canales"
+msgstr "Canali"
+
+msgid "Tamaño"
+msgstr "Dimensione"
+
+msgid "Ruta"
+msgstr "Percorso"
+
+msgid "Reproduciendo"
+msgstr "In riproduzione"
+
+msgid "Mostrar/Ocultar"
+msgstr "Mostra/Nascondi"
+
+msgid "Reproducir/Pausa"
+msgstr "Riproduci/Pausa"
+
+msgid "Siguiente"
+msgstr "Successivo"
+
+msgid "Anterior"
+msgstr "Precedente"
+
+msgid "Salir"
+msgstr "Esci"

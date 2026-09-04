@@ -45,6 +45,7 @@
 
 mod boost;
 mod debuglog;
+mod i18n;
 mod theme_watch;
 mod integrate;
 mod buttons;
@@ -212,6 +213,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let saved = db.get_setting("language").ok().flatten().unwrap_or_default();
         apply_language(&saved);
+        // The Rust-side catalog (column headers, tray menu) for the same lang.
+        i18n::init(&resolved_language(&saved));
         ui.set_language_label(SharedString::from(language_label(&saved)));
     }
 
@@ -6918,7 +6921,7 @@ fn rebuild_columns(
         defs.iter()
             .map(|d| TableColumn {
                 key: SharedString::from(d.key),
-                label: SharedString::from(d.label),
+                label: SharedString::from(i18n::tr(d.label)),
                 fraction: weight(d) / total.max(0.001),
                 right: d.right,
             })
@@ -6930,7 +6933,11 @@ fn rebuild_columns(
             .map(|d| ColumnChoice {
                 key: SharedString::from(d.key),
                 // The header wears a glyph; the chooser needs a word.
-                label: SharedString::from(if d.key == "playing" { "Reproduciendo" } else { d.label }),
+                label: SharedString::from(i18n::tr(if d.key == "playing" {
+                    "Reproduciendo"
+                } else {
+                    d.label
+                })),
                 shown: st.visible.iter().any(|k| k == d.key),
             })
             .collect::<Vec<_>>(),
@@ -7561,14 +7568,20 @@ fn language_label(code: &str) -> &'static str {
     UI_LANGS.iter().find(|(c, _)| *c == code).map_or("", |(_, l)| *l)
 }
 
-/// Select the bundled translation for a stored code. `""` follows the system
-/// locale; `""`/`es`/an unshipped locale all fall back to the Spanish source.
-fn apply_language(code: &str) {
-    let lang = if code.is_empty() {
+/// The concrete language a stored code resolves to: `""` follows the system
+/// locale, everything else is itself. May still be `es`/empty (the source).
+fn resolved_language(code: &str) -> String {
+    if code.is_empty() {
         ui_language_from_env()
     } else {
         code.to_string()
-    };
+    }
+}
+
+/// Select the bundled translation for a stored code. `""` follows the system
+/// locale; `""`/`es`/an unshipped locale all fall back to the Spanish source.
+fn apply_language(code: &str) {
+    let lang = resolved_language(code);
     if lang.is_empty() || lang == "es" {
         let _ = slint::select_bundled_translation("");
     } else {
