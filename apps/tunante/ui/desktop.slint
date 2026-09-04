@@ -976,12 +976,6 @@ export component DesktopShell inherits Rectangle {
                             fit: root.cover-fit;
                         }
                     }
-
-                    SidebarEntry {
-                        label: @tr("Ajustes");
-                        active: root.showing-settings;
-                        clicked => { root.showing-settings = true; }
-                    }
                 }
             }
 

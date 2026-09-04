@@ -12,9 +12,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,7 +49,7 @@ fun PlayingScreen(
 ) {
     if (!state.hasSource) {
         Column(Modifier.fillMaxSize().background(T.bgPrimary)) {
-            EmptyNote("No suena nada", "Elige algo en la biblioteca.")
+            EmptyNote(tr("No suena nada"), tr("Elige algo en la biblioteca."))
         }
         return
     }
@@ -66,6 +70,9 @@ fun PlayingScreen(
             if (state.artist.isNotEmpty()) {
                 Label(state.artist, T.textSecondary, T.fontBody, maxLines = 1)
             }
+            if (state.album.isNotEmpty()) {
+                Label(state.album, T.textMuted, T.fontSmall, maxLines = 1)
+            }
             Spacer(Modifier.weight(1f))
 
             Seek(state, onSeek)
@@ -75,61 +82,82 @@ fun PlayingScreen(
             }
             Spacer(Modifier.height(T.gap))
 
+            // Five controls at five sizes, exactly as widgets.slint lays the
+            // Transport out: the outer pair small, the skips larger, and play
+            // as a filled disc twice their weight. The sizes are what make the
+            // row read as a hierarchy rather than five equal buttons.
             Row(
-                Modifier.fillMaxWidth(),
+                Modifier.fillMaxWidth().padding(horizontal = T.gap),
                 horizontalArrangement = Arrangement.SpaceAround,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(IconKind.Shuffle, state.shuffle) { onShuffle(!state.shuffle) }
-                TransportButton("◀◀", onPrev)
-                TransportButton(if (state.playing) "❚❚" else "▶", onTogglePlay)
-                TransportButton("▶▶", onNext)
+                RoundButton(46.dp, state.shuffle, { onShuffle(!state.shuffle) }) {
+                    Icon(IconKind.Shuffle, if (state.shuffle) T.accent else T.textPrimary)
+                }
+                RoundGlyph(52.dp, "◀◀", onClick = onPrev)
+                PlayCircle(68.dp, state.playing, onTogglePlay)
+                RoundGlyph(52.dp, "▶▶", onClick = onNext)
                 // One icon carrying three states rather than three icons: off,
-                // the loop, and the loop with a dot for "this one". mini spells
-                // the third as `↻¹`, which is a character Android may not have.
-                IconButton(
-                    if (state.repeat == 2) IconKind.RepeatOne else IconKind.Repeat,
-                    state.repeat != 0,
-                ) { onRepeat((state.repeat + 1) % 3) }
+                // the loop, and the loop with a dot for "this one". tunante
+                // spells the third `↻¹`, a character Android may not have.
+                RoundButton(46.dp, state.repeat != 0, { onRepeat((state.repeat + 1) % 3) }) {
+                    Icon(
+                        if (state.repeat == 2) IconKind.RepeatOne else IconKind.Repeat,
+                        if (state.repeat != 0) T.accent else T.textPrimary,
+                    )
+                }
             }
         }
     }
-}
-
-@Composable
-private fun IconButton(kind: IconKind, on: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.size(T.touchTarget).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Icon(kind, if (on) T.accent else T.textMuted) }
 }
 
 /** Drag or tap anywhere on the line to move. */
 @Composable
 private fun Seek(state: PlayerState, onSeek: (Long) -> Unit) {
     val total = state.durationMs.coerceAtLeast(1)
+    val done = (state.positionMs.toFloat() / total).coerceIn(0f, 1f)
     BoxWithConstraints(
         Modifier
             .fillMaxWidth()
-            .heightIn(min = T.touchTarget),
-        contentAlignment = Alignment.Center,
+            .heightIn(min = T.touchTarget)
+            .padding(horizontal = T.gap * 1.5f),
+        contentAlignment = Alignment.CenterStart,
     ) {
         val w = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val track = maxWidth
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(4.dp)
-                .background(T.bgTertiary)
+                .heightIn(min = T.touchTarget)
                 .pointerInput(total) {
                     detectHorizontalDragGestures { change, _ ->
                         onSeek((change.position.x / w * total).toLong().coerceIn(0, total))
                     }
                 },
+            contentAlignment = Alignment.CenterStart,
         ) {
             Box(
                 Modifier
-                    .fillMaxWidth((state.positionMs.toFloat() / total).coerceIn(0f, 1f))
+                    .fillMaxWidth()
                     .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(T.bgTertiary),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(done)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(T.accent),
+                )
+            }
+            // The knob. Without it the bar says where you are but not that you
+            // may move it; Slint's SeekBar has carried one from the start.
+            Box(
+                Modifier
+                    .offset(x = track * done - 6.5.dp)
+                    .size(13.dp)
+                    .clip(CircleShape)
                     .background(T.accent),
             )
         }

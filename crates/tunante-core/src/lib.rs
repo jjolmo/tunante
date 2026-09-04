@@ -14,6 +14,7 @@ pub mod clock;
 pub mod console;
 pub mod db;
 pub mod games;
+pub mod i18n;
 #[cfg(feature = "dsp")]
 pub mod dsp;
 pub mod queue;

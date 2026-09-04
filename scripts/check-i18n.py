@@ -20,7 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 UI = ROOT / "apps/tunante/ui"
 SRC = ROOT / "apps/tunante/src"
-TRANSLATIONS = ROOT / "apps/tunante/translations"
+TRANSLATIONS = ROOT / "crates/tunante-core/translations"
+ANDROID = ROOT / "apps/android/app/src/main/java"
 
 # Match arms and const tables reached through `i18n::tr(match …)` or
 # `i18n::tr(table_field)`: real msgids that no literal-call scan can see.
@@ -132,6 +133,13 @@ def used_msgids() -> set[str]:
             if re.match(r"\s*\)?\s*(?:\||=>)", after):
                 continue
             ids.add(unescape(lit))
+    # The Compose side wraps its literals in `tr("…")`, the same catalog
+    # through JNI. Kotlin has no raw strings with a backslash-newline to fold.
+    for f in sorted(ANDROID.rglob("*.kt")):
+        ids |= {
+            unescape(m)
+            for m in re.findall(r'\btr\(\s*"((?:[^"\\]|\\.)*)"', f.read_text("utf-8"))
+        }
     for group in INDIRECT.values():
         ids |= set(group)
     return {i for i in ids if i.strip()}
@@ -176,7 +184,7 @@ def main() -> int:
 
     langs = sorted(p.name for p in TRANSLATIONS.iterdir() if p.is_dir())
     if not langs:
-        print("no catalogs under apps/tunante/translations", file=sys.stderr)
+        print("no catalogs under crates/tunante-core/translations", file=sys.stderr)
         return 1
 
     print(f"{len(used)} msgids used in code · catalogs: {', '.join(langs)}")

@@ -39,6 +39,13 @@ object T {
     val warningBg = Color(0xFF4A3A10)
     val warningFg = Color(0xFFF0C674)
 
+    /**
+     * Red, and only for what cannot be undone: the swipe that removes and the
+     * bar that empties the queue. Kept apart from [warningFg] on purpose —
+     * amber warns, this one destroys.
+     */
+    val destructive = Color(0xFFA33333)
+
     /** A finger is not a mouse pointer. Nothing interactive goes below this. */
     val touchTarget = 48.dp
     val gap = 12.dp
@@ -98,10 +105,26 @@ fun Rule() = Box(
 )
 
 /**
+ * Translate a Spanish source string, through the same catalog the desktop
+ * app reads, in Rust.
+ *
+ * Every visible literal in the Compose tree goes through this, as every one in
+ * the Slint tree goes through `@tr`. Same source language, same `.po` files,
+ * same `{}` placeholder — substitute it after translating, never before, or
+ * the key stops matching. Memoised here so a list of two hundred rows is not
+ * two hundred JNI crossings per frame.
+ */
+private val translated = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+fun tr(source: String): String =
+    translated.getOrPut(source) { com.tunante.android.NativeBridge.nativeTr(source) }
+
+/**
  * "1 pista", "4 pistas".
  *
  * A helper rather than the same ternary in three files, which is how the
  * playlist row came to say "1 pistas" while the queue two screens away said
- * "1 pista". tunante has had `pistas()` from the start.
+ * "1 pista". Uses the same two msgids `library::pistas` does in the desktop app.
  */
-fun pistas(n: Int): String = if (n == 1) "1 pista" else "$n pistas"
+fun pistas(n: Int): String =
+    if (n == 1) tr("1 pista") else tr("{} pistas").replace("{}", "$n")

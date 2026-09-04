@@ -1,8 +1,10 @@
-//! Translating the strings that live in Rust, not in `.slint`.
+//! Translating the strings that live in Rust — and, through JNI, in Kotlin.
 //!
 //! Slint's bundled translations only reach `@tr(…)` in the markup; the track
-//! table's column headers and the tray menu are built here, in Rust, so they
-//! need their own path to the same `.po` files. Those files are embedded at
+//! table's column headers and the tray menu are built in Rust, and the whole
+//! Android interface is built in Compose, so both need their own path to the
+//! same `.po` files. That is why this lives in core and not in either app:
+//! one catalog, one parser, two front ends. Those files are embedded at
 //! compile time (the same ones the UI bundles) and the one for the active
 //! language is parsed once into a map; [`tr`] looks a source string up in it.
 //!

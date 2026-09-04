@@ -158,7 +158,7 @@ mod imp {
             use ksni::menu::StandardItem;
             vec![
                 StandardItem {
-                    label: crate::i18n::tr("Mostrar/Ocultar"),
+                    label: tunante_core::i18n::tr("Mostrar/Ocultar"),
                     activate: Box::new(|t: &mut Self| {
                         let _ = t.tx.send(TrayAction::ToggleWindow);
                     }),
@@ -167,7 +167,7 @@ mod imp {
                 .into(),
                 ksni::MenuItem::Separator,
                 StandardItem {
-                    label: crate::i18n::tr("Reproducir/Pausa"),
+                    label: tunante_core::i18n::tr("Reproducir/Pausa"),
                     activate: Box::new(|t: &mut Self| {
                         let _ = t.tx.send(TrayAction::PlayPause);
                     }),
@@ -175,7 +175,7 @@ mod imp {
                 }
                 .into(),
                 StandardItem {
-                    label: crate::i18n::tr("Siguiente"),
+                    label: tunante_core::i18n::tr("Siguiente"),
                     activate: Box::new(|t: &mut Self| {
                         let _ = t.tx.send(TrayAction::Next);
                     }),
@@ -183,7 +183,7 @@ mod imp {
                 }
                 .into(),
                 StandardItem {
-                    label: crate::i18n::tr("Anterior"),
+                    label: tunante_core::i18n::tr("Anterior"),
                     activate: Box::new(|t: &mut Self| {
                         let _ = t.tx.send(TrayAction::Prev);
                     }),
@@ -192,7 +192,7 @@ mod imp {
                 .into(),
                 ksni::MenuItem::Separator,
                 StandardItem {
-                    label: crate::i18n::tr("Salir"),
+                    label: tunante_core::i18n::tr("Salir"),
                     activate: Box::new(|t: &mut Self| {
                         let _ = t.tx.send(TrayAction::Quit);
                     }),

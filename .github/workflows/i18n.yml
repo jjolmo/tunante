@@ -10,7 +10,8 @@ on:
     paths:
       - 'apps/tunante/src/**'
       - 'apps/tunante/ui/**'
-      - 'apps/tunante/translations/**'
+      - 'apps/android/app/src/**'
+      - 'crates/tunante-core/translations/**'
       - 'scripts/check-i18n.py'
       - '.github/workflows/i18n.yml'
   pull_request:

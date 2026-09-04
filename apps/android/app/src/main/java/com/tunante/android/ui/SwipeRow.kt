@@ -16,10 +16,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -42,15 +46,20 @@ import kotlin.math.roundToInt
 fun SwipeRow(
     label: String,
     onSwiped: () -> Unit,
+    actionColor: Color = T.accent,
+    surfaceColor: Color = T.bgPrimary,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     var offset by remember { mutableFloatStateOf(0f) }
     var width by remember { mutableFloatStateOf(1f) }
     var fired by remember { mutableStateOf(false) }
 
-    // A third of the row. Far enough that a stray thumb does not trigger it,
-    // near enough that it does not need a full sweep across a 6" screen.
-    val threshold = width / 3f
+    // A fixed distance, as in `widgets.slint`, not a fraction of the row: the
+    // gesture should feel the same on a phone and on a tablet, and a third of
+    // a wide row is a sweep nobody finishes.
+    val thresholdDp = 90.dp
+    val threshold = with(LocalDensity.current) { thresholdDp.toPx() }
 
     val settled by animateFloatAsState(offset, label = "swipe")
 
@@ -71,21 +80,27 @@ fun SwipeRow(
         // something to show: at rest it would sit behind every row of a long
         // list for nothing.
         if (abs(settled) > 1f) {
+            // Fading in with the distance travelled tells you the swipe has
+            // registered before it has fired, which is what stops a half
+            // gesture feeling like a dead one.
             Box(
                 Modifier
                     .matchParentSize()
-                    .background(T.bgSelected)
-                    .padding(horizontal = T.gap),
+                    .alpha((abs(settled) / threshold).coerceIn(0f, 1f))
+                    .background(actionColor)
+                    .padding(horizontal = T.gap * 2),
                 contentAlignment = if (settled > 0) Alignment.CenterStart else Alignment.CenterEnd,
             ) {
-                Label(label, T.textPrimary, T.fontSmall, maxLines = 1)
+                Label(label, Color.White, T.fontBody, maxLines = 1)
             }
         }
 
         Box(
             Modifier
                 .offset { IntOffset(settled.roundToInt(), 0) }
-                .pointerInput(Unit) {
+                .background(surfaceColor)
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             if (abs(offset) > threshold) {

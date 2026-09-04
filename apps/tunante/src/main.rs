@@ -45,7 +45,6 @@
 
 mod boost;
 mod debuglog;
-mod i18n;
 mod theme_watch;
 mod integrate;
 mod buttons;
@@ -231,7 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let saved = db.get_setting("language").ok().flatten().unwrap_or_default();
         apply_language(&saved);
         // The Rust-side catalog (column headers, tray menu) for the same lang.
-        i18n::init(&resolved_language(&saved));
+        tunante_core::i18n::init(&resolved_language(&saved));
         ui.set_language_label(SharedString::from(language_label(&saved)));
     }
 
@@ -625,7 +624,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             ui.set_setup_mode(false);
-            ui.set_scan_status(i18n::tr("Analizando…").into());
+            ui.set_scan_status(tunante_core::i18n::tr("Analizando…").into());
 
             // Its own connection on its own thread. SQLite is in WAL mode, so a
             // second writer is fine, and the alternative — scanning on the UI
@@ -639,7 +638,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for folder in chosen {
                     let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
                         let _ = tx.send(Some(
-                            i18n::tr("Analizando {}/{}\n{} pistas encontradas")
+                            tunante_core::i18n::tr("Analizando {}/{}\n{} pistas encontradas")
                                 .replacen("{}", &p.scanned.to_string(), 1)
                                 .replacen("{}", &p.total.to_string(), 1)
                                 .replacen("{}", &p.added.to_string(), 1),
@@ -1728,7 +1727,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 t.game.clone()
             }));
             ui.set_cover_query(SharedString::new());
-            ui.set_cover_status(SharedString::from(i18n::tr("Buscando…")));
+            ui.set_cover_status(SharedString::from(tunante_core::i18n::tr("Buscando…")));
             urls.borrow_mut().clear();
             model.set_vec(Vec::new());
             *target.borrow_mut() = Some(t.clone());
@@ -1745,7 +1744,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_cover_search(move |q| {
             let Some(ui) = weak.upgrade() else { return };
             let Some(t) = target.borrow().clone() else { return };
-            ui.set_cover_status(SharedString::from(i18n::tr("Buscando…")));
+            ui.set_cover_status(SharedString::from(tunante_core::i18n::tr("Buscando…")));
             let q = q.trim().to_string();
             let g = cover_gen.get() + 1;
             cover_gen.set(g);
@@ -1759,7 +1758,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_cover_auto(move || {
             let Some(ui) = weak.upgrade() else { return };
             let Some(t) = target.borrow().clone() else { return };
-            ui.set_cover_status(SharedString::from(i18n::tr("Descargando la mejor…")));
+            ui.set_cover_status(SharedString::from(tunante_core::i18n::tr("Descargando la mejor…")));
             let store = db_c
                 .get_setting("store_covers_in_folder")
                 .ok()
@@ -1814,7 +1813,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = tx.send(CoverMsg::Saved);
                     }
                     Err(e) => {
-                        let _ = tx.send(CoverMsg::Status(format!("{}: {e}", i18n::tr("No se pudo guardar"))));
+                        let _ = tx.send(CoverMsg::Status(format!("{}: {e}", tunante_core::i18n::tr("No se pudo guardar"))));
                     }
                 }
             });
@@ -1871,12 +1870,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
             if subsongs <= 1 {
-                ui.set_names_status(SharedString::from(i18n::tr(
+                ui.set_names_status(SharedString::from(tunante_core::i18n::tr(
                     "Este fichero lleva una sola canción.",
                 )));
                 return;
             }
-            ui.set_names_status(SharedString::from(i18n::tr("Consultando el archivo…")));
+            ui.set_names_status(SharedString::from(tunante_core::i18n::tr("Consultando el archivo…")));
             spawn_names_fetch(tx.clone(), system, t.game.clone(), subsongs);
         });
     }
@@ -1891,7 +1890,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             };
             ui.set_names_can_apply(false);
-            ui.set_names_status(SharedString::from(i18n::tr("Escribiendo…")));
+            ui.set_names_status(SharedString::from(tunante_core::i18n::tr("Escribiendo…")));
             // "Fix the lengths too" off: keep whatever is already timed, so
             // the .m3u carries only the titles the user came for.
             let lengths = if ui.get_names_fix_lengths() {
@@ -2079,9 +2078,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 ui.set_meta_batch(true);
                 ui.set_meta_heading(SharedString::from(
-                    i18n::tr("{} pistas seleccionadas").replace("{}", &picked.len().to_string()),
+                    tunante_core::i18n::tr("{} pistas seleccionadas").replace("{}", &picked.len().to_string()),
                 ));
-                ui.set_meta_detail(SharedString::from(i18n::tr(
+                ui.set_meta_detail(SharedString::from(tunante_core::i18n::tr(
                     "Un campo vacío no toca nada.",
                 )));
                 ui.set_meta_title(SharedString::new());
@@ -3376,7 +3375,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if folders.is_empty() {
                 return;
             }
-            ui.set_scan_status(i18n::tr("Analizando…").into());
+            ui.set_scan_status(tunante_core::i18n::tr("Analizando…").into());
             let (tx, dbfile) = (scan_tx.clone(), dbfile.clone());
             std::thread::spawn(move || {
                 let Ok(db) = Database::new(&dbfile) else {
@@ -3386,7 +3385,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 for folder in folders {
                     let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
                         let _ = tx.send(Some(
-                            i18n::tr("Analizando {}/{}\n{} pistas encontradas")
+                            tunante_core::i18n::tr("Analizando {}/{}\n{} pistas encontradas")
                                 .replacen("{}", &p.scanned.to_string(), 1)
                                 .replacen("{}", &p.total.to_string(), 1)
                                 .replacen("{}", &p.added.to_string(), 1),
@@ -3401,7 +3400,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bulk_plans_model = Rc::new(VecModel::from(Vec::<PlanRow>::new()));
     ui.set_bulk_plans(ModelRc::from(bulk_plans_model.clone()));
     let bulk_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    ui.set_undo_covers_label(SharedString::from(i18n::tr(
+    ui.set_undo_covers_label(SharedString::from(tunante_core::i18n::tr(
         if db
             .get_setting("mini.last_cover_run")
             .ok()
@@ -3439,7 +3438,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let tracks = db.get_all_tracks().unwrap_or_default();
             cancel.store(false, std::sync::atomic::Ordering::SeqCst);
             ui.set_bulk_busy(true);
-            ui.set_bulk_status(SharedString::from(i18n::tr("Descargando…")));
+            ui.set_bulk_status(SharedString::from(tunante_core::i18n::tr("Descargando…")));
             spawn_bulk_covers(tx.clone(), tracks, cancel.clone(), false);
         });
     }
@@ -3472,14 +3471,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(n) => {
                     let _ = db.set_setting("mini.last_cover_run", "");
                     ui.set_undo_covers_label(SharedString::from(
-                        i18n::tr("{} borradas").replace("{}", &n.to_string()),
+                        tunante_core::i18n::tr("{} borradas").replace("{}", &n.to_string()),
                     ));
                     dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
                 Err(e) => {
                     ui.set_undo_covers_label(SharedString::from(format!(
                         "{}: {e}",
-                        i18n::tr("falló")
+                        tunante_core::i18n::tr("falló")
                     )));
                 }
             }
@@ -3520,9 +3519,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = integrate::make_desktop_entry();
             shortcut_forward.store(true, std::sync::atomic::Ordering::Relaxed);
             *shortcut_rx.borrow_mut() = Some(shortcuts::spawn(shortcut_forward.clone()));
-            ui.set_global_shortcuts_label(SharedString::from(i18n::tr("vinculando…")));
+            ui.set_global_shortcuts_label(SharedString::from(tunante_core::i18n::tr("vinculando…")));
         } else {
-            ui.set_global_shortcuts_label(SharedString::from(i18n::tr("no")));
+            ui.set_global_shortcuts_label(SharedString::from(tunante_core::i18n::tr("no")));
         }
     }
     {
@@ -3541,12 +3540,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if rx_slot.borrow().is_none() {
                     let _ = integrate::make_desktop_entry();
                     *rx_slot.borrow_mut() = Some(shortcuts::spawn(flag.clone()));
-                    ui.set_global_shortcuts_label(SharedString::from(i18n::tr("vinculando…")));
+                    ui.set_global_shortcuts_label(SharedString::from(tunante_core::i18n::tr("vinculando…")));
                 } else {
-                    ui.set_global_shortcuts_label(SharedString::from(i18n::tr("sí")));
+                    ui.set_global_shortcuts_label(SharedString::from(tunante_core::i18n::tr("sí")));
                 }
             } else {
-                ui.set_global_shortcuts_label(SharedString::from(i18n::tr("no")));
+                ui.set_global_shortcuts_label(SharedString::from(tunante_core::i18n::tr("no")));
             }
         });
     }
@@ -3562,9 +3561,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Rc::new(RefCell::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false))));
     let buttons_label = |n: usize| -> String {
         if n == 0 {
-            i18n::tr("sin acceso (grupo input)")
+            tunante_core::i18n::tr("sin acceso (grupo input)")
         } else {
-            i18n::tr("sí ({} dispositivos)").replace("{}", &n.to_string())
+            tunante_core::i18n::tr("sí ({} dispositivos)").replace("{}", &n.to_string())
         }
     };
     {
@@ -3579,7 +3578,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let n = buttons::spawn(button_tx.clone(), button_stop.borrow().clone());
             ui.set_mouse_buttons_label(SharedString::from(buttons_label(n)));
         } else {
-            ui.set_mouse_buttons_label(SharedString::from(i18n::tr("no")));
+            ui.set_mouse_buttons_label(SharedString::from(tunante_core::i18n::tr("no")));
         }
     }
     {
@@ -3597,7 +3596,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let n = buttons::spawn(tx.clone(), fresh);
                 ui.set_mouse_buttons_label(SharedString::from(buttons_label(n)));
             } else {
-                ui.set_mouse_buttons_label(SharedString::from(i18n::tr("no")));
+                ui.set_mouse_buttons_label(SharedString::from(tunante_core::i18n::tr("no")));
             }
         });
     }
@@ -3629,8 +3628,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             ui.set_clear_cache_label(SharedString::from(
                 match tunante_art::cache::clear() {
-                    Ok(n) => i18n::tr("{} fuera").replace("{}", &n.to_string()),
-                    Err(e) => format!("{}: {e}", i18n::tr("falló")),
+                    Ok(n) => tunante_core::i18n::tr("{} fuera").replace("{}", &n.to_string()),
+                    Err(e) => format!("{}: {e}", tunante_core::i18n::tr("falló")),
                 },
             ));
         });
@@ -3704,7 +3703,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_add_files(move || {
             let Some(ui) = weak.upgrade() else { return };
-            ui.set_add_files_label(SharedString::from(i18n::tr("eligiendo…")));
+            ui.set_add_files_label(SharedString::from(tunante_core::i18n::tr("eligiendo…")));
             let (dbfile, dirty, tx) = (dbfile.clone(), dirty.clone(), tx.clone());
             std::thread::spawn(move || {
                 let picked = pick_files();
@@ -3717,11 +3716,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
                 if paths.is_empty() {
-                    let _ = tx.send(i18n::tr("nada reconocible"));
+                    let _ = tx.send(tunante_core::i18n::tr("nada reconocible"));
                     return;
                 }
                 let Ok(db) = Database::new(&dbfile) else {
-                    let _ = tx.send(i18n::tr("sin base de datos"));
+                    let _ = tx.send(tunante_core::i18n::tr("sin base de datos"));
                     return;
                 };
                 let opts = probe_opts(&db);
@@ -3745,7 +3744,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 dirty.store(true, std::sync::atomic::Ordering::Relaxed);
-                let _ = tx.send(i18n::tr("{} añadidas").replace("{}", &n.to_string()));
+                let _ = tx.send(tunante_core::i18n::tr("{} añadidas").replace("{}", &n.to_string()));
             });
         });
     }
@@ -4136,10 +4135,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         ShortcutRow {
                             id: SharedString::from(*id),
-                            label: SharedString::from(i18n::tr(label)),
+                            label: SharedString::from(tunante_core::i18n::tr(label)),
                             key: SharedString::from(
                                 if capturing.as_deref() == Some(*id) {
-                                    i18n::tr("pulsa una tecla…")
+                                    tunante_core::i18n::tr("pulsa una tecla…")
                                 } else {
                                     tr_shortcut_key(&key)
                                 },
@@ -4219,7 +4218,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Per-button mouse action, the old Shortcuts tab's mouse binds, inverted
     // to one row per physical button.
     let mouse_action_label = |a: &str| -> String {
-        i18n::tr(match a {
+        tunante_core::i18n::tr(match a {
             "none" => "nada",
             "play_pause" => "reproducir/pausa",
             "stop" => "parar",
@@ -4329,7 +4328,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
-    ui.set_album_game_label(SharedString::from(i18n::tr(
+    ui.set_album_game_label(SharedString::from(tunante_core::i18n::tr(
         if table_state.borrow().album_game_prefers_game { "el juego" } else { "el álbum" },
     )));
     {
@@ -4343,7 +4342,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "album_game_prefers",
                 if st.album_game_prefers_game { "game" } else { "album" },
             );
-            ui.set_album_game_label(SharedString::from(i18n::tr(
+            ui.set_album_game_label(SharedString::from(tunante_core::i18n::tr(
                 if st.album_game_prefers_game { "el juego" } else { "el álbum" },
             )));
             if st.built {
@@ -4494,7 +4493,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let log_level = Rc::new(std::cell::Cell::new(0u8));
     let log_filter: Rc<RefCell<String>> = Rc::new(RefCell::new(String::new()));
     fn log_level_label(l: u8) -> String {
-        i18n::tr(match l {
+        tunante_core::i18n::tr(match l {
             1 => "solo error",
             2 => "aviso+",
             _ => "todo",
@@ -4592,7 +4591,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (update_tx, update_rx) = std::sync::mpsc::channel::<update::UpdateMsg>();
     let update_pending: Rc<RefCell<Option<(String, String)>>> = Rc::new(RefCell::new(None));
     ui.set_update_status(SharedString::from(
-        i18n::tr("v{} — toca para comprobar").replace("{}", update::CURRENT_VERSION),
+        tunante_core::i18n::tr("v{} — toca para comprobar").replace("{}", update::CURRENT_VERSION),
     ));
     // A tapped check must show everything; only the silent startup check
     // honours the skipped version.
@@ -4611,13 +4610,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some((version, url)) => {
                     ui.set_update_skippable(false);
                     ui.set_update_status(SharedString::from(
-                        i18n::tr("Descargando v{}…").replace("{}", &version),
+                        tunante_core::i18n::tr("Descargando v{}…").replace("{}", &version),
                     ));
                     update::spawn_install(tx.clone(), version, url);
                 }
                 None => {
                     manual.set(true);
-                    ui.set_update_status(SharedString::from(i18n::tr("Comprobando…")));
+                    ui.set_update_status(SharedString::from(tunante_core::i18n::tr("Comprobando…")));
                     update::spawn_check(tx.clone());
                 }
             }
@@ -4634,7 +4633,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             ui.set_update_skippable(false);
             ui.set_update_status(SharedString::from(
-                i18n::tr("v{} — toca para comprobar").replace("{}", update::CURRENT_VERSION),
+                tunante_core::i18n::tr("v{} — toca para comprobar").replace("{}", update::CURRENT_VERSION),
             ));
         });
     }
@@ -4646,7 +4645,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             ui.set_desktop_entry_label(SharedString::from(
                 match integrate::make_desktop_entry() {
-                    Ok(()) => i18n::tr("hecho ✓"),
+                    Ok(()) => tunante_core::i18n::tr("hecho ✓"),
                     Err(e) => e,
                 },
             ));
@@ -5027,7 +5026,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match msg {
                         update::UpdateMsg::UpToDate => {
                             ui.set_update_status(SharedString::from(
-                                i18n::tr("al día (v{})").replace("{}", update::CURRENT_VERSION),
+                                tunante_core::i18n::tr("al día (v{})").replace("{}", update::CURRENT_VERSION),
                             ));
                         }
                         update::UpdateMsg::Available { version, url } => {
@@ -5044,12 +5043,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // install straight away, no tap needed.
                             if !was_manual && ui.get_auto_update() {
                                 ui.set_update_status(SharedString::from(
-                                    i18n::tr("descargando v{}…").replace("{}", &version),
+                                    tunante_core::i18n::tr("descargando v{}…").replace("{}", &version),
                                 ));
                                 update::spawn_install(update_tx.clone(), version, url);
                             } else {
                                 ui.set_update_status(SharedString::from(
-                                    i18n::tr("v{} disponible — toca para instalar")
+                                    tunante_core::i18n::tr("v{} disponible — toca para instalar")
                                         .replace("{}", &version),
                                 ));
                                 ui.set_update_skippable(true);
@@ -5058,7 +5057,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         update::UpdateMsg::Installed(version) => {
                             ui.set_update_status(SharedString::from(
-                                i18n::tr("v{} instalada — reinicia la app").replace("{}", &version),
+                                tunante_core::i18n::tr("v{} instalada — reinicia la app").replace("{}", &version),
                             ));
                         }
                         update::UpdateMsg::Error(e) => {
@@ -5086,7 +5085,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 continue;
                             }
                             if list.is_empty() {
-                                ui.set_cover_status(SharedString::from(i18n::tr(
+                                ui.set_cover_status(SharedString::from(tunante_core::i18n::tr(
                                     "Sin resultados. Prueba con otro nombre.",
                                 )));
                                 cover_model.set_vec(Vec::new());
@@ -5138,7 +5137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         CoverMsg::BulkPlans(rows) => {
                             let would = rows.iter().filter(|r| r.4).count();
                             ui.set_bulk_status(SharedString::from(
-                                i18n::tr("{} juegos · {} se escribirían")
+                                tunante_core::i18n::tr("{} juegos · {} se escribirían")
                                     .replacen("{}", &rows.len().to_string(), 1)
                                     .replacen("{}", &would.to_string(), 1
                             )));
@@ -5170,7 +5169,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 })
                                 .collect();
                             ui.set_names_status(SharedString::from(
-                                i18n::tr(
+                                tunante_core::i18n::tr(
                                     "{} de {} con nombre. Se escribe un .m3u junto al fichero.",
                                 )
                                 .replacen("{}", &named.to_string(), 1)
@@ -5187,7 +5186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         CoverMsg::NamesApplied(n) => {
                             ui.set_names_status(SharedString::from(
-                                i18n::tr("{} pistas renombradas.").replace("{}", &n.to_string()),
+                                tunante_core::i18n::tr("{} pistas renombradas.").replace("{}", &n.to_string()),
                             ));
                             // The rows changed under every cache; the watcher's
                             // flag re-reads them all.
@@ -5207,12 +5206,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         CoverMsg::BulkDone { written, stamp } => {
                             ui.set_bulk_status(SharedString::from(
-                                i18n::tr("{} carátulas escritas")
+                                tunante_core::i18n::tr("{} carátulas escritas")
                                     .replace("{}", &written.to_string()),
                             ));
                             ui.set_bulk_busy(false);
                             let _ = db.set_setting("mini.last_cover_run", &stamp.to_string());
-                            ui.set_undo_covers_label(SharedString::from(i18n::tr("disponible")));
+                            ui.set_undo_covers_label(SharedString::from(tunante_core::i18n::tr("disponible")));
                             art_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                     }
@@ -5505,7 +5504,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // so the tooltip is the old volume popup, for free. Held
                     // for ~1.5 s before the track tooltip takes it back.
                     tray::set_tooltip(
-                        &i18n::tr("Volumen {}%").replace("{}", &format!("{:.0}", v * 100.0)),
+                        &tunante_core::i18n::tr("Volumen {}%").replace("{}", &format!("{:.0}", v * 100.0)),
                     );
                     vol_tooltip_hold.set(3);
                 }
@@ -5587,7 +5586,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         p.toggle_play();
                     }
                     ui.set_output_warning(SharedString::from(if silent {
-                        i18n::tr("Sin salida de audio")
+                        tunante_core::i18n::tr("Sin salida de audio")
                     } else {
                         String::new()
                     }));
@@ -5882,9 +5881,9 @@ struct Views {
 /// "1 pista" y no "1 pistas", igual que en la biblioteca.
 fn playlist_subtitle(n: i64) -> String {
     if n == 1 {
-        i18n::tr("1 pista")
+        tunante_core::i18n::tr("1 pista")
     } else {
-        i18n::tr("{} pistas").replace("{}", &n.to_string())
+        tunante_core::i18n::tr("{} pistas").replace("{}", &n.to_string())
     }
 }
 
@@ -6279,27 +6278,27 @@ fn store_dsp(
 fn dsp_status(cfg: &tunante_core::dsp::DspConfig) -> String {
     let mut on: Vec<String> = Vec::new();
     if cfg.eq_enabled {
-        on.push(i18n::tr("ecualizador"));
+        on.push(tunante_core::i18n::tr("ecualizador"));
     }
     if cfg.preamp_db.abs() > 0.01 {
-        on.push(i18n::tr("preamplificador"));
+        on.push(tunante_core::i18n::tr("preamplificador"));
     }
     if cfg.width != 1.0 {
-        on.push(i18n::tr("anchura estéreo"));
+        on.push(tunante_core::i18n::tr("anchura estéreo"));
     }
     if cfg.mono {
-        on.push(i18n::tr("mono"));
+        on.push(tunante_core::i18n::tr("mono"));
     }
     if cfg.balance.abs() > 0.001 {
-        on.push(i18n::tr("balance"));
+        on.push(tunante_core::i18n::tr("balance"));
     }
     if cfg.limiter {
-        on.push(i18n::tr("limitador"));
+        on.push(tunante_core::i18n::tr("limitador"));
     }
     if on.is_empty() {
-        i18n::tr("En el motor: nada activo — el audio no se toca.")
+        tunante_core::i18n::tr("En el motor: nada activo — el audio no se toca.")
     } else {
-        i18n::tr("En el motor: {} (cadena: eq → anchura → mono → balance → preamp → limitador).")
+        tunante_core::i18n::tr("En el motor: {} (cadena: eq → anchura → mono → balance → preamp → limitador).")
             .replace("{}", &on.join(" · "))
     }
 }
@@ -6313,7 +6312,7 @@ fn get_bool_setting(db: &Database, key: &str, default: bool) -> bool {
 }
 
 fn rating_priority_label(raw: Option<&str>) -> String {
-    i18n::tr(match raw {
+    tunante_core::i18n::tr(match raw {
         Some("file,folder,db") => "fichero primero",
         Some("folder,file,db") => "carpeta primero",
         _ => "BD manda",
@@ -6321,7 +6320,7 @@ fn rating_priority_label(raw: Option<&str>) -> String {
 }
 
 fn tray_click_label(a: &str) -> String {
-    i18n::tr(match a {
+    tunante_core::i18n::tr(match a {
         "play_pause" => "reproducir/pausa",
         "stop" => "stop",
         "next_track" => "siguiente",
@@ -6331,7 +6330,7 @@ fn tray_click_label(a: &str) -> String {
 }
 
 fn tray_style_label(style: u8) -> String {
-    i18n::tr(match style {
+    tunante_core::i18n::tr(match style {
         1 => "simbólico",
         2 => "logo",
         _ => "sistema",
@@ -6339,7 +6338,7 @@ fn tray_style_label(style: u8) -> String {
 }
 
 fn theme_mode_label(mode: u8) -> String {
-    i18n::tr(match mode {
+    tunante_core::i18n::tr(match mode {
         1 => "claro",
         2 => "sistema",
         _ => "oscuro",
@@ -6351,7 +6350,7 @@ fn theme_mode_label(mode: u8) -> String {
 /// label from eating the whole width first.
 fn output_label(stored: &str) -> String {
     if stored == "system" {
-        return i18n::tr("sistema");
+        return tunante_core::i18n::tr("sistema");
     }
     let mut label: String = stored.chars().take(34).collect();
     if label.len() < stored.len() {
@@ -6563,13 +6562,13 @@ fn spawn_names_fetch(
         let entries = tracklist::fetch(&http, system, &game);
         if entries.is_empty() {
             let _ = tx.send(CoverMsg::NamesProblem(
-                i18n::tr("No hay listado para «{}» en el archivo.").replace("{}", &game),
+                tunante_core::i18n::tr("No hay listado para «{}» en el archivo.").replace("{}", &game),
             ));
             return;
         }
         if !tracklist::matches_subsongs(&entries, subsongs) {
             let _ = tx.send(CoverMsg::NamesProblem(
-                i18n::tr(
+                tunante_core::i18n::tr(
                     "El archivo lista {} pistas y este fichero tiene {}. \
                      La posición es todo el mapeo: otra cuenta es otro rip, y \
                      aplicarlo renombraría cada pista mal.",
@@ -6582,7 +6581,7 @@ fn spawn_names_fetch(
         let named = tracklist::named_count(&entries);
         if named == 0 {
             let _ = tx.send(CoverMsg::NamesProblem(
-                i18n::tr(
+                tunante_core::i18n::tr(
                     "El archivo lista {} pistas de «{}» pero no ha nombrado \
                      ninguna — todo son «Track N». No hay nada que renombrar.",
                 )
@@ -6623,7 +6622,7 @@ fn spawn_names_apply(
         use tunante_art::tracklist;
         let path = std::path::PathBuf::from(&file);
         let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
-            let _ = tx.send(CoverMsg::NamesProblem(i18n::tr("no es un fichero").into()));
+            let _ = tx.send(CoverMsg::NamesProblem(tunante_core::i18n::tr("no es un fichero").into()));
             return;
         };
         let m3u = path.with_extension("m3u");
@@ -6633,7 +6632,7 @@ fn spawn_names_apply(
                 .unwrap_or(false);
             if !ours {
                 let _ = tx.send(CoverMsg::NamesProblem(
-                    i18n::tr(
+                    tunante_core::i18n::tr(
                         "{} ya existe junto al fichero y no lo escribió Tunante. \
                          Reemplazarlo tiraría el trabajo de alguien.",
                     )
@@ -6659,7 +6658,7 @@ fn spawn_names_apply(
         if let Err(e) = std::fs::write(&m3u, tracklist::to_m3u(&name, &entries)) {
             let _ = tx.send(CoverMsg::NamesProblem(format!(
                 "{}: {e}",
-                i18n::tr("no se pudo escribir {}").replace("{}", &m3u.display().to_string()),
+                tunante_core::i18n::tr("no se pudo escribir {}").replace("{}", &m3u.display().to_string()),
             )));
             return;
         }
@@ -6672,12 +6671,12 @@ fn spawn_names_apply(
             true,
         ) else {
             let _ = tx.send(CoverMsg::NamesProblem(
-                i18n::tr("el m3u se escribió, pero la relectura falló").into(),
+                tunante_core::i18n::tr("el m3u se escribió, pero la relectura falló").into(),
             ));
             return;
         };
         let Ok(db) = Database::new(&dbfile) else {
-            let _ = tx.send(CoverMsg::NamesProblem(i18n::tr("sin base de datos").into()));
+            let _ = tx.send(CoverMsg::NamesProblem(tunante_core::i18n::tr("sin base de datos").into()));
             return;
         };
         let _ = db.remove_tracks_by_base_path(&file);
@@ -6732,7 +6731,7 @@ fn spawn_bulk_covers(
             cancel,
             ..Default::default()
         };
-        let verb = i18n::tr(if dry { "Buscando" } else { "Descargando" });
+        let verb = tunante_core::i18n::tr(if dry { "Buscando" } else { "Descargando" });
         let started = std::time::Instant::now();
         let plans = cover_resolver().resolve_many(reqs, &opts, |p| {
             // The old panel's humanized ETA, from the pace so far.
@@ -6740,7 +6739,7 @@ fn spawn_bulk_covers(
                 let secs = started.elapsed().as_secs_f64() / p.done as f64
                     * (p.total - p.done) as f64;
                 if secs < 60.0 {
-                    format!(" · {}", i18n::tr("menos de un minuto"))
+                    format!(" · {}", tunante_core::i18n::tr("menos de un minuto"))
                 } else if secs < 3600.0 {
                     format!(" · ~{} min", (secs / 60.0).round() as u64)
                 } else {
@@ -6756,7 +6755,7 @@ fn spawn_bulk_covers(
             };
             let _ = tx.send(CoverMsg::BulkStatus(format!(
                 "{verb}… {}{eta}{current}",
-                i18n::tr("{}/{} · {} encontradas")
+                tunante_core::i18n::tr("{}/{} · {} encontradas")
                     .replacen("{}", &p.done.to_string(), 1)
                     .replacen("{}", &p.total.to_string(), 1)
                     .replacen("{}", &p.found.to_string(), 1),
@@ -6779,10 +6778,10 @@ fn spawn_bulk_covers(
                     (
                         p.game.clone(),
                         tunante_core::console::by_id(&p.console_id)
-                            .map(|c| i18n::tr(c.name_es))
+                            .map(|c| tunante_core::i18n::tr(c.name_es))
                             .unwrap_or_default(),
                         if p.source == "none" { String::new() } else { p.source.clone() },
-                        i18n::tr(action),
+                        tunante_core::i18n::tr(action),
                         will_write,
                     )
                 })
@@ -6866,7 +6865,7 @@ fn spawn_cover_search(
                     .map(|r| r.body),
                 source: h.source.to_string(),
                 name: h.matched_name,
-                conf: i18n::tr(match h.confidence {
+                conf: tunante_core::i18n::tr(match h.confidence {
                     tunante_art::Confidence::Exact => "exacta",
                     tunante_art::Confidence::High => "alta",
                     tunante_art::Confidence::Medium => "media",
@@ -6972,8 +6971,8 @@ fn cell_for(t: &tunante_core::db::models::Track, key: &str, prefers_game: bool, 
             .map(|r| format!("{r} Hz"))
             .unwrap_or_default(),
         "channels" => match t.channels {
-            Some(1) => i18n::tr("mono"),
-            Some(2) => i18n::tr("estéreo"),
+            Some(1) => tunante_core::i18n::tr("mono"),
+            Some(2) => tunante_core::i18n::tr("estéreo"),
             Some(n) => n.to_string(),
             None => String::new(),
         },
@@ -7034,7 +7033,7 @@ fn rebuild_columns(
         defs.iter()
             .map(|d| TableColumn {
                 key: SharedString::from(d.key),
-                label: SharedString::from(i18n::tr(d.label)),
+                label: SharedString::from(tunante_core::i18n::tr(d.label)),
                 fraction: weight(d) / total.max(0.001),
                 right: d.right,
             })
@@ -7046,7 +7045,7 @@ fn rebuild_columns(
             .map(|d| ColumnChoice {
                 key: SharedString::from(d.key),
                 // The header wears a glyph; the chooser needs a word.
-                label: SharedString::from(i18n::tr(if d.key == "playing" {
+                label: SharedString::from(tunante_core::i18n::tr(if d.key == "playing" {
                     "Reproduciendo"
                 } else {
                     d.label
@@ -7096,7 +7095,7 @@ fn stars_for_mode(rating: i32, mode: i32) -> String {
 }
 
 fn table_console_label(t: &tunante_core::db::models::Track) -> String {
-    i18n::tr(tunante_core::console::label_es(tunante_core::console::key_of(t)))
+    tunante_core::i18n::tr(tunante_core::console::label_es(tunante_core::console::key_of(t)))
 }
 
 /// The sidebar's pinned folders, re-read whole: the list is short and the
@@ -7138,10 +7137,10 @@ fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
 /// The chip text for the table's current scope, or "" for library/faved.
 fn scope_label(db: &Database, scope: &Scope) -> String {
     match scope {
-        Scope::Console(id) => i18n::tr("Consola · {}")
-            .replace("{}", &i18n::tr(tunante_core::console::label_es(id))),
-        Scope::Game(name) => return i18n::tr("Juego · {}").replace("{}", name),
-        Scope::Folder(f) => i18n::tr("Carpeta · {}").replace(
+        Scope::Console(id) => tunante_core::i18n::tr("Consola · {}")
+            .replace("{}", &tunante_core::i18n::tr(tunante_core::console::label_es(id))),
+        Scope::Game(name) => return tunante_core::i18n::tr("Juego · {}").replace("{}", name),
+        Scope::Folder(f) => tunante_core::i18n::tr("Carpeta · {}").replace(
             "{}",
             &
             std::path::Path::new(f)
@@ -7150,7 +7149,7 @@ fn scope_label(db: &Database, scope: &Scope) -> String {
                 .unwrap_or_else(|| f.clone()),
         ),
         Scope::Queue { paths } => {
-            return i18n::tr("Cola · {} pistas").replace("{}", &paths.len().to_string());
+            return tunante_core::i18n::tr("Cola · {} pistas").replace("{}", &paths.len().to_string());
         }
         Scope::Playlist { id, .. } => {
             let name = db
@@ -7160,7 +7159,7 @@ fn scope_label(db: &Database, scope: &Scope) -> String {
                 .find(|p| p.id == *id)
                 .map(|p| p.name)
                 .unwrap_or_default();
-            i18n::tr("Lista · {}").replace("{}", &name)
+            tunante_core::i18n::tr("Lista · {}").replace("{}", &name)
         }
         _ => String::new(),
     }
@@ -7395,7 +7394,7 @@ fn show_play_error(ui: &AppWindow, e: &str) {
     eprintln!("no se pudo reproducir: {e}");
     ui.set_error_toast(SharedString::from(format!(
         "{}: {e}",
-        i18n::tr("No se pudo reproducir")
+        tunante_core::i18n::tr("No se pudo reproducir")
     )));
     ui.set_error_toast_age(0);
 }
@@ -7421,8 +7420,8 @@ const SHORTCUT_ACTIONS: &[(&str, &str)] = &[
 /// on the last segment, which is the only one that is a word.
 fn tr_shortcut_key(combo: &str) -> String {
     match combo.rsplit_once('+') {
-        Some((mods, key)) => format!("{mods}+{}", i18n::tr(key)),
-        None => i18n::tr(combo),
+        Some((mods, key)) => format!("{mods}+{}", tunante_core::i18n::tr(key)),
+        None => tunante_core::i18n::tr(combo),
     }
 }
 
@@ -7479,14 +7478,14 @@ fn shortcut_combo(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<Stri
 fn consoles_for_filter(q: &str) -> Vec<ConsoleOption> {
     let auto = ConsoleOption {
         id: SharedString::from(""),
-        name: SharedString::from(i18n::tr("(automática)")),
+        name: SharedString::from(tunante_core::i18n::tr("(automática)")),
     };
     let q = q.trim().to_lowercase();
     if q.is_empty() {
         let mut out = vec![auto];
         out.extend(tunante_core::console::CONSOLES.iter().map(|c| ConsoleOption {
             id: SharedString::from(c.id),
-            name: SharedString::from(i18n::tr(c.name_es)),
+            name: SharedString::from(tunante_core::i18n::tr(c.name_es)),
         }));
         return out;
     }
@@ -7518,16 +7517,16 @@ fn consoles_for_filter(q: &str) -> Vec<ConsoleOption> {
     let mut out = vec![auto];
     out.extend(ranked.into_iter().map(|(_, c)| ConsoleOption {
         id: SharedString::from(c.id),
-        name: SharedString::from(i18n::tr(c.name_es)),
+        name: SharedString::from(tunante_core::i18n::tr(c.name_es)),
     }));
     out
 }
 
 fn vgm_loops_label(v: Option<f64>) -> String {
     match v {
-        None => i18n::tr("predeterminado"),
-        Some(v) if v <= 1.0 => i18n::tr("1 pasada"),
-        Some(v) => i18n::tr("{} pasadas").replace("{}", &(v as i64).to_string()),
+        None => tunante_core::i18n::tr("predeterminado"),
+        Some(v) if v <= 1.0 => tunante_core::i18n::tr("1 pasada"),
+        Some(v) => tunante_core::i18n::tr("{} pasadas").replace("{}", &(v as i64).to_string()),
     }
 }
 
@@ -7552,7 +7551,7 @@ fn cover_fit_key(fit: i32) -> &'static str {
 }
 
 fn cover_fit_label(fit: i32) -> String {
-    i18n::tr(match fit {
+    tunante_core::i18n::tr(match fit {
         1 => "entera",
         2 => "con fondo",
         3 => "estirada",
@@ -7666,7 +7665,7 @@ fn refresh_queue(p: &player::Player, model: &VecModel<QueueRow>) {
                 "» {}",
                 if t.title.is_empty() { t.path.as_str() } else { t.title.as_str() }
             )),
-            subtitle: SharedString::from(i18n::tr("a continuación")),
+            subtitle: SharedString::from(tunante_core::i18n::tr("a continuación")),
             playing: false,
         })
         .collect();
@@ -7805,7 +7804,7 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
             ui.set_now_path(SharedString::from(t.path.as_str()));
         }
         None => {
-            ui.set_now_title(i18n::tr("Nada sonando").into());
+            ui.set_now_title(tunante_core::i18n::tr("Nada sonando").into());
             ui.set_now_artist(SharedString::new());
             ui.set_now_album(SharedString::new());
             ui.set_now_path(SharedString::new());

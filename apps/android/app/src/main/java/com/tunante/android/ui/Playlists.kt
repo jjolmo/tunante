@@ -37,7 +37,7 @@ enum class Tab(val label: String) {
     /** Mirrors the disk. Honest, and it makes you walk down to a game whose
      *  name you already know — which is what the next two are for. */
     Library("Árbol"),
-    Albums("Álbumes"),
+    Albums("Discos"),
     /** By the album tag rather than by folder: what the rip says it is from. */
     Games("Juegos"),
     Consoles("Consolas"),
@@ -71,7 +71,7 @@ fun PlaylistsTab(
         if (open == null) {
             NewPlaylist(onCreate)
             if (playlists.isEmpty()) {
-                EmptyNote("Ninguna lista todavía", "Créala arriba y añade pistas desde la biblioteca.")
+                EmptyNote(tr("Ninguna lista todavía"), tr("Créala arriba y añade pistas desde la biblioteca."))
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     itemsIndexed(playlists) { i, p ->
@@ -109,16 +109,16 @@ fun PlaylistsTab(
                             .clickable { onEnqueueAll(open) }
                             .padding(horizontal = T.gap),
                         contentAlignment = Alignment.Center,
-                    ) { Label("A la cola", T.accent, T.fontSmall, maxLines = 1) }
+                    ) { Label(tr("A la cola"), T.accent, T.fontSmall, maxLines = 1) }
                 }
             }
             Rule()
             if (tracks.isEmpty()) {
-                EmptyNote("Lista vacía", "Añade pistas con ＋ desde la biblioteca.")
+                EmptyNote(tr("Lista vacía"), tr("Añade pistas con ＋ desde la biblioteca."))
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     itemsIndexed(tracks) { i, t ->
-                        SwipeRow("Quitar de la lista", { onRemove(open, t) }) {
+                        SwipeRow(tr("Quitar de la lista"), { onRemove(open, t) }) {
                             TrackRow(
                                 track = t,
                                 selected = state.hasSource && t.path == state.path,
@@ -148,7 +148,7 @@ private fun NewPlaylist(onCreate: (String) -> Unit) {
     ) {
         Box(Modifier.weight(1f).heightIn(min = T.touchTarget), Alignment.CenterStart) {
             if (name.isEmpty()) {
-                Label("Nueva lista…", T.textMuted, T.fontBody)
+                Label(tr("Nueva lista…"), T.textMuted, T.fontBody)
             }
             BasicTextField(
                 value = name,
@@ -171,7 +171,7 @@ private fun NewPlaylist(onCreate: (String) -> Unit) {
         ) {
             // Greyed rather than hidden: a control that appears as you type
             // moves the row under the finger.
-            Label("Crear", if (name.isBlank()) T.textMuted else T.accent, T.fontBody)
+            Label(tr("Crear"), if (name.isBlank()) T.textMuted else T.accent, T.fontBody)
         }
     }
     Rule()
@@ -217,7 +217,7 @@ private fun PlaylistRow(
                     .clickable { renaming = playlist.name }
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center,
-            ) { Label("Renombrar", T.textMuted, T.fontSmall, maxLines = 1) }
+            ) { Label(tr("Renombrar"), T.textMuted, T.fontSmall, maxLines = 1) }
             Box(Modifier.size(T.touchTarget).clickable(enabled = canUp, onClick = onUp),
                 contentAlignment = Alignment.Center) {
                 Label("↑", if (canUp) T.textPrimary else T.textMuted, T.fontBody)
@@ -236,7 +236,7 @@ private fun PlaylistRow(
                 contentAlignment = Alignment.Center,
             ) {
                 Label(
-                    if (confirming) "¿Seguro?" else "✕",
+                    if (confirming) tr("¿Seguro?") else "✕",
                     if (confirming) T.warningFg else T.textMuted,
                     if (confirming) T.fontSmall else T.fontTitle,
                 )
@@ -259,14 +259,14 @@ private fun PlaylistRow(
                     }
                     .padding(horizontal = T.gap),
                 contentAlignment = Alignment.Center,
-            ) { Label("Guardar", T.accent, T.fontSmall) }
+            ) { Label(tr("Guardar"), T.accent, T.fontSmall) }
             Box(
                 Modifier
                     .heightIn(min = T.touchTarget)
                     .clickable { renaming = null }
                     .padding(horizontal = T.gap),
                 contentAlignment = Alignment.Center,
-            ) { Label("Cancelar", T.textMuted, T.fontSmall) }
+            ) { Label(tr("Cancelar"), T.textMuted, T.fontSmall) }
         }
     }
     Rule()
@@ -300,7 +300,7 @@ fun Tabs(current: Tab, onPick: (Tab) -> Unit) {
                 contentAlignment = Alignment.Center,
             ) {
                 Label(
-                    tab.label,
+                    tr(tab.label),
                     if (chosen) T.textPrimary else T.textSecondary,
                     // Four labels where there were two: the body size no longer
                     // fits "Consolas" on a narrow phone without truncating.

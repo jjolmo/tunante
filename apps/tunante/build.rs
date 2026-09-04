@@ -1,23 +1,27 @@
 use std::path::Path;
 
+/// The catalogs live in core, because the Rust side and the Android app read
+/// them too; the Slint bundle is just one more consumer of the same files.
+const TRANSLATIONS: &str = "../../crates/tunante-core/translations";
+
 fn main() {
     // slint-build reads the `.po` files under translations/ and bundles them
     // into the binary, but Cargo does not know they are build inputs — so a
     // change to a translation alone would not rebuild the bundle. Tell it to
     // re-run whenever any of them (or the tree) changes.
-    emit_rerun("translations");
+    emit_rerun(TRANSLATIONS);
 
     // Bundled translations: every `.po` under `translations/<lang>/LC_MESSAGES/`
     // is compiled straight into the binary, so the app stays a single file on
     // every target (musl and Android included), with no runtime gettext. The
     // source strings are Spanish; a language with no `.po` — or a locale we
     // don't ship — falls back to them. Contributors add a language by dropping
-    // in `translations/<lang>/LC_MESSAGES/tunante.po`.
+    // in `crates/tunante-core/translations/<lang>/LC_MESSAGES/tunante.po`.
     //
     // No default translation context: `@tr("…")` keys are plain msgids with no
     // per-component `msgctxt`, which is what the `.po` files here expect.
     let config = slint_build::CompilerConfiguration::new()
-        .with_bundled_translations("translations")
+        .with_bundled_translations(TRANSLATIONS)
         .with_default_translation_context(slint_build::DefaultTranslationContext::None);
     slint_build::compile_with_config("ui/app.slint", config).expect("compile ui/app.slint");
 }

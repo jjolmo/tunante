@@ -55,6 +55,7 @@ data class PlayerState(
     val hasSource: Boolean = false,
     val title: String = "",
     val artist: String = "",
+    val album: String = "",
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val index: Int = -1,
@@ -195,6 +196,7 @@ fun TunanteApp(
                     PlayingScreen(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSeek)
                 Dest.Queue -> QueueScreen(
                     tracks = queue,
+                    nowPath = state.path,
                     onRemove = onQueueRemove,
                     onPlay = onQueuePlay,
                     onMove = onQueueMove,
@@ -222,10 +224,15 @@ fun TunanteApp(
             }
         }
 
-        // Under every destination, including Playing -- which is what mini
-        // does. Two transports on one screen reads as a duplicate until the
-        // phone is in a hand: the bar is where the thumb already is.
-        MiniPlayer(state, onOpen = { onDest(Dest.Playing) }, onTogglePlay, onNext, onPrev)
+        // Under every destination except Playing, which is `root.tab != 0` in
+        // app.slint. It used to be under Playing as well, on the argument that
+        // the bar is where the thumb already is; the desktop tried that, found
+        // the two transports were pushing each other off a short screen, and
+        // dropped it. The screen that has a full transport does not need a
+        // second one.
+        if (dest != Dest.Playing) {
+            MiniPlayer(state, onOpen = { onDest(Dest.Playing) }, onTogglePlay, onNext, onPrev)
+        }
         BottomNav(dest, state.queued, onDest)
     }
 
@@ -345,7 +352,7 @@ private fun Library(
         if (tab == Tab.Library) {
             SearchBox(view.query, onQuery = onQuery)
         } else {
-            SearchBox(filter, hint = "Filtrar lo que se ve…") { filter = it }
+            SearchBox(filter, hint = tr("Filtrar lo que se ve…")) { filter = it }
         }
         Breadcrumb(view, onUp)
 
@@ -377,7 +384,7 @@ private fun Library(
                         )
                     }
                     items(tracks) { track ->
-                        SwipeRow("A la cola", { onEnqueue(track) }) {
+                        SwipeRow(tr("A la cola"), { onEnqueue(track) }) {
                             TrackRow(
                                 track = track,
                                 selected = state.hasSource && track.path == state.path,
@@ -406,9 +413,9 @@ private fun Library(
             val n = folders.size + tracks.size
             Label(
                 when (n) {
-                    0 -> "sin biblioteca"
-                    1 -> "1 elemento"
-                    else -> "$n elementos"
+                    0 -> tr("sin biblioteca")
+                    1 -> tr("1 elemento")
+                    else -> tr("{} elementos").replace("{}", "$n")
                 },
                 T.textMuted,
                 T.fontSmall,
@@ -465,7 +472,7 @@ private fun PlaylistPicker(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f).heightIn(min = T.touchTarget), Alignment.CenterStart) {
                     if (name.isEmpty()) {
-                        Label("Lista nueva…", T.textMuted, T.fontBody)
+                        Label(tr("Lista nueva…"), T.textMuted, T.fontBody)
                     }
                     androidx.compose.foundation.text.BasicTextField(
                         value = name,
@@ -484,7 +491,7 @@ private fun PlaylistPicker(
                         .clickable(enabled = name.isNotBlank()) { onCreate(name.trim()) }
                         .padding(horizontal = T.gap),
                     contentAlignment = Alignment.Center,
-                ) { Label("Crear", if (name.isBlank()) T.textMuted else T.accent, T.fontBody) }
+                ) { Label(tr("Crear"), if (name.isBlank()) T.textMuted else T.accent, T.fontBody) }
             }
         }
     }
@@ -508,22 +515,22 @@ private fun PermissionBanner(onGrant: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Label("Sin acceso a los ficheros", color = T.warningFg, size = T.fontBody)
+            Label(tr("Sin acceso a los ficheros"), color = T.warningFg, size = T.fontBody)
             Label(
-                "Tunante necesita leer carpetas enteras: los formatos de consola no se indexan como audio.",
+                tr("Tunante necesita leer carpetas enteras: los formatos de consola no se indexan como audio."),
                 color = T.warningFg,
                 size = T.fontSmall,
             )
         }
-        Label("Dar acceso", color = T.warningFg, size = T.fontBody, weight = FontWeight.Medium)
+        Label(tr("Dar acceso"), color = T.warningFg, size = T.fontBody, weight = FontWeight.Medium)
     }
 }
 
 @Composable
 private fun Empty(view: LibraryView) = EmptyNote(
-    if (view.searching) "Nada coincide" else "No hay nada todavía",
-    if (view.searching) "Prueba con otra cosa."
-    else "Pulsa Escanear para leer tu carpeta de música.",
+    if (view.searching) tr("Nada coincide") else tr("No hay nada todavía"),
+    if (view.searching) tr("Prueba con otra cosa.")
+    else tr("Pulsa Escanear para leer tu carpeta de música."),
 )
 
 @OptIn(ExperimentalFoundationApi::class)

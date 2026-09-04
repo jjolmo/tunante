@@ -1084,3 +1084,84 @@ msgstr "{} already exists next to the file and Tunante did not write it. Replaci
 
 msgid "{}/{} · {} encontradas"
 msgstr "{}/{} · {} found"
+
+msgid "1 carpeta"
+msgstr "1 folder"
+
+msgid "{} carpetas"
+msgstr "{} folders"
+
+msgid "Añade pistas con ＋ desde la biblioteca."
+msgstr "Add tracks with ＋ from the library."
+
+msgid "Buscando “{}”"
+msgstr "Searching “{}”"
+
+msgid "Carpetas de música"
+msgstr "Music folders"
+
+msgid "Créala arriba y añade pistas desde la biblioteca."
+msgstr "Create one above and add tracks from the library."
+
+msgid "Dar acceso"
+msgstr "Grant access"
+
+msgid "Desliza una pista en la biblioteca para ponerla en cola."
+msgstr "Swipe a track in the library to queue it."
+
+msgid "Elige algo en la biblioteca."
+msgstr "Pick something in the library."
+
+msgid "Lista nueva…"
+msgstr "New playlist…"
+
+msgid "Lista vacía"
+msgstr "Empty playlist"
+
+msgid "Listo"
+msgstr "Done"
+
+msgid "Nada coincide"
+msgstr "Nothing matches"
+
+msgid "Ninguna lista todavía"
+msgstr "No playlists yet"
+
+msgid "No hay nada esperando"
+msgstr "Nothing waiting"
+
+msgid "No hay nada todavía"
+msgstr "Nothing here yet"
+
+msgid "No suena nada"
+msgstr "Nothing playing"
+
+msgid "Nueva lista…"
+msgstr "New playlist…"
+
+msgid "Prueba con otra cosa."
+msgstr "Try something else."
+
+msgid "Pulsa Escanear para leer tu carpeta de música."
+msgstr "Tap Scan to read your music folder."
+
+msgid "Quitar esta carpeta de la biblioteca"
+msgstr "Remove this folder from the library"
+
+msgid "Sin acceso a los ficheros"
+msgstr "No access to files"
+
+msgid "Tunante necesita leer carpetas enteras: los formatos de consola no se indexan como audio."
+msgstr "Tunante needs to read whole folders: console formats are not indexed as audio."
+
+msgid "Usar esta carpeta"
+msgstr "Use this folder"
+
+msgid "ninguna"
+msgstr "none"
+
+msgid "sin biblioteca"
+msgstr "no library"
+
+msgid "¿Seguro?"
+msgstr "Are you sure?"

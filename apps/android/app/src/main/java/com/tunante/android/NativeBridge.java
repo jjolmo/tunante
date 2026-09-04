@@ -53,6 +53,12 @@ public final class NativeBridge {
      */
     public static native String nativeArtwork(String path);
 
+    /** Load the translation catalog for a language code, once. */
+    public static native void nativeInitI18n(String lang);
+
+    /** Translate a Spanish source string; returns it unchanged if there is no catalog entry. */
+    public static native String nativeTr(String source);
+
     /**
      * Tell the Rust side where its cover cache goes. Mandatory: Rust cannot
      * discover getCacheDir() on its own, and without this every archive index

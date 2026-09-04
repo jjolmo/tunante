@@ -59,7 +59,7 @@ produce a fresh `.pot` template you can install and run Slint's extractor:
 
 ```
 cargo install slint-tr-extractor
-find apps/tunante/ui -name '*.slint' | xargs slint-tr-extractor --no-default-translation-context -o apps/tunante/translations/tunante.pot
+find apps/tunante/ui -name '*.slint' | xargs slint-tr-extractor --no-default-translation-context -o crates/tunante-core/translations/tunante.pot
 ```
 
 Then merge it into each `.po` with `msgmerge`.
