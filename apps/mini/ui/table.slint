@@ -542,6 +542,12 @@ export component TrackTable inherits Rectangle {
                     }
                     pointer-event(ev) => {
                         if (ev.kind == PointerEventKind.down) {
+                            // Clicking a row takes the keyboard: arrows/Enter
+                            // land here from now on, and — the point the comment
+                            // above the scope always claimed but never wired —
+                            // the filter's TextInput loses focus, so its caret
+                            // stops blinking once you leave it for the list.
+                            keys.focus();
                             // Any click dismisses a lingering tooltip; the
                             // hover below re-arms it for wherever the pointer
                             // actually is now.

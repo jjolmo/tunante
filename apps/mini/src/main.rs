@@ -2477,6 +2477,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = db.set_setting("queue_placement", &next.to_string());
         });
     }
+    // Whether the Cola view stays put with nothing queued or only appears once
+    // there is a queue. Independent of placement: it gates both the sidebar
+    // entry and the right panel.
+    ui.set_queue_always_visible(
+        db.get_setting("queue_always_visible")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false),
+    );
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_queue_always_visible(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_queue_always_visible();
+            ui.set_queue_always_visible(next);
+            let _ = db.set_setting("queue_always_visible", if next { "true" } else { "false" });
+        });
+    }
     {
         let (st, model, player_q, db) = (table_state.clone(), table_model.clone(), player.clone(), db.clone());
         let weak = ui.as_weak();
@@ -7211,7 +7230,19 @@ fn shortcut_combo(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<Stri
         '\u{f72c}' => "RePág".to_string(),
         '\u{f72d}' => "AvPág".to_string(),
         c @ '\u{f704}'..='\u{f726}' => format!("F{}", c as u32 - 0xf703),
-        c if c.is_control() => return None,
+        c if c.is_control() => {
+            // With Ctrl held, winit/X11 hands us the control byte (Ctrl+A =
+            // 0x01, Ctrl+P = 0x10) instead of the letter. Fold it back so
+            // "Ctrl+P" is a real combo and not a dropped control character.
+            let code = c as u32;
+            if ctrl && (1..=26).contains(&code) {
+                char::from_u32(code + 0x60)
+                    .map(|l| l.to_uppercase().to_string())
+                    .unwrap_or_default()
+            } else {
+                return None;
+            }
+        }
         c => c.to_uppercase().to_string(),
     };
     let mut combo = String::new();

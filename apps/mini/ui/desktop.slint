@@ -72,9 +72,10 @@ component SidebarEntry inherits Rectangle {
         spacing: 8px;
         if root.glyph != "": Text {
             text: root.glyph;
-            // White on the blue selection — accent-on-accent vanished.
-            color: root.active ? #ffffff : Theme.text-muted;
-            font-size: Theme.font-small;
+            // Blue and a touch larger so Favoritos reads at a glance; white on
+            // the blue selection, where accent-on-accent would vanish.
+            color: root.active ? #ffffff : Theme.accent;
+            font-size: Theme.compact ? 16px : 19px;
             vertical-alignment: center;
         }
         Text {
@@ -275,6 +276,8 @@ export component DesktopShell inherits Rectangle {
     in property <[QueueRow]> queue-rows;
     in property <int> queue-placement;
     callback cycle-queue-placement();
+    in property <bool> queue-always-visible;
+    callback toggle-queue-always-visible();
     callback queue-opened-in-table();
     in property <[PlaylistRow]> playlists;
     in property <[PlaylistRow]> all-playlists;
@@ -658,9 +661,10 @@ export component DesktopShell inherits Rectangle {
                             root.table-faved-changed(true);
                         }
                     }
-                    // Queue as a sidebar entry (placement 0), only while it has
-                    // items — the old "Queued" view. Placement 2 is the panel.
-                    if root.queue-placement != 2 && root.queue-rows.length > 0: SidebarEntry {
+                    // Queue as a sidebar entry (placement 0). Shown while it has
+                    // items — the old "Queued" view — or always, if the user
+                    // pinned it. Placement 2 is the panel.
+                    if root.queue-placement != 2 && (root.queue-always-visible || root.queue-rows.length > 0): SidebarEntry {
                         label: "Cola";
                         count: root.queue-rows.length;
                         active: root.centre == 0 && root.table-scope-kind == "queue";
@@ -1101,15 +1105,15 @@ export component DesktopShell inherits Rectangle {
 
             // --- Right: the queue — only while it has something to say.
             //
-            // The Tauri desktop's rule, kept on purpose: its Queued entry
-            // existed only while the queue had items. A permanently
-            // reserved column showing nothing reads as a rendering bug,
-            // and an empty queue has nothing to teach anyone.
-            if root.queue-placement == 2 && root.queue-rows.length > 0: Rectangle {
+            // The Tauri desktop's rule, kept as the default: its Queued entry
+            // existed only while the queue had items — a permanently reserved
+            // column showing nothing reads as a rendering bug. The user can
+            // override it with "siempre visible" when they want the panel put.
+            if root.queue-placement == 2 && (root.queue-always-visible || root.queue-rows.length > 0): Rectangle {
                 width: 1px;
                 background: Theme.bg-tertiary;
             }
-            if root.queue-placement == 2 && root.queue-rows.length > 0: Rectangle {
+            if root.queue-placement == 2 && (root.queue-always-visible || root.queue-rows.length > 0): Rectangle {
                 width: 300px;
                 background: Theme.bg-primary;
                 QueueTab {
@@ -1479,6 +1483,8 @@ export component DesktopShell inherits Rectangle {
                     reset-shortcuts => { root.reset-shortcuts(); }
                     queue-placement: root.queue-placement;
                     cycle-queue-placement => { root.cycle-queue-placement(); }
+                    queue-always-visible: root.queue-always-visible;
+                    toggle-queue-always-visible => { root.toggle-queue-always-visible(); }
                     star-display-mode: root.star-display-mode;
                     set-star-display-mode(m) => { root.set-star-display-mode(m); }
                     ui-mode: root.ui-mode;
