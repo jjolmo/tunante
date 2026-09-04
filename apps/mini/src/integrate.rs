@@ -106,7 +106,13 @@ pub fn make_desktop_entry() -> Result<(), String> {
          StartupWMClass=tunante-mini\n",
         exe.display()
     );
-    std::fs::write(apps.join("tunante.desktop"), entry).map_err(|e| e.to_string())?;
+    // The file's basename must equal the window's app_id (`tunante-mini`, set in
+    // main.rs): KWin dresses the *titlebar* by matching the app_id to
+    // `<app_id>.desktop`, not to StartupWMClass — that only covers the taskbar.
+    // A `tunante.desktop` from an older build would leave a second menu entry
+    // (and the wrong-named one), so retire it.
+    let _ = std::fs::remove_file(apps.join("tunante.desktop"));
+    std::fs::write(apps.join("tunante-mini.desktop"), entry).map_err(|e| e.to_string())?;
 
     // Best effort: without it the menu still picks the entry up on next login.
     let _ = std::process::Command::new("update-desktop-database")
