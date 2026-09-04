@@ -30,7 +30,7 @@ export component FolderPicker inherits Rectangle {
                 alignment: center;
                 spacing: 2px;
                 Text {
-                    text: "¿Dónde está tu música?";
+                    text: @tr("¿Dónde está tu música?");
                     color: Theme.text-primary;
                     font-size: Theme.font-title;
                 }
@@ -57,7 +57,7 @@ export component FolderPicker inherits Rectangle {
                     vertical-alignment: center;
                 }
                 Text {
-                    text: "Subir un nivel";
+                    text: @tr("Subir un nivel");
                     color: Theme.text-secondary;
                     font-size: Theme.font-body;
                     vertical-alignment: center;
@@ -136,8 +136,8 @@ export component FolderPicker inherits Rectangle {
 
                 Text {
                     text: root.chosen-count == 0
-                        ? "Marca al menos una carpeta"
-                        : root.chosen-count + " carpeta(s) elegidas";
+                        ? @tr("Marca al menos una carpeta")
+                        : @tr("{} carpeta(s) elegidas", root.chosen-count);
                     color: Theme.text-secondary;
                     font-size: Theme.font-small;
                     vertical-alignment: center;
@@ -149,7 +149,7 @@ export component FolderPicker inherits Rectangle {
                     border-radius: Theme.radius;
                     background: root.chosen-count > 0 ? Theme.accent : Theme.bg-tertiary;
                     Text {
-                        text: "Analizar";
+                        text: @tr("Analizar");
                         color: root.chosen-count > 0 ? #ffffff : Theme.text-muted;
                         font-size: Theme.font-body;
                     }

@@ -1,0 +1,645 @@
+# German translation for Tunante.
+# Source strings are Spanish. Missing entries fall back to them.
+msgid ""
+msgstr ""
+"Project-Id-Version: tunante-mini\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Biblioteca"
+msgstr "Bibliothek"
+
+msgid "Pistas"
+msgstr "Titel"
+
+msgid "Favoritos"
+msgstr "Favoriten"
+
+msgid "Cola"
+msgstr "Warteschlange"
+
+msgid "Árbol"
+msgstr "Baum"
+
+msgid "Discos"
+msgstr "Alben"
+
+msgid "Consolas"
+msgstr "Konsolen"
+
+msgid "Juegos"
+msgstr "Spiele"
+
+msgid "Listas"
+msgstr "Wiedergabelisten"
+
+msgid "Carpetas"
+msgstr "Ordner"
+
+msgid "Reproducir"
+msgstr "Wiedergabe"
+
+msgid "Abrir en el gestor de archivos"
+msgstr "Im Dateimanager öffnen"
+
+msgid "Quitar de aquí"
+msgstr "Von hier entfernen"
+
+msgid "Carátulas…"
+msgstr "Cover…"
+
+msgid "Encolar todo"
+msgstr "Alle in Warteschlange"
+
+msgid "Renombrar…"
+msgstr "Umbenennen…"
+
+msgid "Borrar"
+msgstr "Löschen"
+
+msgid "buscando carátula…"
+msgstr "Suche Cover…"
+
+msgid "Ajustes"
+msgstr "Einstellungen"
+
+msgid "¿Dónde está tu música?"
+msgstr "Wo ist deine Musik?"
+
+msgid "Subir un nivel"
+msgstr "Eine Ebene höher"
+
+msgid "Marca al menos una carpeta"
+msgstr "Mindestens einen Ordner wählen"
+
+msgid "{} carpeta(s) elegidas"
+msgstr "{} Ordner ausgewählt"
+
+msgid "Analizar"
+msgstr "Scannen"
+
+msgid "sistema"
+msgstr "System"
+
+msgid "General"
+msgstr "Allgemein"
+
+msgid "Carátulas"
+msgstr "Cover"
+
+msgid "DSP"
+msgstr "DSP"
+
+msgid "Apariencia"
+msgstr "Darstellung"
+
+msgid "Atajos"
+msgstr "Tastenkürzel"
+
+msgid "Acerca de"
+msgstr "Über"
+
+msgid "Reproducción"
+msgstr "Wiedergabe"
+
+msgid "Repeticiones del bucle"
+msgstr "Schleifen-Wiederholungen"
+
+msgid "Fundido final"
+msgstr "Ausblendung am Ende"
+
+msgid "desactivado"
+msgstr "aus"
+
+msgid "Crossfade entre pistas"
+msgstr "Überblenden zwischen Titeln"
+
+msgid "Continuar desde lo encolado"
+msgstr "Aus der Warteschlange fortsetzen"
+
+msgid "Reanudar reproducción al abrir"
+msgstr "Wiedergabe beim Öffnen fortsetzen"
+
+msgid "Saltar pistas cortas"
+msgstr "Kurze Titel überspringen"
+
+msgid "Salida de audio"
+msgstr "Audioausgabe"
+
+msgid "Apagar la música en"
+msgstr "Musik ausschalten in"
+
+msgid "Bandeja y ventana"
+msgstr "Ablage und Fenster"
+
+msgid "Título de la canción en la ventana"
+msgstr "Songtitel im Fenster"
+
+msgid "Click en el icono de bandeja"
+msgstr "Klick auf Ablagesymbol"
+
+msgid "Icono de bandeja"
+msgstr "Ablagesymbol"
+
+msgid "Mostrar icono en la bandeja (requiere reiniciar)"
+msgstr "Ablagesymbol anzeigen (Neustart nötig)"
+
+msgid "Cerrar a la bandeja"
+msgstr "In die Ablage schließen"
+
+msgid "Carpetas analizadas"
+msgstr "Gescannte Ordner"
+
+msgid "Añadir una carpeta"
+msgstr "Ordner hinzufügen"
+
+msgid "vigilada"
+msgstr "überwacht"
+
+msgid "sin vigilar"
+msgstr "nicht überwacht"
+
+msgid "Volver a analizar"
+msgstr "Erneut scannen"
+
+msgid "Añadir ficheros sueltos"
+msgstr "Einzelne Dateien hinzufügen"
+
+msgid "Escaneo"
+msgstr "Scannen"
+
+msgid "Escaneo minucioso"
+msgstr "Gründlicher Scan"
+
+msgid "Bucles de formatos streamed"
+msgstr "Schleifen bei Streaming-Formaten"
+
+msgid "Tope de pistas infinitas"
+msgstr "Grenze für endlose Titel"
+
+msgid "predeterminado"
+msgstr "Standard"
+
+msgid "Aplicar el tope a todas las pistas"
+msgstr "Grenze auf alle Titel anwenden"
+
+msgid "Metadatos"
+msgstr "Metadaten"
+
+msgid "La columna Álbum/Juego enseña"
+msgstr "Die Spalte Album/Spiel zeigt"
+
+msgid "Prioridad de puntuaciones"
+msgstr "Bewertungspriorität"
+
+msgid "Descargar carátulas que falten"
+msgstr "Fehlende Cover herunterladen"
+
+msgid "Descarga automática de carátulas"
+msgstr "Cover automatisch herunterladen"
+
+msgid "Guardar carátula en la carpeta"
+msgstr "Cover im Ordner speichern"
+
+msgid "Deshacer última descarga"
+msgstr "Letzten Download rückgängig"
+
+msgid "Encaje de carátula"
+msgstr "Cover-Anpassung"
+
+msgid "Limpiar caché de carátulas"
+msgstr "Cover-Cache leeren"
+
+msgid "Ecualizador"
+msgstr "Equalizer"
+
+msgid "Graves"
+msgstr "Bässe"
+
+msgid "Medios"
+msgstr "Mitten"
+
+msgid "Agudos"
+msgstr "Höhen"
+
+msgid "Ganancia y dinámica"
+msgstr "Verstärkung und Dynamik"
+
+msgid "Preamplificador"
+msgstr "Vorverstärker"
+
+msgid "Limitador"
+msgstr "Limiter"
+
+msgid "Espacialidad"
+msgstr "Räumlichkeit"
+
+msgid "Mono"
+msgstr "Mono"
+
+msgid "Mono · compensación de nivel"
+msgstr "Mono · Pegelausgleich"
+
+msgid "Mono · seguro de fase"
+msgstr "Mono · Phasensicherung"
+
+msgid "Con mono, el balance descentrado silencia un lado"
+msgstr "In Mono stummt eine außermittige Balance eine Seite"
+
+msgid "Centrar"
+msgstr "Zentrieren"
+
+msgid "Balance"
+msgstr "Balance"
+
+msgid "Anchura estéreo"
+msgstr "Stereobreite"
+
+msgid "Restablecer todos los efectos"
+msgstr "Alle Effekte zurücksetzen"
+
+msgid "Presentación"
+msgstr "Darstellung"
+
+msgid "Modo de interfaz"
+msgstr "Oberflächenmodus"
+
+msgid "  ↳ Aplicar (cambia la presentación)"
+msgstr "  ↳ Anwenden (ändert die Darstellung)"
+
+msgid "Aplicar"
+msgstr "Anwenden"
+
+msgid "panel derecho"
+msgstr "rechtes Feld"
+
+msgid "entrada en el sidebar"
+msgstr "Eintrag in der Seitenleiste"
+
+msgid "  ↳ Visibilidad de la cola"
+msgstr "  ↳ Sichtbarkeit der Warteschlange"
+
+msgid "siempre visible"
+msgstr "immer sichtbar"
+
+msgid "solo cuando hay cola"
+msgstr "nur bei Warteschlange"
+
+msgid "Estrellas de puntuación"
+msgstr "Bewertungssterne"
+
+msgid "una si tiene puntuación"
+msgstr "eine bei Bewertung"
+
+msgid "las cinco"
+msgstr "alle fünf"
+
+msgid "Tema"
+msgstr "Thema"
+
+msgid "Oscuro"
+msgstr "Dunkel"
+
+msgid "Claro"
+msgstr "Hell"
+
+msgid "Sistema"
+msgstr "System"
+
+msgid "Vistas de la biblioteca"
+msgstr "Bibliotheksansichten"
+
+msgid "Secciones del sidebar"
+msgstr "Seitenleisten-Abschnitte"
+
+msgid "Carátula del reproductor"
+msgstr "Player-Cover"
+
+msgid "Consolas (acceso rápido)"
+msgstr "Konsolen (Schnellzugriff)"
+
+msgid "Listas (acceso rápido)"
+msgstr "Wiedergabelisten (Schnellzugriff)"
+
+msgid "Globales"
+msgstr "Global"
+
+msgid "Atajos globales"
+msgstr "Globale Tastenkürzel"
+
+msgid "Botones de ratón"
+msgstr "Maustasten"
+
+msgid "Ratón · Atrás"
+msgstr "Maus · Zurück"
+
+msgid "Ratón · Adelante"
+msgstr "Maus · Vor"
+
+msgid "Ratón · Lateral"
+msgstr "Maus · Seite"
+
+msgid "Ratón · Extra"
+msgstr "Maus · Extra"
+
+msgid "Teclas de la aplicación"
+msgstr "Anwendungstasten"
+
+msgid "Restablecer todos los atajos"
+msgstr "Alle Tastenkürzel zurücksetzen"
+
+msgid "Un reproductor multiplataforma centrado en la música de videojuegos, inspirado en foobar2000."
+msgstr "Ein plattformübergreifender Player für Videospielmusik, inspiriert von foobar2000."
+
+msgid "Actualizaciones"
+msgstr "Aktualisierungen"
+
+msgid "Buscar actualizaciones"
+msgstr "Nach Updates suchen"
+
+msgid "Omitir esta versión"
+msgstr "Diese Version überspringen"
+
+msgid "Auto-actualizar al arrancar"
+msgstr "Auto-Update beim Start"
+
+msgid "Avisar de actualizaciones al arrancar"
+msgstr "Beim Start über Updates informieren"
+
+msgid "Integrar en el escritorio"
+msgstr "In den Desktop integrieren"
+
+msgid "Registro"
+msgstr "Protokoll"
+
+msgid "Código fuente"
+msgstr "Quellcode"
+
+msgid "Construido con"
+msgstr "Erstellt mit"
+
+msgid "Vibecoded por jjolmo."
+msgstr "Vibecoded von jjolmo."
+
+msgid "Columna de estrellas"
+msgstr "Sterne-Spalte"
+
+msgid "Mostrar las cinco estrellas"
+msgstr "Alle fünf Sterne anzeigen"
+
+msgid "Una estrella si tiene puntuación"
+msgstr "Ein Stern bei Bewertung"
+
+msgid "Filtrar pistas…"
+msgstr "Titel filtern…"
+
+msgid "Nada casa con la búsqueda."
+msgstr "Keine Treffer für die Suche."
+
+msgid "No hay pistas en la biblioteca."
+msgstr "Keine Titel in der Bibliothek."
+
+msgid "Prueba con menos letras."
+msgstr "Versuche weniger Buchstaben."
+
+msgid "Añade carpetas desde Ajustes."
+msgstr "Füge Ordner in den Einstellungen hinzu."
+
+msgid "Reproducir a continuación"
+msgstr "Als Nächstes wiedergeben"
+
+msgid "Encolar"
+msgstr "In Warteschlange"
+
+msgid "Quitar de la cola"
+msgstr "Aus Warteschlange entfernen"
+
+msgid "Quitar de la lista"
+msgstr "Aus Wiedergabeliste entfernen"
+
+msgid "Añadir a lista…"
+msgstr "Zur Wiedergabeliste…"
+
+msgid "Editar metadatos…"
+msgstr "Metadaten bearbeiten…"
+
+msgid "Reclasificar…"
+msgstr "Neu einordnen…"
+
+msgid "Nombres de pistas…"
+msgstr "Titelnamen…"
+
+msgid "Buscar carátula…"
+msgstr "Cover suchen…"
+
+msgid "Abrir carpeta"
+msgstr "Ordner öffnen"
+
+msgid "Fijar carpeta"
+msgstr "Ordner anheften"
+
+msgid "Columnas"
+msgstr "Spalten"
+
+msgid "auto"
+msgstr "auto"
+
+msgid "Sonido"
+msgstr "Ton"
+
+msgid "Música de consola"
+msgstr "Konsolenmusik"
+
+msgid "sin fundido"
+msgstr "ohne Blende"
+
+msgid "sí"
+msgstr "ja"
+
+msgid "no"
+msgstr "nein"
+
+msgid "activado"
+msgstr "ein"
+
+msgid "Mono · compensación"
+msgstr "Mono · Ausgleich"
+
+msgid "Descargar carátulas"
+msgstr "Cover herunterladen"
+
+msgid "Carátula en el sidebar"
+msgstr "Cover in der Seitenleiste"
+
+msgid "Favoritos en el sidebar"
+msgstr "Favoriten in der Seitenleiste"
+
+msgid "Carpetas en el sidebar"
+msgstr "Ordner in der Seitenleiste"
+
+msgid "Listas en el sidebar"
+msgstr "Wiedergabelisten in der Seitenleiste"
+
+msgid "↳ Aplicar (cambia la presentación)"
+msgstr "↳ Anwenden (ändert die Darstellung)"
+
+msgid "Acerca de Tunante"
+msgstr "Über Tunante"
+
+msgid "¿Seguro? Toca otra vez"
+msgstr "Sicher? Nochmal tippen"
+
+msgid "Vaciar la cola ({})"
+msgstr "Warteschlange leeren ({})"
+
+msgid "Quitar"
+msgstr "Entfernen"
+
+msgid "Buscar…"
+msgstr "Suchen…"
+
+msgid "Filtrar lo que se ve…"
+msgstr "Angezeigtes filtern…"
+
+msgid "Encolar todas ({})"
+msgstr "Alle in Warteschlange ({})"
+
+msgid "Nueva lista"
+msgstr "Neue Wiedergabeliste"
+
+msgid "A la cola"
+msgstr "In die Warteschlange"
+
+msgid "1 elemento"
+msgstr "1 Element"
+
+msgid "{} elementos"
+msgstr "{} Elemente"
+
+msgid "Añadir todo, con las subcarpetas"
+msgstr "Alles hinzufügen, mit Unterordnern"
+
+msgid "Añadir a la cola"
+msgstr "Zur Warteschlange hinzufügen"
+
+msgid "Añadir sólo esta carpeta"
+msgstr "Nur diesen Ordner hinzufügen"
+
+msgid "Añadir carpeta y subcarpetas a lista"
+msgstr "Ordner und Unterordner zur Liste"
+
+msgid "Añadir a una lista"
+msgstr "Zu einer Wiedergabeliste"
+
+msgid "Añadir carpeta a lista"
+msgstr "Ordner zur Wiedergabeliste"
+
+msgid "Reproducir carpeta"
+msgstr "Ordner wiedergeben"
+
+msgid "Fijar en el sidebar"
+msgstr "An Seitenleiste anheften"
+
+msgid "Cancelar"
+msgstr "Abbrechen"
+
+msgid "Encolar todas"
+msgstr "Alle in Warteschlange"
+
+msgid "Renombrar"
+msgstr "Umbenennen"
+
+msgid "Borrar la lista"
+msgstr "Wiedergabeliste löschen"
+
+msgid "Añadir a…"
+msgstr "Hinzufügen zu…"
+
+msgid "Crear lista nueva…"
+msgstr "Neue Wiedergabeliste…"
+
+msgid "Crear"
+msgstr "Erstellen"
+
+msgid "Nueva lista, con lo elegido dentro"
+msgstr "Neue Liste, mit der Auswahl darin"
+
+msgid "Crear y añadir"
+msgstr "Erstellen und hinzufügen"
+
+msgid "Renombrar la lista"
+msgstr "Wiedergabeliste umbenennen"
+
+msgid "Guardar"
+msgstr "Speichern"
+
+msgid "Sonando"
+msgstr "Läuft gerade"
+
+msgid "Nombre de la lista"
+msgstr "Name der Wiedergabeliste"
+
+msgid "Título"
+msgstr "Titel"
+
+msgid "Artista"
+msgstr "Künstler"
+
+msgid "Álbum"
+msgstr "Album"
+
+msgid "Nº de pista"
+msgstr "Titelnr."
+
+msgid "Toda la carpeta"
+msgstr "Der ganze Ordner"
+
+msgid "Solo esta pista"
+msgstr "Nur dieser Titel"
+
+msgid "Consola"
+msgstr "Konsole"
+
+msgid "filtra: nombre o códec (spc…)"
+msgstr "Filter: Name oder Codec (spc…)"
+
+msgid "Juego"
+msgstr "Spiel"
+
+msgid "En la biblioteca:"
+msgstr "In der Bibliothek:"
+
+msgid "Buscar por nombre"
+msgstr "Nach Name suchen"
+
+msgid "Buscar"
+msgstr "Suchen"
+
+msgid "Descargar automáticamente"
+msgstr "Automatisch herunterladen"
+
+msgid "…o una lista nueva"
+msgstr "…oder eine neue Liste"
+
+msgid "Descarga de carátulas"
+msgstr "Cover-Download"
+
+msgid "Parar"
+msgstr "Stopp"
+
+msgid "Cerrar"
+msgstr "Schließen"
+
+msgid "Arreglar también las duraciones"
+msgstr "Auch Laufzeiten korrigieren"
+
+msgid "Filtrar…"
+msgstr "Filtern…"
+
+msgid "Copiar"
+msgstr "Kopieren"
+
+msgid "Limpiar"
+msgstr "Leeren"

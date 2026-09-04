@@ -124,7 +124,7 @@ export component DesktopSettings inherits Rectangle {
     callback cycle-short-filter();
     in property <int> crossfade-secs;
     callback cycle-crossfade();
-    in property <string> output-label: "sistema";
+    in property <string> output-label: @tr("sistema");
     in property <string> ui-mode-label: "auto";
     in property <string> update-status;
     callback check-update();
@@ -266,7 +266,7 @@ export component DesktopSettings inherits Rectangle {
                     padding-left: Theme.gap * 2;
                     padding-right: Theme.gap;
                     Text {
-                        text: "Ajustes";
+                        text: @tr("Ajustes");
                         color: Theme.text-primary;
                         font-size: Theme.font-title;
                         vertical-alignment: center;
@@ -296,13 +296,13 @@ export component DesktopSettings inherits Rectangle {
                     VerticalLayout {
                         padding: Theme.gap;
                         spacing: 2px;
-                        NavItem { label: "General"; active: root.tab == 0; clicked => { root.tab = 0; } }
-                        NavItem { label: "Biblioteca"; active: root.tab == 1; clicked => { root.tab = 1; } }
-                        NavItem { label: "Carátulas"; active: root.tab == 2; clicked => { root.tab = 2; } }
-                        NavItem { label: "DSP"; active: root.tab == 3; clicked => { root.tab = 3; } }
-                        NavItem { label: "Apariencia"; active: root.tab == 4; clicked => { root.tab = 4; } }
-                        NavItem { label: "Atajos"; active: root.tab == 5; clicked => { root.tab = 5; } }
-                        NavItem { label: "Acerca de"; active: root.tab == 6; clicked => { root.tab = 6; } }
+                        NavItem { label: @tr("General"); active: root.tab == 0; clicked => { root.tab = 0; } }
+                        NavItem { label: @tr("Biblioteca"); active: root.tab == 1; clicked => { root.tab = 1; } }
+                        NavItem { label: @tr("Carátulas"); active: root.tab == 2; clicked => { root.tab = 2; } }
+                        NavItem { label: @tr("DSP"); active: root.tab == 3; clicked => { root.tab = 3; } }
+                        NavItem { label: @tr("Apariencia"); active: root.tab == 4; clicked => { root.tab = 4; } }
+                        NavItem { label: @tr("Atajos"); active: root.tab == 5; clicked => { root.tab = 5; } }
+                        NavItem { label: @tr("Acerca de"); active: root.tab == 6; clicked => { root.tab = 6; } }
                         Rectangle { vertical-stretch: 1; }
                     }
                 }
@@ -320,70 +320,70 @@ export component DesktopSettings inherits Rectangle {
                             // ===== General =====
                             if root.tab == 0: VerticalLayout {
                                 spacing: 2px;
-                                Section { text: "Reproducción"; }
+                                Section { text: @tr("Reproducción"); }
                                 SettingRow {
-                                    label: "Repeticiones del bucle";
+                                    label: @tr("Repeticiones del bucle");
                                     value: root.loop-count == 0 ? "∞" : (root.loop-count == 1 ? "1" : (root.loop-count == 2 ? "2" : "3"));
                                     clicked => { root.cycle-loops(); }
                                 }
                                 SettingRow {
-                                    label: "Fundido final";
-                                    value: root.fade-seconds == 0 ? "desactivado" : (root.fade-seconds + " s");
+                                    label: @tr("Fundido final");
+                                    value: root.fade-seconds == 0 ? @tr("desactivado") : (root.fade-seconds + " s");
                                     clicked => { root.cycle-fade(); }
                                 }
                                 SettingRow {
-                                    label: "Crossfade entre pistas";
-                                    value: root.crossfade-secs == 0 ? "desactivado" : (root.crossfade-secs + " s");
+                                    label: @tr("Crossfade entre pistas");
+                                    value: root.crossfade-secs == 0 ? @tr("desactivado") : (root.crossfade-secs + " s");
                                     clicked => { root.cycle-crossfade(); }
                                 }
                                 CheckRow {
-                                    label: "Continuar desde lo encolado";
+                                    label: @tr("Continuar desde lo encolado");
                                     checked: root.continue-queue;
                                     toggled => { root.toggle-continue-queue(); }
                                 }
                                 CheckRow {
-                                    label: "Reanudar reproducción al abrir";
+                                    label: @tr("Reanudar reproducción al abrir");
                                     checked: root.resume-on-open;
                                     toggled => { root.toggle-resume-on-open(); }
                                 }
                                 SettingRow {
-                                    label: "Saltar pistas cortas";
-                                    value: root.short-filter-secs == 0 ? "desactivado" : (root.short-filter-secs + " s");
+                                    label: @tr("Saltar pistas cortas");
+                                    value: root.short-filter-secs == 0 ? @tr("desactivado") : (root.short-filter-secs + " s");
                                     clicked => { root.cycle-short-filter(); }
                                 }
                                 SettingRow {
-                                    label: "Salida de audio";
+                                    label: @tr("Salida de audio");
                                     value: root.output-label;
                                     clicked => { root.cycle-output(); }
                                 }
                                 SettingRow {
-                                    label: "Apagar la música en";
-                                    value: root.sleep-running ? (root.sleep-minutes + " min") : "desactivado";
+                                    label: @tr("Apagar la música en");
+                                    value: root.sleep-running ? (root.sleep-minutes + " min") : @tr("desactivado");
                                     clicked => { root.cycle-sleep(); }
                                 }
-                                Section { text: "Bandeja y ventana"; }
+                                Section { text: @tr("Bandeja y ventana"); }
                                 CheckRow {
-                                    label: "Título de la canción en la ventana";
+                                    label: @tr("Título de la canción en la ventana");
                                     checked: root.titlebar-track;
                                     toggled => { root.toggle-titlebar-track(); }
                                 }
                                 SettingRow {
-                                    label: "Click en el icono de bandeja";
+                                    label: @tr("Click en el icono de bandeja");
                                     value: root.tray-click-label;
                                     clicked => { root.cycle-tray-click(); }
                                 }
                                 SettingRow {
-                                    label: "Icono de bandeja";
+                                    label: @tr("Icono de bandeja");
                                     value: root.tray-style-label;
                                     clicked => { root.cycle-tray-style(); }
                                 }
                                 CheckRow {
-                                    label: "Mostrar icono en la bandeja (requiere reiniciar)";
+                                    label: @tr("Mostrar icono en la bandeja (requiere reiniciar)");
                                     checked: root.show-in-tray;
                                     toggled => { root.toggle-show-in-tray(); }
                                 }
                                 CheckRow {
-                                    label: "Cerrar a la bandeja";
+                                    label: @tr("Cerrar a la bandeja");
                                     checked: root.close-to-tray;
                                     toggled => { root.toggle-close-to-tray(); }
                                 }
@@ -392,9 +392,9 @@ export component DesktopSettings inherits Rectangle {
                             // ===== Biblioteca =====
                             if root.tab == 1: VerticalLayout {
                                 spacing: 2px;
-                                Section { text: "Carpetas analizadas"; }
+                                Section { text: @tr("Carpetas analizadas"); }
                                 SettingRow {
-                                    label: "Añadir una carpeta";
+                                    label: @tr("Añadir una carpeta");
                                     value: "＋";
                                     clicked => { root.add-folder(); }
                                 }
@@ -417,7 +417,7 @@ export component DesktopSettings inherits Rectangle {
                                             border-radius: Theme.radius;
                                             background: wt.has-hover ? Theme.bg-hover : transparent;
                                             Text {
-                                                text: lf.watching ? "vigilada" : "sin vigilar";
+                                                text: lf.watching ? @tr("vigilada") : @tr("sin vigilar");
                                                 color: lf.watching ? Theme.accent : Theme.text-muted;
                                                 font-size: Theme.font-small;
                                                 vertical-alignment: center;
@@ -443,44 +443,44 @@ export component DesktopSettings inherits Rectangle {
                                     }
                                 }
                                 SettingRow {
-                                    label: "Volver a analizar";
+                                    label: @tr("Volver a analizar");
                                     value: "↻";
                                     clicked => { root.rescan(); }
                                 }
                                 SettingRow {
-                                    label: "Añadir ficheros sueltos";
+                                    label: @tr("Añadir ficheros sueltos");
                                     value: root.add-files-label;
                                     clicked => { root.add-files(); }
                                 }
-                                Section { text: "Escaneo"; }
+                                Section { text: @tr("Escaneo"); }
                                 CheckRow {
-                                    label: "Escaneo minucioso";
+                                    label: @tr("Escaneo minucioso");
                                     checked: root.slow-scan;
                                     toggled => { root.toggle-slow-scan(); }
                                 }
                                 SettingRow {
-                                    label: "Bucles de formatos streamed";
+                                    label: @tr("Bucles de formatos streamed");
                                     value: root.vgm-loops-label;
                                     clicked => { root.cycle-vgm-loops(); }
                                 }
                                 SettingRow {
-                                    label: "Tope de pistas infinitas";
-                                    value: root.loop-max-mins == 0 ? "predeterminado" : (root.loop-max-mins + " min");
+                                    label: @tr("Tope de pistas infinitas");
+                                    value: root.loop-max-mins == 0 ? @tr("predeterminado") : (root.loop-max-mins + " min");
                                     clicked => { root.cycle-loop-max(); }
                                 }
                                 CheckRow {
-                                    label: "Aplicar el tope a todas las pistas";
+                                    label: @tr("Aplicar el tope a todas las pistas");
                                     checked: root.caps-all;
                                     toggled => { root.toggle-caps-all(); }
                                 }
-                                Section { text: "Metadatos"; }
+                                Section { text: @tr("Metadatos"); }
                                 SettingRow {
-                                    label: "La columna Álbum/Juego enseña";
+                                    label: @tr("La columna Álbum/Juego enseña");
                                     value: root.album-game-label;
                                     clicked => { root.toggle-album-game(); }
                                 }
                                 SettingRow {
-                                    label: "Prioridad de puntuaciones";
+                                    label: @tr("Prioridad de puntuaciones");
                                     value: root.rating-priority-label;
                                     clicked => { root.cycle-rating-priority(); }
                                 }
@@ -490,32 +490,32 @@ export component DesktopSettings inherits Rectangle {
                             if root.tab == 2: VerticalLayout {
                                 spacing: 2px;
                                 SettingRow {
-                                    label: "Descargar carátulas que falten";
+                                    label: @tr("Descargar carátulas que falten");
                                     value: "⬇";
                                     clicked => { root.descargar-caratulas(); }
                                 }
                                 CheckRow {
-                                    label: "Descarga automática de carátulas";
+                                    label: @tr("Descarga automática de carátulas");
                                     checked: root.auto-covers;
                                     toggled => { root.toggle-auto-covers(); }
                                 }
                                 CheckRow {
-                                    label: "Guardar carátula en la carpeta";
+                                    label: @tr("Guardar carátula en la carpeta");
                                     checked: root.covers-in-folder;
                                     toggled => { root.toggle-covers-in-folder(); }
                                 }
                                 SettingRow {
-                                    label: "Deshacer última descarga";
+                                    label: @tr("Deshacer última descarga");
                                     value: root.undo-covers-label;
                                     clicked => { root.undo-covers(); }
                                 }
                                 SettingRow {
-                                    label: "Encaje de carátula";
+                                    label: @tr("Encaje de carátula");
                                     value: root.cover-fit-label;
                                     clicked => { root.cycle-cover-fit(); }
                                 }
                                 SettingRow {
-                                    label: "Limpiar caché de carátulas";
+                                    label: @tr("Limpiar caché de carátulas");
                                     value: root.clear-cache-label;
                                     clicked => { root.clear-cover-cache(); }
                                 }
@@ -539,65 +539,65 @@ export component DesktopSettings inherits Rectangle {
                                         }
                                     }
                                 }
-                                Section { text: "Ecualizador"; }
+                                Section { text: @tr("Ecualizador"); }
                                 CheckRow {
-                                    label: "Ecualizador";
+                                    label: @tr("Ecualizador");
                                     checked: root.eq-enabled;
                                     toggled => { root.toggle-eq(); }
                                 }
                                 DbSliderRow {
-                                    label: "Graves";
+                                    label: @tr("Graves");
                                     db: root.eq-low;
                                     active: root.eq-enabled;
                                     changed(v) => { root.set-eq-band(0, v); }
                                 }
                                 DbSliderRow {
-                                    label: "Medios";
+                                    label: @tr("Medios");
                                     db: root.eq-mid;
                                     active: root.eq-enabled;
                                     changed(v) => { root.set-eq-band(1, v); }
                                 }
                                 DbSliderRow {
-                                    label: "Agudos";
+                                    label: @tr("Agudos");
                                     db: root.eq-high;
                                     active: root.eq-enabled;
                                     changed(v) => { root.set-eq-band(2, v); }
                                 }
-                                Section { text: "Ganancia y dinámica"; }
+                                Section { text: @tr("Ganancia y dinámica"); }
                                 DbSliderRow {
-                                    label: "Preamplificador";
+                                    label: @tr("Preamplificador");
                                     db: root.preamp-db;
                                     changed(v) => { root.set-preamp(v); }
                                 }
                                 CheckRow {
-                                    label: "Limitador";
+                                    label: @tr("Limitador");
                                     checked: root.dsp-limiter;
                                     toggled => { root.toggle-limiter(); }
                                 }
-                                Section { text: "Espacialidad"; }
+                                Section { text: @tr("Espacialidad"); }
                                 CheckRow {
-                                    label: "Mono";
+                                    label: @tr("Mono");
                                     checked: root.dsp-mono;
                                     toggled => { root.toggle-mono(); }
                                 }
                                 CheckRow {
-                                    label: "Mono · compensación de nivel";
+                                    label: @tr("Mono · compensación de nivel");
                                     checked: root.dsp-mono-compensate;
                                     toggled => { root.toggle-mono-compensate(); }
                                 }
                                 CheckRow {
-                                    label: "Mono · seguro de fase";
+                                    label: @tr("Mono · seguro de fase");
                                     checked: root.dsp-mono-phase;
                                     toggled => { root.toggle-mono-phase(); }
                                 }
                                 if root.dsp-mono && (root.dsp-balance > 0.001 || root.dsp-balance < -0.001): SettingRow {
-                                    label: "Con mono, el balance descentrado silencia un lado";
-                                    value: "Centrar";
+                                    label: @tr("Con mono, el balance descentrado silencia un lado");
+                                    value: @tr("Centrar");
                                     highlighted: true;
                                     clicked => { root.set-balance(0); }
                                 }
                                 DbSliderRow {
-                                    label: "Balance";
+                                    label: @tr("Balance");
                                     db: root.dsp-balance;
                                     range-min: -1;
                                     range-max: 1;
@@ -605,7 +605,7 @@ export component DesktopSettings inherits Rectangle {
                                     changed(v) => { root.set-balance(v); }
                                 }
                                 DbSliderRow {
-                                    label: "Anchura estéreo";
+                                    label: @tr("Anchura estéreo");
                                     db: root.dsp-width;
                                     range-min: 0;
                                     range-max: 2;
@@ -613,7 +613,7 @@ export component DesktopSettings inherits Rectangle {
                                     changed(v) => { root.set-width(v); }
                                 }
                                 SettingRow {
-                                    label: "Restablecer todos los efectos";
+                                    label: @tr("Restablecer todos los efectos");
                                     value: "↺";
                                     clicked => { root.reset-dsp(); }
                                 }
@@ -622,41 +622,41 @@ export component DesktopSettings inherits Rectangle {
                             // ===== Apariencia =====
                             if root.tab == 4: VerticalLayout {
                                 spacing: 2px;
-                                Section { text: "Presentación"; }
+                                Section { text: @tr("Presentación"); }
                                 SettingRow {
-                                    label: "Modo de interfaz";
+                                    label: @tr("Modo de interfaz");
                                     value: root.ui-mode-pending-label;
                                     clicked => { root.cycle-ui-mode(); }
                                 }
                                 if root.ui-mode-pending != root.ui-mode: SettingRow {
-                                    label: "  ↳ Aplicar (cambia la presentación)";
-                                    value: "Aplicar";
+                                    label: @tr("  ↳ Aplicar (cambia la presentación)");
+                                    value: @tr("Aplicar");
                                     highlighted: true;
                                     clicked => { root.apply-ui-mode(); }
                                 }
                                 SettingRow {
-                                    label: "Cola";
-                                    value: root.queue-placement == 2 ? "panel derecho" : "entrada en el sidebar";
+                                    label: @tr("Cola");
+                                    value: root.queue-placement == 2 ? @tr("panel derecho") : @tr("entrada en el sidebar");
                                     clicked => { root.cycle-queue-placement(); }
                                 }
                                 SettingRow {
-                                    label: "  ↳ Visibilidad de la cola";
-                                    value: root.queue-always-visible ? "siempre visible" : "solo cuando hay cola";
+                                    label: @tr("  ↳ Visibilidad de la cola");
+                                    value: root.queue-always-visible ? @tr("siempre visible") : @tr("solo cuando hay cola");
                                     clicked => { root.toggle-queue-always-visible(); }
                                 }
                                 SettingRow {
-                                    label: "Estrellas de puntuación";
-                                    value: root.star-display-mode == 1 ? "una si tiene puntuación" : "las cinco";
+                                    label: @tr("Estrellas de puntuación");
+                                    value: root.star-display-mode == 1 ? @tr("una si tiene puntuación") : @tr("las cinco");
                                     clicked => { root.set-star-display-mode(root.star-display-mode == 1 ? 0 : 1); }
                                 }
-                                Section { text: "Tema"; }
+                                Section { text: @tr("Tema"); }
                                 HorizontalLayout {
                                     spacing: Theme.gap;
                                     height: 84px;
                                     for card[ci] in [
-                                        { name: "Oscuro", mode: 0 },
-                                        { name: "Claro", mode: 1 },
-                                        { name: "Sistema", mode: 2 },
+                                        { name: @tr("Oscuro"), mode: 0 },
+                                        { name: @tr("Claro"), mode: 1 },
+                                        { name: @tr("Sistema"), mode: 2 },
                                     ]: Rectangle {
                                         border-radius: Theme.radius;
                                         border-width: root.theme-mode == card.mode ? 2px : 1px;
@@ -685,55 +685,55 @@ export component DesktopSettings inherits Rectangle {
                                         tcard := TouchArea { clicked => { root.set-theme(card.mode); } }
                                     }
                                 }
-                                Section { text: "Vistas de la biblioteca"; }
+                                Section { text: @tr("Vistas de la biblioteca"); }
                                 CheckRow {
-                                    label: "Árbol";
+                                    label: @tr("Árbol");
                                     checked: root.show-files;
                                     toggled => { root.toggle-show-files(); }
                                 }
                                 CheckRow {
-                                    label: "Discos";
+                                    label: @tr("Discos");
                                     checked: root.show-discos;
                                     toggled => { root.toggle-show-discos(); }
                                 }
                                 CheckRow {
-                                    label: "Consolas";
+                                    label: @tr("Consolas");
                                     checked: root.show-consoles-view;
                                     toggled => { root.toggle-show-consoles-view(); }
                                 }
                                 CheckRow {
-                                    label: "Juegos";
+                                    label: @tr("Juegos");
                                     checked: root.show-juegos;
                                     toggled => { root.toggle-show-juegos(); }
                                 }
                                 CheckRow {
-                                    label: "Listas";
+                                    label: @tr("Listas");
                                     checked: root.show-listas-view;
                                     toggled => { root.toggle-show-listas-view(); }
                                 }
-                                Section { text: "Secciones del sidebar"; }
+                                Section { text: @tr("Secciones del sidebar"); }
                                 CheckRow {
-                                    label: "Carátula del reproductor";
+                                    label: @tr("Carátula del reproductor");
                                     checked: root.show-cover;
                                     toggled => { root.toggle-show-cover(); }
                                 }
                                 CheckRow {
-                                    label: "Favoritos";
+                                    label: @tr("Favoritos");
                                     checked: root.show-faved;
                                     toggled => { root.toggle-show-faved(); }
                                 }
                                 CheckRow {
-                                    label: "Carpetas";
+                                    label: @tr("Carpetas");
                                     checked: root.show-folders;
                                     toggled => { root.toggle-show-folders(); }
                                 }
                                 CheckRow {
-                                    label: "Consolas (acceso rápido)";
+                                    label: @tr("Consolas (acceso rápido)");
                                     checked: root.show-consoles;
                                     toggled => { root.toggle-show-consoles(); }
                                 }
                                 CheckRow {
-                                    label: "Listas (acceso rápido)";
+                                    label: @tr("Listas (acceso rápido)");
                                     checked: root.show-playlists;
                                     toggled => { root.toggle-show-playlists(); }
                                 }
@@ -742,38 +742,38 @@ export component DesktopSettings inherits Rectangle {
                             // ===== Atajos =====
                             if root.tab == 5: VerticalLayout {
                                 spacing: 2px;
-                                Section { text: "Globales"; }
+                                Section { text: @tr("Globales"); }
                                 CheckRow {
-                                    label: "Atajos globales";
+                                    label: @tr("Atajos globales");
                                     checked: root.global-shortcuts-on;
                                     toggled => { root.toggle-global-shortcuts(); }
                                 }
                                 CheckRow {
-                                    label: "Botones de ratón";
+                                    label: @tr("Botones de ratón");
                                     checked: root.mouse-buttons-on;
                                     toggled => { root.toggle-mouse-buttons(); }
                                 }
                                 SettingRow {
-                                    label: "Ratón · Atrás";
+                                    label: @tr("Ratón · Atrás");
                                     value: root.mouse-back-label;
                                     clicked => { root.cycle-mouse-action("back"); }
                                 }
                                 SettingRow {
-                                    label: "Ratón · Adelante";
+                                    label: @tr("Ratón · Adelante");
                                     value: root.mouse-forward-label;
                                     clicked => { root.cycle-mouse-action("forward"); }
                                 }
                                 SettingRow {
-                                    label: "Ratón · Lateral";
+                                    label: @tr("Ratón · Lateral");
                                     value: root.mouse-side-label;
                                     clicked => { root.cycle-mouse-action("side"); }
                                 }
                                 SettingRow {
-                                    label: "Ratón · Extra";
+                                    label: @tr("Ratón · Extra");
                                     value: root.mouse-extra-label;
                                     clicked => { root.cycle-mouse-action("extra"); }
                                 }
-                                Section { text: "Teclas de la aplicación"; }
+                                Section { text: @tr("Teclas de la aplicación"); }
                                 for sr in root.shortcut-rows: SettingRow {
                                     label: sr.label;
                                     value: sr.key == "" ? "—" : sr.key;
@@ -781,7 +781,7 @@ export component DesktopSettings inherits Rectangle {
                                     clicked => { root.shortcut-capture(sr.id); }
                                 }
                                 SettingRow {
-                                    label: "Restablecer todos los atajos";
+                                    label: @tr("Restablecer todos los atajos");
                                     value: "↺";
                                     clicked => { root.reset-shortcuts(); }
                                 }
@@ -815,47 +815,47 @@ export component DesktopSettings inherits Rectangle {
                                     }
                                 }
                                 Text {
-                                    text: "Un reproductor multiplataforma centrado en la música de videojuegos, inspirado en foobar2000.";
+                                    text: @tr("Un reproductor multiplataforma centrado en la música de videojuegos, inspirado en foobar2000.");
                                     color: Theme.text-secondary;
                                     font-size: Theme.font-small;
                                     wrap: word-wrap;
                                 }
 
-                                Section { text: "Actualizaciones"; }
+                                Section { text: @tr("Actualizaciones"); }
                                 SettingRow {
-                                    label: "Buscar actualizaciones";
+                                    label: @tr("Buscar actualizaciones");
                                     value: root.update-status;
                                     clicked => { root.check-update(); }
                                 }
                                 if root.update-skippable: SettingRow {
-                                    label: "Omitir esta versión";
+                                    label: @tr("Omitir esta versión");
                                     value: "×";
                                     clicked => { root.skip-update(); }
                                 }
                                 CheckRow {
-                                    label: "Auto-actualizar al arrancar";
+                                    label: @tr("Auto-actualizar al arrancar");
                                     checked: root.auto-update;
                                     toggled => { root.toggle-auto-update(); }
                                 }
                                 CheckRow {
-                                    label: "Avisar de actualizaciones al arrancar";
+                                    label: @tr("Avisar de actualizaciones al arrancar");
                                     checked: root.ask-update;
                                     toggled => { root.toggle-ask-update(); }
                                 }
 
-                                Section { text: "Sistema"; }
+                                Section { text: @tr("Sistema"); }
                                 SettingRow {
-                                    label: "Integrar en el escritorio";
+                                    label: @tr("Integrar en el escritorio");
                                     value: root.desktop-entry-label;
                                     clicked => { root.make-desktop-entry(); }
                                 }
                                 SettingRow {
-                                    label: "Registro";
+                                    label: @tr("Registro");
                                     value: "≡";
                                     clicked => { root.show-log(); }
                                 }
 
-                                Section { text: "Código fuente"; }
+                                Section { text: @tr("Código fuente"); }
                                 Rectangle {
                                     height: 38px;
                                     border-radius: Theme.radius;
@@ -872,7 +872,7 @@ export component DesktopSettings inherits Rectangle {
                                     gh := TouchArea { clicked => { root.open-repo(); } }
                                 }
 
-                                Section { text: "Construido con"; }
+                                Section { text: @tr("Construido con"); }
                                 HorizontalLayout {
                                     spacing: 6px;
                                     padding-bottom: Theme.gap;
@@ -890,7 +890,7 @@ export component DesktopSettings inherits Rectangle {
                                 }
 
                                 Text {
-                                    text: "Vibecoded por jjolmo.";
+                                    text: @tr("Vibecoded por jjolmo.");
                                     color: Theme.text-muted;
                                     font-size: Theme.font-small;
                                 }

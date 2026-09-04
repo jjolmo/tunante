@@ -205,6 +205,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let ui = AppWindow::new()?;
 
+    // i18n: choose the UI language. A saved override wins; otherwise the system
+    // locale. The source strings are Spanish and are bundled as the fallback, so
+    // a Spanish (or unshipped) locale keeps them and only a shipped `.po` for
+    // another language switches. Must run after the first component exists.
+    {
+        let lang = db
+            .get_setting("language")
+            .ok()
+            .flatten()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(ui_language_from_env);
+        if !lang.is_empty() {
+            let _ = slint::select_bundled_translation(&lang);
+        }
+    }
+
     // The presentation override: auto picks by window width (>= 900px means
     // the desktop shell), the setting remembers a forced choice, and the
     // flags win over both for development and scripts. All of it before the
@@ -7515,6 +7531,25 @@ fn sync_queue_marker(p: &player::Player, model: &Rc<VecModel<QueueRow>>) {
 
 /// How big a cover is ever drawn. Anything larger is memory nobody sees.
 const MAX_ART_SIDE: u32 = 720;
+
+/// The UI language from the environment: the primary subtag of the first set
+/// locale variable (`es_ES.UTF-8` → `es`). Empty for the neutral `C`/`POSIX`
+/// locales or when nothing is set, which leaves the bundled Spanish source.
+fn ui_language_from_env() -> String {
+    for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
+        if let Ok(value) = std::env::var(var) {
+            let base = value.split('.').next().unwrap_or("");
+            if base.is_empty() || base == "C" || base == "POSIX" {
+                continue;
+            }
+            let primary = base.split(['_', '-']).next().unwrap_or("");
+            if !primary.is_empty() {
+                return primary.to_ascii_lowercase();
+            }
+        }
+    }
+    String::new()
+}
 
 /// Show the window if it is hidden, hide it if it is shown — the tray's
 /// left-click and Mostrar/Ocultar. On the way back it re-centres on what is

@@ -200,28 +200,28 @@ export component TabSwitcher inherits Rectangle {
         TabButton {
             height: 60px;
             glyph: "▶";
-            label: "Sonando";
+            label: @tr("Sonando");
             selected: root.tab == 0;
             clicked => { root.tab = 0; }
         }
         TabButton {
             height: 60px;
             glyph: "≡";
-            label: "Cola";
+            label: @tr("Cola");
             selected: root.tab == 1;
             clicked => { root.tab = 1; }
         }
         TabButton {
             height: 60px;
             glyph: "🗀";
-            label: "Biblioteca";
+            label: @tr("Biblioteca");
             selected: root.tab == 2;
             clicked => { root.tab = 2; }
         }
         TabButton {
             height: 60px;
             glyph: "⚙";
-            label: "Ajustes";
+            label: @tr("Ajustes");
             selected: root.tab == 3;
             clicked => { root.tab = 3; }
         }
@@ -233,25 +233,25 @@ export component TabSwitcher inherits Rectangle {
 
         TabButton {
             glyph: "▶";
-            label: "Sonando";
+            label: @tr("Sonando");
             selected: root.tab == 0;
             clicked => { root.tab = 0; }
         }
         TabButton {
             glyph: "≡";
-            label: "Cola";
+            label: @tr("Cola");
             selected: root.tab == 1;
             clicked => { root.tab = 1; }
         }
         TabButton {
             glyph: "🗀";
-            label: "Biblioteca";
+            label: @tr("Biblioteca");
             selected: root.tab == 2;
             clicked => { root.tab = 2; }
         }
         TabButton {
             glyph: "⚙";
-            label: "Ajustes";
+            label: @tr("Ajustes");
             selected: root.tab == 3;
             clicked => { root.tab = 3; }
         }
@@ -994,7 +994,7 @@ export component ModeTab inherits Rectangle {
 // borde inferior sube solo cuando aparece.
 export component NameSheet inherits Rectangle {
     in property <string> heading;
-    in property <string> confirm-label: "Crear";
+    in property <string> confirm-label: @tr("Crear");
     in property <string> initial;
     callback accepted(string);
     callback cancelled();
@@ -1038,7 +1038,7 @@ export component NameSheet inherits Rectangle {
                     Rectangle {
                         Text {
                             x: 0;
-                            text: "Nombre de la lista";
+                            text: @tr("Nombre de la lista");
                             color: Theme.text-muted;
                             font-size: Theme.font-body;
                             vertical-alignment: center;
@@ -1073,7 +1073,7 @@ export component NameSheet inherits Rectangle {
                     background: cancelar.pressed ? Theme.bg-selected : Theme.bg-tertiary;
                     border-radius: Theme.radius;
                     Text {
-                        text: "Cancelar";
+                        text: @tr("Cancelar");
                         color: Theme.text-secondary;
                         font-size: Theme.font-body;
                     }
@@ -1294,10 +1294,10 @@ export component MetadataSheet inherits Rectangle {
                 wrap: word-wrap;
             }
 
-            if !root.batch: EditField { label: "Título"; value <=> root.title-text; }
-            EditField { label: "Artista"; value <=> root.artist-text; }
-            EditField { label: "Álbum"; value <=> root.album-text; }
-            if !root.batch: EditField { label: "Nº de pista"; value <=> root.track-text; }
+            if !root.batch: EditField { label: @tr("Título"); value <=> root.title-text; }
+            EditField { label: @tr("Artista"); value <=> root.artist-text; }
+            EditField { label: @tr("Álbum"); value <=> root.album-text; }
+            if !root.batch: EditField { label: @tr("Nº de pista"); value <=> root.track-text; }
 
             HorizontalLayout {
                 spacing: Theme.gap;
@@ -1309,7 +1309,7 @@ export component MetadataSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: tc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Cancelar";
+                        text: @tr("Cancelar");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }
@@ -1321,7 +1321,7 @@ export component MetadataSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: Theme.accent;
                     Text {
-                        text: "Guardar";
+                        text: @tr("Guardar");
                         color: #ffffff;
                         font-size: Theme.font-body;
                     }
@@ -1376,7 +1376,7 @@ export component ReclassifySheet inherits Rectangle {
             // is still the case this dialog exists for, and the default.
             HorizontalLayout {
                 spacing: Theme.gap;
-                for opt[i] in ["Toda la carpeta", "Solo esta pista"]: Rectangle {
+                for opt[i] in [@tr("Toda la carpeta"), @tr("Solo esta pista")]: Rectangle {
                     height: Theme.touch-target - 12px;
                     horizontal-stretch: 1;
                     border-radius: Theme.radius;
@@ -1400,7 +1400,7 @@ export component ReclassifySheet inherits Rectangle {
                     spacing: 4px;
                     width: 220px;
                     Text {
-                        text: "Consola";
+                        text: @tr("Consola");
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                     }
@@ -1425,7 +1425,7 @@ export component ReclassifySheet inherits Rectangle {
                         if root.console-filter == "" && !cflt.has-focus: HorizontalLayout {
                             padding-left: 8px;
                             Text {
-                                text: "filtra: nombre o códec (spc…)";
+                                text: @tr("filtra: nombre o códec (spc…)");
                                 color: Theme.text-muted;
                                 font-size: Theme.font-small;
                                 vertical-alignment: center;
@@ -1466,12 +1466,12 @@ export component ReclassifySheet inherits Rectangle {
                     spacing: 4px;
                     horizontal-stretch: 1;
                     EditField {
-                        label: "Juego";
+                        label: @tr("Juego");
                         value <=> root.game-text;
                         edited(t) => { root.game-edited(t); }
                     }
                     Text {
-                        text: "En la biblioteca:";
+                        text: @tr("En la biblioteca:");
                         color: Theme.text-muted;
                         font-size: Theme.font-small;
                         visible: root.suggestions.length > 0;
@@ -1508,7 +1508,7 @@ export component ReclassifySheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: rc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Cancelar";
+                        text: @tr("Cancelar");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }
@@ -1520,7 +1520,7 @@ export component ReclassifySheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: Theme.accent;
                     Text {
-                        text: "Guardar";
+                        text: @tr("Guardar");
                         color: #ffffff;
                         font-size: Theme.font-body;
                     }
@@ -1574,7 +1574,7 @@ export component CoverSheet inherits Rectangle {
                 spacing: Theme.gap;
                 EditField {
                     horizontal-stretch: 1;
-                    label: "Buscar por nombre";
+                    label: @tr("Buscar por nombre");
                     value <=> root.query;
                     accepted(q) => { root.search(q); }
                 }
@@ -1585,7 +1585,7 @@ export component CoverSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: Theme.accent;
                     Text {
-                        text: "Buscar";
+                        text: @tr("Buscar");
                         color: #ffffff;
                         font-size: Theme.font-body;
                     }
@@ -1650,7 +1650,7 @@ export component CoverSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: cva.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Descargar automáticamente";
+                        text: @tr("Descargar automáticamente");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }
@@ -1663,7 +1663,7 @@ export component CoverSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: cvc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Cancelar";
+                        text: @tr("Cancelar");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }
@@ -1727,7 +1727,7 @@ export component PlaylistPickSheet inherits Rectangle {
             }
 
             EditField {
-                label: "…o una lista nueva";
+                label: @tr("…o una lista nueva");
                 accepted(name) => {
                     if (name != "") {
                         root.created(name);
@@ -1743,7 +1743,7 @@ export component PlaylistPickSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: plc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Cancelar";
+                        text: @tr("Cancelar");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }
@@ -1780,7 +1780,7 @@ export component CoversPlanSheet inherits Rectangle {
             spacing: Theme.gap;
 
             Text {
-                text: "Descarga de carátulas";
+                text: @tr("Descarga de carátulas");
                 color: Theme.text-primary;
                 font-size: Theme.font-title;
             }
@@ -1832,7 +1832,7 @@ export component CoversPlanSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: bpc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: root.busy ? "Parar" : "Cerrar";
+                        text: root.busy ? @tr("Parar") : @tr("Cerrar");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }
@@ -1844,7 +1844,7 @@ export component CoversPlanSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: Theme.accent;
                     Text {
-                        text: "Aplicar";
+                        text: @tr("Aplicar");
                         color: #ffffff;
                         font-size: Theme.font-body;
                     }
@@ -1906,14 +1906,14 @@ export component TrackNamesSheet inherits Rectangle {
                     padding-left: 8px;
                     padding-right: 8px;
                     Text {
-                        text: "Arreglar también las duraciones";
+                        text: @tr("Arreglar también las duraciones");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
                     Text {
-                        text: root.fix-lengths ? "sí" : "no";
+                        text: root.fix-lengths ? @tr("sí") : @tr("no");
                         color: root.fix-lengths ? Theme.accent : Theme.text-muted;
                         font-size: Theme.font-body;
                         vertical-alignment: center;
@@ -1949,7 +1949,7 @@ export component TrackNamesSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: tnc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Cerrar";
+                        text: @tr("Cerrar");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }
@@ -1961,7 +1961,7 @@ export component TrackNamesSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: Theme.accent;
                     Text {
-                        text: "Aplicar";
+                        text: @tr("Aplicar");
                         color: #ffffff;
                         font-size: Theme.font-body;
                     }
@@ -2001,7 +2001,7 @@ export component LogSheet inherits Rectangle {
             spacing: Theme.gap;
 
             Text {
-                text: "Registro";
+                text: @tr("Registro");
                 color: Theme.text-primary;
                 font-size: Theme.font-title;
             }
@@ -2041,7 +2041,7 @@ export component LogSheet inherits Rectangle {
                     if root.filter == "" && !flt.has-focus: HorizontalLayout {
                         padding-left: 8px;
                         Text {
-                            text: "Filtrar…";
+                            text: @tr("Filtrar…");
                             color: Theme.text-muted;
                             font-size: Theme.font-small;
                             vertical-alignment: center;
@@ -2054,7 +2054,7 @@ export component LogSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: cpy.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Copiar";
+                        text: @tr("Copiar");
                         color: Theme.text-primary;
                         font-size: Theme.font-small;
                     }
@@ -2066,7 +2066,7 @@ export component LogSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: clr.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Limpiar";
+                        text: @tr("Limpiar");
                         color: Theme.text-primary;
                         font-size: Theme.font-small;
                     }
@@ -2098,7 +2098,7 @@ export component LogSheet inherits Rectangle {
                     border-radius: Theme.radius;
                     background: lgc.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
                     Text {
-                        text: "Cerrar";
+                        text: @tr("Cerrar");
                         color: Theme.text-primary;
                         font-size: Theme.font-body;
                     }

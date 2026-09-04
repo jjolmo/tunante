@@ -49,8 +49,8 @@ export component SettingsTab inherits Rectangle {
     callback cycle-short-filter();
     in property <int> crossfade-secs;
     callback cycle-crossfade();
-    in property <string> output-label: "sistema";
-    in property <string> ui-mode-label: "auto";
+    in property <string> output-label: @tr("sistema");
+    in property <string> ui-mode-label: @tr("auto");
     in property <int> ui-mode;
     in-out property <int> ui-mode-pending;
     in property <string> ui-mode-pending-label;
@@ -131,7 +131,7 @@ export component SettingsTab inherits Rectangle {
         padding-top: Theme.gap;
 
         Text {
-            text: "Sonido";
+            text: @tr("Sonido");
             color: Theme.text-secondary;
             font-size: Theme.font-small;
             horizontal-alignment: left;
@@ -195,7 +195,7 @@ export component SettingsTab inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
 
         Text {
-            text: "Música de consola";
+            text: @tr("Música de consola");
             color: Theme.text-secondary;
             font-size: Theme.font-small;
             x: Theme.gap;
@@ -203,27 +203,27 @@ export component SettingsTab inherits Rectangle {
 
         // What decides how long a track that never ends actually lasts.
         SettingRow {
-            label: "Repeticiones del bucle";
+            label: @tr("Repeticiones del bucle");
             value: root.loop-count + "×";
             clicked => { root.cycle-loops(); }
         }
         SettingRow {
-            label: "Fundido final";
-            value: root.fade-seconds == 0 ? "sin fundido" : root.fade-seconds + " s";
+            label: @tr("Fundido final");
+            value: root.fade-seconds == 0 ? @tr("sin fundido") : root.fade-seconds + " s";
             clicked => { root.cycle-fade(); }
         }
         // The transition between tracks, distinct from "Fundido final",
         // which is how a looping track ends.
         SettingRow {
-            label: "Crossfade entre pistas";
+            label: @tr("Crossfade entre pistas");
             value: root.crossfade-secs == 0
-                ? "desactivado" : root.crossfade-secs + " s";
+                ? @tr("desactivado") : root.crossfade-secs + " s";
             highlighted: root.crossfade-secs != 0;
             clicked => { root.cycle-crossfade(); }
         }
         SettingRow {
-            label: "Continuar desde lo encolado";
-            value: root.continue-queue ? "sí" : "no";
+            label: @tr("Continuar desde lo encolado");
+            value: root.continue-queue ? @tr("sí") : @tr("no");
             highlighted: root.continue-queue;
             clicked => { root.toggle-continue-queue(); }
         }
@@ -231,8 +231,8 @@ export component SettingsTab inherits Rectangle {
         // last five minutes. Off by default here — an app that starts making
         // noise on its own is a surprise — but available for those who want it.
         SettingRow {
-            label: "Reanudar reproducción al abrir";
-            value: root.resume-on-open ? "sí" : "no";
+            label: @tr("Reanudar reproducción al abrir");
+            value: root.resume-on-open ? @tr("sí") : @tr("no");
             highlighted: root.resume-on-open;
             clicked => { root.toggle-resume-on-open(); }
         }
@@ -242,19 +242,19 @@ export component SettingsTab inherits Rectangle {
         // before the fade. Scan and playback read the same key, so the
         // progress bar and the ears agree.
         SettingRow {
-            label: "Bucles de formatos streamed";
+            label: @tr("Bucles de formatos streamed");
             value: root.vgm-loops-label;
             clicked => { root.cycle-vgm-loops(); }
         }
         SettingRow {
-            label: "Tope de pistas infinitas";
-            value: root.loop-max-mins == 0 ? "predeterminado" : root.loop-max-mins + " min";
+            label: @tr("Tope de pistas infinitas");
+            value: root.loop-max-mins == 0 ? @tr("predeterminado") : root.loop-max-mins + " min";
             clicked => { root.cycle-loop-max(); }
         }
         SettingRow {
-            label: "Saltar pistas cortas";
+            label: @tr("Saltar pistas cortas");
             value: root.short-filter-secs == 0
-                ? "desactivado" : "< " + root.short-filter-secs + " s";
+                ? @tr("desactivado") : "< " + root.short-filter-secs + " s";
             highlighted: root.short-filter-secs != 0;
             clicked => { root.cycle-short-filter(); }
         }
@@ -262,7 +262,7 @@ export component SettingsTab inherits Rectangle {
         // desktop idiom, but this screen's idiom is the cycle row, and the
         // list is short: a laptop has two or three outputs, a phone has one.
         SettingRow {
-            label: "Salida de audio";
+            label: @tr("Salida de audio");
             value: root.output-label;
             clicked => { root.cycle-output(); }
         }
@@ -270,7 +270,7 @@ export component SettingsTab inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
 
         Text {
-            text: "Ecualizador";
+            text: @tr("Ecualizador");
             color: Theme.text-secondary;
             font-size: Theme.font-small;
             horizontal-alignment: left;
@@ -278,60 +278,60 @@ export component SettingsTab inherits Rectangle {
         }
 
         SettingRow {
-            label: "Ecualizador";
-            value: root.eq-enabled ? "activado" : "desactivado";
+            label: @tr("Ecualizador");
+            value: root.eq-enabled ? @tr("activado") : @tr("desactivado");
             highlighted: root.eq-enabled;
             clicked => { root.toggle-eq(); }
         }
         DbSliderRow {
-            label: "Graves";
+            label: @tr("Graves");
             db: root.eq-low;
             active: root.eq-enabled;
             changed(v) => { root.set-eq-band(0, v); }
         }
         DbSliderRow {
-            label: "Medios";
+            label: @tr("Medios");
             db: root.eq-mid;
             active: root.eq-enabled;
             changed(v) => { root.set-eq-band(1, v); }
         }
         DbSliderRow {
-            label: "Agudos";
+            label: @tr("Agudos");
             db: root.eq-high;
             active: root.eq-enabled;
             changed(v) => { root.set-eq-band(2, v); }
         }
         DbSliderRow {
-            label: "Preamplificador";
+            label: @tr("Preamplificador");
             db: root.preamp-db;
             changed(v) => { root.set-preamp(v); }
         }
         SettingRow {
-            label: "Mono";
-            value: root.dsp-mono ? "sí" : "no";
+            label: @tr("Mono");
+            value: root.dsp-mono ? @tr("sí") : @tr("no");
             highlighted: root.dsp-mono;
             clicked => { root.toggle-mono(); }
         }
         SettingRow {
-            label: "Mono · compensación";
-            value: root.dsp-mono-compensate ? "sí" : "no";
+            label: @tr("Mono · compensación");
+            value: root.dsp-mono-compensate ? @tr("sí") : @tr("no");
             highlighted: root.dsp-mono && root.dsp-mono-compensate;
             clicked => { root.toggle-mono-compensate(); }
         }
         SettingRow {
-            label: "Mono · seguro de fase";
-            value: root.dsp-mono-phase ? "sí" : "no";
+            label: @tr("Mono · seguro de fase");
+            value: root.dsp-mono-phase ? @tr("sí") : @tr("no");
             highlighted: root.dsp-mono && root.dsp-mono-phase;
             clicked => { root.toggle-mono-phase(); }
         }
         SettingRow {
-            label: "Limitador";
-            value: root.dsp-limiter ? "sí" : "no";
+            label: @tr("Limitador");
+            value: root.dsp-limiter ? @tr("sí") : @tr("no");
             highlighted: root.dsp-limiter;
             clicked => { root.toggle-limiter(); }
         }
         DbSliderRow {
-            label: "Balance";
+            label: @tr("Balance");
             db: root.dsp-balance;
             range-min: -1;
             range-max: 1;
@@ -340,7 +340,7 @@ export component SettingsTab inherits Rectangle {
         }
         // 1.0 is untouched; the row lights up the moment it is not.
         DbSliderRow {
-            label: "Anchura estéreo";
+            label: @tr("Anchura estéreo");
             db: root.dsp-width;
             range-min: 0;
             range-max: 2;
@@ -352,18 +352,18 @@ export component SettingsTab inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
 
         Text {
-            text: "Biblioteca";
+            text: @tr("Biblioteca");
             color: Theme.text-secondary;
             font-size: Theme.font-small;
             x: Theme.gap;
         }
 
         SettingRow {
-            label: "Carpetas analizadas";
+            label: @tr("Carpetas analizadas");
             value: root.library-summary;
         }
         SettingRow {
-            label: "Añadir una carpeta";
+            label: @tr("Añadir una carpeta");
             value: "＋";
             clicked => { root.add-folder(); }
         }
@@ -389,7 +389,7 @@ export component SettingsTab inherits Rectangle {
                     border-radius: Theme.radius;
                     background: wt.has-hover ? Theme.bg-hover : transparent;
                     Text {
-                        text: lf.watching ? "vigilada" : "sin vigilar";
+                        text: lf.watching ? @tr("vigilada") : @tr("sin vigilar");
                         color: lf.watching ? Theme.accent : Theme.text-muted;
                         font-size: Theme.font-small;
                         vertical-alignment: center;
@@ -415,7 +415,7 @@ export component SettingsTab inherits Rectangle {
             }
         }
         SettingRow {
-            label: "Volver a analizar";
+            label: @tr("Volver a analizar");
             value: "↻";
             clicked => { root.rescan(); }
         }
@@ -423,15 +423,15 @@ export component SettingsTab inherits Rectangle {
         // or zenity, whichever is installed), probed and inserted like any
         // scanned track.
         SettingRow {
-            label: "Añadir ficheros sueltos";
+            label: @tr("Añadir ficheros sueltos");
             value: root.add-files-label;
             clicked => { root.add-files(); }
         }
         // Full silence detection for GME rips with no declared lengths:
         // accurate, and over a second per file.
         SettingRow {
-            label: "Escaneo minucioso";
-            value: root.slow-scan ? "sí" : "no";
+            label: @tr("Escaneo minucioso");
+            value: root.slow-scan ? @tr("sí") : @tr("no");
             highlighted: root.slow-scan;
             clicked => { root.toggle-slow-scan(); }
         }
@@ -439,46 +439,46 @@ export component SettingsTab inherits Rectangle {
         // folder's _ratings.m3u. The same order the desktop honoured.
         // Which half leads the combined column; the other is the fallback.
         SettingRow {
-            label: "La columna Álbum/Juego enseña";
+            label: @tr("La columna Álbum/Juego enseña");
             value: root.album-game-label;
             clicked => { root.toggle-album-game(); }
         }
         SettingRow {
-            label: "Prioridad de puntuaciones";
+            label: @tr("Prioridad de puntuaciones");
             value: root.rating-priority-label;
             clicked => { root.cycle-rating-priority(); }
         }
         SettingRow {
-            label: "Descargar carátulas";
+            label: @tr("Descargar carátulas");
             value: "⬇";
             clicked => { root.descargar-caratulas(); }
         }
         // The old General tab's pair: fetch what's missing as it plays, and
         // keep the prize next to the music instead of only in the cache.
         SettingRow {
-            label: "Descarga automática de carátulas";
-            value: root.auto-covers ? "sí" : "no";
+            label: @tr("Descarga automática de carátulas");
+            value: root.auto-covers ? @tr("sí") : @tr("no");
             highlighted: root.auto-covers;
             clicked => { root.toggle-auto-covers(); }
         }
         SettingRow {
-            label: "Guardar carátula en la carpeta";
-            value: root.covers-in-folder ? "sí" : "no";
+            label: @tr("Guardar carátula en la carpeta");
+            value: root.covers-in-folder ? @tr("sí") : @tr("no");
             highlighted: root.covers-in-folder;
             clicked => { root.toggle-covers-in-folder(); }
         }
         SettingRow {
-            label: "Deshacer última descarga";
+            label: @tr("Deshacer última descarga");
             value: root.undo-covers-label;
             clicked => { root.undo-covers(); }
         }
         SettingRow {
-            label: "Encaje de carátula";
+            label: @tr("Encaje de carátula");
             value: root.cover-fit-label;
             clicked => { root.cycle-cover-fit(); }
         }
         SettingRow {
-            label: "Limpiar caché de carátulas";
+            label: @tr("Limpiar caché de carátulas");
             value: root.clear-cache-label;
             clicked => { root.clear-cover-cache(); }
         }
@@ -486,8 +486,8 @@ export component SettingsTab inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
 
         SettingRow {
-            label: "Apagar la música en";
-            value: root.sleep-running ? root.sleep-minutes + " min" : "desactivado";
+            label: @tr("Apagar la música en");
+            value: root.sleep-running ? root.sleep-minutes + " min" : @tr("desactivado");
             highlighted: root.sleep-running;
             clicked => { root.cycle-sleep(); }
         }
@@ -496,37 +496,37 @@ export component SettingsTab inherits Rectangle {
 
         // Which sidebar sections earn their pixels — the old Appearance tab.
         SettingRow {
-            label: "Carátula en el sidebar";
-            value: root.show-cover ? "sí" : "no";
+            label: @tr("Carátula en el sidebar");
+            value: root.show-cover ? @tr("sí") : @tr("no");
             highlighted: root.show-cover;
             clicked => { root.toggle-show-cover(); }
         }
         SettingRow {
-            label: "Favoritos en el sidebar";
-            value: root.show-faved ? "sí" : "no";
+            label: @tr("Favoritos en el sidebar");
+            value: root.show-faved ? @tr("sí") : @tr("no");
             highlighted: root.show-faved;
             clicked => { root.toggle-show-faved(); }
         }
         SettingRow {
-            label: "Carpetas en el sidebar";
-            value: root.show-folders ? "sí" : "no";
+            label: @tr("Carpetas en el sidebar");
+            value: root.show-folders ? @tr("sí") : @tr("no");
             highlighted: root.show-folders;
             clicked => { root.toggle-show-folders(); }
         }
         SettingRow {
-            label: "Listas en el sidebar";
-            value: root.show-playlists ? "sí" : "no";
+            label: @tr("Listas en el sidebar");
+            value: root.show-playlists ? @tr("sí") : @tr("no");
             highlighted: root.show-playlists;
             clicked => { root.toggle-show-playlists(); }
         }
         SettingRow {
-            label: "Título de la canción en la ventana";
-            value: root.titlebar-track ? "sí" : "no";
+            label: @tr("Título de la canción en la ventana");
+            value: root.titlebar-track ? @tr("sí") : @tr("no");
             highlighted: root.titlebar-track;
             clicked => { root.toggle-titlebar-track(); }
         }
         SettingRow {
-            label: "Tema";
+            label: @tr("Tema");
             value: root.theme-label;
             clicked => { root.cycle-theme(); }
         // Only meaningful when the tray is compiled in; without it the row
@@ -535,7 +535,7 @@ export component SettingsTab inherits Rectangle {
         // in the system's own shortcut settings. Off by default because the
         // first bind opens a system dialog, and that must be asked for.
         SettingRow {
-            label: "Atajos globales";
+            label: @tr("Atajos globales");
             value: root.global-shortcuts-label;
             highlighted: root.global-shortcuts-on;
             clicked => { root.toggle-global-shortcuts(); }
@@ -544,7 +544,7 @@ export component SettingsTab inherits Rectangle {
         // with any window focused, needs the `input` group. The label tells
         // the truth about both.
         SettingRow {
-            label: "Botones de ratón";
+            label: @tr("Botones de ratón");
             value: root.mouse-buttons-label;
             highlighted: root.mouse-buttons-on;
             clicked => { root.toggle-mouse-buttons(); }
@@ -553,18 +553,18 @@ export component SettingsTab inherits Rectangle {
         // (ayatana routes Activate and SecondaryActivate to one target), so
         // the old middle-click action list rides the click there is.
         SettingRow {
-            label: "Click en el icono de bandeja";
+            label: @tr("Click en el icono de bandeja");
             value: root.tray-click-label;
             clicked => { root.cycle-tray-click(); }
         }
         SettingRow {
-            label: "Icono de bandeja";
+            label: @tr("Icono de bandeja");
             value: root.tray-style-label;
             clicked => { root.cycle-tray-style(); }
         }
         SettingRow {
-            label: "Cerrar a la bandeja";
-            value: root.close-to-tray ? "sí" : "no";
+            label: @tr("Cerrar a la bandeja");
+            value: root.close-to-tray ? @tr("sí") : @tr("no");
             highlighted: root.close-to-tray;
             clicked => { root.toggle-close-to-tray(); }
         }
@@ -572,30 +572,30 @@ export component SettingsTab inherits Rectangle {
         // The manual override docs/plan-desktop-slint.md promised: auto picks
         // by window width, the other two force a shell.
         SettingRow {
-            label: "Modo de interfaz";
+            label: @tr("Modo de interfaz");
             value: root.ui-mode-pending-label;
             clicked => { root.cycle-ui-mode(); }
         }
         if root.ui-mode-pending != root.ui-mode: SettingRow {
-            label: "↳ Aplicar (cambia la presentación)";
-            value: "Aplicar";
+            label: @tr("↳ Aplicar (cambia la presentación)");
+            value: @tr("Aplicar");
             highlighted: true;
             clicked => { root.apply-ui-mode(); }
         }
         SettingRow {
-            label: "Buscar actualizaciones";
+            label: @tr("Buscar actualizaciones");
             value: root.update-status;
             clicked => { root.check-update(); }
         }
         // Only while an update is on offer: skipping stores the version and
         // the startup check stays quiet about it.
         if root.update-skippable: SettingRow {
-            label: "Omitir esta versión";
+            label: @tr("Omitir esta versión");
             value: "×";
             clicked => { root.skip-update(); }
         }
         SettingRow {
-            label: "Integrar en el escritorio";
+            label: @tr("Integrar en el escritorio");
             value: root.desktop-entry-label;
             clicked => { root.make-desktop-entry(); }
         }
@@ -609,12 +609,12 @@ export component SettingsTab inherits Rectangle {
             clicked => { root.shortcut-capture(sr.id); }
         }
         SettingRow {
-            label: "Registro";
+            label: @tr("Registro");
             value: "≡";
             clicked => { root.show-log(); }
         }
         SettingRow {
-            label: "Acerca de Tunante";
+            label: @tr("Acerca de Tunante");
             value: root.about-label;
             clicked => { root.open-repo(); }
         }
@@ -772,8 +772,8 @@ export component QueueTab inherits Rectangle {
             }
             Text {
                 text: root.confirming
-                    ? "¿Seguro? Toca otra vez"
-                    : "Vaciar la cola (" + root.rows.length + ")";
+                    ? @tr("¿Seguro? Toca otra vez")
+                    : @tr("Vaciar la cola ({})", root.rows.length);
                 color: root.confirming ? #ffffff : Theme.text-secondary;
                 font-size: Theme.font-body;
                 vertical-alignment: center;
@@ -820,7 +820,7 @@ export component QueueTab inherits Rectangle {
                 surface-color: row.playing ? Theme.bg-selected : Theme.bg-primary;
                 // Swiping while carrying a row would be two gestures at once.
                 enabled: root.dragging == -1;
-                action-label: "Quitar";
+                action-label: @tr("Quitar");
                 action-color: #a33333;
                 swiped => { root.removed(i); }
                 tapped => { root.activated(i); }
@@ -1025,17 +1025,17 @@ export component LibraryTab inherits Rectangle {
                 spacing: 4px;
 
                 ModeTab {
-                    label: "Árbol";
+                    label: @tr("Árbol");
                     selected: root.mode == 0;
                     clicked => { root.mode = 0; root.mode-changed(0); }
                 }
                 ModeTab {
-                    label: "Discos";
+                    label: @tr("Discos");
                     selected: root.mode == 1;
                     clicked => { root.mode = 1; root.mode-changed(1); }
                 }
                 ModeTab {
-                    label: "Consolas";
+                    label: @tr("Consolas");
                     selected: root.mode == 2;
                     clicked => { root.mode = 2; root.mode-changed(2); }
                 }
@@ -1044,12 +1044,12 @@ export component LibraryTab inherits Rectangle {
                     // que hay en el disco y Juegos lo que dice el rip. Difieren
                     // en un juego partido en dos carpetas, y en una carpeta que
                     // guarda varios juegos.
-                    label: "Juegos";
+                    label: @tr("Juegos");
                     selected: root.mode == 3;
                     clicked => { root.mode = 3; root.mode-changed(3); }
                 }
                 ModeTab {
-                    label: "Listas";
+                    label: @tr("Listas");
                     selected: root.mode == 4;
                     clicked => { root.mode = 4; root.mode-changed(4); }
                 }
@@ -1087,7 +1087,7 @@ export component LibraryTab inherits Rectangle {
                             // biblioteca, y en las rejillas filtra lo que hay
                             // delante. Es el mismo campo haciendo dos cosas, y
                             // callárselo sería mentir sobre cuál.
-                            text: root.mode == 0 ? "Buscar…" : "Filtrar lo que se ve…";
+                            text: root.mode == 0 ? @tr("Buscar…") : @tr("Filtrar lo que se ve…");
                             color: Theme.text-muted;
                             font-size: Theme.font-body;
                             vertical-alignment: center;
@@ -1166,7 +1166,7 @@ export component LibraryTab inherits Rectangle {
                     vertical-alignment: center;
                 }
                 Text {
-                    text: "Encolar todas (" + root.playlist-count + ")";
+                    text: @tr("Encolar todas ({})", root.playlist-count);
                     color: Theme.text-secondary;
                     font-size: Theme.font-body;
                     vertical-alignment: center;
@@ -1197,7 +1197,7 @@ export component LibraryTab inherits Rectangle {
                     vertical-alignment: center;
                 }
                 Text {
-                    text: "Nueva lista";
+                    text: @tr("Nueva lista");
                     color: Theme.text-secondary;
                     font-size: Theme.font-body;
                     vertical-alignment: center;
@@ -1320,7 +1320,7 @@ export component LibraryTab inherits Rectangle {
                 // deslizar mientras se lleva una fila en volandas serían dos
                 // gestos a la vez.
                 enabled: !row.is-folder && root.dragging == -1;
-                action-label: "A la cola";
+                action-label: @tr("A la cola");
                 swiped => { root.enqueued(i); }
                 tapped => { root.activated(i); }
                 held => {
@@ -1428,7 +1428,7 @@ export component LibraryTab inherits Rectangle {
             background: Theme.bg-secondary;
 
             Text {
-                text: root.total == 1 ? "1 elemento" : root.total + " elementos";
+                text: root.total == 1 ? @tr("1 elemento") : @tr("{} elementos", root.total);
                 color: Theme.text-muted;
                 font-size: Theme.font-small;
             }
@@ -1486,8 +1486,8 @@ export component LibraryTab inherits Rectangle {
                 MenuAction {
                     glyph: "≡";
                     label: root.menu-is-folder
-                        ? "Añadir todo, con las subcarpetas"
-                        : "Añadir a la cola";
+                        ? @tr("Añadir todo, con las subcarpetas")
+                        : @tr("Añadir a la cola");
                     clicked => {
                         root.enqueue-path(root.menu-path, true);
                         root.menu-path = "";
@@ -1498,7 +1498,7 @@ export component LibraryTab inherits Rectangle {
                 // sitio: sacar la pista de donde está.
                 if root.playlist-open: MenuAction {
                     glyph: "✕";
-                    label: "Quitar de la lista";
+                    label: @tr("Quitar de la lista");
                     clicked => {
                         root.playlist-track-removed(root.menu-path);
                         root.menu-path = "";
@@ -1509,7 +1509,7 @@ export component LibraryTab inherits Rectangle {
                 // dos entradas harían lo mismo y una de ellas sobraría.
                 if root.menu-is-folder: MenuAction {
                     glyph: "🗀";
-                    label: "Añadir sólo esta carpeta";
+                    label: @tr("Añadir sólo esta carpeta");
                     clicked => {
                         root.enqueue-path(root.menu-path, false);
                         root.menu-path = "";
@@ -1523,8 +1523,8 @@ export component LibraryTab inherits Rectangle {
                 MenuAction {
                     glyph: "♫";
                     label: root.menu-is-folder
-                        ? "Añadir carpeta y subcarpetas a lista"
-                        : "Añadir a una lista";
+                        ? @tr("Añadir carpeta y subcarpetas a lista")
+                        : @tr("Añadir a una lista");
                     clicked => {
                         root.pending-path = root.menu-path;
                         root.pending-deep = true;
@@ -1534,7 +1534,7 @@ export component LibraryTab inherits Rectangle {
 
                 if root.menu-is-folder: MenuAction {
                     glyph: "♫";
-                    label: "Añadir carpeta a lista";
+                    label: @tr("Añadir carpeta a lista");
                     clicked => {
                         root.pending-path = root.menu-path;
                         root.pending-deep = false;
@@ -1548,7 +1548,7 @@ export component LibraryTab inherits Rectangle {
                 // under the right game, keep it at hand, or see it outside.
                 if root.menu-is-folder: MenuAction {
                     glyph: "▶";
-                    label: "Reproducir carpeta";
+                    label: @tr("Reproducir carpeta");
                     clicked => {
                         root.play-path(root.menu-path);
                         root.menu-path = "";
@@ -1556,7 +1556,7 @@ export component LibraryTab inherits Rectangle {
                 }
                 if root.menu-is-folder: MenuAction {
                     glyph: "◈";
-                    label: "Reclasificar…";
+                    label: @tr("Reclasificar…");
                     clicked => {
                         root.reclassify-path(root.menu-path);
                         root.menu-path = "";
@@ -1564,7 +1564,7 @@ export component LibraryTab inherits Rectangle {
                 }
                 if root.menu-is-folder: MenuAction {
                     glyph: "📌";
-                    label: "Fijar en el sidebar";
+                    label: @tr("Fijar en el sidebar");
                     clicked => {
                         root.pin-path(root.menu-path);
                         root.menu-path = "";
@@ -1572,7 +1572,7 @@ export component LibraryTab inherits Rectangle {
                 }
                 if root.menu-is-folder: MenuAction {
                     glyph: "🗀";
-                    label: "Abrir en el gestor de archivos";
+                    label: @tr("Abrir en el gestor de archivos");
                     clicked => {
                         root.reveal-path(root.menu-path);
                         root.menu-path = "";
@@ -1581,7 +1581,7 @@ export component LibraryTab inherits Rectangle {
 
                 MenuAction {
                     glyph: "✕";
-                    label: "Cancelar";
+                    label: @tr("Cancelar");
                     clicked => { root.menu-path = ""; }
                 }
             }
@@ -1618,7 +1618,7 @@ export component LibraryTab inherits Rectangle {
 
                 MenuAction {
                     glyph: "≡";
-                    label: "Encolar todas";
+                    label: @tr("Encolar todas");
                     clicked => {
                         root.playlist-enqueue-id(root.pl-menu-id);
                         root.pl-menu-id = "";
@@ -1627,7 +1627,7 @@ export component LibraryTab inherits Rectangle {
 
                 MenuAction {
                     glyph: "✎";
-                    label: "Renombrar";
+                    label: @tr("Renombrar");
                     clicked => { root.name-sheet = 3; }
                 }
 
@@ -1637,8 +1637,8 @@ export component LibraryTab inherits Rectangle {
                 MenuAction {
                     glyph: root.pl-confirm-delete ? "✕" : "🗑";
                     label: root.pl-confirm-delete
-                        ? "¿Seguro? Toca otra vez"
-                        : "Borrar la lista";
+                        ? @tr("¿Seguro? Toca otra vez")
+                        : @tr("Borrar la lista");
                     clicked => {
                         if (root.pl-confirm-delete) {
                             root.playlist-delete(root.pl-menu-id);
@@ -1664,7 +1664,7 @@ export component LibraryTab inherits Rectangle {
 
                 MenuAction {
                     glyph: "✕";
-                    label: "Cancelar";
+                    label: @tr("Cancelar");
                     clicked => { root.pl-menu-id = ""; }
                 }
             }
@@ -1691,7 +1691,7 @@ export component LibraryTab inherits Rectangle {
                 spacing: 2px;
 
                 Text {
-                    text: "Añadir a…";
+                    text: @tr("Añadir a…");
                     color: Theme.text-primary;
                     font-size: Theme.font-body;
                     height: Theme.touch-target;
@@ -1701,7 +1701,7 @@ export component LibraryTab inherits Rectangle {
 
                 MenuAction {
                     glyph: "+";
-                    label: "Crear lista nueva…";
+                    label: @tr("Crear lista nueva…");
                     clicked => { root.name-sheet = 2; }
                 }
                 Rectangle { height: 1px; background: Theme.border; }
@@ -1735,7 +1735,7 @@ export component LibraryTab inherits Rectangle {
 
                 MenuAction {
                     glyph: "✕";
-                    label: "Cancelar";
+                    label: @tr("Cancelar");
                     clicked => { root.pending-path = ""; }
                 }
             }
@@ -1744,8 +1744,8 @@ export component LibraryTab inherits Rectangle {
 
     // La hoja del nombre, después de todo lo demás para quedar por encima.
     if root.name-sheet == 1: NameSheet {
-        heading: "Nueva lista";
-        confirm-label: "Crear";
+        heading: @tr("Nueva lista");
+        confirm-label: @tr("Crear");
         accepted(nombre) => {
             root.playlist-create(nombre);
             root.name-sheet = 0;
@@ -1759,8 +1759,8 @@ export component LibraryTab inherits Rectangle {
     // puede enterarse del id recién creado para añadirle algo después, así que
     // las dos mitades tienen que ocurrir del lado de Rust.
     if root.name-sheet == 2: NameSheet {
-        heading: "Nueva lista, con lo elegido dentro";
-        confirm-label: "Crear y añadir";
+        heading: @tr("Nueva lista, con lo elegido dentro");
+        confirm-label: @tr("Crear y añadir");
         accepted(nombre) => {
             root.add-path-to-new-playlist(root.pending-path, root.pending-deep, nombre);
             root.name-sheet = 0;
@@ -1772,8 +1772,8 @@ export component LibraryTab inherits Rectangle {
     }
 
     if root.name-sheet == 3: NameSheet {
-        heading: "Renombrar la lista";
-        confirm-label: "Guardar";
+        heading: @tr("Renombrar la lista");
+        confirm-label: @tr("Guardar");
         initial: root.pl-menu-name;
         accepted(nombre) => {
             root.playlist-rename(root.pl-menu-id, nombre);

@@ -127,13 +127,13 @@ component HeaderCell inherits Rectangle {
             }
             if root.is-stars: MenuSeparator {}
             if root.is-stars: Menu {
-                title: "Columna de estrellas";
+                title: @tr("Columna de estrellas");
                 MenuItem {
-                    title: (root.star-mode == 0 ? "✓ " : "     ") + "Mostrar las cinco estrellas";
+                    title: (root.star-mode == 0 ? "✓ " : "     ") + @tr("Mostrar las cinco estrellas");
                     activated => { root.set-star-mode(0); }
                 }
                 MenuItem {
-                    title: (root.star-mode == 1 ? "✓ " : "     ") + "Una estrella si tiene puntuación";
+                    title: (root.star-mode == 1 ? "✓ " : "     ") + @tr("Una estrella si tiene puntuación");
                     activated => { root.set-star-mode(1); }
                 }
             }
@@ -369,7 +369,7 @@ export component TrackTable inherits Rectangle {
             if root.filter == "" && !filter-input.has-focus: HorizontalLayout {
                 padding-left: 36px;
                 Text {
-                    text: "Filtrar pistas…";
+                    text: @tr("Filtrar pistas…");
                     color: Theme.text-muted;
                     font-size: Theme.font-body;
                     vertical-alignment: center;
@@ -505,15 +505,15 @@ export component TrackTable inherits Rectangle {
                 alignment: center;
                 spacing: 6px;
                 Text {
-                    text: root.filter != "" ? "Nada casa con la búsqueda."
-                        : "No hay pistas en la biblioteca.";
+                    text: root.filter != "" ? @tr("Nada casa con la búsqueda.")
+                        : @tr("No hay pistas en la biblioteca.");
                     color: Theme.text-secondary;
                     font-size: Theme.font-body;
                     horizontal-alignment: center;
                 }
                 Text {
-                    text: root.filter != "" ? "Prueba con menos letras."
-                        : "Añade carpetas desde Ajustes.";
+                    text: root.filter != "" ? @tr("Prueba con menos letras.")
+                        : @tr("Añade carpetas desde Ajustes.");
                     color: Theme.text-muted;
                     font-size: Theme.font-small;
                     horizontal-alignment: center;
@@ -579,51 +579,51 @@ export component TrackTable inherits Rectangle {
                 ContextMenuArea {
                     Menu {
                         MenuItem {
-                            title: "Reproducir";
+                            title: @tr("Reproducir");
                             activated => { root.activated(i); }
                         }
                         MenuItem {
-                            title: "Reproducir a continuación";
+                            title: @tr("Reproducir a continuación");
                             activated => { root.play-next(i); }
                         }
                         MenuItem {
-                            title: "Encolar";
+                            title: @tr("Encolar");
                             activated => { root.enqueued(i); }
                         }
                         MenuItem {
-                            title: "Quitar de la cola";
+                            title: @tr("Quitar de la cola");
                             activated => { root.row-middle-clicked(i); }
                         }
                         if root.playlist-scope: MenuItem {
-                            title: "Quitar de la lista";
+                            title: @tr("Quitar de la lista");
                             activated => { root.remove-from-playlist(i); }
                         }
                         MenuItem {
-                            title: "Añadir a lista…";
+                            title: @tr("Añadir a lista…");
                             activated => { root.add-to-playlist(i); }
                         }
                         MenuItem {
-                            title: "Editar metadatos…";
+                            title: @tr("Editar metadatos…");
                             activated => { root.edit-requested(i); }
                         }
                         MenuItem {
-                            title: "Reclasificar…";
+                            title: @tr("Reclasificar…");
                             activated => { root.reclassify-requested(i); }
                         }
                         MenuItem {
-                            title: "Nombres de pistas…";
+                            title: @tr("Nombres de pistas…");
                             activated => { root.names-requested(i); }
                         }
                         MenuItem {
-                            title: "Buscar carátula…";
+                            title: @tr("Buscar carátula…");
                             activated => { root.cover-requested(i); }
                         }
                         MenuItem {
-                            title: "Abrir carpeta";
+                            title: @tr("Abrir carpeta");
                             activated => { root.open-folder(i); }
                         }
                         MenuItem {
-                            title: "Fijar carpeta";
+                            title: @tr("Fijar carpeta");
                             activated => { root.pin-folder(i); }
                         }
                     }
@@ -825,7 +825,7 @@ export component TrackTable inherits Rectangle {
                 spacing: 2px;
 
                 Text {
-                    text: "Columnas";
+                    text: @tr("Columnas");
                     color: Theme.text-primary;
                     font-size: Theme.font-title;
                     height: 34px;
