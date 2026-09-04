@@ -697,12 +697,18 @@ export component NowPlayingTab inherits Rectangle {
         spacing: Theme.gap;
 
         // Left: the cover, with the info, seek bar and transport stacked under
-        // it — kept to the cover's width so the list on the right has the room.
+        // it. Its width follows the cover but never drops below the transport's
+        // own width — a short window shrinks the cover a lot, and a column only
+        // as wide as a 60px cover would spill the play button over the list.
         VerticalLayout {
-            width: root.art-landscape;
+            width: max(root.art-landscape, 264px);
             spacing: Theme.gap;
 
-            Artwork { side: root.art-landscape; art: root.art; fit: root.art-fit; }
+            // Centre the cover: on a short window it is narrower than the column.
+            HorizontalLayout {
+                alignment: center;
+                Artwork { side: root.art-landscape; art: root.art; fit: root.art-fit; }
+            }
 
             TrackInfo {
                 title: root.title;
@@ -750,6 +756,13 @@ export component NowPlayingTab inherits Rectangle {
             changed ni => { qcol.recenter(); }
 
             qlv := ListView {
+                // Finger scroll, since browsing the queue is the point.
+                mouse-drag-pan-enabled: true;
+                // The one bit of motion the user asked for, kept to this list:
+                // the re-centre eases into place instead of jumping. A finger
+                // drag moves the viewport directly (no lag) — this smooths the
+                // programmatic snap-back and the track-change re-centre.
+                animate viewport-y { duration: 260ms; easing: ease-in-out; }
                 // Any scroll — the user's or the re-centre's — restarts the idle
                 // countdown; the re-centre while idle is a harmless no-op.
                 changed viewport-y => { idle.restart(); }
@@ -757,6 +770,9 @@ export component NowPlayingTab inherits Rectangle {
                     height: qcol.row-h;
                     background: i == root.now-index ? Theme.bg-selected
                         : (qt.has-hover ? Theme.bg-hover : transparent);
+                    // The blue highlight glides from one row to the next as the
+                    // current track changes, rather than snapping.
+                    animate background { duration: 220ms; easing: ease-out; }
                     HorizontalLayout {
                         padding-left: 10px;
                         padding-right: 10px;
@@ -768,6 +784,7 @@ export component NowPlayingTab inherits Rectangle {
                                 color: i == root.now-index ? Theme.accent : Theme.text-primary;
                                 font-size: Theme.font-body;
                                 overflow: elide;
+                                animate color { duration: 220ms; easing: ease-out; }
                             }
                             Text {
                                 text: row.subtitle;
