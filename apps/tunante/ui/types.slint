@@ -140,4 +140,8 @@ export struct PlanRow {
     console: string,
     source: string,
     action: string,
+    // Whether this row would actually write a cover. A flag, not a string
+    // comparison: `action` is translated, so matching on its text broke the
+    // moment the interface stopped being Spanish.
+    will-write: bool,
 }

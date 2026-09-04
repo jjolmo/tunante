@@ -2,7 +2,7 @@
 // old Tauri desktop used: a dimmed backdrop over the whole app and a centred
 // panel with a left nav and the seven categories. Desktop-flavoured controls
 // (real checkboxes for the toggles) instead of the phone list's sí/no. The
-// mini shell keeps its single scrolling SettingsTab; this is only for grande.
+// narrow shell keeps its single scrolling SettingsTab; this is only for grande.
 
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
@@ -125,7 +125,6 @@ export component DesktopSettings inherits Rectangle {
     in property <int> crossfade-secs;
     callback cycle-crossfade();
     in property <string> output-label: @tr("sistema");
-    in property <string> ui-mode-label: "auto";
     /// The UI language: "" means follow the system, otherwise a native name.
     in property <string> language-label;
     callback cycle-language();
@@ -173,7 +172,6 @@ export component DesktopSettings inherits Rectangle {
     callback toggle-mono-compensate();
     callback toggle-mono-phase();
     callback cycle-output();
-    callback cycle-ui-mode();
     in property <bool> eq-enabled;
     in property <float> eq-low;
     in property <float> eq-mid;
@@ -228,10 +226,6 @@ export component DesktopSettings inherits Rectangle {
     callback toggle-queue-always-visible();
     in property <int> star-display-mode;
     callback set-star-display-mode(int);
-    in property <int> ui-mode;
-    in-out property <int> ui-mode-pending;
-    in property <string> ui-mode-pending-label;
-    callback apply-ui-mode();
     // Closed from the ✕, the backdrop, or Escape.
     callback close();
 
@@ -634,17 +628,6 @@ export component DesktopSettings inherits Rectangle {
                                     clicked => { root.cycle-language(); }
                                 }
                                 SettingRow {
-                                    label: @tr("Modo de interfaz");
-                                    value: root.ui-mode-pending-label;
-                                    clicked => { root.cycle-ui-mode(); }
-                                }
-                                if root.ui-mode-pending != root.ui-mode: SettingRow {
-                                    label: @tr("  ↳ Aplicar (cambia la presentación)");
-                                    value: @tr("Aplicar");
-                                    highlighted: true;
-                                    clicked => { root.apply-ui-mode(); }
-                                }
-                                SettingRow {
                                     label: @tr("Cola");
                                     value: root.queue-placement == 2 ? @tr("panel derecho") : @tr("entrada en el sidebar");
                                     clicked => { root.cycle-queue-placement(); }
@@ -807,7 +790,7 @@ export component DesktopSettings inherits Rectangle {
                                     Image {
                                         width: 64px;
                                         height: 64px;
-                                        source: @image-url("../dist/icons/128x128/tunante-mini.png");
+                                        source: @image-url("../dist/icons/128x128/tunante.png");
                                     }
                                     VerticalLayout {
                                         alignment: center;
