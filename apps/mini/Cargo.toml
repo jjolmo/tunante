@@ -79,6 +79,10 @@ slint = { version = "1.17", default-features = false, features = [
     "backend-winit",
     "renderer-femtovg",
     "renderer-software",
+    # A window-level key hook (main.rs) makes Ctrl+P a real global shortcut:
+    # it fires before Slint's focus dispatch, so no inner scope — and no lack
+    # of one — can swallow it. That needs the winit window accessor.
+    "unstable-winit-030",
 ] }
 
 # Everything freedesktop. MPRIS is a D-Bus specification and logind is a
