@@ -1179,7 +1179,11 @@ export component AppWindow inherits Window {
             }
         }
 
-        if !root.cramped && root.output-warning == "": MiniPlayer {
+        // Not on the Sonando tab: there the full player is already on screen, so
+        // the mini bar only duplicates it — and its 64px is not in the cover's
+        // height reservation (see art-portrait), so showing it here is exactly
+        // what pushed the transport off the bottom at shorter window heights.
+        if !root.cramped && root.output-warning == "" && root.tab != 0: MiniPlayer {
             art: root.now-art;
             title: root.now-title;
             artist: root.now-artist;
