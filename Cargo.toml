@@ -34,11 +34,3 @@ members = [
 # line breaking turned up at all.
 strip = "symbols"
 
-# Patch tray-icon and libappindicator to support left-click toggle on Linux.
-# On Linux, libayatana-appindicator normally shows the context menu on ALL
-# clicks. Our patched tray-icon calls app_indicator_set_secondary_activate_target()
-# to make the SNI `Activate` D-Bus method (left-click on KDE) trigger the
-# first menu item ("Show / Hide") instead of showing the menu.
-[patch.crates-io]
-tray-icon = { path = "vendor/tray-icon-patch" }
-libappindicator = { path = "vendor/libappindicator-patch" }
