@@ -69,13 +69,21 @@ impl Mode {
     }
 }
 
-/// "1 pista" y no "1 pistas".
+/// "1 pista" y no "1 pistas". Translated like the rest of the UI.
 pub fn pistas(n: usize) -> String {
-    if n == 1 { "1 pista".to_string() } else { format!("{n} pistas") }
+    if n == 1 {
+        crate::i18n::tr("1 pista")
+    } else {
+        crate::i18n::tr("{} pistas").replace("{}", &n.to_string())
+    }
 }
 
 fn juegos(n: usize) -> String {
-    if n == 1 { "1 juego".to_string() } else { format!("{n} juegos") }
+    if n == 1 {
+        crate::i18n::tr("1 juego")
+    } else {
+        crate::i18n::tr("{} juegos").replace("{}", &n.to_string())
+    }
 }
 
 // Every view groups tracks by console the same way, and tunante-android needs
@@ -697,7 +705,9 @@ impl Tree {
                     .into_iter()
                     .map(|g| Cell {
                         title: g.name.clone(),
-                        subtitle: if g.by.is_empty() { pistas(g.count) } else { g.by },
+                        // Just the track count — the Games tab shows the game,
+                        // not who composed it.
+                        subtitle: pistas(g.count),
                         // The cover comes from wherever the first track lives.
                         // A game split across discs takes disc one's, which is
                         // the one that has the artwork in practice.

@@ -784,3 +784,15 @@ msgstr "pas d’accès (groupe input)"
 
 msgid "sí ({} dispositivos)"
 msgstr "oui ({} appareils)"
+
+msgid "1 pista"
+msgstr "1 piste"
+
+msgid "{} pistas"
+msgstr "{} pistes"
+
+msgid "1 juego"
+msgstr "1 jeu"
+
+msgid "{} juegos"
+msgstr "{} jeux"
