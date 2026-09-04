@@ -3180,6 +3180,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // The landscape now-playing queue list plays a context track directly by
+    // its index (no user-queue offset — this list is the context itself).
+    {
+        let (player, queue_model) = (player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_context_activated(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(p) = player.borrow_mut().as_mut() {
+                if p.play_index(index.max(0) as usize).is_ok() {
+                    push_now_playing(&ui, p);
+                    refresh_queue(p, &queue_model);
+                }
+            }
+        });
+    }
+
     // --- Transport -----------------------------------------------------------
     {
         let player = player.clone();
@@ -7716,6 +7732,32 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
         }
     }
     ui.set_playing(p.is_playing());
+
+    // The landscape now-playing view lists the whole playing context and keeps
+    // the current track centred. The index moves every track; the rows only
+    // when the context itself changes, so rebuild them only when the count no
+    // longer matches — a track change within one album is not a new list.
+    let tracks = p.queue().tracks();
+    ui.set_context_index(p.current_index().map(|i| i as i32).unwrap_or(-1));
+    if ui.get_context_rows().row_count() != tracks.len() {
+        let rows: Vec<QueueRow> = tracks
+            .iter()
+            .map(|t| QueueRow {
+                title: SharedString::from(if t.title.is_empty() {
+                    t.path.as_str()
+                } else {
+                    t.title.as_str()
+                }),
+                subtitle: SharedString::from(if !t.artist.is_empty() {
+                    t.artist.as_str()
+                } else {
+                    t.album.as_str()
+                }),
+                playing: false,
+            })
+            .collect();
+        ui.set_context_rows(ModelRc::from(Rc::new(VecModel::from(rows))));
+    }
 }
 
 /// Generated rows for `--rows`, to measure what the list costs.
