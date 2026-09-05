@@ -32,6 +32,12 @@ mod imp {
             .join("tunante.sock")
     }
 
+    /// Remove the socket so the next launch becomes primary even while this
+    /// process is still shutting down. Used by "reset and restart".
+    pub fn release() {
+        let _ = std::fs::remove_file(sock_path());
+    }
+
     pub fn claim(message: &str) -> Start {
         let path = sock_path();
         if let Ok(mut s) = UnixStream::connect(&path) {
@@ -76,6 +82,8 @@ mod imp {
         Secondary,
     }
 
+    pub fn release() {}
+
     pub fn claim(_message: &str) -> Start {
         Start::Primary(Instance)
     }
@@ -87,4 +95,4 @@ mod imp {
     }
 }
 
-pub use imp::{claim, Start};
+pub use imp::{claim, Start, release};

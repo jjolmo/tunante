@@ -1318,3 +1318,6 @@ msgstr "Los geht's"
 
 msgid "Elige tus carpetas de música"
 msgstr "Wähle deine Musikordner"
+
+msgid "Borrar toda la configuración y reiniciar"
+msgstr "Gesamte Konfiguration löschen und neu starten"

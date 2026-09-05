@@ -697,6 +697,46 @@ export component SettingRow inherits Rectangle {
     t := TouchArea { clicked => { root.clicked(); } }
 }
 
+// A destructive action asked twice: the first click arms it, the second
+// within four seconds does it, and a red bar left armed disarms itself.
+export component ArmedRow inherits Rectangle {
+    in property <string> label;
+    in property <string> armed-label;
+    callback fired();
+    property <bool> armed;
+    height: 38px;
+    border-radius: Theme.radius;
+    background: root.armed ? #a33333 : (t.has-hover ? Theme.bg-hover : transparent);
+    animate background { duration: 150ms; }
+    Timer {
+        interval: 4s;
+        running: root.armed;
+        triggered => { root.armed = false; }
+    }
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        Text {
+            text: root.armed ? root.armed-label : root.label;
+            color: root.armed ? #ffffff : Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+    t := TouchArea {
+        clicked => {
+            if (root.armed) {
+                root.armed = false;
+                root.fired();
+            } else {
+                root.armed = true;
+            }
+        }
+    }
+}
+
 export component MenuAction inherits Rectangle {
     in property <string> glyph;
     in property <string> label;

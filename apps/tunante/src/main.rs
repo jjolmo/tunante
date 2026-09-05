@@ -346,7 +346,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let cur = db.get_setting("language").ok().flatten().unwrap_or_default();
         ui.set_language_index(UI_LANGS.iter().position(|(c, _)| *c == cur).unwrap_or(0) as i32);
     }
-    ui.set_check_updates(get_bool_setting(&db, "update.check_on_start", true));
+    ui.set_check_updates(get_bool_setting(&db, "ask_updates_on_startup", true));
 
     // The library tab, either from the real database or from generated rows.
     let roots: Vec<PathBuf> = db
@@ -714,9 +714,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_toggle_check_updates(move || {
             let Some(ui) = weak.upgrade() else { return };
+            // The same switch as "Avisar de actualizaciones al arrancar" in
+            // Ajustes; both views show the one setting.
             let next = !ui.get_check_updates();
             ui.set_check_updates(next);
-            let _ = db.set_setting("update.check_on_start", if next { "true" } else { "false" });
+            ui.set_ask_update(next);
+            let _ = db.set_setting("ask_updates_on_startup", if next { "true" } else { "false" });
         });
     }
     {
@@ -729,6 +732,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let watch = ui.get_onboard_watch();
             ui.set_tab(2);
             adopt(&ui, folders, watch);
+        });
+    }
+    {
+        // "Borrar toda la configuración y reiniciar", in Ajustes. Removes the
+        // whole data directory — database, session, settings, downloaded
+        // covers — for both the current location and the old desktop's one
+        // (store.rs adopts that database, so it is this app's configuration
+        // too). Then a fresh process, which finds nothing and shows the first
+        // run. The socket goes first so the child becomes primary instead of
+        // handing off to this process while it is still on its way out.
+        let dbfile = dbfile.clone();
+        ui.on_reset_app(move || {
+            if let Some(base) = dbfile.parent().and_then(|d| d.parent()) {
+                for dir in ["tunante", "com.tunante.app"] {
+                    let _ = std::fs::remove_dir_all(base.join(dir));
+                }
+            }
+            single::release();
+            if let Ok(exe) = std::env::current_exe() {
+                let mut cmd = std::process::Command::new(exe);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::CommandExt;
+                    cmd.process_group(0);
+                }
+                let _ = cmd
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+            }
+            std::process::exit(0);
         });
     }
     {
@@ -4284,6 +4319,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             let next = !ui.get_ask_update();
             ui.set_ask_update(next);
+            ui.set_check_updates(next);
             let _ = db.set_setting("ask_updates_on_startup", if next { "true" } else { "false" });
         });
     }
@@ -4809,9 +4845,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // honours the skipped version.
     let update_manual = Rc::new(std::cell::Cell::new(false));
     let update_skipped: Option<String> = db.get_setting("update.skip_version").ok().flatten();
+    // No query to GitHub when the user wants neither to be told nor to be
+    // auto-updated: the check exists only to feed one of those two.
     if cfg!(all(target_os = "linux", feature = "updater"))
         && update::IS_RELEASE
-        && get_bool_setting(&db, "update.check_on_start", true)
+        && (get_bool_setting(&db, "ask_updates_on_startup", true)
+            || get_bool_setting(&db, "auto_update_on_startup", false))
     {
         update::spawn_check(update_tx.clone());
     }

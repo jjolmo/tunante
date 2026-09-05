@@ -155,6 +155,13 @@ export component AppWindow inherits Window {
     in property <int> fade-seconds: 8;
 
     // First run: no folders chosen yet, so the picker replaces the whole shell.
+    // The dark/light switch as a fade. Theme's colours are mixes weighted by
+    // Theme.t; this is the one animated value, pushed into the global on every
+    // frame of the transition so all thirteen tokens move together.
+    property <float> theme-t: Theme.dark ? 1.0 : 0.0;
+    animate theme-t { duration: 450ms; easing: ease-in-out; }
+    changed theme-t => { Theme.t = self.theme-t; }
+
     in-out property <bool> setup-mode;
     in property <[FolderEntry]> picker-entries;
     in property <string> picker-path;
@@ -244,6 +251,7 @@ export component AppWindow inherits Window {
     in property <string> theme-label;
     callback cycle-theme();
     callback show-log();
+    callback reset-app();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
     in property <bool> show-in-tray;
@@ -475,7 +483,10 @@ export component AppWindow inherits Window {
     // Readable from Rust so a grid tap can route a console to the table on the
     // desktop and to a list on the phone.
     out property <bool> desktop: false;
-    init => { root.reshape(); }
+    init => {
+        root.reshape();
+        Theme.t = root.theme-t;
+    }
 
     function reshape() {
         root.portrait = root.height >= root.width;
@@ -897,6 +908,7 @@ export component AppWindow inherits Window {
                         theme-label: root.theme-label;
                         cycle-theme => { root.cycle-theme(); }
                         show-log => { root.show-log(); }
+                        reset-app => { root.reset-app(); }
                         close-to-tray <=> root.close-to-tray;
                         toggle-close-to-tray => { root.toggle-close-to-tray(); }
                         show-in-tray: root.show-in-tray;
@@ -1103,6 +1115,7 @@ export component AppWindow inherits Window {
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
                     show-log => { root.show-log(); }
+                    reset-app => { root.reset-app(); }
                     close-to-tray <=> root.close-to-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
                     mouse-buttons-label: root.mouse-buttons-label;

@@ -10,21 +10,29 @@ export global Theme {
     // smaller type than a phone wants. The narrow shells keep the larger sizes.
     in-out property <bool> compact: false;
 
-    out property <color> bg-primary:     self.dark ? #1e1e1e : #ffffff;
-    out property <color> bg-secondary:   self.dark ? #252526 : #f3f3f3;
-    out property <color> bg-tertiary:    self.dark ? #2d2d30 : #e8e8e8;
-    out property <color> bg-hover:       self.dark ? #3e3e42 : #d4d4d4;
-    out property <color> bg-selected:    self.dark ? #094771 : #cce5ff;
-    out property <color> text-primary:   self.dark ? #cccccc : #1e1e1e;
-    out property <color> text-secondary: self.dark ? #969696 : #616161;
-    out property <color> text-muted:     self.dark ? #5a5a5a : #a0a0a0;
+    // The switch between dark and light is a fade, not a cut: a white screen
+    // that appears in one frame over a dark one is a flash in the eyes. Every
+    // colour is a mix of its two values weighted by `t`, and `t` is the one
+    // thing that animates — so all tokens move together, in step.
+    // A global cannot animate, so the window owns the animation (`theme-t` in
+    // app.slint) and writes the value here as it moves. 1 = dark, 0 = light.
+    in-out property <float> t: 1.0;
+
+    out property <color> bg-primary:     #ffffff.mix(#1e1e1e, 1 - t);
+    out property <color> bg-secondary:   #f3f3f3.mix(#252526, 1 - t);
+    out property <color> bg-tertiary:    #e8e8e8.mix(#2d2d30, 1 - t);
+    out property <color> bg-hover:       #d4d4d4.mix(#3e3e42, 1 - t);
+    out property <color> bg-selected:    #cce5ff.mix(#094771, 1 - t);
+    out property <color> text-primary:   #1e1e1e.mix(#cccccc, 1 - t);
+    out property <color> text-secondary: #616161.mix(#969696, 1 - t);
+    out property <color> text-muted:     #a0a0a0.mix(#5a5a5a, 1 - t);
     out property <color> accent:         #007acc;
-    out property <color> accent-hover:   self.dark ? #1c97ea : #005999;
-    out property <color> border:         self.dark ? #3e3e42 : #d4d4d4;
+    out property <color> accent-hover:   #005999.mix(#1c97ea, 1 - t);
+    out property <color> border:         #d4d4d4.mix(#3e3e42, 1 - t);
     // For the one banner there is. Amber rather than red: the music is waiting,
     // not lost.
-    out property <color> warning-bg:     self.dark ? #4a3a10 : #fff4ce;
-    out property <color> warning-fg:     self.dark ? #f0c674 : #6b5200;
+    out property <color> warning-bg:     #fff4ce.mix(#4a3a10, 1 - t);
+    out property <color> warning-fg:     #6b5200.mix(#f0c674, 1 - t);
 
     // A finger is not a mouse pointer. Nothing interactive goes below this.
     out property <length> touch-target: 48px;
