@@ -77,11 +77,11 @@ impl Inhibitor {
         match manager
             .inhibit(
                 "sleep",
-                "Tunante mini",
+                "Tunante",
                 // logind shows this verbatim in `systemd-inhibit --list`, so it
                 // is addressed to whoever is looking there wondering why the
-                // phone will not sleep.
-                "Reproduciendo música",
+                // phone will not sleep — in their language.
+                &tunante_core::i18n::tr("Reproduciendo música"),
                 "block",
             )
             .await

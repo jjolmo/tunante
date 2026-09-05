@@ -50,7 +50,9 @@ pub fn spawn(forward: Arc<AtomicBool>) -> Receiver<Msg> {
         .stack_size(1024 * 1024)
         .spawn(move || {
             if let Err(e) = run(&tx, forward) {
-                let _ = tx.send(Msg::Status(format!("no disponible ({e})")));
+                let _ = tx.send(Msg::Status(
+                    tunante_core::i18n::tr("no disponible ({})").replace("{}", &e.to_string()),
+                ));
             }
         })
         .ok();
@@ -60,7 +62,7 @@ pub fn spawn(forward: Arc<AtomicBool>) -> Receiver<Msg> {
 #[cfg(not(target_os = "linux"))]
 pub fn spawn(_forward: Arc<AtomicBool>) -> Receiver<Msg> {
     let (tx, rx) = std::sync::mpsc::channel::<Msg>();
-    let _ = tx.send(Msg::Status("no disponible aquí".into()));
+    let _ = tx.send(Msg::Status(tunante_core::i18n::tr("no disponible aquí")));
     rx
 }
 
@@ -129,12 +131,13 @@ fn run(tx: &Sender<Msg>, forward: Arc<AtomicBool>) -> zbus::Result<()> {
         let msg = responses
             .next()
             .await
-            .ok_or_else(|| zbus::Error::Failure("el portal colgó sin contestar".into()))?;
+            .ok_or_else(|| zbus::Error::Failure(tunante_core::i18n::tr("el portal colgó sin contestar")))?;
         let (code, results): (u32, HashMap<String, OwnedValue>) = msg.body().deserialize()?;
         if code != 0 {
-            return Err(zbus::Error::Failure(format!(
-                "el portal rechazó la sesión (código {code})"
-            )));
+            return Err(zbus::Error::Failure(
+                tunante_core::i18n::tr("el portal rechazó la sesión (código {})")
+                    .replace("{}", &code.to_string()),
+            ));
         }
         // The spec files session_handle as a string; some portals have
         // shipped it as an object path. Take either.
@@ -149,7 +152,9 @@ fn run(tx: &Sender<Msg>, forward: Arc<AtomicBool>) -> zbus::Result<()> {
             })
             .ok_or_else(|| zbus::Error::Failure("respuesta sin session_handle".into()))?;
         let session = zbus::zvariant::ObjectPath::try_from(session)
-            .map_err(|e| zbus::Error::Failure(format!("session_handle ilegible: {e}")))?;
+            .map_err(|e| zbus::Error::Failure(
+                    tunante_core::i18n::tr("session_handle ilegible: {}").replace("{}", &e.to_string()),
+                ))?;
 
         // --- BindShortcuts ------------------------------------------------
         //
@@ -168,7 +173,8 @@ fn run(tx: &Sender<Msg>, forward: Arc<AtomicBool>) -> zbus::Result<()> {
             .iter()
             .map(|(id, desc, trigger)| {
                 let mut m: HashMap<&str, Value> = HashMap::new();
-                m.insert("description", Value::from(*desc));
+                // The desktop's binding dialog shows this: the user's language.
+                m.insert("description", Value::from(tunante_core::i18n::tr(desc)));
                 m.insert("preferred_trigger", Value::from(*trigger));
                 (*id, m)
             })
@@ -182,15 +188,16 @@ fn run(tx: &Sender<Msg>, forward: Arc<AtomicBool>) -> zbus::Result<()> {
         let msg = responses2
             .next()
             .await
-            .ok_or_else(|| zbus::Error::Failure("el portal colgó al vincular".into()))?;
+            .ok_or_else(|| zbus::Error::Failure(tunante_core::i18n::tr("el portal colgó al vincular")))?;
         let (code, _results): (u32, HashMap<String, OwnedValue>) = msg.body().deserialize()?;
         if code != 0 {
             // 1 is the user cancelling the binding dialog — a decision, not
             // a malfunction, and the label should say which it was.
             return Err(zbus::Error::Failure(if code == 1 {
-                "cancelado en el diálogo del sistema".into()
+                tunante_core::i18n::tr("cancelado en el diálogo del sistema")
             } else {
-                format!("el portal rechazó los atajos (código {code})")
+                tunante_core::i18n::tr("el portal rechazó los atajos (código {})")
+                    .replace("{}", &code.to_string())
             }));
         }
 

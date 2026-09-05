@@ -1192,3 +1192,96 @@ msgstr "Hochformat"
 
 msgid "Horizontal"
 msgstr "Querformat"
+
+msgid "Reproduciendo música"
+msgstr "Musik läuft"
+
+msgid "Tunante se ha caído.\n\n{}\n\nDetalles en {}"
+msgstr "Tunante ist abgestürzt.\n\n{}\n\nDetails in {}"
+
+msgid "Aplicada la mejor del archivo."
+msgstr "Die beste aus dem Archiv übernommen."
+
+msgid "Nada con confianza suficiente; elige a mano."
+msgstr "Nichts mit ausreichender Sicherheit; bitte von Hand wählen."
+
+msgid "El formato de esta consola lleva una canción por fichero: no hay listado que consultar."
+msgstr "Das Format dieser Konsole hat ein Lied pro Datei: es gibt keine Liste zum Nachschlagen."
+
+msgid "Ponle nombre al juego primero — el listado se busca por él."
+msgstr "Gib dem Spiel zuerst einen Namen — danach wird die Liste gesucht."
+
+msgid "Añadir {} pistas a…"
+msgstr "{} Titel hinzufügen zu…"
+
+msgid "Añadir «{}» a…"
+msgstr "„{}“ hinzufügen zu…"
+
+msgid "Siguiente pista"
+msgstr "Nächster Titel"
+
+msgid "Pista anterior"
+msgstr "Vorheriger Titel"
+
+msgid "no disponible ({})"
+msgstr "nicht verfügbar ({})"
+
+msgid "no disponible aquí"
+msgstr "hier nicht verfügbar"
+
+msgid "el portal colgó sin contestar"
+msgstr "das Portal hat ohne Antwort aufgelegt"
+
+msgid "el portal rechazó la sesión (código {})"
+msgstr "das Portal hat die Sitzung abgelehnt (Code {})"
+
+msgid "el portal colgó al vincular"
+msgstr "das Portal hat beim Binden aufgelegt"
+
+msgid "cancelado en el diálogo del sistema"
+msgstr "im Systemdialog abgebrochen"
+
+msgid "el portal rechazó los atajos (código {})"
+msgstr "das Portal hat die Tastenkürzel abgelehnt (Code {})"
+
+msgid "GitHub no contesta: {}"
+msgstr "GitHub antwortet nicht: {}"
+
+msgid "respuesta rara de GitHub: {}"
+msgstr "seltsame Antwort von GitHub: {}"
+
+msgid "versión ilegible: {}"
+msgstr "unlesbare Version: {}"
+
+msgid "no hay tar: {}"
+msgstr "kein tar: {}"
+
+msgid "el tarball no se pudo extraer"
+msgstr "das Tarball ließ sich nicht entpacken"
+
+msgid "el ejecutable no tiene directorio"
+msgstr "die ausführbare Datei hat kein Verzeichnis"
+
+msgid "el tarball no trae {}"
+msgstr "das Tarball enthält kein {}"
+
+msgid "no se pudo escribir junto a {}: {}"
+msgstr "konnte nicht neben {} schreiben: {}"
+
+msgid "esta build se actualiza con su gestor de paquetes"
+msgstr "diese Version wird über den Paketmanager aktualisiert"
+
+msgid "Buscando carátulas…"
+msgstr "Cover werden gesucht…"
+
+msgid "Carátulas {}/{} · {} encontradas"
+msgstr "Cover {}/{} · {} gefunden"
+
+msgid "{} carátulas de {} juegos"
+msgstr "{} Cover für {} Spiele"
+
+msgid "No se pudieron descargar"
+msgstr "Konnten nicht heruntergeladen werden"
+
+msgid "session_handle ilegible: {}"
+msgstr "unlesbares session_handle: {}"

@@ -75,16 +75,16 @@ mod imp {
         let body: serde_json::Value = agent()
             .get(&url)
             .call()
-            .map_err(|e| format!("GitHub no contesta: {e}"))?
+            .map_err(|e| tunante_core::i18n::tr("GitHub no contesta: {}").replace("{}", &e.to_string()))?
             .body_mut()
             .read_json()
-            .map_err(|e| format!("respuesta rara de GitHub: {e}"))?;
+            .map_err(|e| tunante_core::i18n::tr("respuesta rara de GitHub: {}").replace("{}", &e.to_string()))?;
 
         let tag = body["tag_name"].as_str().unwrap_or_default().to_string();
         let (Some(remote), Some(local)) =
             (parse_version(&tag), parse_version(super::CURRENT_VERSION))
         else {
-            return Err(format!("versión ilegible: {tag}"));
+            return Err(tunante_core::i18n::tr("versión ilegible: {}").replace("{}", &tag));
         };
         if remote <= local {
             return Ok(UpdateMsg::UpToDate);
@@ -186,20 +186,20 @@ mod imp {
             .arg("-C")
             .arg(&work)
             .status()
-            .map_err(|e| format!("no hay tar: {e}"))?;
+            .map_err(|e| tunante_core::i18n::tr("no hay tar: {}").replace("{}", &e.to_string()))?;
         if !status.success() {
-            return Err("el tarball no se pudo extraer".to_string());
+            return Err(tunante_core::i18n::tr("el tarball no se pudo extraer"));
         }
 
         let name = format!("tunante-{}-linux-gnu", std::env::consts::ARCH);
         let unpacked = work.join(&name);
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let dir = exe.parent().ok_or("el ejecutable no tiene directorio")?;
+        let dir = exe.parent().ok_or_else(|| tunante_core::i18n::tr("el ejecutable no tiene directorio"))?;
 
         for bin in ["tunante", "tunante-decoder"] {
             let fresh = unpacked.join(bin);
             if !fresh.is_file() {
-                return Err(format!("el tarball no trae {bin}"));
+                return Err(tunante_core::i18n::tr("el tarball no trae {}").replace("{}", bin));
             }
             swap_in(&fresh, &dir.join(bin))?;
         }
@@ -217,7 +217,11 @@ mod imp {
         let incoming = dest.with_extension("new");
         let outgoing = dest.with_extension("old");
         std::fs::copy(fresh, &incoming)
-            .map_err(|e| format!("no se pudo escribir junto a {}: {e}", dest.display()))?;
+            .map_err(|e| {
+                tunante_core::i18n::tr("no se pudo escribir junto a {}: {}")
+                    .replacen("{}", &dest.display().to_string(), 1)
+                    .replacen("{}", &e.to_string(), 1)
+            })?;
         std::fs::set_permissions(&incoming, std::fs::Permissions::from_mode(0o755))
             .map_err(|e| e.to_string())?;
         if dest.exists() {
@@ -236,13 +240,13 @@ mod imp {
 
     pub fn spawn_check(tx: Sender<UpdateMsg>) {
         let _ = tx.send(UpdateMsg::Error(
-            "esta build se actualiza con su gestor de paquetes".to_string(),
+            tunante_core::i18n::tr("esta build se actualiza con su gestor de paquetes"),
         ));
     }
 
     pub fn spawn_install(tx: Sender<UpdateMsg>, _version: String, _url: String) {
         let _ = tx.send(UpdateMsg::Error(
-            "esta build se actualiza con su gestor de paquetes".to_string(),
+            tunante_core::i18n::tr("esta build se actualiza con su gestor de paquetes"),
         ));
     }
 }

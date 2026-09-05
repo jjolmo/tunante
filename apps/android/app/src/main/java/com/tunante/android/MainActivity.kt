@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tunante.android.ui.LayoutMode
+import com.tunante.android.ui.tr
 import com.tunante.android.ui.Folder
 import com.tunante.android.ui.LibraryView
 import com.tunante.android.ui.DirListing
@@ -677,14 +678,16 @@ class MainActivity : ComponentActivity() {
             NativeBridge.nativeCancelCovers()
             return
         }
-        coverStatus = "Buscando carátulas…"
+        coverStatus = tr("Buscando carátulas…")
         thread(name = "covers") {
             val poller = thread(name = "covers-progress") {
                 while (!Thread.currentThread().isInterrupted) {
                     val p = JSONObject(NativeBridge.nativeCoverProgress())
                     if (!p.optBoolean("running", false)) break
-                    val line = "Carátulas ${p.optInt("done")}/${p.optInt("total")} · " +
-                        "${p.optInt("found")} encontradas"
+                    val line = tr("Carátulas {}/{} · {} encontradas")
+                        .replaceFirst("{}", "${p.optInt("done")}")
+                        .replaceFirst("{}", "${p.optInt("total")}")
+                        .replaceFirst("{}", "${p.optInt("found")}")
                     runOnUiThread { coverStatus = line }
                     try { Thread.sleep(500) } catch (e: InterruptedException) { break }
                 }
@@ -694,9 +697,11 @@ class MainActivity : ComponentActivity() {
             Log.i(TAG, "covers: $result")
             runOnUiThread {
                 coverStatus = if (result.optBoolean("ok", false)) {
-                    "${result.optInt("found")} carátulas de ${result.optInt("games")} juegos"
+                    tr("{} carátulas de {} juegos")
+                        .replaceFirst("{}", "${result.optInt("found")}")
+                        .replaceFirst("{}", "${result.optInt("games")}")
                 } else {
-                    "No se pudieron descargar"
+                    tr("No se pudieron descargar")
                 }
                 // The negative cache holds exactly the tracks this run just gave
                 // covers to; without clearing it the new art stays invisible.

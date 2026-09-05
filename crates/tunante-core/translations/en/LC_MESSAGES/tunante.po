@@ -1192,3 +1192,96 @@ msgstr "Vertical"
 
 msgid "Horizontal"
 msgstr "Horizontal"
+
+msgid "Reproduciendo música"
+msgstr "Playing music"
+
+msgid "Tunante se ha caído.\n\n{}\n\nDetalles en {}"
+msgstr "Tunante has crashed.\n\n{}\n\nDetails in {}"
+
+msgid "Aplicada la mejor del archivo."
+msgstr "Applied the best one from the archive."
+
+msgid "Nada con confianza suficiente; elige a mano."
+msgstr "Nothing confident enough; pick one by hand."
+
+msgid "El formato de esta consola lleva una canción por fichero: no hay listado que consultar."
+msgstr "This console's format carries one song per file: there is no track list to consult."
+
+msgid "Ponle nombre al juego primero — el listado se busca por él."
+msgstr "Name the game first — the list is looked up by it."
+
+msgid "Añadir {} pistas a…"
+msgstr "Add {} tracks to…"
+
+msgid "Añadir «{}» a…"
+msgstr "Add “{}” to…"
+
+msgid "Siguiente pista"
+msgstr "Next track"
+
+msgid "Pista anterior"
+msgstr "Previous track"
+
+msgid "no disponible ({})"
+msgstr "unavailable ({})"
+
+msgid "no disponible aquí"
+msgstr "not available here"
+
+msgid "el portal colgó sin contestar"
+msgstr "the portal hung up without answering"
+
+msgid "el portal rechazó la sesión (código {})"
+msgstr "the portal refused the session (code {})"
+
+msgid "el portal colgó al vincular"
+msgstr "the portal hung up while binding"
+
+msgid "cancelado en el diálogo del sistema"
+msgstr "cancelled in the system dialog"
+
+msgid "el portal rechazó los atajos (código {})"
+msgstr "the portal refused the shortcuts (code {})"
+
+msgid "GitHub no contesta: {}"
+msgstr "GitHub is not answering: {}"
+
+msgid "respuesta rara de GitHub: {}"
+msgstr "odd answer from GitHub: {}"
+
+msgid "versión ilegible: {}"
+msgstr "unreadable version: {}"
+
+msgid "no hay tar: {}"
+msgstr "no tar: {}"
+
+msgid "el tarball no se pudo extraer"
+msgstr "the tarball could not be extracted"
+
+msgid "el ejecutable no tiene directorio"
+msgstr "the executable has no directory"
+
+msgid "el tarball no trae {}"
+msgstr "the tarball does not contain {}"
+
+msgid "no se pudo escribir junto a {}: {}"
+msgstr "could not write next to {}: {}"
+
+msgid "esta build se actualiza con su gestor de paquetes"
+msgstr "this build is updated by its package manager"
+
+msgid "Buscando carátulas…"
+msgstr "Looking for covers…"
+
+msgid "Carátulas {}/{} · {} encontradas"
+msgstr "Covers {}/{} · {} found"
+
+msgid "{} carátulas de {} juegos"
+msgstr "{} covers for {} games"
+
+msgid "No se pudieron descargar"
+msgstr "Could not download them"
+
+msgid "session_handle ilegible: {}"
+msgstr "unreadable session_handle: {}"

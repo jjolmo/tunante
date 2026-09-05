@@ -1,0 +1,7 @@
+# Literals that look Spanish to scripts/check-i18n.py and are not captions.
+# One per line, two spaces and `# why` after each. Anything a person can read
+# on screen does NOT belong here — it goes through tr().
+los  # stop word in the cover-art title matcher (tunante-art), compared, never shown
+las  # same
+Español  # the language's own name in the language picker: every language is listed in itself
+Música  # a candidate folder name under $HOME (picker.rs), never drawn
