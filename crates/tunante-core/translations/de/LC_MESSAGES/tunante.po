@@ -1289,14 +1289,8 @@ msgstr "unlesbares session_handle: {}"
 msgid "Bienvenido a Tunante"
 msgstr "Willkommen bei Tunante"
 
-msgid "Tres cosas y a escuchar. Todo se puede cambiar luego en Ajustes."
-msgstr "Drei Dinge, dann geht's los. Alles lässt sich später in den Einstellungen ändern."
-
 msgid "Tu música"
 msgstr "Deine Musik"
-
-msgid "Las carpetas que Tunante analiza; la biblioteca se construye a partir de ellas."
-msgstr "Die Ordner, die Tunante durchsucht; daraus entsteht die Bibliothek."
 
 msgid "Ninguna carpeta todavía."
 msgstr "Noch kein Ordner."
@@ -1307,23 +1301,14 @@ msgstr "Ordner hinzufügen…"
 msgid "Vigilar cambios en estas carpetas"
 msgstr "Diese Ordner auf Änderungen überwachen"
 
-msgid "Lo que copies ahí aparece solo, sin volver a analizar."
-msgstr "Was du dort hineinkopierst, erscheint von selbst, ohne neuen Scan."
-
 msgid "En línea"
 msgstr "Online"
 
 msgid "Descargar carátulas automáticamente"
 msgstr "Cover automatisch herunterladen"
 
-msgid "Busca en internet la carátula de lo que suena y de los discos que no la tienen."
-msgstr "Sucht im Internet nach dem Cover des laufenden Titels und der Alben ohne Cover."
-
 msgid "Buscar actualizaciones al arrancar"
 msgstr "Beim Start nach Updates suchen"
-
-msgid "Una consulta a GitHub por arranque; nada se instala sin preguntar."
-msgstr "Eine Anfrage an GitHub pro Start; nichts wird ungefragt installiert."
 
 msgid "Ahora no"
 msgstr "Jetzt nicht"
