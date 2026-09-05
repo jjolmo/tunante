@@ -25,6 +25,10 @@ on:
         type: choice
         default: patch
         options: [patch, minor, major]
+      version:
+        description: 'Exact version to release (e.g. 0.9.1); when set, bump is ignored'
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -61,6 +65,11 @@ jobs:
             minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
             *)     PATCH=$((PATCH + 1)) ;;
           esac
+          # An explicit version wins over the bump: the jump from 0.4 to 0.9.1
+          # was a decision, not a patch.
+          if [ -n "${{ inputs.version }}" ]; then
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${{ inputs.version }}"
+          fi
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
