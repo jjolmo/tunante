@@ -2670,7 +2670,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             // get_tracks_by_folder already answers for the whole subtree.
             let tracks = db_p.get_tracks_by_folder(&path).unwrap_or_default();
+            // Same intent as the tap: this folder, and only this folder, now.
+            if let Some(p) = player_p.borrow_mut().as_mut() {
+                p.clear_user_queue();
+            }
             play_collection(&ui, &player_p, &queue_model_p, tracks);
+        });
+    }
+    {
+        // "Abrir" in the long-press sheet: look inside a folder or category
+        // without playing it — the browse the tap no longer does.
+        let (tree_o, db_o, views_o) = (tree.clone(), db.clone(), views.clone());
+        let weak = ui.as_weak();
+        ui.on_library_open_path(move |path| {
+            let Some(ui) = weak.upgrade() else { return };
+            tree_o.borrow_mut().nav.push(path.to_string());
+            refresh_library(&ui, &tree_o, &db_o, &views_o);
         });
     }
     {
@@ -2941,6 +2956,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 Scope::Folder(path.to_string())
             };
+            // On the phone a tap on a category REPLACES the queue (cidwel,
+            // 2026-09-05): what you tap is what you listen to, hand-queued
+            // leftovers included. The desktop branch above never reaches here —
+            // there a click only opens the table and the queue is sacred.
+            if let Some(p) = player_v.borrow_mut().as_mut() {
+                p.clear_user_queue();
+            }
             play_collection(&ui, &player_v, &queue_model_v, tracks);
             ui.set_tab(0);
         });

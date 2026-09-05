@@ -149,7 +149,11 @@ class MainActivity : ComponentActivity() {
                     coverStatus = coverStatus,
                     onPickFolders = ::openPicker,
                     onQuery = ::search,
-                    onOpenFolder = ::openRow,
+                    // A tap on a category plays it (replacing the queue) and
+                    // jumps to Playing; browsing into it is the long-press
+                    // menu's "Abrir". Decided with cidwel 2026-09-05.
+                    onOpenFolder = ::playCollection,
+                    onBrowseRow = ::openRow,
                     onUp = ::up,
                     onPlayIndex = ::playAt,
                     onTogglePlay = { NativeBridge.nativeTogglePlay() },
@@ -519,6 +523,30 @@ class MainActivity : ComponentActivity() {
      * which also matches subfolders and would put a different track under the
      * finger than the one it landed on.
      */
+    /**
+     * Tap on a disc, console, game, playlist or tree folder: play the whole
+     * thing from its first track, **replacing the queue**, and go to Playing.
+     *
+     * Recursive by construction — `rowPaths(deep = true)` walks the subtree —
+     * which is what "tocar una carpeta reproduce todo lo de debajo" means. Off
+     * the main thread like every other row read: a console is the whole track
+     * table filtered.
+     */
+    private fun playCollection(path: String) {
+        val key = com.tunante.android.ui.rowKey(tab, view.here, path)
+        thread(name = "play-collection") {
+            val paths = rowPaths(key, deep = true)
+            if (paths.length() == 0) {
+                // Nothing under it to play: fall back to opening it, so a tap
+                // on an empty branch is never a dead tap.
+                runOnUiThread { openRow(path) }
+                return@thread
+            }
+            Log.i(TAG, "play collection: " + NativeBridge.nativePlayCollection(paths.toString()))
+            runOnUiThread { dest = Dest.Playing }
+        }
+    }
+
     private fun playAt(index: Int) {
         val paths = org.json.JSONArray()
         view.tracks.forEach { paths.put(it.path) }

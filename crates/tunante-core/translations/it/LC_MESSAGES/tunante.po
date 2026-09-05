@@ -1165,3 +1165,6 @@ msgstr "nessuna libreria"
 
 msgid "¿Seguro?"
 msgstr "Sicuro?"
+
+msgid "Abrir"
+msgstr "Apri"

@@ -1056,6 +1056,7 @@ export component LibraryTab inherits Rectangle {
     property <bool> menu-is-folder;
     callback enqueue-path(string, bool);
     callback play-path(string);
+    callback open-path(string);
     callback reclassify-path(string);
     callback pin-path(string);
     callback reveal-path(string);
@@ -1656,6 +1657,17 @@ export component LibraryTab inherits Rectangle {
 
                 if root.menu-is-folder: Rectangle { height: 1px; background: Theme.border; }
 
+                // Since a tap on a category plays it (cidwel, 2026-09-05), looking
+                // inside moved here. First in the list: it is the action the tap
+                // used to be, so it is what the thumb reaches for.
+                if root.menu-is-folder: MenuAction {
+                    glyph: "▸";
+                    label: @tr("Abrir");
+                    clicked => {
+                        root.open-path(root.menu-path);
+                        root.menu-path = "";
+                    }
+                }
                 // The old desktop's folder menu, completed: play it, file it
                 // under the right game, keep it at hand, or see it outside.
                 if root.menu-is-folder: MenuAction {
