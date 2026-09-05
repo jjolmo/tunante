@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.tunante.android.ui.LayoutMode
 import com.tunante.android.ui.Folder
 import com.tunante.android.ui.LibraryView
 import com.tunante.android.ui.DirListing
@@ -71,6 +72,8 @@ class MainActivity : ComponentActivity() {
     private var revealPath by mutableStateOf("")
     /** "Resume only if less than N hours passed"; 0 = always. Read once the DB is open. */
     private var resumeHours by mutableStateOf(6)
+    /** The interface shape the user pinned, if any; the system decides otherwise. */
+    private var layout by mutableStateOf(LayoutMode.Auto)
     private var queue by mutableStateOf(emptyList<Track>())
     /** The «Lista»: the playing context (folder, console, game…) and where we are in it. */
     private var nowList by mutableStateOf(emptyList<Track>())
@@ -121,8 +124,12 @@ class MainActivity : ComponentActivity() {
             if (java.io.File(folder).isDirectory) browse(folder) else browse("")
         }
 
+        layout = LayoutMode.entries.getOrElse(
+            getSharedPreferences("tunante", MODE_PRIVATE).getInt("layout", 0)
+        ) { LayoutMode.Auto }
+
         setContent {
-            TunanteTheme {
+            TunanteTheme(layout) {
                 val state = pollState { readState() }
                 if (picking) {
                     FolderPicker(
@@ -195,6 +202,11 @@ class MainActivity : ComponentActivity() {
                     onFade = { NativeBridge.nativeCycleFade() },
                     resumeHours = resumeHours,
                     onResumeHours = { resumeHours = NativeBridge.nativeCycleResumeHours() },
+                    layout = layout,
+                    onLayout = {
+                        layout = LayoutMode.entries[(layout.ordinal + 1) % LayoutMode.entries.size]
+                        getSharedPreferences("tunante", MODE_PRIVATE).edit().putInt("layout", layout.ordinal).apply()
+                    },
                 )
             }
         }

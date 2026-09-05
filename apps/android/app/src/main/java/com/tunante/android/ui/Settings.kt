@@ -33,6 +33,8 @@ fun SettingsScreen(
     onFade: () -> Unit,
     resumeHours: Int,
     onResumeHours: () -> Unit,
+    layout: LayoutMode,
+    onLayout: () -> Unit,
     onSleep: (Int) -> Unit,
     onScan: () -> Unit,
     onPickFolders: () -> Unit,
@@ -55,6 +57,20 @@ fun SettingsScreen(
             tr("Reanudar si han pasado menos de"),
             if (resumeHours == 0) tr("siempre") else "$resumeHours h",
             onClick = onResumeHours,
+        )
+
+        Rule()
+        Heading(tr("Interfaz"))
+        // Some car head units report portrait on a wide screen; this pins the
+        // layout without asking the system to rotate anything.
+        SettingRow(
+            tr("Orientación"),
+            when (layout) {
+                LayoutMode.Auto -> tr("Automática")
+                LayoutMode.Portrait -> tr("Vertical")
+                LayoutMode.Landscape -> tr("Horizontal")
+            },
+            onClick = onLayout,
         )
 
         Rule()

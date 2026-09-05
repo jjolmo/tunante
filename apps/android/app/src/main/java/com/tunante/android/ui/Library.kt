@@ -185,9 +185,7 @@ fun FolderGrid(
     onLongPress: (Folder) -> Unit = {},
     onOpen: (Folder) -> Unit,
 ) {
-    val columns = if (LocalConfiguration.current.orientation ==
-        android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    ) 6 else 3
+    val columns = if (isLandscape()) 6 else 3
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),

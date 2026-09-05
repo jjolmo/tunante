@@ -1177,3 +1177,18 @@ msgstr "toujours"
 
 msgid "Lista"
 msgstr "Liste"
+
+msgid "Interfaz"
+msgstr "Interface"
+
+msgid "Orientación"
+msgstr "Orientation"
+
+msgid "Automática"
+msgstr "Automatique"
+
+msgid "Vertical"
+msgstr "Verticale"
+
+msgid "Horizontal"
+msgstr "Horizontale"
