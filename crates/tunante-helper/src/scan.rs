@@ -251,15 +251,38 @@ pub fn scan_folder_cancellable(
 }
 
 /// Size and mtime of a file, as the stamp remembers them.
+///
+/// The mtime is the newest of the file and its sidecars — the `.m3u` a GME set
+/// takes its track names and lengths from (`<stem>.m3u` or `<file>.m3u`) and
+/// the folder's `_ratings.m3u` — because a probe reads those too, and editing
+/// one changes what it reports without touching the audio file.
 fn file_stamp(path: &Path) -> Option<(i64, i64)> {
+    fn mtime_of(p: &Path) -> Option<i64> {
+        std::fs::metadata(p)
+            .ok()?
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_secs() as i64)
+    }
     let meta = std::fs::metadata(path).ok()?;
-    let mtime = meta
-        .modified()
-        .ok()?
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_secs() as i64;
-    Some((meta.len() as i64, mtime))
+    let mut newest = mtime_of(path)?;
+    let mut sidecars: Vec<PathBuf> = vec![path.with_extension("m3u")];
+    if let Some(name) = path.file_name() {
+        let mut n = name.to_os_string();
+        n.push(".m3u");
+        sidecars.push(path.with_file_name(n));
+    }
+    if let Some(dir) = path.parent() {
+        sidecars.push(dir.join("_ratings.m3u"));
+    }
+    for sc in sidecars {
+        if let Some(m) = mtime_of(&sc) {
+            newest = newest.max(m);
+        }
+    }
+    Some((meta.len() as i64, newest))
 }
 
 /// The probe options folded into one number: the same options give the same
@@ -489,6 +512,25 @@ mod incremental_tests {
             }
         }
         assert_eq!(flavor_of(&base), flavor_of(&base.clone()));
+    }
+
+    #[test]
+    fn a_sidecar_edit_changes_the_stamp() {
+        let dir = std::env::temp_dir().join(format!("tunante-sidecar-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let audio = dir.join("game.nsf");
+        std::fs::write(&audio, b"NESM").unwrap();
+        let before = file_stamp(&audio).unwrap();
+        // A sidecar written later than the audio moves the stamp forward.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(dir.join("game.m3u"), b"# names").unwrap();
+        let after = file_stamp(&audio).unwrap();
+        assert_eq!(before.0, after.0);
+        assert!(after.1 > before.1, "the .m3u's mtime must move the stamp");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(dir.join("_ratings.m3u"), b"# ratings").unwrap();
+        assert!(file_stamp(&audio).unwrap().1 > after.1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
