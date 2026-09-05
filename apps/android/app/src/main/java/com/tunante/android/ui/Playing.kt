@@ -75,8 +75,14 @@ fun PlayingScreen(
             // the same queue walk. The seek bar and the transport stay below,
             // outside the pager: the bar has its own horizontal drag.
             val now = TrackCard(state.label, state.artist, state.album, state.path)
-            val cards = listOfNotNull(state.prev, now, state.next)
-            val current = if (state.prev != null) 1 else 0
+            // Pages are keyed by track path, so a neighbour that is the same
+            // track as the current one (repeat-one, a two-track list wrapping)
+            // would be a duplicate key — and there is nothing to page to there
+            // anyway. Drop it rather than show the same card twice.
+            val prev = state.prev?.takeIf { it.path != now.path }
+            val next = state.next?.takeIf { it.path != now.path && it.path != prev?.path }
+            val cards = listOfNotNull(prev, now, next)
+            val current = if (prev != null) 1 else 0
             val pager = rememberPagerState(initialPage = current) { cards.size }
             // Whenever the track changes — by the pager, the buttons, or the
             // end of a song — re-centre on the new current card.
@@ -94,6 +100,12 @@ fun PlayingScreen(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 beyondViewportPageCount = 1,
                 verticalAlignment = Alignment.CenterVertically,
+                // Keyed by track, not by position. On release the next card
+                // becomes the current one; with positional keys Compose threw
+                // that card away and built a new one at index 1 — same cover,
+                // loaded again, one blank frame: the flash on settle. Keyed,
+                // the same card simply moves.
+                key = { cards[it].path },
             ) { i ->
                 val card = cards[i]
                 Column(
