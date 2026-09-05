@@ -205,6 +205,7 @@ class MainActivity : ComponentActivity() {
                     resumeHours = resumeHours,
                     onResumeHours = { resumeHours = NativeBridge.nativeCycleResumeHours() },
                     scan = scanState,
+                    onCancelScan = { NativeBridge.nativeCancelScan() },
                     layout = layout,
                     onLayout = {
                         layout = LayoutMode.entries[(layout.ordinal + 1) % LayoutMode.entries.size]

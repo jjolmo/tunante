@@ -48,6 +48,8 @@ static DB_PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 /// `nativeScanProgress` to read; `None` when nothing is scanning. The scan
 /// runs on a Kotlin thread and the UI polls this, the same shape as covers.
 static SCAN_PROGRESS: Mutex<Option<(usize, usize, usize)>> = Mutex::new(None);
+/// Raised by `nativeCancelScan`; `nativeScan` resets it as it starts.
+static SCAN_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// The running cover download, for `nativeCoverProgress` to read.
 static COVER_PROGRESS: Mutex<Option<tunante_art::resolver::BulkProgress>> = Mutex::new(None);
 /// Set by `nativeCancelCovers`, read by the progress callback.
@@ -240,6 +242,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
         let started = Instant::now();
         let (mut files, mut added, mut failed, mut gone) = (0usize, 0usize, 0usize, 0usize);
         *SCAN_PROGRESS.lock().unwrap() = Some((0, 0, 0));
+        SCAN_CANCEL.store(false, std::sync::atomic::Ordering::Relaxed);
 
         for r in &roots {
             // Prune before adding: a folder the user deleted should stop being
@@ -253,7 +256,11 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
 
             let (mut t, mut f) = (0usize, 0usize);
             let before = added;
-            match tunante_helper::scan::scan_folder(db, Path::new(r), |p| {
+            if SCAN_CANCEL.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
+            let fast = tunante_helper::ProbeOpts { fast: true, ..Default::default() };
+            match tunante_helper::scan::scan_folder_cancellable(db, Path::new(r), &fast, &SCAN_CANCEL, |p| {
                 t = p.total;
                 f = p.failed;
                 *SCAN_PROGRESS.lock().unwrap() = Some((p.scanned, p.total, before + p.added));
@@ -282,6 +289,16 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
     // Whatever happened, the modal must come down.
     *SCAN_PROGRESS.lock().unwrap() = None;
     env.new_string(out).expect("new_string")
+}
+
+/// "Cancelar" on the scan modal: the scan keeps what it has and stops.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCancelScan<'a>(
+    env: JNIEnv<'a>,
+    _class: JClass,
+) -> jni::objects::JString<'a> {
+    SCAN_CANCEL.store(true, std::sync::atomic::Ordering::Relaxed);
+    env.new_string("{\"ok\":true}").expect("new_string")
 }
 
 /// Where the running scan is: `{running, done, total, found}`. Polled by the

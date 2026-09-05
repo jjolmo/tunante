@@ -27,6 +27,7 @@
 //! is tempted to add a batch mode to the helper to "fix" the spawn count.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tunante_core::db::models::Track;
@@ -85,6 +86,21 @@ pub fn scan_folder_with(
     db: &Database,
     root: &Path,
     opts: &crate::ProbeOpts,
+    on_progress: impl FnMut(&ScanProgress),
+) -> Result<usize, String> {
+    static NEVER: AtomicBool = AtomicBool::new(false);
+    scan_folder_cancellable(db, root, opts, &NEVER, on_progress)
+}
+
+/// [`scan_folder_with`] that stops when `cancel` is raised: what was already
+/// inserted stays, the files still queued are dropped, the workers finish the
+/// probe in their hands and return. The UI's "Cancelar" sets the flag from
+/// another thread; the scan polls it once per file.
+pub fn scan_folder_cancellable(
+    db: &Database,
+    root: &Path,
+    opts: &crate::ProbeOpts,
+    cancel: &AtomicBool,
     mut on_progress: impl FnMut(&ScanProgress),
 ) -> Result<usize, String> {
     let files: Vec<PathBuf> = WalkDir::new(root)
@@ -135,6 +151,14 @@ pub fn scan_folder_with(
     drop(tx);
 
     for (name, result) in rx {
+        if cancel.load(Ordering::Relaxed) {
+            // Empty the queue so every worker returns after its current
+            // probe; the receiver then runs dry and the loop ends.
+            if let Ok(mut q) = queue.lock() {
+                q.by_ref().for_each(drop);
+            }
+            break;
+        }
         progress.scanned += 1;
         progress.current = name;
 
