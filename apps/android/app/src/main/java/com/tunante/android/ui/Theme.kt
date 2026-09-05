@@ -69,8 +69,31 @@ fun mmss(ms: Long): String {
     return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
 }
 
+/**
+ * Which shape the interface takes. Normally the system says; but some car head
+ * units report a portrait configuration on a screen that is plainly wide, so
+ * the user can pin it in Ajustes. This is the layout only — the app never
+ * asks the system to rotate.
+ */
+enum class LayoutMode { Auto, Portrait, Landscape }
+
+/** Whether the screens lay out for a wide window. Read this, not the configuration. */
+val LocalLandscape = androidx.compose.runtime.compositionLocalOf { false }
+
 @Composable
-fun TunanteTheme(content: @Composable () -> Unit) = content()
+fun isLandscape(): Boolean = LocalLandscape.current
+
+@Composable
+fun TunanteTheme(layout: LayoutMode = LayoutMode.Auto, content: @Composable () -> Unit) {
+    val system = androidx.compose.ui.platform.LocalConfiguration.current.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val landscape = when (layout) {
+        LayoutMode.Auto -> system
+        LayoutMode.Portrait -> false
+        LayoutMode.Landscape -> true
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalLandscape provides landscape, content = content)
+}
 
 /**
  * Text that can only be styled from [T].

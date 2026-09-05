@@ -1177,3 +1177,18 @@ msgstr "immer"
 
 msgid "Lista"
 msgstr "Liste"
+
+msgid "Interfaz"
+msgstr "Oberfläche"
+
+msgid "Orientación"
+msgstr "Ausrichtung"
+
+msgid "Automática"
+msgstr "Automatisch"
+
+msgid "Vertical"
+msgstr "Hochformat"
+
+msgid "Horizontal"
+msgstr "Querformat"

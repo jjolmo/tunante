@@ -1177,3 +1177,18 @@ msgstr "always"
 
 msgid "Lista"
 msgstr "Playlist"
+
+msgid "Interfaz"
+msgstr "Interface"
+
+msgid "Orientación"
+msgstr "Orientation"
+
+msgid "Automática"
+msgstr "Automatic"
+
+msgid "Vertical"
+msgstr "Vertical"
+
+msgid "Horizontal"
+msgstr "Horizontal"

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
@@ -69,16 +68,13 @@ fun PlayingScreen(
         return
     }
 
-    val landscape = LocalConfiguration.current.orientation ==
-        android.content.res.Configuration.ORIENTATION_LANDSCAPE
-    if (landscape) {
-        // Two columns, as NowPlayingTab lays them out in tabs.slint when the
-        // window is wider than it is tall: the cover, the name and the
-        // transport on the left, never wider than 30% of the screen (and never
-        // narrower than a usable transport); the «Lista» on the right, centred
-        // on what is sounding. No pager here — the list is how you move.
+    if (isLandscape()) {
+        // Two columns of equal width, as cidwel asked on the car: the cover,
+        // the name and the transport on the left; the «Lista» on the right,
+        // centred on what is sounding. No pager here — the list is how you
+        // move.
         BoxWithConstraints(Modifier.fillMaxSize().background(T.bgPrimary)) {
-            val column = maxOf(maxWidth * 0.3f, 264.dp)
+            val column = maxWidth / 2
             val side = minOf(column - T.gap * 2, maxHeight * 0.5f)
             Row(Modifier.fillMaxSize()) {
                 Column(

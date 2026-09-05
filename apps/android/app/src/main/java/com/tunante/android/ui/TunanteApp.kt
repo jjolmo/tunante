@@ -32,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
@@ -145,6 +144,8 @@ fun TunanteApp(
     onFade: () -> Unit,
     resumeHours: Int,
     onResumeHours: () -> Unit,
+    layout: LayoutMode,
+    onLayout: () -> Unit,
     onEnqueueRow: (String, Boolean) -> Unit,
     onAddRowToPlaylist: (Playlist, String, Boolean) -> Unit,
     onNewPlaylistWithRow: (String, String, Boolean) -> Unit,
@@ -179,8 +180,7 @@ fun TunanteApp(
         adding = null
     }
 
-    val landscape = LocalConfiguration.current.orientation ==
-        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    val landscape = isLandscape()
     // Sideways changes destination, as it does in mini.
     //
     // Horizontal only, and on the container rather than on each screen: a
@@ -232,6 +232,8 @@ fun TunanteApp(
                     onFade = onFade,
                     resumeHours = resumeHours,
                     onResumeHours = onResumeHours,
+                    layout = layout,
+                    onLayout = onLayout,
                     onSleep = onSleep,
                     onScan = onScan,
                     onDownloadCovers = onDownloadCovers,
