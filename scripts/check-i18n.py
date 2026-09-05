@@ -109,7 +109,7 @@ IDENTICAL_OK = {
     "Tecla · Anterior", "Tecla · Buscar", "Tecla · Favorito", "Tecla · Repetir",
     "Tecla · Silenciar", "Título", "Vibecoded por jjolmo.", "anterior", "buscar",
     "claro", "estéreo", "limitador", "mostrar/ocultar", "nada", "parar", "repetir",
-    "silenciar", "simbólico", "vinculando…", "{}/{} · {} encontradas", "Álbum",
+    "silenciar", "simbólico", "vinculando…", "{}/{} · {} encontradas", "Álbum", "Música",
 }
 
 

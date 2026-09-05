@@ -1327,3 +1327,21 @@ msgstr "Analisi della libreria"
 
 msgid "{} pistas encontradas"
 msgstr "{} brani trovati"
+
+msgid "Música"
+msgstr "Musica"
+
+msgid "Descargas"
+msgstr "Download"
+
+msgid "Tarjeta SD"
+msgstr "Scheda SD"
+
+msgid "Almacenamiento interno"
+msgstr "Memoria interna"
+
+msgid "Lugares habituales"
+msgstr "Posizioni abituali"
+
+msgid "Otras carpetas"
+msgstr "Altre cartelle"
