@@ -37,7 +37,7 @@ SPANISH = re.compile(
     r"reproducir|reproduciendo|añadir|quitar|abrir|buscando|analizando|guardar|"
     r"cancelar|listo|hecho|no se|se ha|podrá|disponible|deshacer|fichero|juego|"
     r"juegos|consola|lista|listas|escribir|sin fundido|aplicada|esta build|"
-    r"contesta|rara|hay|colgó|rechazó|cancelado|junto|trae|ilegible|pudo|pudieron)\b",
+    r"contesta|rara|hay|colgó|rechazó|cancelado|junto|trae|ilegible|pudo|pudieron|preparando)\b",
     re.IGNORECASE,
 )
 # Navigation keys of the library tree ("consola:<id>", "juego:<name>"): they
@@ -109,7 +109,7 @@ IDENTICAL_OK = {
     "Tecla · Anterior", "Tecla · Buscar", "Tecla · Favorito", "Tecla · Repetir",
     "Tecla · Silenciar", "Título", "Vibecoded por jjolmo.", "anterior", "buscar",
     "claro", "estéreo", "limitador", "mostrar/ocultar", "nada", "parar", "repetir",
-    "silenciar", "simbólico", "vinculando…", "{}/{} · {} encontradas", "Álbum", "Música",
+    "silenciar", "simbólico", "vinculando…", "{}/{} · {} encontradas", "Álbum", "Música", "{} encontradas",
 }
 
 

@@ -304,7 +304,7 @@ data class ScanState(val done: Int, val total: Int, val found: Int)
  * nothing else can be done.
  */
 @Composable
-fun ScanOverlay(scan: ScanState, onCancel: () -> Unit) {
+fun ProgressOverlay(title: String, scan: ScanState, button: String, onCancel: () -> Unit) {
     androidx.activity.compose.BackHandler(enabled = true) {}
     Box(
         Modifier
@@ -321,7 +321,7 @@ fun ScanOverlay(scan: ScanState, onCancel: () -> Unit) {
                 .background(T.bgSecondary)
                 .padding(20.dp),
         ) {
-            Label(tr("Analizando la biblioteca"), T.textPrimary, T.fontTitle)
+            Label(title, T.textPrimary, T.fontTitle)
             Spacer(Modifier.height(12.dp))
             // The bar; before the first count arrives a block sweeps instead
             // of pretending to know the total.
@@ -365,7 +365,7 @@ fun ScanOverlay(scan: ScanState, onCancel: () -> Unit) {
                     T.textSecondary, T.fontSmall,
                 )
                 Spacer(Modifier.weight(1f))
-                Label(tr("{} pistas encontradas").replace("{}", "${scan.found}"), T.textSecondary, T.fontSmall)
+                Label(tr("{} encontradas").replace("{}", "${scan.found}"), T.textSecondary, T.fontSmall)
             }
             Spacer(Modifier.height(12.dp))
             // Cancel keeps what has been scanned so far and stops asking for more.
@@ -379,7 +379,7 @@ fun ScanOverlay(scan: ScanState, onCancel: () -> Unit) {
                         .padding(horizontal = 18.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Label(tr("Cancelar"), T.textPrimary, T.fontBody)
+                    Label(button, T.textPrimary, T.fontBody)
                 }
             }
         }

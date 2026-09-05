@@ -48,7 +48,7 @@ import kotlin.concurrent.thread
 class MainActivity : ComponentActivity() {
 
     private var view by mutableStateOf(LibraryView())
-    private var tab by mutableStateOf(Tab.Library)
+    private var tab by mutableStateOf(Tab.Albums)
     private var playlists by mutableStateOf(emptyList<Playlist>())
     private var openPlaylist by mutableStateOf<Playlist?>(null)
     private var playlistTracks by mutableStateOf(emptyList<Track>())
@@ -113,7 +113,9 @@ class MainActivity : ComponentActivity() {
         startForegroundService(Intent(this, PlaybackService::class.java))
 
         hasFiles = hasAllFiles()
-        browse("")
+        // Discos is the first tab, as on the desktop; the tree is loaded when
+        // asked for (or when the session resumes into a folder).
+        switchTab(Tab.Albums)
         reloadPlaylists()
         reloadRoots()
         suggestions = usualPlaces()
@@ -135,8 +137,18 @@ class MainActivity : ComponentActivity() {
         if (session.optBoolean("restored") && scope.startsWith("folder:")) {
             val folder = scope.removePrefix("folder:")
             revealPath = session.optString("path")
-            switchTab(Tab.Library)
-            if (java.io.File(folder).isDirectory) browse(folder) else browse("")
+            // Android's scope is always the track's folder, so "the list you
+            // were in" is remembered separately: the tab that was showing when
+            // the session was saved. Only a tree session lands in the tree.
+            val last = runCatching {
+                Tab.valueOf(getSharedPreferences("tunante", MODE_PRIVATE).getString("tab", Tab.Albums.name)!!)
+            }.getOrDefault(Tab.Albums)
+            if (last == Tab.Library) {
+                switchTab(Tab.Library)
+                if (java.io.File(folder).isDirectory) browse(folder) else browse("")
+            } else {
+                switchTab(last)
+            }
         }
 
         layout = LayoutMode.entries.getOrElse(
@@ -224,6 +236,8 @@ class MainActivity : ComponentActivity() {
                     onResumeHours = { resumeHours = NativeBridge.nativeCycleResumeHours() },
                     scan = scanState,
                     onCancelScan = { NativeBridge.nativeCancelScan() },
+                    covers = coverState,
+                    onStopCovers = { NativeBridge.nativeCancelCovers() },
                     layout = layout,
                     onLayout = {
                         layout = LayoutMode.entries[(layout.ordinal + 1) % LayoutMode.entries.size]
@@ -529,6 +543,7 @@ class MainActivity : ComponentActivity() {
      */
     private fun switchTab(next: Tab) {
         tab = next
+        getSharedPreferences("tunante", MODE_PRIVATE).edit().putString("tab", next.name).apply()
         when (next) {
             Tab.Library -> browse("")
             Tab.Albums -> load { NativeBridge.nativeAlbums() }
@@ -672,6 +687,8 @@ class MainActivity : ComponentActivity() {
     private val scanning = java.util.concurrent.atomic.AtomicBoolean(false)
     /** Non-null while a scan runs: the modal that blocks the whole UI reads it. */
     private var scanState by mutableStateOf<ScanState?>(null)
+    /** Non-null while covers are downloading: the modal with Parar reads it. */
+    private var coverState by mutableStateOf<ScanState?>(null)
 
     private fun scan(root: String = "") {
         if (!scanning.compareAndSet(false, true)) {
@@ -716,21 +733,28 @@ class MainActivity : ComponentActivity() {
             return
         }
         coverStatus = tr("Buscando carátulas…")
+        coverState = ScanState(0, 0, 0)
         thread(name = "covers") {
+            // The modal's numbers. Before the resolver's first report there is
+            // no total yet — the bar sweeps — which is also the phase that used
+            // to look stuck: the requests are being prepared, not downloaded.
             val poller = thread(name = "covers-progress") {
                 while (!Thread.currentThread().isInterrupted) {
                     val p = JSONObject(NativeBridge.nativeCoverProgress())
-                    if (!p.optBoolean("running", false)) break
-                    val line = tr("Carátulas {}/{} · {} encontradas")
-                        .replaceFirst("{}", "${p.optInt("done")}")
-                        .replaceFirst("{}", "${p.optInt("total")}")
-                        .replaceFirst("{}", "${p.optInt("found")}")
-                    runOnUiThread { coverStatus = line }
-                    try { Thread.sleep(500) } catch (e: InterruptedException) { break }
+                    if (p.optBoolean("running", false)) {
+                        val st = ScanState(p.optInt("done"), p.optInt("total"), p.optInt("found"))
+                        val line = tr("Carátulas {}/{} · {} encontradas")
+                            .replaceFirst("{}", "${st.done}")
+                            .replaceFirst("{}", "${st.total}")
+                            .replaceFirst("{}", "${st.found}")
+                        runOnUiThread { if (coverState != null) { coverState = st; coverStatus = line } }
+                    }
+                    try { Thread.sleep(300) } catch (e: InterruptedException) { break }
                 }
             }
             val result = JSONObject(NativeBridge.nativeDownloadCovers(false))
             poller.interrupt()
+            runOnUiThread { coverState = null }
             Log.i(TAG, "covers: $result")
             runOnUiThread {
                 coverStatus = if (result.optBoolean("ok", false)) {

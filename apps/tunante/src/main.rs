@@ -3688,7 +3688,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             cancel.store(false, std::sync::atomic::Ordering::SeqCst);
             plans.set_vec(Vec::new());
             ui.set_bulk_busy(true);
-            ui.set_bulk_status(SharedString::from("Preparando…"));
+            ui.set_bulk_status(SharedString::from(tunante_core::i18n::tr("Preparando…")));
+            ui.set_bulk_done(0);
+            ui.set_bulk_total(0);
             ui.set_bulk_covering(true);
             spawn_bulk_covers(tx.clone(), tracks, cancel.clone(), true);
         });
@@ -5546,6 +5548,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // is the flag that makes the new cover show up.
                             art_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
+                        CoverMsg::BulkProgress(done, total) => {
+                            ui.set_bulk_done(done as i32);
+                            ui.set_bulk_total(total as i32);
+                        }
                         CoverMsg::BulkStatus(text) => {
                             ui.set_bulk_status(SharedString::from(text));
                         }
@@ -5620,6 +5626,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                         CoverMsg::BulkDone { written, stamp } => {
+                            ui.set_bulk_done(0);
+                            ui.set_bulk_total(0);
                             ui.set_bulk_status(SharedString::from(
                                 tunante_core::i18n::tr("{} carátulas escritas")
                                     .replace("{}", &written.to_string()),
@@ -6931,6 +6939,8 @@ struct CoverHit {
 
 enum CoverMsg {
     Status(String),
+    /// (done, total) of the bulk run, for the sheet's bar.
+    BulkProgress(usize, usize),
     /// Generation-stamped: a search's async results must never overwrite a
     /// fresher search's — the picker showed one game's covers under another
     /// game's title otherwise.
@@ -7218,6 +7228,7 @@ fn spawn_bulk_covers(
             } else {
                 format!("\n{}", p.current)
             };
+            let _ = tx.send(CoverMsg::BulkProgress(p.done, p.total));
             let _ = tx.send(CoverMsg::BulkStatus(format!(
                 "{verb}… {}{eta}{current}",
                 tunante_core::i18n::tr("{}/{} · {} encontradas")

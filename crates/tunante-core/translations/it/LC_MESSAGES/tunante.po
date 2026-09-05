@@ -1345,3 +1345,9 @@ msgstr "Posizioni abituali"
 
 msgid "Otras carpetas"
 msgstr "Altre cartelle"
+
+msgid "Preparando…"
+msgstr "Preparazione…"
+
+msgid "{} encontradas"
+msgstr "{} trovate"

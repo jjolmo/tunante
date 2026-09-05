@@ -1992,6 +1992,9 @@ export component CoversPlanSheet inherits Rectangle {
     in property <string> status;
     in property <[PlanRow]> plans;
     in property <bool> busy;
+    // Where the run is, for the bar: 0/0 until the first report arrives.
+    in property <int> done;
+    in property <int> total;
     callback apply();
     callback cancelled();
 
@@ -2019,6 +2022,36 @@ export component CoversPlanSheet inherits Rectangle {
                 text: root.status;
                 color: Theme.text-muted;
                 font-size: Theme.font-body;
+            }
+            // The bar: determinate once there is a total, a sweep before that
+            // (the requests are being prepared, not downloaded).
+            if root.busy: Rectangle {
+                height: 6px;
+                border-radius: 3px;
+                background: Theme.bg-tertiary;
+                clip: true;
+                if root.total > 0: Rectangle {
+                    x: 0;
+                    width: parent.width * clamp(root.done / root.total, 0.0, 1.0);
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                    animate width { duration: 250ms; easing: ease-out; }
+                }
+                if root.total == 0: Rectangle {
+                    property <float> t: 0;
+                    x: (parent.width - self.width) * self.t;
+                    width: parent.width / 3;
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                    Timer {
+                        interval: 900ms;
+                        running: true;
+                        triggered => { parent.t = parent.t < 0.5 ? 1.0 : 0.0; }
+                    }
+                    animate t { duration: 900ms; easing: ease-in-out; }
+                }
             }
 
             ListView {
