@@ -55,6 +55,7 @@ mod inhibit;
 mod library;
 mod mpris;
 mod output;
+mod filedialog;
 mod picker;
 mod player;
 mod single;
@@ -326,6 +327,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let refresh_picker = Rc::new(refresh_picker);
+
+    // The desktop's folder dialog reports here; the 500 ms timer drains it.
+    let (dialog_tx, dialog_rx) = std::sync::mpsc::channel::<Vec<PathBuf>>();
+
+    // --- The desktop onboarding's state ----------------------------------------
+    // The folders it will scan, seeded with where the music most plausibly is.
+    let onboard_folders: Rc<VecModel<SharedString>> = Rc::new(VecModel::from(
+        filedialog::default_music_dir()
+            .map(|p| vec![SharedString::from(p.to_string_lossy().to_string())])
+            .unwrap_or_default(),
+    ));
+    ui.set_onboard_folders(ModelRc::from(onboard_folders.clone()));
+    ui.set_language_names(ModelRc::from(Rc::new(VecModel::from(
+        UI_LANGS.iter().map(|(_, n)| SharedString::from(*n)).collect::<Vec<_>>(),
+    ))));
+    {
+        let cur = db.get_setting("language").ok().flatten().unwrap_or_default();
+        ui.set_language_index(UI_LANGS.iter().position(|(c, _)| *c == cur).unwrap_or(0) as i32);
+    }
+    ui.set_check_updates(get_bool_setting(&db, "update.check_on_start", true));
 
     // The library tab, either from the real database or from generated rows.
     let roots: Vec<PathBuf> = db
@@ -606,25 +627,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Progress from the scanning thread. `None` means it finished.
     let (scan_tx, scan_rx) = std::sync::mpsc::channel::<Option<String>>();
 
-    {
-        let picker = picker.clone();
+    // Register folders as roots and scan them. Shared by the phone picker, the
+    // desktop onboarding and "Añadir carpeta" in Ajustes, so there is one way
+    // a folder joins the library.
+    let adopt_folders: Rc<dyn Fn(&AppWindow, Vec<PathBuf>, bool)> = {
         let db = db.clone();
         let scan_tx = scan_tx.clone();
         let dbfile = dbfile.clone();
-        let weak = ui.as_weak();
-
-        ui.on_picker_done(move || {
-            let Some(ui) = weak.upgrade() else { return };
-            let chosen: Vec<PathBuf> = picker.borrow().chosen.iter().cloned().collect();
-            if chosen.is_empty() {
+        Rc::new(move |ui: &AppWindow, folders: Vec<PathBuf>, watch: bool| {
+            if folders.is_empty() {
                 return;
             }
-
-            for (i, folder) in chosen.iter().enumerate() {
-                let _ = db.add_monitored_folder(
-                    &format!("root-{i}"),
-                    &folder.to_string_lossy(),
-                );
+            for folder in &folders {
+                // A fresh id each time: the old `root-{i}` numbering collided
+                // with INSERT OR IGNORE the second time a folder was added.
+                let id = uuid::Uuid::new_v4().to_string();
+                let _ = db.add_monitored_folder(&id, &folder.to_string_lossy());
+                let _ = db.toggle_folder_watching(&id, watch);
             }
 
             ui.set_setup_mode(false);
@@ -639,7 +658,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = tx.send(None);
                     return;
                 };
-                for folder in chosen {
+                for folder in folders {
                     let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
                         let _ = tx.send(Some(
                             tunante_core::i18n::tr("Analizando {}/{}\n{} pistas encontradas")
@@ -651,6 +670,75 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let _ = tx.send(None);
             });
+        })
+    };
+
+    {
+        let (picker, adopt) = (picker.clone(), adopt_folders.clone());
+        let weak = ui.as_weak();
+        ui.on_picker_done(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let chosen: Vec<PathBuf> = picker.borrow().chosen.iter().cloned().collect();
+            adopt(&ui, chosen, true);
+        });
+    }
+
+    // --- The desktop onboarding ------------------------------------------------
+    {
+        let tx = dialog_tx.clone();
+        ui.on_onboard_add_folder(move || {
+            filedialog::pick_folders(tunante_core::i18n::tr("Elige tus carpetas de música"), tx.clone());
+        });
+    }
+    {
+        let model = onboard_folders.clone();
+        ui.on_onboard_remove_folder(move |i| {
+            let i = i.max(0) as usize;
+            if i < model.row_count() {
+                model.remove(i);
+            }
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_set_language(move |i| {
+            let Some(ui) = weak.upgrade() else { return };
+            let Some((code, _)) = UI_LANGS.get(i.max(0) as usize) else { return };
+            let _ = db.set_setting("language", code);
+            apply_language(code);
+            ui.set_language_label(SharedString::from(language_label(code)));
+            ui.set_language_index(i);
+        });
+    }
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_check_updates(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_check_updates();
+            ui.set_check_updates(next);
+            let _ = db.set_setting("update.check_on_start", if next { "true" } else { "false" });
+        });
+    }
+    {
+        let (model, adopt) = (onboard_folders.clone(), adopt_folders.clone());
+        let weak = ui.as_weak();
+        ui.on_onboard_start(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let folders: Vec<PathBuf> =
+                (0..model.row_count()).filter_map(|i| model.row_data(i)).map(|s| PathBuf::from(s.as_str())).collect();
+            let watch = ui.get_onboard_watch();
+            ui.set_tab(2);
+            adopt(&ui, folders, watch);
+        });
+    }
+    {
+        // "Ahora no": an empty library is a legitimate place to start; the
+        // Ajustes tab has the same button for later.
+        let weak = ui.as_weak();
+        ui.on_onboard_skip(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_setup_mode(false);
+            ui.set_tab(2);
         });
     }
 
@@ -3593,12 +3681,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     {
-        // Adding a folder later reuses the first-run picker rather than being a
-        // second, subtly different browser.
+        // Adding a folder later: the desktop opens the system's dialog, the
+        // phone reuses the first-run browser rather than a second, subtly
+        // different one.
         let (picker, refresh) = (picker.clone(), refresh_picker.clone());
+        let tx = dialog_tx.clone();
         let weak = ui.as_weak();
         ui.on_add_folder(move || {
             let Some(ui) = weak.upgrade() else { return };
+            if ui.get_desktop() {
+                filedialog::pick_folders(tunante_core::i18n::tr("Elige tus carpetas de música"), tx.clone());
+                return;
+            }
             picker.borrow_mut().chosen.clear();
             refresh();
             ui.set_setup_mode(true);
@@ -4715,7 +4809,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // honours the skipped version.
     let update_manual = Rc::new(std::cell::Cell::new(false));
     let update_skipped: Option<String> = db.get_setting("update.skip_version").ok().flatten();
-    if cfg!(all(target_os = "linux", feature = "updater")) && update::IS_RELEASE {
+    if cfg!(all(target_os = "linux", feature = "updater"))
+        && update::IS_RELEASE
+        && get_bool_setting(&db, "update.check_on_start", true)
+    {
         update::spawn_check(update_tx.clone());
     }
     {
@@ -5058,6 +5155,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::time::Duration::from_millis(500),
             move || {
                 let Some(ui) = weak.upgrade() else { return };
+
+                // The folder dialog answered. During the onboarding the folders
+                // join its list; from Ajustes they join the library directly.
+                while let Ok(paths) = dialog_rx.try_recv() {
+                    if ui.get_setup_mode() {
+                        for p in paths {
+                            let s = SharedString::from(p.to_string_lossy().to_string());
+                            let dup = (0..onboard_folders.row_count())
+                                .any(|i| onboard_folders.row_data(i).as_deref() == Some(s.as_str()));
+                            if !dup {
+                                onboard_folders.push(s);
+                            }
+                        }
+                    } else {
+                        adopt_folders(&ui, paths, true);
+                    }
+                }
 
                 // Scan progress, and the handover when it finishes.
                 let mut scan_done = false;

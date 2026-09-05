@@ -13,6 +13,7 @@ import { Theme, Fmt } from "theme.slint";
 import { TabSwitcher, MiniPlayer } from "widgets.slint";
 import { NowPlayingTab, QueueTab, SettingsTab, LibraryTab } from "tabs.slint";
 import { FolderPicker } from "picker.slint";
+import { OnboardingSheet } from "onboarding.slint";
 import { CoversPlanSheet, LogSheet, OutputPickSheet } from "widgets.slint";
 import { DesktopShell } from "desktop.slint";
 
@@ -164,6 +165,20 @@ export component AppWindow inherits Window {
     callback picker-toggle(int);
     callback picker-up();
     callback picker-done();
+
+    // The desktop's first run: a welcome card over the system's own folder
+    // dialog (onboarding.slint), instead of the phone's folder browser.
+    in property <[string]> onboard-folders;
+    in-out property <bool> onboard-watch: true;
+    in property <[string]> language-names;
+    in property <int> language-index;
+    in-out property <bool> check-updates: true;
+    callback onboard-add-folder();
+    callback onboard-remove-folder(int);
+    callback set-language(int);
+    callback toggle-check-updates();
+    callback onboard-start();
+    callback onboard-skip();
 
     callback library-activated(int);
     callback library-enqueued(int);
@@ -526,8 +541,27 @@ export component AppWindow inherits Window {
     }
 
     // First run replaces the shell entirely: there is no library to show tabs
-    // for, and offering them would only be three empty screens.
-    if root.setup-mode: FolderPicker {
+    // for, and offering them would only be three empty screens. Wide window,
+    // welcome card and the system's folder dialog; narrow, the phone browser.
+    if root.setup-mode && root.desktop: OnboardingSheet {
+        folders: root.onboard-folders;
+        watch: root.onboard-watch;
+        theme-mode: root.theme-mode;
+        language-names: root.language-names;
+        language-index: root.language-index;
+        auto-covers: root.auto-covers;
+        check-updates: root.check-updates;
+        add-folder => { root.onboard-add-folder(); }
+        remove-folder(i) => { root.onboard-remove-folder(i); }
+        toggle-watch => { root.onboard-watch = !root.onboard-watch; }
+        set-theme(m) => { root.set-theme(m); }
+        set-language(i) => { root.set-language(i); }
+        toggle-covers => { root.toggle-auto-covers(); }
+        toggle-updates => { root.toggle-check-updates(); }
+        begin => { root.onboard-start(); }
+        skip => { root.onboard-skip(); }
+    }
+    if root.setup-mode && !root.desktop: FolderPicker {
         entries: root.picker-entries;
         current-path: root.picker-path;
         chosen-count: root.picker-chosen;

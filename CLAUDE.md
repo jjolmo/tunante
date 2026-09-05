@@ -27,7 +27,10 @@ apps/
                         # is another.
     src/                #   main.rs (event loop + models), player.rs (queue over
                         #   tunante-audio), tray.rs, single.rs, update.rs,
-                        #   store.rs (which DB to open), library.rs (tree/grids)
+                        #   store.rs (which DB to open), library.rs (tree/grids),
+                        #   filedialog.rs (the system's folder dialog: XDG portal
+                        #   over zbus on Linux, rfd on Windows), picker.rs (the
+                        #   phone shell's own folder browser)
     ui/                 #   app.slint (window/router), desktop.slint (wide
                         #   shell), table.slint, tabs.slint, widgets.slint,
                         #   picker.slint, types.slint, theme.slint

@@ -1,0 +1,324 @@
+// First run on the desktop: a welcome card, not a folder browser.
+//
+// Three things — where the music is, how the app should look, what it may do
+// online — and a button. Everything here exists in Ajustes as well; this is the
+// short form, asked once, the way a desktop app introduces itself. The folder
+// itself is chosen with the system's own dialog (filedialog.rs), never with a
+// list of directories drawn by us.
+
+import { Theme } from "theme.slint";
+
+component Toggle inherits Rectangle {
+    in property <string> label;
+    in property <string> hint;
+    in property <bool> on;
+    callback clicked();
+
+    height: max(Theme.touch-target - 6px, row.preferred-height + 8px);
+    border-radius: Theme.radius;
+    background: ta.has-hover ? Theme.bg-hover : transparent;
+
+    row := HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: Theme.gap;
+        alignment: start;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border-width: 1.5px;
+            border-color: root.on ? Theme.accent : Theme.text-secondary;
+            background: root.on ? Theme.accent : transparent;
+            Text {
+                text: "✓";
+                visible: root.on;
+                color: white;
+                font-size: 13px;
+                font-weight: 700;
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                color: Theme.text-primary;
+                font-size: Theme.font-body;
+                wrap: word-wrap;
+            }
+            if root.hint != "": Text {
+                text: root.hint;
+                color: Theme.text-secondary;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// One choice out of a few, drawn as a strip of chips: the selected one solid.
+component Segment inherits HorizontalLayout {
+    in property <[string]> options;
+    in property <int> selected;
+    // Shown for an empty option name, which is how "follow the system" is
+    // encoded in the language list.
+    in property <string> empty-label;
+    callback picked(int);
+
+    spacing: 6px;
+    alignment: start;
+    for o[i] in root.options: Rectangle {
+        height: 30px;
+        width: t.preferred-width + 22px;
+        border-radius: 15px;
+        background: i == root.selected
+            ? Theme.accent
+            : (ca.has-hover ? Theme.bg-hover : Theme.bg-tertiary);
+        t := Text {
+            text: o == "" ? root.empty-label : o;
+            color: i == root.selected ? white : Theme.text-primary;
+            font-size: Theme.font-small;
+        }
+        ca := TouchArea { clicked => { root.picked(i); } }
+    }
+}
+
+component Button inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: Theme.touch-target - 8px;
+    width: bt.preferred-width + 36px;
+    border-radius: Theme.radius;
+    opacity: root.enabled ? 1.0 : 0.45;
+    background: root.primary
+        ? (bta.has-hover && root.enabled ? Theme.accent-hover : Theme.accent)
+        : (bta.has-hover ? Theme.bg-hover : Theme.bg-tertiary);
+    bt := Text {
+        text: root.label;
+        color: root.primary ? white : Theme.text-primary;
+        font-size: Theme.font-body;
+    }
+    bta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Heading inherits Text {
+    color: Theme.text-primary;
+    font-size: Theme.font-body;
+    font-weight: 600;
+}
+
+export component OnboardingSheet inherits Rectangle {
+    in property <[string]> folders;
+    in property <bool> watch;
+    in property <int> theme-mode;
+    in property <[string]> language-names;
+    in property <int> language-index;
+    in property <bool> auto-covers;
+    in property <bool> check-updates;
+
+    callback add-folder();
+    callback remove-folder(int);
+    callback toggle-watch();
+    callback set-theme(int);
+    callback set-language(int);
+    callback toggle-covers();
+    callback toggle-updates();
+    callback begin();
+    callback skip();
+
+    background: Theme.bg-primary;
+
+    Rectangle {
+        width: min(root.width - 48px, 640px);
+        height: min(root.height - 48px, card.preferred-height + 2px);
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+        border-width: 1px;
+        border-color: Theme.border;
+        clip: true;
+
+        Flickable {
+            viewport-height: max(self.height, card.preferred-height);
+            card := VerticalLayout {
+                padding: Theme.gap * 2;
+                spacing: Theme.gap;
+
+                HorizontalLayout {
+                    spacing: Theme.gap;
+                    Image {
+                        source: @image-url("../dist/icons/128x128/tunante.png");
+                        width: 56px;
+                        height: 56px;
+                        image-rendering: pixelated;
+                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 4px;
+                        Text {
+                            text: @tr("Bienvenido a Tunante");
+                            color: Theme.text-primary;
+                            font-size: Theme.font-title + 6px;
+                            font-weight: 600;
+                        }
+                        Text {
+                            text: @tr("Tres cosas y a escuchar. Todo se puede cambiar luego en Ajustes.");
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-body;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // --- 1 · The music -------------------------------------------
+                Heading { text: @tr("Tu música"); }
+                Text {
+                    text: @tr("Las carpetas que Tunante analiza; la biblioteca se construye a partir de ellas.");
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+                VerticalLayout {
+                    spacing: 2px;
+                    for f[i] in root.folders: Rectangle {
+                        height: 34px;
+                        border-radius: Theme.radius;
+                        background: fr.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                        fr := TouchArea {}
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 4px;
+                            spacing: 8px;
+                            Text {
+                                text: "🖿";
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-body;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: f;
+                                color: Theme.text-primary;
+                                font-size: Theme.font-body;
+                                vertical-alignment: center;
+                                overflow: elide;
+                                horizontal-stretch: 1;
+                            }
+                            Rectangle {
+                                width: 28px;
+                                border-radius: Theme.radius;
+                                background: rx.has-hover ? Theme.bg-selected : transparent;
+                                Text {
+                                    text: "✕";
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-small;
+                                }
+                                rx := TouchArea { clicked => { root.remove-folder(i); } }
+                            }
+                        }
+                    }
+                    if root.folders.length == 0: Text {
+                        text: @tr("Ninguna carpeta todavía.");
+                        color: Theme.text-muted;
+                        font-size: Theme.font-body;
+                        height: 34px;
+                        vertical-alignment: center;
+                    }
+                }
+                HorizontalLayout {
+                    alignment: start;
+                    Button {
+                        label: @tr("Añadir carpeta…");
+                        clicked => { root.add-folder(); }
+                    }
+                }
+                Toggle {
+                    label: @tr("Vigilar cambios en estas carpetas");
+                    hint: @tr("Lo que copies ahí aparece solo, sin volver a analizar.");
+                    on: root.watch;
+                    clicked => { root.toggle-watch(); }
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // --- 2 · Appearance ------------------------------------------
+                Heading { text: @tr("Apariencia"); }
+                HorizontalLayout {
+                    spacing: Theme.gap;
+                    Text {
+                        text: @tr("Tema");
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        width: 80px;
+                    }
+                    Segment {
+                        options: [@tr("Oscuro"), @tr("Claro"), @tr("Sistema")];
+                        selected: root.theme-mode;
+                        picked(i) => { root.set-theme(i); }
+                    }
+                }
+                HorizontalLayout {
+                    spacing: Theme.gap;
+                    Text {
+                        text: @tr("Idioma");
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                        vertical-alignment: center;
+                        width: 80px;
+                    }
+                    Segment {
+                        options: root.language-names;
+                        empty-label: @tr("Sistema");
+                        selected: root.language-index;
+                        picked(i) => { root.set-language(i); }
+                    }
+                }
+
+                Rectangle { height: 1px; background: Theme.border; }
+
+                // --- 3 · Online ----------------------------------------------
+                Heading { text: @tr("En línea"); }
+                Toggle {
+                    label: @tr("Descargar carátulas automáticamente");
+                    hint: @tr("Busca en internet la carátula de lo que suena y de los discos que no la tienen.");
+                    on: root.auto-covers;
+                    clicked => { root.toggle-covers(); }
+                }
+                Toggle {
+                    label: @tr("Buscar actualizaciones al arrancar");
+                    hint: @tr("Una consulta a GitHub por arranque; nada se instala sin preguntar.");
+                    on: root.check-updates;
+                    clicked => { root.toggle-updates(); }
+                }
+
+                Rectangle { height: Theme.gap / 2; }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: Theme.gap;
+                    Button {
+                        label: @tr("Ahora no");
+                        clicked => { root.skip(); }
+                    }
+                    Button {
+                        label: @tr("Empezar");
+                        primary: true;
+                        enabled: root.folders.length > 0;
+                        clicked => { root.begin(); }
+                    }
+                }
+            }
+        }
+    }
+}
