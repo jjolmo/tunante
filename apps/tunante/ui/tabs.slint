@@ -620,6 +620,19 @@ export component NowPlayingTab inherits Rectangle {
     in property <bool> portrait;
     in property <image> art;
     in property <int> art-fit;
+    // The cards either side of the portrait carousel: what ◀◀ and ▶▶ would
+    // play. Empty title = no card that way (the queue would stop there).
+    in property <string> prev-title;
+    in property <string> prev-artist;
+    in property <string> prev-album;
+    in property <image> prev-art;
+    in property <string> next-title;
+    in property <string> next-artist;
+    in property <string> next-album;
+    in property <image> next-art;
+    // The finger's horizontal offset while dragging the carousel, and the
+    // snap it eases back (or through) to on release.
+    property <length> drag: 0px;
     in property <bool> playing;
     in property <bool> shuffle;
     in property <int> repeat;
@@ -649,16 +662,69 @@ export component NowPlayingTab inherits Rectangle {
 
         Rectangle { vertical-stretch: 1; }
 
-        HorizontalLayout {
-            alignment: center;
-            Artwork { side: root.art-portrait; art: root.art; fit: root.art-fit; }
-        }
+        // The carousel: three cards in a strip that follows the finger 1:1,
+        // the neighbours sliding in from the sides. Past half the width on
+        // release, the neighbour wins and the transport fires; short of it,
+        // the strip eases back. Same verdict as ◀◀ / ▶▶ because prev/next come
+        // from the same queue walk (cidwel, 2026-09-05).
+        strip := Rectangle {
+            clip: true;
+            height: root.art-portrait + 90px;
 
-        TrackInfo {
-            title: root.title;
-            artist: root.artist;
-            album: root.album;
-            centered: true;
+            // previous
+            VerticalLayout {
+                x: -strip.width + root.drag;
+                width: strip.width;
+                spacing: Theme.gap;
+                animate x { duration: 180ms; easing: ease-out; }
+                HorizontalLayout { alignment: center;
+                    Artwork { side: root.art-portrait; art: root.prev-art; fit: root.art-fit; }
+                }
+                TrackInfo { title: root.prev-title; artist: root.prev-artist; album: root.prev-album; centered: true; }
+            }
+            // current
+            VerticalLayout {
+                x: root.drag;
+                width: strip.width;
+                spacing: Theme.gap;
+                animate x { duration: 180ms; easing: ease-out; }
+                HorizontalLayout { alignment: center;
+                    Artwork { side: root.art-portrait; art: root.art; fit: root.art-fit; }
+                }
+                TrackInfo { title: root.title; artist: root.artist; album: root.album; centered: true; }
+            }
+            // next
+            VerticalLayout {
+                x: strip.width + root.drag;
+                width: strip.width;
+                spacing: Theme.gap;
+                animate x { duration: 180ms; easing: ease-out; }
+                HorizontalLayout { alignment: center;
+                    Artwork { side: root.art-portrait; art: root.next-art; fit: root.art-fit; }
+                }
+                TrackInfo { title: root.next-title; artist: root.next-artist; album: root.next-album; centered: true; }
+            }
+
+            SwipeGestureHandler {
+                handle-swipe-left: true;
+                handle-swipe-right: true;
+                moved => {
+                    // Only as far as there is a card to show that way.
+                    root.drag = clamp(
+                        self.current-position.x - self.pressed-position.x,
+                        root.next-title == "" ? 0px : -strip.width,
+                        root.prev-title == "" ? 0px : strip.width);
+                }
+                swiped => {
+                    if (root.drag <= -strip.width / 2 && root.next-title != "") {
+                        root.next-track();
+                    } else if (root.drag >= strip.width / 2 && root.prev-title != "") {
+                        root.prev-track();
+                    }
+                    root.drag = 0px;
+                }
+                cancelled => { root.drag = 0px; }
+            }
         }
 
         Rectangle { vertical-stretch: 1; }

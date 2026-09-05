@@ -50,6 +50,9 @@ data class Track(
 )
 
 /** What the player is doing, polled from `nativeState`. */
+/** One neighbour of the playing track, as the Playing carousel draws it. */
+data class TrackCard(val title: String, val artist: String, val album: String, val path: String)
+
 data class PlayerState(
     val playing: Boolean = false,
     val hasSource: Boolean = false,
@@ -68,6 +71,9 @@ data class PlayerState(
     val queuedNext: String = "",
     val loops: Int = 2,
     val fadeSeconds: Int = 8,
+    /** What ▶▶ / ◀◀ would play; null where they would stop. */
+    val next: TrackCard? = null,
+    val prev: TrackCard? = null,
 ) {
     /**
      * What to call the track on screen.

@@ -380,6 +380,12 @@ impl Player {
     }
 
     pub fn state(&self) -> serde_json::Value {
+        fn card(t: &Track) -> serde_json::Value {
+            serde_json::json!({
+                "title": if t.title.is_empty() { t.path.rsplit('/').next().unwrap_or("").to_string() } else { t.title.clone() },
+                "artist": t.artist, "album": t.album, "path": t.path,
+            })
+        }
         let current = self.queue.current();
         serde_json::json!({
             "ok": true,
@@ -404,6 +410,10 @@ impl Player {
             "artist": current.map(|t| t.artist.clone()).unwrap_or_default(),
             "album": current.map(|t| t.album.clone()).unwrap_or_default(),
             "path": current.map(|t| t.path.clone()).unwrap_or_default(),
+            // The cards either side of the Playing carousel: exactly what ▶▶ and
+            // ◀◀ would play, or null where they would stop.
+            "next": self.queue.peek_next().map(card),
+            "prev": self.queue.peek_prev().map(card),
         })
     }
 }
