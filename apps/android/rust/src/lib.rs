@@ -39,6 +39,10 @@ static ENGINE: Mutex<Option<Player>> = Mutex::new(None);
 /// Separate from `ENGINE` on purpose: a scan holds this for as long as it runs,
 /// and holding the player's lock for a minute would freeze playback with it.
 static DB: Mutex<Option<Database>> = Mutex::new(None);
+/// Where `DB` was opened from. The scanner opens its *own* connection here
+/// (SQLite is in WAL mode, so a second writer is fine) instead of holding the
+/// global lock for the length of a scan — see `nativeScan`.
+static DB_PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 
 /// The running cover download, for `nativeCoverProgress` to read.
 static COVER_PROGRESS: Mutex<Option<tunante_art::resolver::BulkProgress>> = Mutex::new(None);
@@ -169,6 +173,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeOpenDb<'a>(
     let out = match jstring_to_string(&mut env, &dir) {
         Ok(d) => {
             let path = Path::new(&d).join("tunante-android.db");
+            *DB_PATH.lock().unwrap() = Some(path.clone());
             match Database::new(&path) {
                 Ok(db) => {
                     let tracks = db.get_all_tracks().map(|t| t.len()).unwrap_or(0);
@@ -197,8 +202,20 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
 ) -> jni::objects::JString<'a> {
     let out = (|| -> Result<String, String> {
         let asked = jstring_to_string(&mut env, &root)?;
-        let guard = DB.lock().unwrap();
-        let db = guard.as_ref().ok_or("nativeScan before nativeOpenDb")?;
+        // Its own connection, on this (Kotlin-spawned) thread — the desktop's
+        // recipe. Holding the global `DB` lock across a scan of a real
+        // collection (12k tracks in the Automotive emulator) blocked
+        // `nativeSaveSession` on the main thread for minutes: input dispatch
+        // timed out at 5 s, the system declared an ANR and killed the app in
+        // the middle of its first scan. With a private connection nothing on
+        // the main thread ever waits for the scanner.
+        let path = DB_PATH
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or("nativeScan before nativeOpenDb")?;
+        let own = Database::new(&path).map_err(|e| format!("opening {}: {e}", path.display()))?;
+        let db = &own;
 
         // An empty root means "everything the library is built from", which is
         // what a Rescan button wants. Hardcoding one folder was only ever a
@@ -378,9 +395,12 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeSaveSession(
     _env: JNIEnv,
     _class: JClass,
 ) {
-    let engine = ENGINE.lock().unwrap();
+    // Called from the main thread (onPause, and the service's 5 s tick). If
+    // either lock is busy, skip this save rather than wait for it: the next
+    // tick is five seconds away, an ANR is forever.
+    let Ok(engine) = ENGINE.try_lock() else { return };
     let Some(engine) = engine.as_ref() else { return };
-    let db = DB.lock().unwrap();
+    let Ok(db) = DB.try_lock() else { return };
     let Some(db) = db.as_ref() else { return };
 
     tunante_core::Session::save(
@@ -1438,6 +1458,50 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativePlayFolder<'a
 ///
 /// A JSON array rather than a `String[]`: same reason as everything else here —
 /// one marshalling story, not two.
+/// Play a whole collection — a disc, a console, a game, a folder — from its
+/// first track, **replacing the queue**. On the phone and in the car a tap on
+/// a category means "listen to this now", and cidwel decided (2026-09-05) that
+/// on the touch shells it wipes whatever was queued by hand; the desktop keeps
+/// its context-plus-right-click model and never calls this. Distinct from
+/// `nativePlayList`, which plays one track out of the list on screen and must
+/// leave the hand-built queue alone.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativePlayCollection<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    paths_json: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let raw = jstring_to_string(&mut env, &paths_json)?;
+        let paths: Vec<String> =
+            serde_json::from_str(&raw).map_err(|e| format!("the path list was not JSON: {e}"))?;
+        if paths.is_empty() {
+            return Err("nothing to play".into());
+        }
+        let tracks: Vec<_> = {
+            let db = DB.lock().unwrap();
+            paths
+                .iter()
+                .map(|p| {
+                    db.as_ref()
+                        .and_then(|db| db.get_track_by_path(p).ok().flatten())
+                        .unwrap_or_else(|| bare_track(p))
+                })
+                .collect()
+        };
+        let mut guard = ENGINE.lock().unwrap();
+        let engine = guard.as_mut().ok_or("nativePlayCollection before nativeInit")?;
+        // `set_tracks` alone keeps the user queue (verified in core's Queue):
+        // the replacement has to be said out loud.
+        engine.clear_user_queue();
+        engine.set_tracks(tracks);
+        engine.play_index(0)?;
+        Ok(engine.state().to_string())
+    })();
+    let out = out.unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativePlayList<'a>(
     mut env: JNIEnv<'a>,
