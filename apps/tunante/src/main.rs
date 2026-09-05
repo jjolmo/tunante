@@ -93,7 +93,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = std::fs::write(&log, &msg);
             #[cfg(target_os = "linux")]
             {
-                let text = format!("Tunante se ha caído.\n\n{msg}\n\nDetalles en {}", log.display());
+                // Translated with whatever catalog is loaded; before init the
+                // lookup returns the source, which is still a dialog.
+                let text = tunante_core::i18n::tr("Tunante se ha caído.\n\n{}\n\nDetalles en {}")
+                    .replacen("{}", &msg, 1)
+                    .replacen("{}", &log.display().to_string(), 1);
                 let _ = std::process::Command::new("zenity")
                     .args(["--error", "--no-markup", "--text", &text])
                     .spawn()
@@ -1800,9 +1804,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                 let _ = tx.send(CoverMsg::Status(
                     if ok {
-                        "Aplicada la mejor del archivo.".to_string()
+                        tunante_core::i18n::tr("Aplicada la mejor del archivo.")
                     } else {
-                        "Nada con confianza suficiente; elige a mano.".to_string()
+                        tunante_core::i18n::tr("Nada con confianza suficiente; elige a mano.")
                     },
                 ));
             });
@@ -1873,16 +1877,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let system = tunante_core::console::by_id(&t.console_id).and_then(|c| c.zophar);
             let Some(system) = system else {
-                ui.set_names_status(SharedString::from(
+                ui.set_names_status(SharedString::from(tunante_core::i18n::tr(
                     "El formato de esta consola lleva una canción por fichero: \
                      no hay listado que consultar.",
-                ));
+                )));
                 return;
             };
             if t.game.trim().is_empty() {
-                ui.set_names_status(SharedString::from(
+                ui.set_names_status(SharedString::from(tunante_core::i18n::tr(
                     "Ponle nombre al juego primero — el listado se busca por él.",
-                ));
+                )));
                 return;
             }
             if subsongs <= 1 {
@@ -1938,12 +1942,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 idx.sort_unstable();
                 let ids: Vec<String> =
                     idx.iter().filter_map(|&j| st.tracks.get(j).map(|t| t.id.clone())).collect();
-                let heading = format!("Añadir {} pistas a…", ids.len());
+                let heading =
+                    tunante_core::i18n::tr("Añadir {} pistas a…").replace("{}", &ids.len().to_string());
                 (ids, heading)
             } else {
                 let Some(t) = st.tracks.get(i) else { return };
                 let name = if t.title.is_empty() { t.path.clone() } else { t.title.clone() };
-                (vec![t.id.clone()], format!("Añadir «{}» a…", name))
+                (vec![t.id.clone()], tunante_core::i18n::tr("Añadir «{}» a…").replace("{}", &name))
             };
             if ids.is_empty() {
                 return;

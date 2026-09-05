@@ -3,11 +3,21 @@ Type=Application
 Name=Tunante
 GenericName=Music player
 Comment=Reproductor de música de videojuegos
+Comment[en]=Video game music player
+Comment[de]=Musikplayer für Videospielmusik
+Comment[fr]=Lecteur de musique de jeux vidéo
+Comment[it]=Lettore di musica per videogiochi
+Comment[pt]=Leitor de música de videojogos
 Exec=tunante
 Icon=tunante
 Terminal=false
 Categories=AudioVideo;Audio;Player;
 Keywords=music;audio;chiptune;vgm;player;música;
+Keywords[en]=music;audio;chiptune;vgm;player;
+Keywords[de]=musik;audio;chiptune;vgm;player;
+Keywords[fr]=musique;audio;chiptune;vgm;lecteur;
+Keywords[it]=musica;audio;chiptune;vgm;lettore;
+Keywords[pt]=música;áudio;chiptune;vgm;leitor;
 StartupNotify=true
 # Plasma Mobile reads this to decide an app is phone-shaped. Without it the app
 # is filed with the desktop ones and does not get the mobile treatment.
