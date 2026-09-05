@@ -648,7 +648,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Progress from the scanning thread. `None` means it finished.
-    let (scan_tx, scan_rx) = std::sync::mpsc::channel::<Option<String>>();
+    // (scanned, total, added) while it runs; `None` when it finishes.
+    let (scan_tx, scan_rx) = std::sync::mpsc::channel::<Option<(usize, usize, usize)>>();
 
     // Register folders as roots and scan them. Shared by the phone picker, the
     // desktop onboarding and "Añadir carpeta" in Ajustes, so there is one way
@@ -683,12 +684,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 for folder in folders {
                     let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
-                        let _ = tx.send(Some(
-                            tunante_core::i18n::tr("Analizando {}/{}\n{} pistas encontradas")
-                                .replacen("{}", &p.scanned.to_string(), 1)
-                                .replacen("{}", &p.total.to_string(), 1)
-                                .replacen("{}", &p.added.to_string(), 1),
-                        ));
+                        let _ = tx.send(Some((p.scanned, p.total, p.added)));
                     });
                 }
                 let _ = tx.send(None);
@@ -3637,12 +3633,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
                 for folder in folders {
                     let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
-                        let _ = tx.send(Some(
-                            tunante_core::i18n::tr("Analizando {}/{}\n{} pistas encontradas")
-                                .replacen("{}", &p.scanned.to_string(), 1)
-                                .replacen("{}", &p.total.to_string(), 1)
-                                .replacen("{}", &p.added.to_string(), 1),
-                        ));
+                        let _ = tx.send(Some((p.scanned, p.total, p.added)));
                     });
                 }
                 let _ = tx.send(None);
@@ -5328,7 +5319,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut scan_done = false;
                 while let Ok(msg) = scan_rx.try_recv() {
                     match msg {
-                        Some(text) => ui.set_scan_status(SharedString::from(text)),
+                        Some((scanned, total, added)) => {
+                            // The modal's bar and counters; the text stays as
+                            // the one line the desktop's strip used to show.
+                            ui.set_scan_done(scanned as i32);
+                            ui.set_scan_total(total as i32);
+                            ui.set_scan_found(added as i32);
+                            ui.set_scan_status(SharedString::from(
+                                tunante_core::i18n::tr("Analizando {}/{}\n{} pistas encontradas")
+                                    .replacen("{}", &scanned.to_string(), 1)
+                                    .replacen("{}", &total.to_string(), 1)
+                                    .replacen("{}", &added.to_string(), 1),
+                            ));
+                        }
                         None => scan_done = true,
                     }
                 }
@@ -5630,6 +5633,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if scan_done {
                     ui.set_scan_status(SharedString::new());
+                    ui.set_scan_done(0);
+                    ui.set_scan_total(0);
+                    ui.set_scan_found(0);
                     // The roots only exist once the scan has been asked for, so
                     // the tree is rebuilt here rather than at startup.
                     let roots: Vec<PathBuf> = db

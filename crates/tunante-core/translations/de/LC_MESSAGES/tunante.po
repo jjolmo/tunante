@@ -1321,3 +1321,9 @@ msgstr "Wähle deine Musikordner"
 
 msgid "Borrar toda la configuración y reiniciar"
 msgstr "Gesamte Konfiguration löschen und neu starten"
+
+msgid "Analizando la biblioteca"
+msgstr "Bibliothek wird durchsucht"
+
+msgid "{} pistas encontradas"
+msgstr "{} Titel gefunden"

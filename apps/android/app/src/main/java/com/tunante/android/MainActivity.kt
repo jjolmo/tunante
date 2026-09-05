@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tunante.android.ui.LayoutMode
+import com.tunante.android.ui.ScanState
 import com.tunante.android.ui.tr
 import com.tunante.android.ui.Folder
 import com.tunante.android.ui.LibraryView
@@ -203,6 +204,7 @@ class MainActivity : ComponentActivity() {
                     onFade = { NativeBridge.nativeCycleFade() },
                     resumeHours = resumeHours,
                     onResumeHours = { resumeHours = NativeBridge.nativeCycleResumeHours() },
+                    scan = scanState,
                     layout = layout,
                     onLayout = {
                         layout = LayoutMode.entries[(layout.ordinal + 1) % LayoutMode.entries.size]
@@ -649,19 +651,35 @@ class MainActivity : ComponentActivity() {
     /** Empty means every folder the library is built from. */
     /** One scan at a time: adding a root and tapping Rescan right after used to run two, concurrently. */
     private val scanning = java.util.concurrent.atomic.AtomicBoolean(false)
+    /** Non-null while a scan runs: the modal that blocks the whole UI reads it. */
+    private var scanState by mutableStateOf<ScanState?>(null)
 
     private fun scan(root: String = "") {
         if (!scanning.compareAndSet(false, true)) {
             Log.i(TAG, "scan: already running, ignoring")
             return
         }
+        scanState = ScanState(0, 0, 0)
         thread(name = "scan") {
+            // Progress for the modal, the way the cover download reports.
+            val poller = thread(name = "scan-progress") {
+                while (!Thread.currentThread().isInterrupted) {
+                    val p = JSONObject(NativeBridge.nativeScanProgress())
+                    if (p.optBoolean("running", false)) {
+                        val st = ScanState(p.optInt("done"), p.optInt("total"), p.optInt("found"))
+                        runOnUiThread { if (scanState != null) scanState = st }
+                    }
+                    try { Thread.sleep(300) } catch (e: InterruptedException) { break }
+                }
+            }
             try {
                 val result = NativeBridge.nativeScan(root)
                 Log.i(TAG, "scan: $result")
                 runOnUiThread { switchTab(tab) }
             } finally {
+                poller.interrupt()
                 scanning.set(false)
+                runOnUiThread { scanState = null }
             }
         }
     }

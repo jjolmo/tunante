@@ -146,6 +146,7 @@ fun TunanteApp(
     onResumeHours: () -> Unit,
     layout: LayoutMode,
     onLayout: () -> Unit,
+    scan: ScanState?,
     onEnqueueRow: (String, Boolean) -> Unit,
     onAddRowToPlaylist: (Playlist, String, Boolean) -> Unit,
     onNewPlaylistWithRow: (String, String, Boolean) -> Unit,
@@ -279,6 +280,10 @@ fun TunanteApp(
             BottomNav(dest, state.queued, onDest)
         }
     }
+
+    // The library is being scanned: a modal over everything, nothing else
+    // reachable until it is done. Last, so it sits on top of the sheets too.
+    scan?.let { ScanOverlay(it) }
 
     adding?.let { track ->
         PlaylistPicker(

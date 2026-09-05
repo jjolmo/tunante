@@ -10,7 +10,7 @@
 
 
 import { Theme, Fmt } from "theme.slint";
-import { TabSwitcher, MiniPlayer } from "widgets.slint";
+import { TabSwitcher, MiniPlayer, ScanOverlay } from "widgets.slint";
 import { NowPlayingTab, QueueTab, SettingsTab, LibraryTab } from "tabs.slint";
 import { FolderPicker } from "picker.slint";
 import { OnboardingSheet } from "onboarding.slint";
@@ -167,6 +167,9 @@ export component AppWindow inherits Window {
     in property <string> picker-path;
     in property <int> picker-chosen;
     in property <string> scan-status;
+    in property <int> scan-done;
+    in property <int> scan-total;
+    in property <int> scan-found;
 
     callback picker-enter(int);
     callback picker-toggle(int);
@@ -590,16 +593,6 @@ export component AppWindow inherits Window {
         done => { root.picker-done(); }
     }
 
-    if !root.setup-mode && root.scan-status != "" && !root.desktop: Rectangle {
-        background: Theme.bg-primary;
-        Text {
-            text: root.scan-status;
-            color: Theme.text-primary;
-            font-size: Theme.font-body;
-            horizontal-alignment: center;
-        }
-    }
-
     // The desktop shell replaces the whole tabbed layout, not a tab of it: the
     // four screens exist inside it as panes.
     // Bare in-app shortcuts land here: this scope wraps the whole desktop
@@ -980,7 +973,7 @@ export component AppWindow inherits Window {
         }
     }
 
-    if !root.setup-mode && root.scan-status == "" && !root.desktop: VerticalLayout {
+    if !root.setup-mode && !root.desktop: VerticalLayout {
         HorizontalLayout {
             vertical-stretch: 1;
 
@@ -1341,5 +1334,13 @@ export component AppWindow inherits Window {
         copy-log => { root.copy-log(); }
         clear-log => { root.clear-log(); }
         cancelled => { root.showing-log = false; }
+    }
+
+    // While the library is scanned nothing else is reachable: the overlay is
+    // the last child, so it sits over both shells and every sheet.
+    if root.scan-status != "" && !root.setup-mode: ScanOverlay {
+        done: root.scan-done;
+        total: root.scan-total;
+        found: root.scan-found;
     }
 }

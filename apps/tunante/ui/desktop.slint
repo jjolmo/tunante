@@ -958,16 +958,6 @@ export component DesktopShell inherits Rectangle {
                     }
                     }
 
-                    // A rescan reports here, quietly, while the rest of the
-                    // app stays usable — the old desktop's rule. (The phone
-                    // still swaps screens; it has no corner to spare.)
-                    if root.scan-status != "": Text {
-                        text: root.scan-status;
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        wrap: word-wrap;
-                    }
-
                     if root.show-cover && root.now-art.width == 0 && root.cover-busy: Text {
                         text: @tr("buscando carátula…");
                         color: Theme.text-muted;

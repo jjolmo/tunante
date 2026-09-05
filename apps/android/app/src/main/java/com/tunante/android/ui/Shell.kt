@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -288,6 +290,83 @@ fun PlayCircle(size: Dp, playing: Boolean, onClick: () -> Unit) {
             }
         } else {
             Label("▶", Color.White, (size.value * 0.38f).sp)
+        }
+    }
+}
+
+/** Where a running library scan is. */
+data class ScanState(val done: Int, val total: Int, val found: Int)
+
+/**
+ * The library is being scanned: a dimmed sheet over the whole app that eats
+ * every touch and the back key, with a progress bar. The same rule as the
+ * desktop's ScanOverlay in widgets.slint — while the library is analysed,
+ * nothing else can be done.
+ */
+@Composable
+fun ScanOverlay(scan: ScanState) {
+    androidx.activity.compose.BackHandler(enabled = true) {}
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0xCC000000))
+            // Swallow everything: no ripple, no target underneath.
+            .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }) {},
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth(0.86f)
+                .clip(RoundedCornerShape(6.dp))
+                .background(T.bgSecondary)
+                .padding(20.dp),
+        ) {
+            Label(tr("Analizando la biblioteca"), T.textPrimary, T.fontTitle)
+            Spacer(Modifier.height(12.dp))
+            // The bar; before the first count arrives a block sweeps instead
+            // of pretending to know the total.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(T.bgTertiary),
+            ) {
+                if (scan.total > 0) {
+                    val frac = (scan.done.toFloat() / scan.total).coerceIn(0f, 1f)
+                    Box(Modifier.fillMaxWidth(frac).height(8.dp).clip(RoundedCornerShape(4.dp)).background(T.accent))
+                } else {
+                    val sweep = androidx.compose.animation.core.rememberInfiniteTransition(label = "scan")
+                    val t by sweep.animateFloat(
+                        0f, 1f,
+                        androidx.compose.animation.core.infiniteRepeatable(
+                            androidx.compose.animation.core.tween(900),
+                            androidx.compose.animation.core.RepeatMode.Reverse,
+                        ),
+                        label = "sweep",
+                    )
+                    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        val w = maxWidth / 3
+                        Box(
+                            Modifier
+                                .padding(start = (maxWidth - w) * t)
+                                .width(w)
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(T.accent),
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth()) {
+                Label(
+                    if (scan.total > 0) "${scan.done} / ${scan.total}" else "…",
+                    T.textSecondary, T.fontSmall,
+                )
+                Spacer(Modifier.weight(1f))
+                Label(tr("{} pistas encontradas").replace("{}", "${scan.found}"), T.textSecondary, T.fontSmall)
+            }
         }
     }
 }

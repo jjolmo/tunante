@@ -44,6 +44,10 @@ static DB: Mutex<Option<Database>> = Mutex::new(None);
 /// global lock for the length of a scan — see `nativeScan`.
 static DB_PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
 
+/// The running library scan — (scanned, total, added so far) — for
+/// `nativeScanProgress` to read; `None` when nothing is scanning. The scan
+/// runs on a Kotlin thread and the UI polls this, the same shape as covers.
+static SCAN_PROGRESS: Mutex<Option<(usize, usize, usize)>> = Mutex::new(None);
 /// The running cover download, for `nativeCoverProgress` to read.
 static COVER_PROGRESS: Mutex<Option<tunante_art::resolver::BulkProgress>> = Mutex::new(None);
 /// Set by `nativeCancelCovers`, read by the progress callback.
@@ -235,6 +239,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
 
         let started = Instant::now();
         let (mut files, mut added, mut failed, mut gone) = (0usize, 0usize, 0usize, 0usize);
+        *SCAN_PROGRESS.lock().unwrap() = Some((0, 0, 0));
 
         for r in &roots {
             // Prune before adding: a folder the user deleted should stop being
@@ -247,9 +252,11 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
             gone += tunante_helper::scan::prune_missing(db, Path::new(r)).unwrap_or(0);
 
             let (mut t, mut f) = (0usize, 0usize);
+            let before = added;
             match tunante_helper::scan::scan_folder(db, Path::new(r), |p| {
                 t = p.total;
                 f = p.failed;
+                *SCAN_PROGRESS.lock().unwrap() = Some((p.scanned, p.total, before + p.added));
             }) {
                 Ok(n) => added += n,
                 // One unreadable root does not abandon the others.
@@ -259,6 +266,7 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
             failed += f;
         }
 
+        *SCAN_PROGRESS.lock().unwrap() = None;
         let ms = started.elapsed().as_millis() as u64;
         let per = if files > 0 { ms as f64 / files as f64 } else { 0.0 };
         log::info!(
@@ -271,6 +279,25 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScan<'a>(
         .to_string())
     })()
     .unwrap_or_else(fail);
+    // Whatever happened, the modal must come down.
+    *SCAN_PROGRESS.lock().unwrap() = None;
+    env.new_string(out).expect("new_string")
+}
+
+/// Where the running scan is: `{running, done, total, found}`. Polled by the
+/// UI every few hundred ms while its modal is up.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeScanProgress<'a>(
+    env: JNIEnv<'a>,
+    _class: JClass,
+) -> jni::objects::JString<'a> {
+    let out = match *SCAN_PROGRESS.lock().unwrap() {
+        Some((done, total, found)) => serde_json::json!({
+            "running": true, "done": done, "total": total, "found": found
+        }),
+        None => serde_json::json!({ "running": false }),
+    }
+    .to_string();
     env.new_string(out).expect("new_string")
 }
 
