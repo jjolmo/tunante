@@ -183,6 +183,12 @@ pub fn scan_folder_cancellable(
     // Writes go in batches inside one transaction: one fsync per batch, not
     // per row. The batch is bounded by rows and by time, so the write lock is
     // never held long enough to stall the UI thread's own writes.
+    //
+    // Measured A/B on 2026-09-05, same 23,179-file folder, page cache evicted
+    // before each run, database on ext4 as in the app (a tmpfs database hides
+    // the fsync cost entirely and made an earlier comparison meaningless):
+    //   autocommit per row (before)   458.5 s
+    //   batched (this)                 12.9 s   incremental rescan: 0.4 s
     let mut in_tx = db.begin().is_ok();
     let mut batch_rows = 0usize;
     let mut batch_started = std::time::Instant::now();
