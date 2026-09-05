@@ -7,7 +7,7 @@
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { FolderRow, ShortcutRow } from "types.slint";
-import { SettingRow, DbSliderRow } from "widgets.slint";
+import { SettingRow, DbSliderRow, ArmedRow } from "widgets.slint";
 
 // Left navigation entry.
 component NavItem inherits Rectangle {
@@ -133,6 +133,7 @@ export component DesktopSettings inherits Rectangle {
     in property <string> theme-label;
     callback cycle-theme();
     callback show-log();
+    callback reset-app();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
     in property <bool> show-in-tray;
@@ -853,6 +854,11 @@ export component DesktopSettings inherits Rectangle {
                                     label: @tr("Registro");
                                     value: "≡";
                                     clicked => { root.show-log(); }
+                                }
+                                ArmedRow {
+                                    label: @tr("Borrar toda la configuración y reiniciar");
+                                    armed-label: @tr("¿Seguro? Toca otra vez");
+                                    fired => { root.reset-app(); }
                                 }
 
                                 Section { text: @tr("Código fuente"); }

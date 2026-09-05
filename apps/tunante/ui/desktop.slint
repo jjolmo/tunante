@@ -541,6 +541,7 @@ export component DesktopShell inherits Rectangle {
     in property <string> theme-label;
     callback cycle-theme();
     callback show-log();
+    callback reset-app();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
     in property <bool> show-in-tray;
@@ -1518,6 +1519,7 @@ export component DesktopShell inherits Rectangle {
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
                     show-log => { root.show-log(); }
+                    reset-app => { root.reset-app(); }
                     close-to-tray <=> root.close-to-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
                     show-in-tray: root.show-in-tray;

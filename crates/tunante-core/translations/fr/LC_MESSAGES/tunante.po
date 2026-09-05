@@ -1318,3 +1318,6 @@ msgstr "Commencer"
 
 msgid "Elige tus carpetas de música"
 msgstr "Choisissez vos dossiers de musique"
+
+msgid "Borrar toda la configuración y reiniciar"
+msgstr "Effacer toute la configuration et redémarrer"

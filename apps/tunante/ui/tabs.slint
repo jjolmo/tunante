@@ -4,7 +4,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderRow, ShortcutRow } from "types.slint";
-import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow } from "widgets.slint";
+import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow, ArmedRow } from "widgets.slint";
 
 export component SettingsTab inherits Rectangle {
     in property <float> volume;
@@ -55,6 +55,7 @@ export component SettingsTab inherits Rectangle {
     in property <string> theme-label;
     callback cycle-theme();
     callback show-log();
+    callback reset-app();
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
     in property <string> mouse-buttons-label;
@@ -619,7 +620,15 @@ export component SettingsTab inherits Rectangle {
         // A fixed tail, not a stretch: the viewport is exactly as tall as the
         // rows now, so a stretching spacer would have nothing to stretch into.
         Rectangle { height: Theme.gap * 2; }
-    }
+    
+
+        // Everything this app wrote, gone, and a fresh start. Asked twice.
+        ArmedRow {
+            label: @tr("Borrar toda la configuración y reiniciar");
+            armed-label: @tr("¿Seguro? Toca otra vez");
+            fired => { root.reset-app(); }
+        }
+}
     }
 }
 
