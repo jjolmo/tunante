@@ -737,6 +737,86 @@ export component ArmedRow inherits Rectangle {
     }
 }
 
+// The library is being scanned: nothing else can be touched until it is done.
+// A dimmed backdrop that swallows every click and key, and a card with a
+// progress bar. Same on the desktop, the phone shell and (in Compose) Android
+// — cidwel's rule, 2026-09-05: while the library is analysed, nothing.
+export component ScanOverlay inherits Rectangle {
+    in property <int> done;
+    in property <int> total;
+    in property <int> found;
+
+    background: #000000cc;
+    TouchArea {}
+    // Keys too: the shortcuts underneath must not fire.
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(ev) => { accept }
+    }
+
+    Rectangle {
+        width: min(420px, root.width - 48px);
+        height: card.preferred-height;
+        background: Theme.bg-secondary;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+        card := VerticalLayout {
+            padding: 20px;
+            spacing: 10px;
+            Text {
+                text: @tr("Analizando la biblioteca");
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                font-weight: 600;
+            }
+            // The bar. Before the first count arrives it has no total: a
+            // block sweeps back and forth instead of pretending to know.
+            track := Rectangle {
+                height: 8px;
+                border-radius: 4px;
+                background: Theme.bg-tertiary;
+                clip: true;
+                if root.total > 0: Rectangle {
+                    x: 0;
+                    width: parent.width * clamp(root.done / root.total, 0.0, 1.0);
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                    animate width { duration: 250ms; easing: ease-out; }
+                }
+                if root.total == 0: Rectangle {
+                    property <float> t: 0;
+                    x: (parent.width - self.width) * self.t;
+                    width: parent.width / 3;
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                    Timer {
+                        interval: 900ms;
+                        running: true;
+                        triggered => { parent.t = parent.t < 0.5 ? 1.0 : 0.0; }
+                    }
+                    animate t { duration: 900ms; easing: ease-in-out; }
+                }
+            }
+            HorizontalLayout {
+                Text {
+                    text: root.total > 0 ? root.done + " / " + root.total : "…";
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-small;
+                    horizontal-stretch: 1;
+                }
+                Text {
+                    text: @tr("{} pistas encontradas", root.found);
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-small;
+                }
+            }
+        }
+    }
+}
+
 export component MenuAction inherits Rectangle {
     in property <string> glyph;
     in property <string> label;

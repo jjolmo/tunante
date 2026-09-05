@@ -77,6 +77,7 @@ public final class NativeBridge {
     public static native String nativeDownloadCovers(boolean replaceExisting);
 
     public static native String nativeCoverProgress();
+    public static native String nativeScanProgress();
 
     public static native void nativeCancelCovers();
 
