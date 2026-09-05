@@ -163,6 +163,8 @@ export component DesktopSettings inherits Rectangle {
     callback toggle-continue-queue();
     in property <bool> resume-on-open;
     callback toggle-resume-on-open();
+    in property <int> resume-max-hours: 6;
+    callback cycle-resume-hours();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
@@ -342,6 +344,11 @@ export component DesktopSettings inherits Rectangle {
                                     label: @tr("Reanudar reproducción al abrir");
                                     checked: root.resume-on-open;
                                     toggled => { root.toggle-resume-on-open(); }
+                                }
+                                SettingRow {
+                                    label: @tr("Reanudar si han pasado menos de");
+                                    value: root.resume-max-hours == 0 ? @tr("siempre") : (root.resume-max-hours + " h");
+                                    clicked => { root.cycle-resume-hours(); }
                                 }
                                 SettingRow {
                                     label: @tr("Saltar pistas cortas");

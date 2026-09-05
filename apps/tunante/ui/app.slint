@@ -256,6 +256,8 @@ export component AppWindow inherits Window {
     callback toggle-continue-queue();
     in property <bool> resume-on-open;
     callback toggle-resume-on-open();
+    in property <int> resume-max-hours: 6;
+    callback cycle-resume-hours();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
@@ -1087,6 +1089,8 @@ export component AppWindow inherits Window {
                     toggle-continue-queue => { root.toggle-continue-queue(); }
                     resume-on-open: root.resume-on-open;
                     toggle-resume-on-open => { root.toggle-resume-on-open(); }
+                    resume-max-hours: root.resume-max-hours;
+                    cycle-resume-hours => { root.cycle-resume-hours(); }
                     loop-max-mins: root.loop-max-mins;
                     cycle-loop-max => { root.cycle-loop-max(); }
                     slow-scan <=> root.slow-scan;

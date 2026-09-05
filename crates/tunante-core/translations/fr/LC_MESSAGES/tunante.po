@@ -1168,3 +1168,9 @@ msgstr "Vraiment ?"
 
 msgid "Abrir"
 msgstr "Ouvrir"
+
+msgid "Reanudar si han pasado menos de"
+msgstr "Reprendre seulement si moins de"
+
+msgid "siempre"
+msgstr "toujours"

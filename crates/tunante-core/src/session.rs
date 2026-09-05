@@ -17,6 +17,8 @@ const KEY_SHUFFLE: &str = "mini.shuffle";
 const KEY_REPEAT: &str = "mini.repeat";
 const KEY_LOOPS: &str = "mini.loop_count";
 const KEY_FADE: &str = "mini.fade_seconds";
+const KEY_SCOPE: &str = "session.scope";
+const KEY_SAVED_AT: &str = "session.saved_at";
 
 pub struct Session {
     pub track_path: Option<String>,
@@ -29,15 +31,53 @@ pub struct Session {
     pub loops: u32,
     /// Seconds of fade at the end of a looped track. 0 is a hard stop.
     pub fade_seconds: u64,
+    /// The list the track was chosen from, serialised as `kind:payload`
+    /// (`faved`, `playlist:<id>`, `console:<id>`, `game:<name>`,
+    /// `folder:<path>`, `queue`). Reopening it is what "resume" means to a
+    /// person: back to the list you were in, on the track you were on.
+    pub scope: Option<String>,
+    /// Unix seconds when the session was last saved. 0 = unknown (old file).
+    pub saved_at: u64,
+}
+
+/// How many hours a saved position stays worth resuming. Past it, the list
+/// and the scroll come back but playback starts clean: a mid-track resume a
+/// day later is noise, not memory. 0 means always. Default 6, in settings.
+pub const KEY_RESUME_MAX_HOURS: &str = "resume_max_hours";
+pub const DEFAULT_RESUME_MAX_HOURS: u64 = 6;
+
+pub fn resume_max_hours(db: &Database) -> u64 {
+    db.get_setting(KEY_RESUME_MAX_HOURS)
+        .ok()
+        .flatten()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_RESUME_MAX_HOURS)
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 impl Session {
+    /// Whether the saved position is still worth resuming: younger than the
+    /// configured number of hours (0 = always). Old files with no timestamp
+    /// count as fresh, so upgrading never silently drops a resume.
+    pub fn resume_allowed(&self, db: &Database) -> bool {
+        let hours = resume_max_hours(db);
+        hours == 0 || self.saved_at == 0 || now_secs().saturating_sub(self.saved_at) <= hours * 3600
+    }
+
     pub fn load(db: &Database) -> Self {
         let get = |k: &str| db.get_setting(k).ok().flatten();
 
         Self {
             track_path: get(KEY_TRACK).filter(|s| !s.is_empty()),
             position_ms: get(KEY_POSITION).and_then(|s| s.parse().ok()).unwrap_or(0),
+            scope: get(KEY_SCOPE).filter(|s| !s.is_empty()),
+            saved_at: get(KEY_SAVED_AT).and_then(|s| s.parse().ok()).unwrap_or(0),
             // Not silence by default: a fresh install that plays nothing
             // audible reads as broken rather than as quiet.
             volume: get(KEY_VOLUME).and_then(|s| s.parse().ok()).unwrap_or(1.0),
@@ -64,6 +104,7 @@ impl Session {
         repeat: u8,
         loops: u32,
         fade_seconds: u64,
+        scope: Option<&str>,
     ) {
         let _ = db.set_setting(KEY_TRACK, track_path.unwrap_or(""));
         let _ = db.set_setting(KEY_POSITION, &position_ms.to_string());
@@ -72,6 +113,8 @@ impl Session {
         let _ = db.set_setting(KEY_REPEAT, &repeat.to_string());
         let _ = db.set_setting(KEY_LOOPS, &loops.to_string());
         let _ = db.set_setting(KEY_FADE, &fade_seconds.to_string());
+        let _ = db.set_setting(KEY_SCOPE, scope.unwrap_or(""));
+        let _ = db.set_setting(KEY_SAVED_AT, &now_secs().to_string());
     }
 }
 
