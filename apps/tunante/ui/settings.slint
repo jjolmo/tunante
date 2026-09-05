@@ -1,80 +1,274 @@
-// The grande shell's settings, as a standalone modal dialog — the shape the
-// old Tauri desktop used: a dimmed backdrop over the whole app and a centred
-// panel with a left nav and the seven categories. Desktop-flavoured controls
-// (real checkboxes for the toggles) instead of the phone list's sí/no. The
-// narrow shell keeps its single scrolling SettingsTab; this is only for grande.
+// The grande shell's settings: a preferences dialog in the desktop's own
+// vocabulary. A dimmed backdrop, a centred panel, a category list on the left,
+// and on the right titled group boxes of form rows — label in a fixed column,
+// control beside it: real checkboxes, drop-down lists that open a list, push
+// buttons for actions, sliders for levels. Nothing here is a tap-to-cycle row;
+// those belong to the phone's SettingsTab, which keeps its own shape.
+//
+// Every value is applied the moment it changes, so the dialog has no OK/Apply:
+// "Cerrar" only closes it.
 
 import { ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { FolderRow, ShortcutRow } from "types.slint";
-import { SettingRow, DbSliderRow, ArmedRow } from "widgets.slint";
+import { DbSliderRow } from "widgets.slint";
 
 // Left navigation entry.
 component NavItem inherits Rectangle {
     in property <string> label;
     in property <bool> active;
     callback clicked();
-    height: 38px;
-    border-radius: Theme.radius;
+    height: 30px;
+    border-radius: 3px;
     background: root.active ? Theme.bg-selected
         : (t.has-hover ? Theme.bg-hover : transparent);
     HorizontalLayout {
-        padding-left: 14px;
+        padding-left: 12px;
         Text {
             text: root.label;
-            color: root.active ? Theme.accent : Theme.text-primary;
+            color: Theme.text-primary;
             font-size: Theme.font-body;
-            font-weight: root.active ? 600 : 400;
             vertical-alignment: center;
         }
     }
     t := TouchArea { clicked => { root.clicked(); } }
 }
 
-// A section title inside a tab.
-component Section inherits Text {
-    color: Theme.text-muted;
-    font-size: Theme.font-small;
-    height: 32px;
-    vertical-alignment: bottom;
+// A titled frame around a set of rows: the group box of every preferences
+// dialog since there were preferences dialogs.
+component Group inherits Rectangle {
+    in property <string> title;
+    height: body.preferred-height + 22px;
+    border-width: 1px;
+    border-color: Theme.border;
+    border-radius: 4px;
+    body := VerticalLayout {
+        y: 14px;
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-bottom: 8px;
+        spacing: 4px;
+        @children
+    }
+    // The title sits on the frame line, cut into it with the page's ground.
+    Rectangle {
+        x: 10px;
+        y: -8px;
+        height: 16px;
+        width: gt.preferred-width + 10px;
+        background: Theme.bg-primary;
+        gt := Text {
+            text: root.title;
+            color: Theme.text-secondary;
+            font-size: Theme.font-small;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
 }
 
-// A desktop-style checkbox row: label left, a real checkbox on the right.
-component CheckRow inherits Rectangle {
+// Label in a fixed column, the control beside it.
+component FormRow inherits HorizontalLayout {
+    in property <string> label;
+    in property <bool> dim;
+    height: 30px;
+    spacing: 12px;
+    Text {
+        text: root.label;
+        width: 230px;
+        color: root.dim ? Theme.text-muted : Theme.text-primary;
+        font-size: Theme.font-body;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    @children
+    Rectangle { horizontal-stretch: 1; }
+}
+
+// A real checkbox: the box first, the label after it.
+component Check inherits Rectangle {
     in property <string> label;
     in property <bool> checked;
+    in property <bool> enabled: true;
     callback toggled();
-    height: 38px;
-    border-radius: Theme.radius;
-    background: t.has-hover ? Theme.bg-hover : transparent;
+    height: 26px;
     HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 12px;
-        spacing: 10px;
+        spacing: 8px;
+        alignment: start;
+        Rectangle {
+            y: (parent.height - self.height) / 2;
+            width: 16px;
+            height: 16px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: root.checked ? Theme.accent : (t.has-hover ? Theme.text-secondary : Theme.text-muted);
+            background: root.checked ? Theme.accent : Theme.bg-secondary;
+            Text {
+                text: "✓";
+                visible: root.checked;
+                color: #ffffff;
+                font-size: 11px;
+                font-weight: 700;
+            }
+        }
         Text {
             text: root.label;
-            color: Theme.text-primary;
+            color: root.enabled ? Theme.text-primary : Theme.text-muted;
             font-size: Theme.font-body;
             vertical-alignment: center;
-            horizontal-stretch: 1;
-            overflow: elide;
         }
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.toggled(); }
+    }
+}
+
+// A drop-down list. `options` are the labels shown; `keys`, when given, are
+// what `picked` reports for each (a value the Rust side parses), else the
+// label itself. With no options at all the field is a plain button that
+// reports `activated` — for the audio output, whose list is a sheet.
+component Combo inherits Rectangle {
+    in property <[string]> options;
+    in property <[string]> keys;
+    in property <string> value;
+    in property <bool> enabled: true;
+    callback picked(string);
+    callback activated();
+    width: 220px;
+    height: 26px;
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: t.has-hover && root.enabled ? Theme.text-secondary : Theme.border;
+    background: Theme.bg-secondary;
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 6px;
+        spacing: 6px;
+        Text {
+            text: root.value;
+            color: root.enabled ? Theme.text-primary : Theme.text-muted;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            overflow: elide;
+            horizontal-stretch: 1;
+        }
+        Text {
+            text: "▾";
+            color: Theme.text-secondary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+        }
+    }
+    t := TouchArea {
+        enabled: root.enabled;
+        clicked => {
+            if (root.options.length == 0) { root.activated(); } else { pop.show(); }
+        }
+    }
+    pop := PopupWindow {
+        x: 0;
+        y: root.height + 2px;
+        width: root.width;
+        close-policy: close-on-click-outside;
         Rectangle {
-            width: 20px;
-            height: 20px;
-            y: (parent.height - self.height) / 2;
-            border-radius: 4px;
+            height: list.preferred-height + 2px;
+            background: Theme.bg-secondary;
             border-width: 1px;
-            border-color: root.checked ? Theme.accent : Theme.text-muted;
-            background: root.checked ? Theme.accent : transparent;
-            Text {
-                text: root.checked ? "✓" : "";
-                color: #ffffff;
-                font-size: 13px;
+            border-color: Theme.border;
+            border-radius: 3px;
+            clip: true;
+            list := VerticalLayout {
+                padding: 1px;
+                for o[i] in root.options: Rectangle {
+                    height: 26px;
+                    background: ot.has-hover ? Theme.bg-selected
+                        : (o == root.value ? Theme.bg-tertiary : transparent);
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        Text {
+                            text: o;
+                            color: Theme.text-primary;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                    ot := TouchArea {
+                        clicked => {
+                            pop.close();
+                            root.picked(root.keys.length > 0 ? root.keys[i] : o);
+                        }
+                    }
+                }
             }
         }
     }
-    t := TouchArea { clicked => { root.toggled(); } }
+}
+
+// A push button.
+component Push inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary;
+    in property <bool> enabled: true;
+    callback clicked();
+    height: 26px;
+    width: max(96px, pt.preferred-width + 24px);
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: root.primary ? Theme.accent : Theme.border;
+    background: root.primary
+        ? (pta.has-hover ? Theme.accent-hover : Theme.accent)
+        : (pta.has-hover ? Theme.bg-hover : Theme.bg-tertiary);
+    opacity: root.enabled ? 1.0 : 0.5;
+    pt := Text {
+        text: root.label;
+        color: root.primary ? #ffffff : Theme.text-primary;
+        font-size: Theme.font-body;
+    }
+    pta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// A destructive button asked twice: the first click arms it red for four
+// seconds, the second does it, and it disarms itself if left alone.
+component ArmedPush inherits Rectangle {
+    in property <string> label;
+    in property <string> armed-label;
+    callback fired();
+    property <bool> armed;
+    height: 26px;
+    width: max(96px, apt.preferred-width + 24px);
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: root.armed ? #a33333 : Theme.border;
+    background: root.armed ? #a33333 : (apta.has-hover ? Theme.bg-hover : Theme.bg-tertiary);
+    animate background { duration: 150ms; }
+    Timer {
+        interval: 4s;
+        running: root.armed;
+        triggered => { root.armed = false; }
+    }
+    apt := Text {
+        text: root.armed ? root.armed-label : root.label;
+        color: root.armed ? #ffffff : Theme.text-primary;
+        font-size: Theme.font-body;
+    }
+    apta := TouchArea {
+        clicked => {
+            if (root.armed) { root.armed = false; root.fired(); } else { root.armed = true; }
+        }
+    }
+}
+
+// A muted note beside a control: a status, a count, a hint of what happened.
+component Note inherits Text {
+    color: Theme.text-muted;
+    font-size: Theme.font-small;
+    vertical-alignment: center;
+    overflow: elide;
 }
 
 export component DesktopSettings inherits Rectangle {
@@ -232,6 +426,21 @@ export component DesktopSettings inherits Rectangle {
     // Closed from the ✕, the backdrop, or Escape.
     callback close();
 
+
+    // The drop-down lists' option labels, built once on the Rust side from
+    // the same label functions that name the current value.
+    in property <[string]> tray-click-options;
+    in property <[string]> tray-style-options;
+    in property <[string]> cover-fit-options;
+    in property <[string]> rating-priority-options;
+    in property <[string]> mouse-action-options;
+    in property <[string]> vgm-loops-options;
+    in property <[string]> language-options;
+    // "Set this setting to this value": the Rust side walks the existing
+    // cycle until the value matches, so every option list drives the same
+    // code the phone's tap-to-cycle rows do.
+    callback set-choice(string, string);
+
     // The dimmed backdrop over the whole app; clicking it closes.
     background: #000000cc;
     TouchArea { clicked => { root.close(); } }
@@ -247,55 +456,57 @@ export component DesktopSettings inherits Rectangle {
 
     // The centred dialog.
     Rectangle {
-        width: min(940px, root.width - 48px);
-        height: min(700px, root.height - 48px);
+        width: min(960px, root.width - 48px);
+        height: min(720px, root.height - 48px);
         background: Theme.bg-primary;
-        border-radius: Theme.radius * 2;
+        border-radius: 6px;
         border-width: 1px;
-        border-color: Theme.bg-tertiary;
+        border-color: Theme.border;
         clip: true;
         // Swallow clicks so they do not reach the backdrop.
         TouchArea {}
 
         VerticalLayout {
-            // --- Header ---
+            // --- Title bar ---
             Rectangle {
-                height: 52px;
+                height: 40px;
                 background: Theme.bg-secondary;
                 HorizontalLayout {
-                    padding-left: Theme.gap * 2;
-                    padding-right: Theme.gap;
+                    padding-left: 14px;
+                    padding-right: 8px;
                     Text {
                         text: @tr("Ajustes");
                         color: Theme.text-primary;
-                        font-size: Theme.font-title;
+                        font-size: Theme.font-body;
+                        font-weight: 600;
                         vertical-alignment: center;
                         horizontal-stretch: 1;
                     }
                     Rectangle {
-                        width: 40px;
-                        border-radius: Theme.radius;
+                        width: 32px;
+                        height: 24px;
+                        y: (parent.height - self.height) / 2;
+                        border-radius: 3px;
                         background: cx.has-hover ? Theme.bg-hover : transparent;
                         Text {
                             text: "✕";
-                            color: cx.has-hover ? Theme.text-primary : Theme.text-muted;
-                            font-size: Theme.font-body;
-                            vertical-alignment: center;
+                            color: cx.has-hover ? Theme.text-primary : Theme.text-secondary;
+                            font-size: Theme.font-small;
                         }
                         cx := TouchArea { clicked => { root.close(); } }
                     }
                 }
             }
-            Rectangle { height: 1px; background: Theme.bg-tertiary; }
+            Rectangle { height: 1px; background: Theme.border; }
 
             HorizontalLayout {
-                // --- Left nav rail ---
+                // --- Category list ---
                 Rectangle {
-                    width: 180px;
+                    width: 170px;
                     background: Theme.bg-secondary;
                     VerticalLayout {
-                        padding: Theme.gap;
-                        spacing: 2px;
+                        padding: 8px;
+                        spacing: 1px;
                         NavItem { label: @tr("General"); active: root.tab == 0; clicked => { root.tab = 0; } }
                         NavItem { label: @tr("Biblioteca"); active: root.tab == 1; clicked => { root.tab = 1; } }
                         NavItem { label: @tr("Carátulas"); active: root.tab == 2; clicked => { root.tab = 2; } }
@@ -306,602 +517,649 @@ export component DesktopSettings inherits Rectangle {
                         Rectangle { vertical-stretch: 1; }
                     }
                 }
-                Rectangle { width: 1px; background: Theme.bg-tertiary; }
+                Rectangle { width: 1px; background: Theme.border; }
 
-                // --- Content ---
+                // --- Page ---
                 Rectangle {
                     horizontal-stretch: 1;
                     background: Theme.bg-primary;
                     ScrollView {
                         VerticalLayout {
-                            padding: Theme.gap * 2;
-                            spacing: 2px;
+                            padding: 18px;
+                            padding-top: 22px;
+                            spacing: 18px;
 
                             // ===== General =====
                             if root.tab == 0: VerticalLayout {
-                                spacing: 2px;
-                                Section { text: @tr("Reproducción"); }
-                                SettingRow {
-                                    label: @tr("Repeticiones del bucle");
-                                    value: root.loop-count == 0 ? "∞" : (root.loop-count == 1 ? "1" : (root.loop-count == 2 ? "2" : "3"));
-                                    clicked => { root.cycle-loops(); }
+                                spacing: 18px;
+                                Group {
+                                    title: @tr("Reproducción");
+                                    FormRow {
+                                        label: @tr("Repeticiones del bucle");
+                                        Combo {
+                                            options: ["1", "2", "3", "∞"];
+                                            keys: ["1", "2", "3", "0"];
+                                            value: root.loop-count == 0 ? "∞" : (root.loop-count == 1 ? "1" : (root.loop-count == 2 ? "2" : "3"));
+                                            picked(k) => { root.set-choice("loops", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Fundido final");
+                                        Combo {
+                                            options: [@tr("desactivado"), "4 s", "8 s", "15 s"];
+                                            keys: ["0", "4", "8", "15"];
+                                            value: root.fade-seconds == 0 ? @tr("desactivado") : (root.fade-seconds + " s");
+                                            picked(k) => { root.set-choice("fade", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Crossfade entre pistas");
+                                        Combo {
+                                            options: [@tr("desactivado"), "2 s", "4 s", "8 s"];
+                                            keys: ["0", "2", "4", "8"];
+                                            value: root.crossfade-secs == 0 ? @tr("desactivado") : (root.crossfade-secs + " s");
+                                            picked(k) => { root.set-choice("crossfade", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Saltar pistas cortas");
+                                        Combo {
+                                            options: [@tr("desactivado"), "5 s", "10 s", "15 s", "20 s", "25 s", "30 s", "35 s", "40 s", "45 s", "50 s", "55 s", "60 s"];
+                                            keys: ["0", "5", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60"];
+                                            value: root.short-filter-secs == 0 ? @tr("desactivado") : (root.short-filter-secs + " s");
+                                            picked(k) => { root.set-choice("short", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Salida de audio");
+                                        Combo {
+                                            value: root.output-label;
+                                            activated => { root.cycle-output(); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Apagar la música en");
+                                        Combo {
+                                            options: [@tr("desactivado"), "15 min", "30 min", "60 min"];
+                                            keys: ["0", "15", "30", "60"];
+                                            value: root.sleep-running ? (root.sleep-minutes + " min") : @tr("desactivado");
+                                            picked(k) => { root.set-choice("sleep", k); }
+                                        }
+                                    }
+                                    Check {
+                                        label: @tr("Continuar desde lo encolado");
+                                        checked: root.continue-queue;
+                                        toggled => { root.toggle-continue-queue(); }
+                                    }
+                                    Check {
+                                        label: @tr("Reanudar reproducción al abrir");
+                                        checked: root.resume-on-open;
+                                        toggled => { root.toggle-resume-on-open(); }
+                                    }
+                                    FormRow {
+                                        label: @tr("Reanudar si han pasado menos de");
+                                        dim: !root.resume-on-open;
+                                        Combo {
+                                            enabled: root.resume-on-open;
+                                            options: ["3 h", "6 h", "12 h", "24 h", @tr("siempre")];
+                                            keys: ["3", "6", "12", "24", "0"];
+                                            value: root.resume-max-hours == 0 ? @tr("siempre") : (root.resume-max-hours + " h");
+                                            picked(k) => { root.set-choice("resume", k); }
+                                        }
+                                    }
                                 }
-                                SettingRow {
-                                    label: @tr("Fundido final");
-                                    value: root.fade-seconds == 0 ? @tr("desactivado") : (root.fade-seconds + " s");
-                                    clicked => { root.cycle-fade(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Crossfade entre pistas");
-                                    value: root.crossfade-secs == 0 ? @tr("desactivado") : (root.crossfade-secs + " s");
-                                    clicked => { root.cycle-crossfade(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Continuar desde lo encolado");
-                                    checked: root.continue-queue;
-                                    toggled => { root.toggle-continue-queue(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Reanudar reproducción al abrir");
-                                    checked: root.resume-on-open;
-                                    toggled => { root.toggle-resume-on-open(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Reanudar si han pasado menos de");
-                                    value: root.resume-max-hours == 0 ? @tr("siempre") : (root.resume-max-hours + " h");
-                                    clicked => { root.cycle-resume-hours(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Saltar pistas cortas");
-                                    value: root.short-filter-secs == 0 ? @tr("desactivado") : (root.short-filter-secs + " s");
-                                    clicked => { root.cycle-short-filter(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Salida de audio");
-                                    value: root.output-label;
-                                    clicked => { root.cycle-output(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Apagar la música en");
-                                    value: root.sleep-running ? (root.sleep-minutes + " min") : @tr("desactivado");
-                                    clicked => { root.cycle-sleep(); }
-                                }
-                                Section { text: @tr("Bandeja y ventana"); }
-                                CheckRow {
-                                    label: @tr("Título de la canción en la ventana");
-                                    checked: root.titlebar-track;
-                                    toggled => { root.toggle-titlebar-track(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Click en el icono de bandeja");
-                                    value: root.tray-click-label;
-                                    clicked => { root.cycle-tray-click(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Icono de bandeja");
-                                    value: root.tray-style-label;
-                                    clicked => { root.cycle-tray-style(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Mostrar icono en la bandeja (requiere reiniciar)");
-                                    checked: root.show-in-tray;
-                                    toggled => { root.toggle-show-in-tray(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Cerrar a la bandeja");
-                                    checked: root.close-to-tray;
-                                    toggled => { root.toggle-close-to-tray(); }
+                                Group {
+                                    title: @tr("Bandeja y ventana");
+                                    Check {
+                                        label: @tr("Título de la canción en la ventana");
+                                        checked: root.titlebar-track;
+                                        toggled => { root.toggle-titlebar-track(); }
+                                    }
+                                    Check {
+                                        label: @tr("Mostrar icono en la bandeja (requiere reiniciar)");
+                                        checked: root.show-in-tray;
+                                        toggled => { root.toggle-show-in-tray(); }
+                                    }
+                                    Check {
+                                        label: @tr("Cerrar a la bandeja");
+                                        checked: root.close-to-tray;
+                                        toggled => { root.toggle-close-to-tray(); }
+                                    }
+                                    FormRow {
+                                        label: @tr("Icono de bandeja");
+                                        Combo {
+                                            options: root.tray-style-options;
+                                            value: root.tray-style-label;
+                                            picked(k) => { root.set-choice("traystyle", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Click en el icono de bandeja");
+                                        Combo {
+                                            options: root.tray-click-options;
+                                            value: root.tray-click-label;
+                                            picked(k) => { root.set-choice("trayclick", k); }
+                                        }
+                                    }
                                 }
                             }
 
                             // ===== Biblioteca =====
                             if root.tab == 1: VerticalLayout {
-                                spacing: 2px;
-                                Section { text: @tr("Carpetas analizadas"); }
-                                SettingRow {
-                                    label: @tr("Añadir una carpeta");
-                                    value: "＋";
-                                    clicked => { root.add-folder(); }
-                                }
-                                for lf in root.library-folders: Rectangle {
-                                    height: 40px;
-                                    HorizontalLayout {
-                                        padding-left: Theme.gap;
-                                        padding-right: Theme.gap;
-                                        spacing: Theme.gap;
-                                        Text {
-                                            text: lf.path;
-                                            color: Theme.text-secondary;
-                                            font-size: Theme.font-small;
-                                            vertical-alignment: center;
-                                            overflow: elide;
-                                            horizontal-stretch: 1;
-                                        }
-                                        Rectangle {
-                                            width: 84px;
-                                            border-radius: Theme.radius;
-                                            background: wt.has-hover ? Theme.bg-hover : transparent;
-                                            Text {
-                                                text: lf.watching ? @tr("vigilada") : @tr("sin vigilar");
-                                                color: lf.watching ? Theme.accent : Theme.text-muted;
-                                                font-size: Theme.font-small;
-                                                vertical-alignment: center;
+                                spacing: 18px;
+                                Group {
+                                    title: @tr("Carpetas analizadas");
+                                    Rectangle {
+                                        height: fl.preferred-height + 2px;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        border-radius: 3px;
+                                        background: Theme.bg-secondary;
+                                        fl := VerticalLayout {
+                                            padding: 1px;
+                                            for lf in root.library-folders: Rectangle {
+                                                height: 30px;
+                                                HorizontalLayout {
+                                                    padding-left: 8px;
+                                                    padding-right: 4px;
+                                                    spacing: 10px;
+                                                    Text {
+                                                        text: lf.path;
+                                                        color: Theme.text-primary;
+                                                        font-size: Theme.font-body;
+                                                        vertical-alignment: center;
+                                                        overflow: elide;
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                    Check {
+                                                        label: @tr("vigilada");
+                                                        checked: lf.watching;
+                                                        toggled => { root.folder-watch-toggled(lf.id, !lf.watching); }
+                                                    }
+                                                    Push {
+                                                        label: @tr("Quitar");
+                                                        clicked => { root.folder-removed(lf.id); }
+                                                    }
+                                                }
                                             }
-                                            wt := TouchArea {
-                                                clicked => { root.folder-watch-toggled(lf.id, !lf.watching); }
-                                            }
-                                        }
-                                        Rectangle {
-                                            width: 32px;
-                                            border-radius: Theme.radius;
-                                            background: xt.has-hover ? Theme.bg-hover : transparent;
-                                            Text {
-                                                text: "✕";
-                                                color: xt.has-hover ? Theme.text-primary : Theme.text-muted;
-                                                font-size: Theme.font-body;
-                                                vertical-alignment: center;
-                                            }
-                                            xt := TouchArea {
-                                                clicked => { root.folder-removed(lf.id); }
+                                            if root.library-folders.length == 0: Rectangle {
+                                                height: 30px;
+                                                Note { text: @tr("Ninguna carpeta todavía."); x: 8px; }
                                             }
                                         }
                                     }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Push {
+                                            label: @tr("Añadir carpeta…");
+                                            clicked => { root.add-folder(); }
+                                        }
+                                        Push {
+                                            label: @tr("Volver a analizar");
+                                            clicked => { root.rescan(); }
+                                        }
+                                        Push {
+                                            label: @tr("Añadir ficheros sueltos");
+                                            clicked => { root.add-files(); }
+                                        }
+                                        Note { text: root.add-files-label; }
+                                    }
                                 }
-                                SettingRow {
-                                    label: @tr("Volver a analizar");
-                                    value: "↻";
-                                    clicked => { root.rescan(); }
+                                Group {
+                                    title: @tr("Escaneo");
+                                    Check {
+                                        label: @tr("Escaneo minucioso");
+                                        checked: root.slow-scan;
+                                        toggled => { root.toggle-slow-scan(); }
+                                    }
+                                    FormRow {
+                                        label: @tr("Bucles de formatos streamed");
+                                        Combo {
+                                            options: root.vgm-loops-options;
+                                            value: root.vgm-loops-label;
+                                            picked(k) => { root.set-choice("vgm", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Tope de pistas infinitas");
+                                        Combo {
+                                            options: [@tr("predeterminado"), "2 min", "3 min", "5 min", "8 min"];
+                                            keys: ["0", "2", "3", "5", "8"];
+                                            value: root.loop-max-mins == 0 ? @tr("predeterminado") : (root.loop-max-mins + " min");
+                                            picked(k) => { root.set-choice("loopmax", k); }
+                                        }
+                                    }
+                                    Check {
+                                        label: @tr("Aplicar el tope a todas las pistas");
+                                        checked: root.caps-all;
+                                        toggled => { root.toggle-caps-all(); }
+                                    }
                                 }
-                                SettingRow {
-                                    label: @tr("Añadir ficheros sueltos");
-                                    value: root.add-files-label;
-                                    clicked => { root.add-files(); }
-                                }
-                                Section { text: @tr("Escaneo"); }
-                                CheckRow {
-                                    label: @tr("Escaneo minucioso");
-                                    checked: root.slow-scan;
-                                    toggled => { root.toggle-slow-scan(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Bucles de formatos streamed");
-                                    value: root.vgm-loops-label;
-                                    clicked => { root.cycle-vgm-loops(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Tope de pistas infinitas");
-                                    value: root.loop-max-mins == 0 ? @tr("predeterminado") : (root.loop-max-mins + " min");
-                                    clicked => { root.cycle-loop-max(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Aplicar el tope a todas las pistas");
-                                    checked: root.caps-all;
-                                    toggled => { root.toggle-caps-all(); }
-                                }
-                                Section { text: @tr("Metadatos"); }
-                                SettingRow {
-                                    label: @tr("La columna Álbum/Juego enseña");
-                                    value: root.album-game-label;
-                                    clicked => { root.toggle-album-game(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Prioridad de puntuaciones");
-                                    value: root.rating-priority-label;
-                                    clicked => { root.cycle-rating-priority(); }
+                                Group {
+                                    title: @tr("Metadatos");
+                                    FormRow {
+                                        label: @tr("La columna Álbum/Juego enseña");
+                                        Combo {
+                                            options: [@tr("el álbum"), @tr("el juego")];
+                                            value: root.album-game-label;
+                                            picked(k) => { root.set-choice("albumgame", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Prioridad de puntuaciones");
+                                        Combo {
+                                            options: root.rating-priority-options;
+                                            value: root.rating-priority-label;
+                                            picked(k) => { root.set-choice("rating", k); }
+                                        }
+                                    }
                                 }
                             }
 
                             // ===== Carátulas =====
                             if root.tab == 2: VerticalLayout {
-                                spacing: 2px;
-                                SettingRow {
-                                    label: @tr("Descargar carátulas que falten");
-                                    value: "⬇";
-                                    clicked => { root.descargar-caratulas(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Descarga automática de carátulas");
-                                    checked: root.auto-covers;
-                                    toggled => { root.toggle-auto-covers(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Guardar carátula en la carpeta");
-                                    checked: root.covers-in-folder;
-                                    toggled => { root.toggle-covers-in-folder(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Deshacer última descarga");
-                                    value: root.undo-covers-label;
-                                    clicked => { root.undo-covers(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Encaje de carátula");
-                                    value: root.cover-fit-label;
-                                    clicked => { root.cycle-cover-fit(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Limpiar caché de carátulas");
-                                    value: root.clear-cache-label;
-                                    clicked => { root.clear-cover-cache(); }
+                                spacing: 18px;
+                                Group {
+                                    title: @tr("Carátulas");
+                                    Check {
+                                        label: @tr("Descarga automática de carátulas");
+                                        checked: root.auto-covers;
+                                        toggled => { root.toggle-auto-covers(); }
+                                    }
+                                    Check {
+                                        label: @tr("Guardar carátula en la carpeta");
+                                        checked: root.covers-in-folder;
+                                        toggled => { root.toggle-covers-in-folder(); }
+                                    }
+                                    FormRow {
+                                        label: @tr("Encaje de carátula");
+                                        Combo {
+                                            options: root.cover-fit-options;
+                                            value: root.cover-fit-label;
+                                            picked(k) => { root.set-choice("coverfit", k); }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Push {
+                                            label: @tr("Descargar carátulas que falten");
+                                            clicked => { root.descargar-caratulas(); }
+                                        }
+                                        Push {
+                                            label: @tr("Deshacer última descarga");
+                                            clicked => { root.undo-covers(); }
+                                        }
+                                        Note { text: root.undo-covers-label; }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Push {
+                                            label: @tr("Limpiar caché de carátulas");
+                                            clicked => { root.clear-cover-cache(); }
+                                        }
+                                        Note { text: root.clear-cache-label; }
+                                    }
                                 }
                             }
 
                             // ===== DSP =====
                             if root.tab == 3: VerticalLayout {
-                                spacing: 2px;
-                                Rectangle {
-                                    height: 34px;
-                                    border-radius: Theme.radius;
-                                    background: Theme.bg-secondary;
-                                    HorizontalLayout {
-                                        padding-left: 10px;
-                                        Text {
-                                            text: root.dsp-status;
-                                            color: Theme.text-muted;
-                                            font-size: Theme.font-small;
-                                            vertical-alignment: center;
-                                            overflow: elide;
-                                        }
+                                spacing: 18px;
+                                Note { text: root.dsp-status; height: 18px; }
+                                Group {
+                                    title: @tr("Ecualizador");
+                                    Check {
+                                        label: @tr("Ecualizador");
+                                        checked: root.eq-enabled;
+                                        toggled => { root.toggle-eq(); }
+                                    }
+                                    DbSliderRow {
+                                        label: @tr("Graves"); label-width: 230px; side-padding: 0px;
+                                        db: root.eq-low; active: root.eq-enabled;
+                                        changed(v) => { root.set-eq-band(0, v); }
+                                    }
+                                    DbSliderRow {
+                                        label: @tr("Medios"); label-width: 230px; side-padding: 0px;
+                                        db: root.eq-mid; active: root.eq-enabled;
+                                        changed(v) => { root.set-eq-band(1, v); }
+                                    }
+                                    DbSliderRow {
+                                        label: @tr("Agudos"); label-width: 230px; side-padding: 0px;
+                                        db: root.eq-high; active: root.eq-enabled;
+                                        changed(v) => { root.set-eq-band(2, v); }
                                     }
                                 }
-                                Section { text: @tr("Ecualizador"); }
-                                CheckRow {
-                                    label: @tr("Ecualizador");
-                                    checked: root.eq-enabled;
-                                    toggled => { root.toggle-eq(); }
+                                Group {
+                                    title: @tr("Ganancia y dinámica");
+                                    DbSliderRow {
+                                        label: @tr("Preamplificador"); label-width: 230px; side-padding: 0px;
+                                        db: root.preamp-db;
+                                        changed(v) => { root.set-preamp(v); }
+                                    }
+                                    Check {
+                                        label: @tr("Limitador");
+                                        checked: root.dsp-limiter;
+                                        toggled => { root.toggle-limiter(); }
+                                    }
                                 }
-                                DbSliderRow {
-                                    label: @tr("Graves");
-                                    db: root.eq-low;
-                                    active: root.eq-enabled;
-                                    changed(v) => { root.set-eq-band(0, v); }
+                                Group {
+                                    title: @tr("Espacialidad");
+                                    Check {
+                                        label: @tr("Mono");
+                                        checked: root.dsp-mono;
+                                        toggled => { root.toggle-mono(); }
+                                    }
+                                    Check {
+                                        label: @tr("Mono · compensación de nivel");
+                                        checked: root.dsp-mono-compensate;
+                                        enabled: root.dsp-mono;
+                                        toggled => { root.toggle-mono-compensate(); }
+                                    }
+                                    Check {
+                                        label: @tr("Mono · seguro de fase");
+                                        checked: root.dsp-mono-phase;
+                                        enabled: root.dsp-mono;
+                                        toggled => { root.toggle-mono-phase(); }
+                                    }
+                                    DbSliderRow {
+                                        label: @tr("Balance"); label-width: 230px; side-padding: 0px;
+                                        db: root.dsp-balance; range-min: -1; range-max: 1; unit: "";
+                                        changed(v) => { root.set-balance(v); }
+                                    }
+                                    if root.dsp-mono && (root.dsp-balance > 0.001 || root.dsp-balance < -0.001): HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: start;
+                                        Note {
+                                            text: @tr("Con mono, el balance descentrado silencia un lado");
+                                            color: Theme.warning-fg;
+                                        }
+                                        Push {
+                                            label: @tr("Centrar");
+                                            clicked => { root.set-balance(0); }
+                                        }
+                                    }
+                                    DbSliderRow {
+                                        label: @tr("Anchura estéreo"); label-width: 230px; side-padding: 0px;
+                                        db: root.dsp-width; range-min: 0; range-max: 2; unit: "";
+                                        changed(v) => { root.set-width(v); }
+                                    }
                                 }
-                                DbSliderRow {
-                                    label: @tr("Medios");
-                                    db: root.eq-mid;
-                                    active: root.eq-enabled;
-                                    changed(v) => { root.set-eq-band(1, v); }
-                                }
-                                DbSliderRow {
-                                    label: @tr("Agudos");
-                                    db: root.eq-high;
-                                    active: root.eq-enabled;
-                                    changed(v) => { root.set-eq-band(2, v); }
-                                }
-                                Section { text: @tr("Ganancia y dinámica"); }
-                                DbSliderRow {
-                                    label: @tr("Preamplificador");
-                                    db: root.preamp-db;
-                                    changed(v) => { root.set-preamp(v); }
-                                }
-                                CheckRow {
-                                    label: @tr("Limitador");
-                                    checked: root.dsp-limiter;
-                                    toggled => { root.toggle-limiter(); }
-                                }
-                                Section { text: @tr("Espacialidad"); }
-                                CheckRow {
-                                    label: @tr("Mono");
-                                    checked: root.dsp-mono;
-                                    toggled => { root.toggle-mono(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Mono · compensación de nivel");
-                                    checked: root.dsp-mono-compensate;
-                                    toggled => { root.toggle-mono-compensate(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Mono · seguro de fase");
-                                    checked: root.dsp-mono-phase;
-                                    toggled => { root.toggle-mono-phase(); }
-                                }
-                                if root.dsp-mono && (root.dsp-balance > 0.001 || root.dsp-balance < -0.001): SettingRow {
-                                    label: @tr("Con mono, el balance descentrado silencia un lado");
-                                    value: @tr("Centrar");
-                                    highlighted: true;
-                                    clicked => { root.set-balance(0); }
-                                }
-                                DbSliderRow {
-                                    label: @tr("Balance");
-                                    db: root.dsp-balance;
-                                    range-min: -1;
-                                    range-max: 1;
-                                    unit: "";
-                                    changed(v) => { root.set-balance(v); }
-                                }
-                                DbSliderRow {
-                                    label: @tr("Anchura estéreo");
-                                    db: root.dsp-width;
-                                    range-min: 0;
-                                    range-max: 2;
-                                    unit: "";
-                                    changed(v) => { root.set-width(v); }
-                                }
-                                SettingRow {
-                                    label: @tr("Restablecer todos los efectos");
-                                    value: "↺";
-                                    clicked => { root.reset-dsp(); }
+                                HorizontalLayout {
+                                    alignment: start;
+                                    Push {
+                                        label: @tr("Restablecer todos los efectos");
+                                        clicked => { root.reset-dsp(); }
+                                    }
                                 }
                             }
 
                             // ===== Apariencia =====
                             if root.tab == 4: VerticalLayout {
-                                spacing: 2px;
-                                Section { text: @tr("Presentación"); }
-                                SettingRow {
-                                    label: @tr("Idioma");
-                                    // Native language names stay in their own
-                                    // language; only "System" gets translated.
-                                    value: root.language-label == "" ? @tr("Sistema") : root.language-label;
-                                    clicked => { root.cycle-language(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Cola");
-                                    value: root.queue-placement == 2 ? @tr("panel derecho") : @tr("entrada en el sidebar");
-                                    clicked => { root.cycle-queue-placement(); }
-                                }
-                                SettingRow {
-                                    label: @tr("  ↳ Visibilidad de la cola");
-                                    value: root.queue-always-visible ? @tr("siempre visible") : @tr("solo cuando hay cola");
-                                    clicked => { root.toggle-queue-always-visible(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Estrellas de puntuación");
-                                    value: root.star-display-mode == 1 ? @tr("una si tiene puntuación") : @tr("las cinco");
-                                    clicked => { root.set-star-display-mode(root.star-display-mode == 1 ? 0 : 1); }
-                                }
-                                Section { text: @tr("Tema"); }
-                                HorizontalLayout {
-                                    spacing: Theme.gap;
-                                    height: 84px;
-                                    for card[ci] in [
-                                        { name: @tr("Oscuro"), mode: 0 },
-                                        { name: @tr("Claro"), mode: 1 },
-                                        { name: @tr("Sistema"), mode: 2 },
-                                    ]: Rectangle {
-                                        border-radius: Theme.radius;
-                                        border-width: root.theme-mode == card.mode ? 2px : 1px;
-                                        border-color: root.theme-mode == card.mode ? Theme.accent : Theme.bg-tertiary;
-                                        background: tcard.has-hover ? Theme.bg-hover : Theme.bg-secondary;
-                                        VerticalLayout {
-                                            alignment: center;
-                                            spacing: 6px;
-                                            padding: Theme.gap;
-                                            // A little swatch that hints the theme.
-                                            Rectangle {
-                                                height: 30px;
-                                                border-radius: 4px;
-                                                background: card.mode == 1 ? #f4f4f4
-                                                    : (card.mode == 0 ? #1e1e1e : #808080);
-                                                border-width: 1px;
-                                                border-color: Theme.bg-tertiary;
-                                            }
-                                            Text {
-                                                text: card.name;
-                                                color: root.theme-mode == card.mode ? Theme.accent : Theme.text-primary;
-                                                font-size: Theme.font-small;
-                                                horizontal-alignment: center;
+                                spacing: 18px;
+                                Group {
+                                    title: @tr("Presentación");
+                                    FormRow {
+                                        label: @tr("Tema");
+                                        Combo {
+                                            options: [@tr("Oscuro"), @tr("Claro"), @tr("Sistema")];
+                                            keys: ["0", "1", "2"];
+                                            value: root.theme-mode == 1 ? @tr("Claro") : (root.theme-mode == 2 ? @tr("Sistema") : @tr("Oscuro"));
+                                            picked(k) => { root.set-theme(k == "1" ? 1 : (k == "2" ? 2 : 0)); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Idioma");
+                                        Combo {
+                                            options: root.language-options;
+                                            value: root.language-label == "" ? @tr("Sistema") : root.language-label;
+                                            picked(k) => { root.set-choice("language", k); }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Cola");
+                                        Combo {
+                                            options: [@tr("entrada en el sidebar"), @tr("panel derecho")];
+                                            keys: ["0", "2"];
+                                            value: root.queue-placement == 2 ? @tr("panel derecho") : @tr("entrada en el sidebar");
+                                            picked(k) => {
+                                                if ((k == "2") != (root.queue-placement == 2)) { root.cycle-queue-placement(); }
                                             }
                                         }
-                                        tcard := TouchArea { clicked => { root.set-theme(card.mode); } }
+                                    }
+                                    FormRow {
+                                        label: @tr("  ↳ Visibilidad de la cola");
+                                        Combo {
+                                            options: [@tr("solo cuando hay cola"), @tr("siempre visible")];
+                                            keys: ["0", "1"];
+                                            value: root.queue-always-visible ? @tr("siempre visible") : @tr("solo cuando hay cola");
+                                            picked(k) => {
+                                                if ((k == "1") != root.queue-always-visible) { root.toggle-queue-always-visible(); }
+                                            }
+                                        }
+                                    }
+                                    FormRow {
+                                        label: @tr("Estrellas de puntuación");
+                                        Combo {
+                                            options: [@tr("las cinco"), @tr("una si tiene puntuación")];
+                                            keys: ["0", "1"];
+                                            value: root.star-display-mode == 1 ? @tr("una si tiene puntuación") : @tr("las cinco");
+                                            picked(k) => { root.set-star-display-mode(k == "1" ? 1 : 0); }
+                                        }
                                     }
                                 }
-                                Section { text: @tr("Vistas de la biblioteca"); }
-                                CheckRow {
-                                    label: @tr("Árbol");
-                                    checked: root.show-files;
-                                    toggled => { root.toggle-show-files(); }
+                                Group {
+                                    title: @tr("Vistas de la biblioteca");
+                                    Check { label: @tr("Árbol"); checked: root.show-files; toggled => { root.toggle-show-files(); } }
+                                    Check { label: @tr("Discos"); checked: root.show-discos; toggled => { root.toggle-show-discos(); } }
+                                    Check { label: @tr("Consolas"); checked: root.show-consoles-view; toggled => { root.toggle-show-consoles-view(); } }
+                                    Check { label: @tr("Juegos"); checked: root.show-juegos; toggled => { root.toggle-show-juegos(); } }
+                                    Check { label: @tr("Listas"); checked: root.show-listas-view; toggled => { root.toggle-show-listas-view(); } }
                                 }
-                                CheckRow {
-                                    label: @tr("Discos");
-                                    checked: root.show-discos;
-                                    toggled => { root.toggle-show-discos(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Consolas");
-                                    checked: root.show-consoles-view;
-                                    toggled => { root.toggle-show-consoles-view(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Juegos");
-                                    checked: root.show-juegos;
-                                    toggled => { root.toggle-show-juegos(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Listas");
-                                    checked: root.show-listas-view;
-                                    toggled => { root.toggle-show-listas-view(); }
-                                }
-                                Section { text: @tr("Secciones del sidebar"); }
-                                CheckRow {
-                                    label: @tr("Carátula del reproductor");
-                                    checked: root.show-cover;
-                                    toggled => { root.toggle-show-cover(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Favoritos");
-                                    checked: root.show-faved;
-                                    toggled => { root.toggle-show-faved(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Carpetas");
-                                    checked: root.show-folders;
-                                    toggled => { root.toggle-show-folders(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Consolas (acceso rápido)");
-                                    checked: root.show-consoles;
-                                    toggled => { root.toggle-show-consoles(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Listas (acceso rápido)");
-                                    checked: root.show-playlists;
-                                    toggled => { root.toggle-show-playlists(); }
+                                Group {
+                                    title: @tr("Secciones del sidebar");
+                                    Check { label: @tr("Carátula del reproductor"); checked: root.show-cover; toggled => { root.toggle-show-cover(); } }
+                                    Check { label: @tr("Favoritos"); checked: root.show-faved; toggled => { root.toggle-show-faved(); } }
+                                    Check { label: @tr("Carpetas"); checked: root.show-folders; toggled => { root.toggle-show-folders(); } }
+                                    Check { label: @tr("Consolas (acceso rápido)"); checked: root.show-consoles; toggled => { root.toggle-show-consoles(); } }
+                                    Check { label: @tr("Listas (acceso rápido)"); checked: root.show-playlists; toggled => { root.toggle-show-playlists(); } }
                                 }
                             }
 
                             // ===== Atajos =====
                             if root.tab == 5: VerticalLayout {
-                                spacing: 2px;
-                                Section { text: @tr("Globales"); }
-                                CheckRow {
-                                    label: @tr("Atajos globales");
-                                    checked: root.global-shortcuts-on;
-                                    toggled => { root.toggle-global-shortcuts(); }
+                                spacing: 18px;
+                                Group {
+                                    title: @tr("Globales");
+                                    Check {
+                                        label: @tr("Atajos globales");
+                                        checked: root.global-shortcuts-on;
+                                        toggled => { root.toggle-global-shortcuts(); }
+                                    }
+                                    Note { text: root.global-shortcuts-label; height: 18px; }
+                                    Check {
+                                        label: @tr("Botones de ratón");
+                                        checked: root.mouse-buttons-on;
+                                        toggled => { root.toggle-mouse-buttons(); }
+                                    }
+                                    FormRow {
+                                        label: @tr("Ratón · Atrás"); dim: !root.mouse-buttons-on;
+                                        Combo { enabled: root.mouse-buttons-on; options: root.mouse-action-options; value: root.mouse-back-label; picked(k) => { root.set-choice("mouse:back", k); } }
+                                    }
+                                    FormRow {
+                                        label: @tr("Ratón · Adelante"); dim: !root.mouse-buttons-on;
+                                        Combo { enabled: root.mouse-buttons-on; options: root.mouse-action-options; value: root.mouse-forward-label; picked(k) => { root.set-choice("mouse:forward", k); } }
+                                    }
+                                    FormRow {
+                                        label: @tr("Ratón · Lateral"); dim: !root.mouse-buttons-on;
+                                        Combo { enabled: root.mouse-buttons-on; options: root.mouse-action-options; value: root.mouse-side-label; picked(k) => { root.set-choice("mouse:side", k); } }
+                                    }
+                                    FormRow {
+                                        label: @tr("Ratón · Extra"); dim: !root.mouse-buttons-on;
+                                        Combo { enabled: root.mouse-buttons-on; options: root.mouse-action-options; value: root.mouse-extra-label; picked(k) => { root.set-choice("mouse:extra", k); } }
+                                    }
                                 }
-                                CheckRow {
-                                    label: @tr("Botones de ratón");
-                                    checked: root.mouse-buttons-on;
-                                    toggled => { root.toggle-mouse-buttons(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Ratón · Atrás");
-                                    value: root.mouse-back-label;
-                                    clicked => { root.cycle-mouse-action("back"); }
-                                }
-                                SettingRow {
-                                    label: @tr("Ratón · Adelante");
-                                    value: root.mouse-forward-label;
-                                    clicked => { root.cycle-mouse-action("forward"); }
-                                }
-                                SettingRow {
-                                    label: @tr("Ratón · Lateral");
-                                    value: root.mouse-side-label;
-                                    clicked => { root.cycle-mouse-action("side"); }
-                                }
-                                SettingRow {
-                                    label: @tr("Ratón · Extra");
-                                    value: root.mouse-extra-label;
-                                    clicked => { root.cycle-mouse-action("extra"); }
-                                }
-                                Section { text: @tr("Teclas de la aplicación"); }
-                                for sr in root.shortcut-rows: SettingRow {
-                                    label: sr.label;
-                                    value: sr.key == "" ? "—" : sr.key;
-                                    highlighted: sr.key != "" && sr.key != "pulsa una tecla…";
-                                    clicked => { root.shortcut-capture(sr.id); }
-                                }
-                                SettingRow {
-                                    label: @tr("Restablecer todos los atajos");
-                                    value: "↺";
-                                    clicked => { root.reset-shortcuts(); }
+                                Group {
+                                    title: @tr("Teclas de la aplicación");
+                                    for sr in root.shortcut-rows: FormRow {
+                                        label: sr.label;
+                                        Push {
+                                            label: sr.key == "" ? "—" : sr.key;
+                                            primary: sr.key == "pulsa una tecla…";
+                                            clicked => { root.shortcut-capture(sr.id); }
+                                        }
+                                    }
+                                    HorizontalLayout {
+                                        alignment: start;
+                                        padding-top: 6px;
+                                        Push {
+                                            label: @tr("Restablecer todos los atajos");
+                                            clicked => { root.reset-shortcuts(); }
+                                        }
+                                    }
                                 }
                             }
 
                             // ===== Acerca de =====
                             if root.tab == 6: VerticalLayout {
-                                spacing: 10px;
-                                // Logo + name + version, the old header.
+                                spacing: 18px;
                                 HorizontalLayout {
-                                    spacing: Theme.gap * 1.5;
-                                    padding-top: Theme.gap;
+                                    spacing: 14px;
                                     Image {
-                                        width: 64px;
-                                        height: 64px;
+                                        width: 56px;
+                                        height: 56px;
                                         source: @image-url("../dist/icons/128x128/tunante.png");
+                                        image-rendering: pixelated;
                                     }
                                     VerticalLayout {
                                         alignment: center;
+                                        spacing: 2px;
                                         Text {
                                             text: "Tunante";
                                             color: Theme.text-primary;
-                                            font-size: Theme.font-title * 1.2;
+                                            font-size: Theme.font-title;
                                             font-weight: 700;
                                         }
                                         Text {
                                             text: root.about-label;
-                                            color: Theme.text-muted;
+                                            color: Theme.text-secondary;
                                             font-size: Theme.font-small;
+                                        }
+                                        Text {
+                                            text: @tr("Un reproductor multiplataforma centrado en la música de videojuegos, inspirado en foobar2000.");
+                                            color: Theme.text-secondary;
+                                            font-size: Theme.font-small;
+                                            wrap: word-wrap;
                                         }
                                     }
                                 }
-                                Text {
-                                    text: @tr("Un reproductor multiplataforma centrado en la música de videojuegos, inspirado en foobar2000.");
-                                    color: Theme.text-secondary;
-                                    font-size: Theme.font-small;
-                                    wrap: word-wrap;
-                                }
-
-                                Section { text: @tr("Actualizaciones"); }
-                                SettingRow {
-                                    label: @tr("Buscar actualizaciones");
-                                    value: root.update-status;
-                                    clicked => { root.check-update(); }
-                                }
-                                if root.update-skippable: SettingRow {
-                                    label: @tr("Omitir esta versión");
-                                    value: "×";
-                                    clicked => { root.skip-update(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Auto-actualizar al arrancar");
-                                    checked: root.auto-update;
-                                    toggled => { root.toggle-auto-update(); }
-                                }
-                                CheckRow {
-                                    label: @tr("Avisar de actualizaciones al arrancar");
-                                    checked: root.ask-update;
-                                    toggled => { root.toggle-ask-update(); }
-                                }
-
-                                Section { text: @tr("Sistema"); }
-                                SettingRow {
-                                    label: @tr("Integrar en el escritorio");
-                                    value: root.desktop-entry-label;
-                                    clicked => { root.make-desktop-entry(); }
-                                }
-                                SettingRow {
-                                    label: @tr("Registro");
-                                    value: "≡";
-                                    clicked => { root.show-log(); }
-                                }
-                                ArmedRow {
-                                    label: @tr("Borrar toda la configuración y reiniciar");
-                                    armed-label: @tr("¿Seguro? Toca otra vez");
-                                    fired => { root.reset-app(); }
-                                }
-
-                                Section { text: @tr("Código fuente"); }
-                                Rectangle {
-                                    height: 38px;
-                                    border-radius: Theme.radius;
-                                    background: gh.has-hover ? Theme.bg-hover : transparent;
+                                Group {
+                                    title: @tr("Actualizaciones");
                                     HorizontalLayout {
-                                        padding-left: 10px;
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Push {
+                                            label: @tr("Buscar actualizaciones");
+                                            clicked => { root.check-update(); }
+                                        }
+                                        if root.update-skippable: Push {
+                                            label: @tr("Omitir esta versión");
+                                            clicked => { root.skip-update(); }
+                                        }
+                                        Note { text: root.update-status; }
+                                    }
+                                    Check {
+                                        label: @tr("Avisar de actualizaciones al arrancar");
+                                        checked: root.ask-update;
+                                        toggled => { root.toggle-ask-update(); }
+                                    }
+                                    Check {
+                                        label: @tr("Auto-actualizar al arrancar");
+                                        checked: root.auto-update;
+                                        toggled => { root.toggle-auto-update(); }
+                                    }
+                                }
+                                Group {
+                                    title: @tr("Sistema");
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Push {
+                                            label: @tr("Integrar en el escritorio");
+                                            clicked => { root.make-desktop-entry(); }
+                                        }
+                                        Note { text: root.desktop-entry-label; }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Push {
+                                            label: @tr("Registro");
+                                            clicked => { root.show-log(); }
+                                        }
+                                        ArmedPush {
+                                            label: @tr("Borrar toda la configuración y reiniciar");
+                                            armed-label: @tr("¿Seguro? Toca otra vez");
+                                            fired => { root.reset-app(); }
+                                        }
+                                    }
+                                }
+                                Group {
+                                    title: @tr("Código fuente");
+                                    Rectangle {
+                                        height: 24px;
                                         Text {
+                                            x: 0;
                                             text: "github.com/jjolmo/tunante";
                                             color: Theme.accent;
                                             font-size: Theme.font-body;
                                             vertical-alignment: center;
                                         }
+                                        TouchArea { clicked => { root.open-repo(); } }
                                     }
-                                    gh := TouchArea { clicked => { root.open-repo(); } }
                                 }
-
-                                Section { text: @tr("Construido con"); }
-                                HorizontalLayout {
-                                    spacing: 6px;
-                                    padding-bottom: Theme.gap;
-                                    for tech in ["Slint", "Rust", "SQLite", "rodio", "lofty", "vgmstream"]: Rectangle {
-                                        height: 26px;
-                                        width: badge.preferred-width + 18px;
-                                        border-radius: 13px;
-                                        background: Theme.bg-tertiary;
-                                        badge := Text {
-                                            text: tech;
-                                            color: Theme.text-secondary;
-                                            font-size: Theme.font-small;
+                                Group {
+                                    title: @tr("Construido con");
+                                    HorizontalLayout {
+                                        spacing: 6px;
+                                        alignment: start;
+                                        for tech in ["Slint", "Rust", "SQLite", "rodio", "lofty", "vgmstream"]: Rectangle {
+                                            height: 22px;
+                                            width: badge.preferred-width + 16px;
+                                            border-radius: 3px;
+                                            border-width: 1px;
+                                            border-color: Theme.border;
+                                            background: Theme.bg-secondary;
+                                            badge := Text {
+                                                text: tech;
+                                                color: Theme.text-secondary;
+                                                font-size: Theme.font-small;
+                                            }
                                         }
                                     }
                                 }
-
-                                Text {
-                                    text: @tr("Vibecoded por jjolmo.");
-                                    color: Theme.text-muted;
-                                    font-size: Theme.font-small;
-                                }
+                                Note { text: @tr("Vibecoded por jjolmo."); height: 18px; }
                             }
                         }
+                    }
+                }
+            }
+
+            // --- Button bar ---
+            Rectangle { height: 1px; background: Theme.border; }
+            Rectangle {
+                height: 44px;
+                background: Theme.bg-secondary;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    alignment: end;
+                    Push {
+                        y: (parent.height - self.height) / 2;
+                        label: @tr("Cerrar");
+                        clicked => { root.close(); }
                     }
                 }
             }

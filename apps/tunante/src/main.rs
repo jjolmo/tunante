@@ -348,6 +348,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     ui.set_check_updates(get_bool_setting(&db, "ask_updates_on_startup", true));
 
+    // The desktop preferences dialog's drop-down lists: every option, named by
+    // the same functions that name the current value, so picking one and
+    // reading the label back agree to the character.
+    {
+        let strings = |v: Vec<String>| {
+            ModelRc::from(Rc::new(VecModel::from(v.into_iter().map(SharedString::from).collect::<Vec<_>>())))
+        };
+        ui.set_tray_click_options(strings(
+            ["toggle", "play_pause", "stop", "next_track", "next_track_with_fade"].iter().map(|k| tray_click_label(k)).collect(),
+        ));
+        ui.set_tray_style_options(strings((0..3u8).map(tray_style_label).collect()));
+        ui.set_cover_fit_options(strings((0..5).map(cover_fit_label).collect()));
+        ui.set_rating_priority_options(strings(
+            ["file,folder,db", "folder,file,db", "db,file,folder"].iter().map(|k| rating_priority_label(Some(k))).collect(),
+        ));
+        ui.set_vgm_loops_options(strings(
+            [None, Some(1.0), Some(2.0), Some(3.0), Some(5.0), Some(10.0)].into_iter().map(vgm_loops_label).collect(),
+        ));
+        ui.set_language_options(strings(
+            UI_LANGS.iter().map(|(c, n)| if c.is_empty() { tunante_core::i18n::tr("Sistema") } else { n.to_string() }).collect(),
+        ));
+    }
+
     // The library tab, either from the real database or from generated rows.
     let roots: Vec<PathBuf> = db
         .get_monitored_folders()?
@@ -4481,6 +4504,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => "anterior",
         })
     };
+    // The desktop dialog's drop-down for the mouse buttons: every action, named
+    // by the same closure.
+    ui.set_mouse_action_options(ModelRc::from(Rc::new(VecModel::from(
+        ["none", "prev_track", "next_track", "play_pause", "stop", "volume_up", "volume_down", "mute",
+         "toggle_shuffle", "cycle_repeat", "focus_search"]
+            .iter()
+            .map(|k| SharedString::from(mouse_action_label(k)))
+            .collect::<Vec<_>>(),
+    ))));
     let mouse_default = |btn: &str| match btn {
         "forward" | "extra" => "next_track",
         _ => "prev_track",
@@ -5150,6 +5182,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let was_silent = std::cell::Cell::new(false);
 
     // --- Progress, and moving to the next track when one ends ---------------
+    {
+        // "Set this to that", for the desktop dialog's drop-down lists. Every
+        // setting already has a tap-to-cycle handler that persists and applies
+        // the next value; walking that ring until the value reads as asked
+        // reuses all of it, with nothing to keep in step. The rings are 2–13
+        // long; 20 steps is the ceiling, not an expectation.
+        let (weak, sleep) = (ui.as_weak(), sleep.clone());
+        ui.on_set_choice(move |setting, key| {
+            let Some(ui) = weak.upgrade() else { return };
+            let (setting, key) = (setting.to_string(), key.to_string());
+            if setting == "sleep" {
+                // The sleep row's state lives in the timer and reaches the UI
+                // on the next tick, so count the steps from the timer itself:
+                // off → 15 → 30 → 60 → off, as on_cycle_sleep walks it.
+                let ring = [0, 15, 30, 60];
+                let current = {
+                    let t = sleep.borrow();
+                    if !t.is_running() { 0 } else { match t.remaining_minutes() { 0..=15 => 15, 16..=30 => 30, _ => 60 } }
+                };
+                let target: i64 = key.parse().unwrap_or(0);
+                let (ci, ti) = (ring.iter().position(|v| *v == current).unwrap_or(0), ring.iter().position(|v| *v == target).unwrap_or(0));
+                for _ in 0..((ti + ring.len() - ci) % ring.len()) {
+                    ui.invoke_cycle_sleep();
+                }
+                return;
+            }
+            for _ in 0..20 {
+                let done = match setting.as_str() {
+                    "loops" => ui.get_loop_count().to_string() == key,
+                    "fade" => ui.get_fade_seconds().to_string() == key,
+                    "crossfade" => ui.get_crossfade_secs().to_string() == key,
+                    "resume" => ui.get_resume_max_hours().to_string() == key,
+                    "short" => ui.get_short_filter_secs().to_string() == key,
+                    "loopmax" => ui.get_loop_max_mins().to_string() == key,
+                    "vgm" => ui.get_vgm_loops_label() == key.as_str(),
+                    "trayclick" => ui.get_tray_click_label() == key.as_str(),
+                    "traystyle" => ui.get_tray_style_label() == key.as_str(),
+                    "coverfit" => ui.get_cover_fit_label() == key.as_str(),
+                    "rating" => ui.get_rating_priority_label() == key.as_str(),
+                    "albumgame" => ui.get_album_game_label() == key.as_str(),
+                    "language" => {
+                        let cur = ui.get_language_label();
+                        let shown = if cur.is_empty() { tunante_core::i18n::tr("Sistema") } else { cur.to_string() };
+                        shown == key
+                    }
+                    s if s.starts_with("mouse:") => {
+                        let label = match &s[6..] {
+                            "back" => ui.get_mouse_back_label(),
+                            "forward" => ui.get_mouse_forward_label(),
+                            "side" => ui.get_mouse_side_label(),
+                            _ => ui.get_mouse_extra_label(),
+                        };
+                        label == key.as_str()
+                    }
+                    _ => true,
+                };
+                if done {
+                    break;
+                }
+                match setting.as_str() {
+                    "loops" => ui.invoke_cycle_loops(),
+                    "fade" => ui.invoke_cycle_fade(),
+                    "crossfade" => ui.invoke_cycle_crossfade(),
+                    "resume" => ui.invoke_cycle_resume_hours(),
+                    "short" => ui.invoke_cycle_short_filter(),
+                    "loopmax" => ui.invoke_cycle_loop_max(),
+                    "vgm" => ui.invoke_cycle_vgm_loops(),
+                    "trayclick" => ui.invoke_cycle_tray_click(),
+                    "traystyle" => ui.invoke_cycle_tray_style(),
+                    "coverfit" => ui.invoke_cycle_cover_fit(),
+                    "rating" => ui.invoke_cycle_rating_priority(),
+                    "albumgame" => ui.invoke_toggle_album_game(),
+                    "language" => ui.invoke_cycle_language(),
+                    s if s.starts_with("mouse:") => ui.invoke_cycle_mouse_action(SharedString::from(&s[6..])),
+                    _ => {}
+                }
+            }
+        });
+    }
+
     let timer = slint::Timer::default();
     {
         let player = player.clone();

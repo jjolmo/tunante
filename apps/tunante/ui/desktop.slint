@@ -542,6 +542,14 @@ export component DesktopShell inherits Rectangle {
     callback cycle-theme();
     callback show-log();
     callback reset-app();
+    in property <[string]> tray-click-options;
+    in property <[string]> tray-style-options;
+    in property <[string]> cover-fit-options;
+    in property <[string]> rating-priority-options;
+    in property <[string]> mouse-action-options;
+    in property <[string]> vgm-loops-options;
+    in property <[string]> language-options;
+    callback set-choice(string, string);
     in-out property <bool> close-to-tray;
     callback toggle-close-to-tray();
     in property <bool> show-in-tray;
@@ -1520,6 +1528,14 @@ export component DesktopShell inherits Rectangle {
                     cycle-theme => { root.cycle-theme(); }
                     show-log => { root.show-log(); }
                     reset-app => { root.reset-app(); }
+                    tray-click-options: root.tray-click-options;
+                    tray-style-options: root.tray-style-options;
+                    cover-fit-options: root.cover-fit-options;
+                    rating-priority-options: root.rating-priority-options;
+                    mouse-action-options: root.mouse-action-options;
+                    vgm-loops-options: root.vgm-loops-options;
+                    language-options: root.language-options;
+                    set-choice(s, k) => { root.set-choice(s, k); }
                     close-to-tray <=> root.close-to-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
                     show-in-tray: root.show-in-tray;
