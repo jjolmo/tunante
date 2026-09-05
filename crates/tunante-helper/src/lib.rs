@@ -140,7 +140,8 @@ fn capture(mut child: Child, timeout: Duration) -> Result<String, String> {
         out
     });
 
-    let deadline = std::time::Instant::now() + timeout;
+    let started = std::time::Instant::now();
+    let deadline = started + timeout;
     loop {
         match child.try_wait() {
             Ok(Some(_)) => break,
@@ -150,7 +151,12 @@ fn capture(mut child: Child, timeout: Duration) -> Result<String, String> {
                 let _ = child.wait();
                 return Err(format!("timed out after {}s", timeout.as_secs()));
             }
-            Ok(None) => std::thread::sleep(Duration::from_millis(15)),
+            // A probe takes ~5 ms; polling every 15 made every one cost 15.
+            // Poll finely while it is young, coarsely once it is clearly a
+            // slow one (an emulator format being run to find its length).
+            Ok(None) => std::thread::sleep(Duration::from_millis(
+                if started.elapsed() < Duration::from_millis(200) { 1 } else { 15 },
+            )),
             Err(e) => {
                 let _ = child.kill();
                 return Err(e.to_string());

@@ -42,6 +42,7 @@ use walkdir::WalkDir;
 /// whole scan.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 
+#[derive(Debug, Clone)]
 pub struct ScanProgress {
     pub scanned: usize,
     pub total: usize,
@@ -103,7 +104,7 @@ pub fn scan_folder_cancellable(
     cancel: &AtomicBool,
     mut on_progress: impl FnMut(&ScanProgress),
 ) -> Result<usize, String> {
-    let files: Vec<PathBuf> = WalkDir::new(root)
+    let all: Vec<PathBuf> = WalkDir::new(root)
         .follow_links(false)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -112,13 +113,42 @@ pub fn scan_folder_cancellable(
         .filter(|p| vgm_path::is_audio_file(p))
         .collect();
 
+    // Incremental: a file whose size, mtime and probe options match what the
+    // last scan stamped is not probed again. New and changed files are; so is
+    // everything when the scan options change (the flavor), because slow scan
+    // versus fast changes what a probe reports.
+    let flavor = flavor_of(opts);
+    let mut stamps: std::collections::HashMap<PathBuf, (i64, i64)> = std::collections::HashMap::new();
+    let mut files: Vec<PathBuf> = Vec::with_capacity(all.len());
+    let mut skipped = 0usize;
+    for p in all {
+        let Some((size, mtime)) = file_stamp(&p) else {
+            files.push(p);
+            continue;
+        };
+        let known = db
+            .scan_stamp(&p.to_string_lossy())
+            .ok()
+            .flatten()
+            .is_some_and(|(s, m, f)| s == size && m == mtime && f == flavor);
+        if known {
+            skipped += 1;
+        } else {
+            stamps.insert(p.clone(), (size, mtime));
+            files.push(p);
+        }
+    }
+
     let mut progress = ScanProgress {
-        scanned: 0,
-        total: files.len(),
+        scanned: skipped,
+        total: skipped + files.len(),
         added: 0,
         failed: 0,
         current: String::new(),
     };
+    if skipped > 0 {
+        on_progress(&progress);
+    }
 
     // Leave a core or two for the session — this runs on a phone the user is
     // holding, and a scan that makes the interface stutter is worse than a slow
@@ -128,7 +158,7 @@ pub fn scan_folder_cancellable(
         .unwrap_or(2);
 
     let queue = std::sync::Arc::new(std::sync::Mutex::new(files.into_iter()));
-    let (tx, rx) = std::sync::mpsc::channel::<(String, Result<Vec<serde_json::Value>, String>)>();
+    let (tx, rx) = std::sync::mpsc::channel::<(PathBuf, String, Result<Vec<serde_json::Value>, String>)>();
 
     let mut handles = Vec::new();
     for _ in 0..workers {
@@ -143,14 +173,21 @@ pub fn scan_folder_cancellable(
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
             let result = crate::probe_with(&path, PROBE_TIMEOUT, &opts);
-            if tx.send((name, result)).is_err() {
+            if tx.send((path, name, result)).is_err() {
                 return;
             }
         }));
     }
     drop(tx);
 
-    for (name, result) in rx {
+    // Writes go in batches inside one transaction: one fsync per batch, not
+    // per row. The batch is bounded by rows and by time, so the write lock is
+    // never held long enough to stall the UI thread's own writes.
+    let mut in_tx = db.begin().is_ok();
+    let mut batch_rows = 0usize;
+    let mut batch_started = std::time::Instant::now();
+
+    for (path, name, result) in rx {
         if cancel.load(Ordering::Relaxed) {
             // Empty the queue so every worker returns after its current
             // probe; the receiver then runs dry and the loop ends.
@@ -166,21 +203,44 @@ pub fn scan_folder_cancellable(
             Ok(tracks) => {
                 // One file can hold many tracks: a GME set or a vgmstream
                 // container has one per subsong, each addressed as `path#n`.
+                let mut all_in = true;
                 for value in tracks {
                     match serde_json::from_value::<Track>(value) {
                         Ok(track) => {
                             if db.insert_track(&track).is_ok() {
                                 progress.added += 1;
+                                batch_rows += 1;
+                            } else {
+                                all_in = false;
                             }
                         }
-                        Err(_) => progress.failed += 1,
+                        Err(_) => {
+                            progress.failed += 1;
+                            all_in = false;
+                        }
+                    }
+                }
+                // Stamp only what went in whole, so a partial file is retried.
+                if all_in {
+                    if let Some((size, mtime)) = stamps.get(&path) {
+                        let _ = db.set_scan_stamp(&path.to_string_lossy(), *size, *mtime, flavor);
                     }
                 }
             }
             Err(_) => progress.failed += 1,
         }
 
+        if in_tx && (batch_rows >= 200 || batch_started.elapsed() > Duration::from_millis(250)) {
+            let _ = db.commit();
+            in_tx = db.begin().is_ok();
+            batch_rows = 0;
+            batch_started = std::time::Instant::now();
+        }
+
         on_progress(&progress);
+    }
+    if in_tx {
+        let _ = db.commit();
     }
 
     for h in handles {
@@ -188,6 +248,33 @@ pub fn scan_folder_cancellable(
     }
 
     Ok(progress.added)
+}
+
+/// Size and mtime of a file, as the stamp remembers them.
+fn file_stamp(path: &Path) -> Option<(i64, i64)> {
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs() as i64;
+    Some((meta.len() as i64, mtime))
+}
+
+/// The probe options folded into one number: the same options give the same
+/// flavor, and a change in any of them makes every stamp stale.
+pub fn flavor_of(opts: &crate::ProbeOpts) -> i64 {
+    let mut f: i64 = 1; // 0 is "never stamped"
+    if opts.fast {
+        f |= 1 << 1;
+    }
+    if opts.caps_all {
+        f |= 1 << 2;
+    }
+    f ^= opts.loop_max_ms.unwrap_or(-1).wrapping_mul(31).wrapping_shl(3);
+    f ^= (opts.vgm_loop_count.map(|v| (v * 100.0) as i64).unwrap_or(-1)).wrapping_mul(1_000_003);
+    f
 }
 
 /// Forget tracks under `root` whose files are no longer there.
@@ -380,5 +467,63 @@ mod tests {
         let scanned = fx.root().join("sky_temple");
         assert_eq!(prune_missing(&db, &scanned).unwrap(), 0);
         assert_eq!(paths(&db), [neighbour]);
+    }
+}
+
+#[cfg(test)]
+mod incremental_tests {
+    use super::*;
+
+    #[test]
+    fn flavor_changes_with_every_option() {
+        let base = crate::ProbeOpts { fast: true, ..Default::default() };
+        let slow = crate::ProbeOpts { fast: false, ..base.clone() };
+        let capped = crate::ProbeOpts { loop_max_ms: Some(120_000), ..base.clone() };
+        let looped = crate::ProbeOpts { vgm_loop_count: Some(2.0), ..base.clone() };
+        let all = crate::ProbeOpts { caps_all: true, ..base.clone() };
+        let fs: Vec<i64> = [&base, &slow, &capped, &looped, &all].iter().map(|o| flavor_of(o)).collect();
+        for i in 0..fs.len() {
+            assert_ne!(fs[i], 0);
+            for j in 0..i {
+                assert_ne!(fs[i], fs[j], "options {i} and {j} share a flavor");
+            }
+        }
+        assert_eq!(flavor_of(&base), flavor_of(&base.clone()));
+    }
+
+    #[test]
+    fn a_stamp_round_trips() {
+        let dir = std::env::temp_dir().join(format!("tunante-stamp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Database::new(&dir.join("t.db")).unwrap();
+        assert_eq!(db.scan_stamp("/a/b.mp3").unwrap(), None);
+        db.set_scan_stamp("/a/b.mp3", 10, 20, 7).unwrap();
+        assert_eq!(db.scan_stamp("/a/b.mp3").unwrap(), Some((10, 20, 7)));
+        db.set_scan_stamp("/a/b.mp3", 11, 20, 7).unwrap();
+        assert_eq!(db.scan_stamp("/a/b.mp3").unwrap(), Some((11, 20, 7)));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Times a real scan twice — full, then incremental — over the folder in
+    /// `TUNANTE_BENCH_DIR`. Needs the decoder built in release; ignored so CI
+    /// never waits on it: `cargo test -p tunante-helper --release bench_real -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn bench_real_scan() {
+        let Some(dir) = std::env::var_os("TUNANTE_BENCH_DIR") else { return };
+        let tmp = std::env::temp_dir().join(format!("tunante-bench-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let db = Database::new(&tmp.join("t.db")).unwrap();
+        let opts = crate::ProbeOpts { fast: true, ..Default::default() };
+        for pass in ["full", "incremental"] {
+            let t = std::time::Instant::now();
+            let mut last = ScanProgress { scanned: 0, total: 0, added: 0, failed: 0, current: String::new() };
+            let added = scan_folder_with(&db, Path::new(&dir), &opts, |p| last = p.clone()).unwrap();
+            eprintln!(
+                "{pass}: {} files, {added} tracks added, {} failed, in {:.1} s",
+                last.total, last.failed, t.elapsed().as_secs_f64()
+            );
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }
