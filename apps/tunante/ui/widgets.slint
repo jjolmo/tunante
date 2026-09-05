@@ -1167,6 +1167,10 @@ export component DbSliderRow inherits Rectangle {
     in property <float> range-min: -12;
     in property <float> range-max: 12;
     in property <string> unit: " dB";
+    // The desktop's preferences dialog lines the label up with its form
+    // column and has its own padding; the phone list keeps the defaults.
+    in property <length> label-width: 110px;
+    in property <length> side-padding: Theme.gap;
     callback changed(float);
 
     height: Theme.touch-target;
@@ -1174,8 +1178,8 @@ export component DbSliderRow inherits Rectangle {
     property <float> fraction: clamp((root.db - root.range-min) / (root.range-max - root.range-min), 0.0, 1.0);
 
     HorizontalLayout {
-        padding-left: Theme.gap;
-        padding-right: Theme.gap;
+        padding-left: root.side-padding;
+        padding-right: root.side-padding;
         spacing: Theme.gap;
 
         Text {
@@ -1183,7 +1187,7 @@ export component DbSliderRow inherits Rectangle {
             color: root.active ? Theme.text-primary : Theme.text-muted;
             font-size: Theme.font-body;
             vertical-alignment: center;
-            width: 110px;
+            width: root.label-width;
             overflow: elide;
         }
 
