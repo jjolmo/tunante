@@ -4584,7 +4584,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    ui.set_about_label(SharedString::from(format!("v{} — jjolmo", update::CURRENT_VERSION)));
+    // The version alone. A dev build — no TUNANTE_VERSION at compile time —
+    // says so, instead of passing itself off as the release it was built from.
+    ui.set_about_label(SharedString::from(format!(
+        "v{}{}",
+        update::CURRENT_VERSION,
+        if update::IS_RELEASE { "" } else { " (dev)" }
+    )));
     ui.on_open_repo(|| {
         let _ = std::process::Command::new("xdg-open")
             .arg("https://github.com/jjolmo/tunante")
