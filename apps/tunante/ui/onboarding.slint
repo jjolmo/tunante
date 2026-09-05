@@ -10,11 +10,10 @@ import { Theme } from "theme.slint";
 
 component Toggle inherits Rectangle {
     in property <string> label;
-    in property <string> hint;
     in property <bool> on;
     callback clicked();
 
-    height: max(Theme.touch-target - 6px, row.preferred-height + 8px);
+    height: Theme.touch-target - 8px;
     border-radius: Theme.radius;
     background: ta.has-hover ? Theme.bg-hover : transparent;
 
@@ -39,22 +38,12 @@ component Toggle inherits Rectangle {
                 font-weight: 700;
             }
         }
-        VerticalLayout {
-            alignment: center;
-            spacing: 2px;
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
             horizontal-stretch: 1;
-            Text {
-                text: root.label;
-                color: Theme.text-primary;
-                font-size: Theme.font-body;
-                wrap: word-wrap;
-            }
-            if root.hint != "": Text {
-                text: root.hint;
-                color: Theme.text-secondary;
-                font-size: Theme.font-small;
-                wrap: word-wrap;
-            }
         }
     }
     ta := TouchArea { clicked => { root.clicked(); } }
@@ -163,18 +152,11 @@ export component OnboardingSheet inherits Rectangle {
                     }
                     VerticalLayout {
                         alignment: center;
-                        spacing: 4px;
                         Text {
                             text: @tr("Bienvenido a Tunante");
                             color: Theme.text-primary;
                             font-size: Theme.font-title + 6px;
                             font-weight: 600;
-                        }
-                        Text {
-                            text: @tr("Tres cosas y a escuchar. Todo se puede cambiar luego en Ajustes.");
-                            color: Theme.text-secondary;
-                            font-size: Theme.font-body;
-                            wrap: word-wrap;
                         }
                     }
                 }
@@ -183,12 +165,6 @@ export component OnboardingSheet inherits Rectangle {
 
                 // --- 1 · The music -------------------------------------------
                 Heading { text: @tr("Tu música"); }
-                Text {
-                    text: @tr("Las carpetas que Tunante analiza; la biblioteca se construye a partir de ellas.");
-                    color: Theme.text-secondary;
-                    font-size: Theme.font-small;
-                    wrap: word-wrap;
-                }
                 VerticalLayout {
                     spacing: 2px;
                     for f[i] in root.folders: Rectangle {
@@ -244,7 +220,6 @@ export component OnboardingSheet inherits Rectangle {
                 }
                 Toggle {
                     label: @tr("Vigilar cambios en estas carpetas");
-                    hint: @tr("Lo que copies ahí aparece solo, sin volver a analizar.");
                     on: root.watch;
                     clicked => { root.toggle-watch(); }
                 }
@@ -291,13 +266,11 @@ export component OnboardingSheet inherits Rectangle {
                 Heading { text: @tr("En línea"); }
                 Toggle {
                     label: @tr("Descargar carátulas automáticamente");
-                    hint: @tr("Busca en internet la carátula de lo que suena y de los discos que no la tienen.");
                     on: root.auto-covers;
                     clicked => { root.toggle-covers(); }
                 }
                 Toggle {
                     label: @tr("Buscar actualizaciones al arrancar");
-                    hint: @tr("Una consulta a GitHub por arranque; nada se instala sin preguntar.");
                     on: root.check-updates;
                     clicked => { root.toggle-updates(); }
                 }
