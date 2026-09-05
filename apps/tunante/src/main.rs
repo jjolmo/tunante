@@ -4913,6 +4913,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match offered {
                 Some((version, url)) => {
                     ui.set_update_skippable(false);
+                    ui.set_update_available(SharedString::new());
                     ui.set_update_status(SharedString::from(
                         tunante_core::i18n::tr("Descargando v{}…").replace("{}", &version),
                     ));
@@ -4933,6 +4934,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_skip_update(move || {
             let Some(ui) = weak.upgrade() else { return };
             if let Some((version, _)) = pending.borrow_mut().take() {
+                ui.set_update_available(SharedString::new());
                 let _ = db.set_setting("update.skip_version", &version);
             }
             ui.set_update_skippable(false);
@@ -5448,6 +5450,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 while let Ok(msg) = update_rx.try_recv() {
                     match msg {
                         update::UpdateMsg::UpToDate => {
+                            ui.set_update_available(SharedString::new());
                             ui.set_update_status(SharedString::from(
                                 tunante_core::i18n::tr("al día (v{})").replace("{}", update::CURRENT_VERSION),
                             ));
@@ -5460,25 +5463,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // user asked not to hear about again.
                                 continue;
                             }
-                            let was_manual = update_manual.get();
                             update_manual.set(false);
-                            // Silent startup check + "auto-update on startup":
-                            // install straight away, no tap needed.
-                            if !was_manual && ui.get_auto_update() {
+                            // "Auto-update on startup" means: when one is
+                            // found, install it — whether the check was the
+                            // silent one at startup or a tap on the button.
+                            if ui.get_auto_update() {
+                                ui.set_update_available(SharedString::new());
                                 ui.set_update_status(SharedString::from(
                                     tunante_core::i18n::tr("descargando v{}…").replace("{}", &version),
                                 ));
                                 update::spawn_install(update_tx.clone(), version, url);
                             } else {
+                                // Offered: the button itself becomes "Instalar vX".
+                                ui.set_update_available(SharedString::from(version.as_str()));
                                 ui.set_update_status(SharedString::from(
-                                    tunante_core::i18n::tr("v{} disponible — toca para instalar")
-                                        .replace("{}", &version),
+                                    tunante_core::i18n::tr("v{} disponible").replace("{}", &version),
                                 ));
                                 ui.set_update_skippable(true);
                                 *update_pending.borrow_mut() = Some((version, url));
                             }
                         }
                         update::UpdateMsg::Installed(version) => {
+                            ui.set_update_available(SharedString::new());
                             ui.set_update_status(SharedString::from(
                                 tunante_core::i18n::tr("v{} instalada — reinicia la app").replace("{}", &version),
                             ));

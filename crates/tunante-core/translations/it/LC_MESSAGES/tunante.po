@@ -1351,3 +1351,9 @@ msgstr "Preparazione…"
 
 msgid "{} encontradas"
 msgstr "{} trovate"
+
+msgid "Instalar v{}"
+msgstr "Installa la v{}"
+
+msgid "v{} disponible"
+msgstr "v{} disponibile"

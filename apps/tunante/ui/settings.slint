@@ -323,6 +323,9 @@ export component DesktopSettings inherits Rectangle {
     in property <string> language-label;
     callback cycle-language();
     in property <string> update-status;
+    // The version a check found and offered, "" when none: the button becomes
+    // "Instalar vX" while it is set.
+    in property <string> update-available;
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
@@ -1061,7 +1064,10 @@ export component DesktopSettings inherits Rectangle {
                                         spacing: 8px;
                                         alignment: start;
                                         Push {
-                                            label: @tr("Buscar actualizaciones");
+                                            label: root.update-available != ""
+                                                ? @tr("Instalar v{}", root.update-available)
+                                                : @tr("Buscar actualizaciones");
+                                            primary: root.update-available != "";
                                             clicked => { root.check-update(); }
                                         }
                                         if root.update-skippable: Push {

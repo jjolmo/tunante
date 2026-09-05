@@ -51,6 +51,9 @@ export component SettingsTab inherits Rectangle {
     callback cycle-crossfade();
     in property <string> output-label: @tr("sistema");
     in property <string> update-status;
+    // The version a check found and offered, "" when none: the button becomes
+    // "Instalar vX" while it is set.
+    in property <string> update-available;
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
@@ -581,8 +584,11 @@ export component SettingsTab inherits Rectangle {
             clicked => { root.toggle-close-to-tray(); }
         }
         SettingRow {
-            label: @tr("Buscar actualizaciones");
+            label: root.update-available != ""
+                ? @tr("Instalar v{}", root.update-available)
+                : @tr("Buscar actualizaciones");
             value: root.update-status;
+            highlighted: root.update-available != "";
             clicked => { root.check-update(); }
         }
         // Only while an update is on offer: skipping stores the version and

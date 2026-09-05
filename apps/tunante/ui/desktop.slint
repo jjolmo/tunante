@@ -537,6 +537,9 @@ export component DesktopShell inherits Rectangle {
     in property <string> language-label;
     callback cycle-language();
     in property <string> update-status;
+    // The version a check found and offered, "" when none: the button becomes
+    // "Instalar vX" while it is set.
+    in property <string> update-available;
     callback check-update();
     in property <string> theme-label;
     callback cycle-theme();
@@ -1513,6 +1516,7 @@ export component DesktopShell inherits Rectangle {
                     cycle-language => { root.cycle-language(); }
                     cycle-output => { root.cycle-output(); }
                     update-status: root.update-status;
+                    update-available: root.update-available;
                     check-update => { root.check-update(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
