@@ -51,6 +51,10 @@ impl Database {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Two connections write at once during a scan (the scanner's and the
+        // UI's, saving the session): wait for the other's transaction instead
+        // of failing with SQLITE_BUSY on the spot.
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
         conn.execute_batch(schema::SCHEMA)?;
 
         // Migration: add rating column (ignore error if already exists)
@@ -121,6 +125,42 @@ impl Database {
 
     /// Insert a track, upserting on path conflict. Returns the actual stored track ID
     /// (which may differ from track.id if the path already existed).
+    /// Start a write transaction. The scanner batches its inserts inside one:
+    /// each autocommit row costs an fsync, ~5 ms on a laptop's SSD and worse
+    /// on a phone, which made writing the library twenty times slower than
+    /// reading it. Pair with [`Database::commit`].
+    pub fn begin(&self) -> Result<(), DbError> {
+        self.conn.execute_batch("BEGIN")?;
+        Ok(())
+    }
+
+    pub fn commit(&self) -> Result<(), DbError> {
+        self.conn.execute_batch("COMMIT")?;
+        Ok(())
+    }
+
+    /// What the scanner last saw of `path`: (file_size, modified_at, flavor).
+    pub fn scan_stamp(&self, path: &str) -> Result<Option<(i64, i64, i64)>, DbError> {
+        let mut stmt = self.conn.prepare_cached(
+            "SELECT file_size, modified_at, flavor FROM scan_stamps WHERE path = ?1",
+        )?;
+        let mut rows = stmt.query(params![path])?;
+        Ok(match rows.next()? {
+            Some(r) => Some((r.get(0)?, r.get(1)?, r.get(2)?)),
+            None => None,
+        })
+    }
+
+    pub fn set_scan_stamp(&self, path: &str, file_size: i64, modified_at: i64, flavor: i64) -> Result<(), DbError> {
+        self.conn.execute(
+            "INSERT INTO scan_stamps (path, file_size, modified_at, flavor) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(path) DO UPDATE SET file_size = excluded.file_size,
+               modified_at = excluded.modified_at, flavor = excluded.flavor",
+            params![path, file_size, modified_at, flavor],
+        )?;
+        Ok(())
+    }
+
     pub fn insert_track(&self, track: &Track) -> Result<String, DbError> {
         self.conn.execute(
             "INSERT INTO tracks (id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, modified_at, has_artwork, rating, header_game)

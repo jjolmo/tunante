@@ -64,6 +64,17 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
 );
 
+-- What the scanner last saw of each file: size, mtime and the probe options
+-- it was read with. A file whose three match is not probed again. Kept apart
+-- from `tracks` so a subsong file (many rows) is one stamp, and so the shared
+-- Track struct stays as it is.
+CREATE TABLE IF NOT EXISTS scan_stamps (
+    path TEXT PRIMARY KEY,
+    file_size INTEGER NOT NULL,
+    modified_at INTEGER NOT NULL,
+    flavor INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS monitored_folders (
     id TEXT PRIMARY KEY,
     path TEXT NOT NULL UNIQUE,
