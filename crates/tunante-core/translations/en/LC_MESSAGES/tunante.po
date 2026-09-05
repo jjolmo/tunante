@@ -1327,3 +1327,21 @@ msgstr "Scanning the library"
 
 msgid "{} pistas encontradas"
 msgstr "{} tracks found"
+
+msgid "Música"
+msgstr "Music"
+
+msgid "Descargas"
+msgstr "Downloads"
+
+msgid "Tarjeta SD"
+msgstr "SD card"
+
+msgid "Almacenamiento interno"
+msgstr "Internal storage"
+
+msgid "Lugares habituales"
+msgstr "Usual places"
+
+msgid "Otras carpetas"
+msgstr "Other folders"

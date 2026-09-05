@@ -1327,3 +1327,21 @@ msgstr "Bibliothek wird durchsucht"
 
 msgid "{} pistas encontradas"
 msgstr "{} Titel gefunden"
+
+msgid "Música"
+msgstr "Musik"
+
+msgid "Descargas"
+msgstr "Downloads"
+
+msgid "Tarjeta SD"
+msgstr "SD-Karte"
+
+msgid "Almacenamiento interno"
+msgstr "Interner Speicher"
+
+msgid "Lugares habituales"
+msgstr "Übliche Orte"
+
+msgid "Otras carpetas"
+msgstr "Andere Ordner"

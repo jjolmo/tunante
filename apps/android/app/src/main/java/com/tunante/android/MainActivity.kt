@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.tunante.android.ui.LayoutMode
+import com.tunante.android.ui.Suggestion
 import com.tunante.android.ui.ScanState
 import com.tunante.android.ui.tr
 import com.tunante.android.ui.Folder
@@ -53,6 +54,9 @@ class MainActivity : ComponentActivity() {
     private var playlistTracks by mutableStateOf(emptyList<Track>())
     private var hasFiles by mutableStateOf(false)
     private var picking by mutableStateOf(false)
+    /** The picker is the first screen of a fresh install; it can be left for later. */
+    private var firstRun by mutableStateOf(false)
+    private var suggestions by mutableStateOf(emptyList<Suggestion>())
     private var listing by mutableStateOf(DirListing())
     private var roots by mutableStateOf(emptyList<String>())
     /**
@@ -112,6 +116,15 @@ class MainActivity : ComponentActivity() {
         browse("")
         reloadPlaylists()
         reloadRoots()
+        suggestions = usualPlaces()
+        // A fresh install opens on "where is your music?", with the Music
+        // folder already ticked when it exists, so the common case is one tap
+        // on Analizar. The adb test hooks (--es scan …) skip it.
+        if (roots.isEmpty() && intent?.extras == null) {
+            firstRun = true
+            suggestions.firstOrNull { it.path.endsWith("/Music") }?.let { toggleRoot(it.path, true) }
+            openPicker()
+        }
         resumeHours = NativeBridge.nativeResumeHours()
         val session = JSONObject(NativeBridge.nativeRestoreSession())
         Log.i(TAG, "session: $session")
@@ -137,10 +150,15 @@ class MainActivity : ComponentActivity() {
                     FolderPicker(
                         listing = listing,
                         roots = roots,
+                        suggestions = suggestions,
+                        hasAllFiles = hasFiles,
+                        firstRun = firstRun,
+                        onGrantFiles = ::requestAllFiles,
                         onEnter = ::listDirs,
                         onUp = { listing.parent?.let(::listDirs) },
                         onToggleRoot = ::toggleRoot,
-                        onDone = { picking = false; scan() },
+                        onDone = { picking = false; firstRun = false; scan() },
+                        onSkip = { picking = false; firstRun = false },
                     )
                     return@TunanteTheme
                 }
@@ -742,6 +760,28 @@ class MainActivity : ComponentActivity() {
      */
     private fun rescanOrPick() {
         if (roots.isEmpty()) openPicker() else scan()
+    }
+
+    /**
+     * The usual places music lives on a phone, when they exist: the Music and
+     * Download folders of this user's storage, each removable card, and the
+     * whole internal storage as the catch-all.
+     */
+    private fun usualPlaces(): List<Suggestion> {
+        val out = ArrayList<Suggestion>()
+        val music = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+        if (music.isDirectory) out.add(Suggestion(tr("Música"), music.absolutePath))
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (downloads.isDirectory) out.add(Suggestion(tr("Descargas"), downloads.absolutePath))
+        // getExternalFilesDirs lists every volume as <volume>/Android/data/<pkg>/files;
+        // the first is the primary storage, the rest are cards.
+        getExternalFilesDirs(null).drop(1).filterNotNull().forEach { dir ->
+            val volume = dir.absolutePath.substringBefore("/Android/")
+            if (java.io.File(volume).isDirectory) out.add(Suggestion(tr("Tarjeta SD"), volume))
+        }
+        val internal = Environment.getExternalStorageDirectory()
+        if (internal.isDirectory) out.add(Suggestion(tr("Almacenamiento interno"), internal.absolutePath))
+        return out
     }
 
     private fun openPicker() {

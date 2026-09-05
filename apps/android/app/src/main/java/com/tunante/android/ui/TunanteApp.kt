@@ -566,7 +566,7 @@ private fun PlaylistPicker(
  * explanation is the default first-run experience otherwise.
  */
 @Composable
-private fun PermissionBanner(onGrant: () -> Unit) {
+fun PermissionBanner(onGrant: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
