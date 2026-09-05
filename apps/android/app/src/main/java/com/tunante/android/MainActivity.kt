@@ -583,11 +583,22 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Empty means every folder the library is built from. */
+    /** One scan at a time: adding a root and tapping Rescan right after used to run two, concurrently. */
+    private val scanning = java.util.concurrent.atomic.AtomicBoolean(false)
+
     private fun scan(root: String = "") {
+        if (!scanning.compareAndSet(false, true)) {
+            Log.i(TAG, "scan: already running, ignoring")
+            return
+        }
         thread(name = "scan") {
-            val result = NativeBridge.nativeScan(root)
-            Log.i(TAG, "scan: $result")
-            runOnUiThread { switchTab(tab) }
+            try {
+                val result = NativeBridge.nativeScan(root)
+                Log.i(TAG, "scan: $result")
+                runOnUiThread { switchTab(tab) }
+            } finally {
+                scanning.set(false)
+            }
         }
     }
 
