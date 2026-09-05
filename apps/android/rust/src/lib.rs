@@ -52,8 +52,10 @@ static SCAN_PROGRESS: Mutex<Option<(usize, usize, usize)>> = Mutex::new(None);
 static SCAN_CANCEL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// The running cover download, for `nativeCoverProgress` to read.
 static COVER_PROGRESS: Mutex<Option<tunante_art::resolver::BulkProgress>> = Mutex::new(None);
-/// Set by `nativeCancelCovers`, read by the progress callback.
-static COVER_CANCEL: Mutex<bool> = Mutex::new(false);
+/// The running download's cancel flag — the very Arc the resolver polls
+/// between requests — so `nativeCancelCovers` stops it at once, not at the
+/// next progress report.
+static COVER_CANCEL: Mutex<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> = Mutex::new(None);
 
 /// Hand an error back to Java as JSON rather than by throwing.
 ///
@@ -1378,8 +1380,8 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeDownloadCover
             })
             .collect();
 
-        *COVER_CANCEL.lock().unwrap() = false;
         let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        *COVER_CANCEL.lock().unwrap() = Some(std::sync::Arc::clone(&cancel));
         let opts = tunante_art::resolver::BulkOptions {
             overwrite: if replace_existing != 0 {
                 tunante_art::folder::Overwrite::Replace
@@ -1392,13 +1394,11 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeDownloadCover
 
         let resolver = std::sync::Arc::new(tunante_art::resolver::Resolver::new());
         let plans = resolver.resolve_many(reqs, &opts, |p| {
-            if *COVER_CANCEL.lock().unwrap() {
-                cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-            }
             *COVER_PROGRESS.lock().unwrap() = Some(p.clone());
         });
         let found = plans.iter().filter(|p| p.source != "none").count();
         *COVER_PROGRESS.lock().unwrap() = None;
+        *COVER_CANCEL.lock().unwrap() = None;
         Ok(serde_json::json!({ "ok": true, "games": plans.len(), "found": found }).to_string())
     })()
     .unwrap_or_else(fail);
@@ -1426,7 +1426,9 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCancelCovers(
     _env: JNIEnv,
     _class: JClass,
 ) {
-    *COVER_CANCEL.lock().unwrap() = true;
+    if let Some(flag) = COVER_CANCEL.lock().unwrap().as_ref() {
+        flag.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 /// Cover art for a track, as a `data:` URI, or empty if there is none.

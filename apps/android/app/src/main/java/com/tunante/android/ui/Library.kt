@@ -182,6 +182,9 @@ fun FolderRow(folder: Folder, onClick: () -> Unit, onLongClick: () -> Unit = {})
 fun FolderGrid(
     folders: List<Folder>,
     coverOf: (Folder) -> String,
+    // The Consolas shelf: the console's own art where we have it (the same
+    // set tabs.slint draws), the first game's cover where we do not.
+    consoles: Boolean = false,
     onLongPress: (Folder) -> Unit = {},
     onOpen: (Folder) -> Unit,
 ) {
@@ -206,7 +209,8 @@ fun FolderGrid(
                 // eight columns on a 1080-wide screen is 128 px a tile, and a
                 // hardcoded size would either overflow or leave gaps.
                 BoxWithConstraints {
-                    Cover(coverOf(folder), maxWidth, maxSide = 256)
+                    if (consoles && hasConsoleArt(folder.path)) ConsoleArt(folder.path, maxWidth)
+                    else Cover(coverOf(folder), maxWidth, maxSide = 256)
                 }
                 Label(folder.name, T.textPrimary, T.fontSmall, maxLines = 1)
             }

@@ -148,6 +148,8 @@ fun TunanteApp(
     onLayout: () -> Unit,
     scan: ScanState?,
     onCancelScan: () -> Unit,
+    covers: ScanState?,
+    onStopCovers: () -> Unit,
     onEnqueueRow: (String, Boolean) -> Unit,
     onAddRowToPlaylist: (Playlist, String, Boolean) -> Unit,
     onNewPlaylistWithRow: (String, String, Boolean) -> Unit,
@@ -284,7 +286,10 @@ fun TunanteApp(
 
     // The library is being scanned: a modal over everything, nothing else
     // reachable until it is done. Last, so it sits on top of the sheets too.
-    scan?.let { ScanOverlay(it, onCancelScan) }
+    scan?.let { ProgressOverlay(tr("Analizando la biblioteca"), it, tr("Cancelar"), onCancelScan) }
+    // The cover download too: it is minutes over a real library, it goes to
+    // the network, and it should be stoppable in time.
+    covers?.let { ProgressOverlay(tr("Buscando carátulas…"), it, tr("Parar"), onStopCovers) }
 
     adding?.let { track ->
         PlaylistPicker(
@@ -418,11 +423,17 @@ private fun Library(
         Box(Modifier.weight(1f)) {
             if (folders.isEmpty() && tracks.isEmpty()) {
                 Empty(view)
-            } else if (folders.isNotEmpty() && tracks.isEmpty() && !view.searching) {
+            } else if (tab != Tab.Library && folders.isNotEmpty() && tracks.isEmpty() && !view.searching) {
                 // A level that is only folders is a shelf, and a shelf is worth
                 // showing as covers. A level with tracks in it is a track list,
-                // and covers there would push the titles off the screen.
-                FolderGrid(folders, coverOf = { it.cover }, onLongPress = onFolderLongPress) {
+                // and covers there would push the titles off the screen. The
+                // tree is neither: it mirrors the disk, so it is rows, always —
+                // as tabs.slint draws it.
+                FolderGrid(
+                    folders, coverOf = { it.cover },
+                    consoles = tab == Tab.Consoles && view.here.isEmpty(),
+                    onLongPress = onFolderLongPress,
+                ) {
                     onOpenFolder(it.path)
                 }
             } else {

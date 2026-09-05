@@ -318,6 +318,8 @@ export component AppWindow inherits Window {
     callback clear-log();
     in-out property <bool> bulk-covering;
     in property <string> bulk-status;
+    in property <int> bulk-done;
+    in property <int> bulk-total;
     in property <[PlanRow]> bulk-plans;
     in property <bool> bulk-busy;
     callback bulk-apply();
@@ -1293,6 +1295,8 @@ export component AppWindow inherits Window {
         status: root.bulk-status;
         plans: root.bulk-plans;
         busy: root.bulk-busy;
+        done: root.bulk-done;
+        total: root.bulk-total;
         apply => { root.bulk-apply(); }
         cancelled => { root.bulk-cancelled(); }
     }
