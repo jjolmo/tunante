@@ -86,6 +86,23 @@ jobs:
           # The version comes from the tags, as everywhere else here.
           fetch-depth: 0
 
+      # release.yml now commits the version bump and tags *that* commit, so the
+      # commit the release was asked from (head_sha) is one behind the tag.
+      # Move to the tag: the tree with the bumped version, and the one
+      # `git tag --points-at HEAD` below will name. Newest tag as the fallback,
+      # for a release that needed no bump commit and a main that moved since.
+      - name: Move to the release's tag
+        if: github.event_name == 'workflow_run'
+        run: |
+          git fetch -q --tags origin main
+          TAG=$(git tag --points-at origin/main | head -1)
+          [ -z "$TAG" ] && TAG=$(git tag --sort=-creatordate | head -1)
+          if [ -n "$TAG" ]; then
+            git checkout -q "$TAG" && git submodule update -q --init --recursive 2>/dev/null || true
+            echo "at $TAG ($(git rev-parse --short HEAD))"
+          else
+            echo "no tag to move to; staying on $(git rev-parse --short HEAD)"
+          fi
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
