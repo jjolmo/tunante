@@ -157,6 +157,7 @@ export component AppWindow inherits Window {
     callback library-enqueued(int);
     callback library-enqueue-path(string, bool);
     callback library-play-path(string);
+    callback library-open-path(string);
     callback library-reclassify-path(string);
     callback library-pin-path(string);
     callback library-reveal-path(string);
@@ -797,6 +798,7 @@ export component AppWindow inherits Window {
             library-enqueued(i) => { root.library-enqueued(i); }
             library-enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
         library-play-path(p) => { root.library-play-path(p); }
+        library-open-path(p) => { root.library-open-path(p); }
         library-reclassify-path(p) => { root.library-reclassify-path(p); }
         library-pin-path(p) => { root.library-pin-path(p); }
         library-reveal-path(p) => { root.library-reveal-path(p); }
@@ -1115,6 +1117,7 @@ export component AppWindow inherits Window {
                         enqueued(i) => { root.library-enqueued(i); }
                         enqueue-path(p, hondo) => { root.library-enqueue-path(p, hondo); }
                     play-path(p) => { root.library-play-path(p); }
+                    open-path(p) => { root.library-open-path(p); }
                     reclassify-path(p) => { root.library-reclassify-path(p); }
                     pin-path(p) => { root.library-pin-path(p); }
                     reveal-path(p) => { root.library-reveal-path(p); }

@@ -154,6 +154,13 @@ impl Player {
         self.queue.set_tracks(tracks);
     }
 
+    /// Forget what was queued by hand. `set_tracks` deliberately keeps it (the
+    /// context and the queue are two layers); the touch shells call this first
+    /// when a tap on a category is meant to replace everything.
+    pub fn clear_user_queue(&mut self) {
+        self.queue.clear_user_queue();
+    }
+
     pub fn current(&self) -> Option<&Track> {
         self.now.as_ref().or_else(|| self.queue.current())
     }

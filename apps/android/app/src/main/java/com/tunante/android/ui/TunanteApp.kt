@@ -121,6 +121,7 @@ fun TunanteApp(
     onPickFolders: () -> Unit,
     onQuery: (String) -> Unit,
     onOpenFolder: (String) -> Unit,
+    onBrowseRow: (String) -> Unit,
     onUp: () -> Unit,
     onPlayIndex: (Int) -> Unit,
     onTogglePlay: () -> Unit,
@@ -259,6 +260,9 @@ fun TunanteApp(
                 pendingRow = Triple(key, deep, folder.name)
                 menuFor = null
             },
+            // Looking inside, now that the tap plays. The row's own path, not
+            // the key: openRow interprets it by tab, as the tap used to.
+            onOpen = { onBrowseRow(folder.path); menuFor = null },
             onDismiss = { menuFor = null },
         )
     }

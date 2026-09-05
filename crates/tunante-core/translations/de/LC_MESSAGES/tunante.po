@@ -1165,3 +1165,6 @@ msgstr "keine Bibliothek"
 
 msgid "¿Seguro?"
 msgstr "Sicher?"
+
+msgid "Abrir"
+msgstr "Öffnen"

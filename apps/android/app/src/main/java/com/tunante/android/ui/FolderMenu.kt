@@ -54,6 +54,7 @@ fun FolderMenu(
     isDirectory: Boolean,
     onEnqueue: (deep: Boolean) -> Unit,
     onAddToPlaylist: (deep: Boolean) -> Unit,
+    onOpen: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     Box(
@@ -69,6 +70,11 @@ fun FolderMenu(
             Row(Modifier.fillMaxWidth().padding(T.gap)) {
                 Label(name, T.textPrimary, T.fontBody, maxLines = 1)
             }
+            Rule()
+            // Since the tap on a category plays it, looking inside is what the
+            // long press is for. First in the list: it is the action the tap
+            // used to be.
+            Action({ Label("▸", T.accent, T.fontBody) }, tr("Abrir")) { onOpen() }
             Rule()
             Action(
                 { Label("≡", T.accent, T.fontBody) },
