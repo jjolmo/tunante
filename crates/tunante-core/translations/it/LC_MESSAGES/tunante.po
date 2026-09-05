@@ -1174,3 +1174,6 @@ msgstr "Riprendi solo se sono passate meno di"
 
 msgid "siempre"
 msgstr "sempre"
+
+msgid "Lista"
+msgstr "Lista"

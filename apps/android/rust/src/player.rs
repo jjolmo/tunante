@@ -64,6 +64,11 @@ impl Player {
         })
     }
 
+    /// The playlist and where we are in it, read-only — for the «Lista» panel.
+    pub fn queue(&self) -> &PlayQueue {
+        &self.queue
+    }
+
     pub fn set_tracks(&mut self, tracks: Vec<Track>) {
         self.queue.set_tracks(tracks);
     }

@@ -56,6 +56,9 @@ public final class NativeBridge {
     /** Play a collection from its first track, replacing the queue. Returns the player state. */
     public static native String nativePlayCollection(String pathsJson);
 
+    /** The playlist (context) as {tracks, index}: what next/previous walk, and where we are. */
+    public static native String nativeContext();
+
     /** Load the translation catalog for a language code, once. */
     public static native void nativeInitI18n(String lang);
 

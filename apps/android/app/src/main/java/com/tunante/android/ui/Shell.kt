@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -40,49 +41,65 @@ import androidx.compose.ui.unit.sp
  */
 enum class Dest(val label: String, val icon: IconKind) {
     Playing("Sonando", IconKind.Playing),
-    Queue("Cola", IconKind.Queue),
+    Queue("Lista", IconKind.Queue),
     Library("Biblioteca", IconKind.Library),
     Settings("Ajustes", IconKind.Settings),
 }
 
 @Composable
-fun BottomNav(current: Dest, queued: Int, onGo: (Dest) -> Unit) {
+fun BottomNav(current: Dest, queued: Int, onGo: (Dest) -> Unit, vertical: Boolean = false) {
+    // In landscape the four destinations stand in a rail down the left edge,
+    // as the compact shell's TabSwitcher does with `vertical: true`; the bar
+    // along the bottom is the portrait shape.
+    if (vertical) {
+        Row(Modifier.fillMaxHeight()) {
+            Column(
+                Modifier.fillMaxHeight().width(76.dp).background(T.bgSecondary).padding(vertical = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                for (d in Dest.entries) NavItem(d, d == current, queued, Modifier.fillMaxWidth(), onGo)
+            }
+            Box(Modifier.fillMaxHeight().width(1.dp).background(T.border))
+        }
+        return
+    }
     Rule()
     Row(
         Modifier.fillMaxWidth().background(T.bgSecondary).padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        for (d in Dest.entries) {
-            val on = d == current
-            Column(
-                Modifier
-                    .weight(1f)
-                    .padding(horizontal = 4.dp)
-                    .clip(RoundedCornerShape(T.radius))
-                    .background(if (on) T.bgSelected else Color.Transparent)
-                    .heightIn(min = 56.dp)
-                    .clickable { onGo(d) },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Box(contentAlignment = Alignment.TopEnd) {
-                    Icon(d.icon, if (on) T.textPrimary else T.textSecondary)
-                    // How many are waiting, where it is legible without opening
-                    // the queue. mini has no badge, but mini is also never the
-                    // app you left in a pocket.
-                    if (d == Dest.Queue && queued > 0) {
-                        Label("$queued", T.accent, T.fontSmall)
-                    }
-                }
-                Spacer(Modifier.height(2.dp))
-                Label(
-                    tr(d.label),
-                    if (on) T.textPrimary else T.textSecondary,
-                    T.fontSmall,
-                    maxLines = 1,
-                )
+        for (d in Dest.entries) NavItem(d, d == current, queued, Modifier.weight(1f), onGo)
+    }
+}
+
+@Composable
+private fun NavItem(d: Dest, on: Boolean, queued: Int, modifier: Modifier, onGo: (Dest) -> Unit) {
+    Column(
+        modifier
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(T.radius))
+            .background(if (on) T.bgSelected else Color.Transparent)
+            .heightIn(min = 56.dp)
+            .clickable { onGo(d) },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(contentAlignment = Alignment.TopEnd) {
+            Icon(d.icon, if (on) T.textPrimary else T.textSecondary)
+            // How many are waiting, where it is legible without opening the
+            // list. mini has no badge, but mini is also never the app you left
+            // in a pocket.
+            if (d == Dest.Queue && queued > 0) {
+                Label("$queued", T.accent, T.fontSmall)
             }
         }
+        Spacer(Modifier.height(2.dp))
+        Label(
+            tr(d.label),
+            if (on) T.textPrimary else T.textSecondary,
+            T.fontSmall,
+            maxLines = 1,
+        )
     }
 }
 

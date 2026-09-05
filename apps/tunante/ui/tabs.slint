@@ -850,6 +850,7 @@ export component NowPlayingTab inherits Rectangle {
                     // The blue highlight glides from one row to the next as the
                     // current track changes, rather than snapping.
                     animate background { duration: 220ms; easing: ease-out; }
+                    if row.divider: Rectangle { y: parent.height - 2px; height: 2px; background: Theme.accent; opacity: 0.6; }
                     HorizontalLayout {
                         padding-left: 10px;
                         padding-right: 10px;
@@ -909,7 +910,12 @@ export component NowPlayingTab inherits Rectangle {
 
 export component QueueTab inherits Rectangle {
     in property <[QueueRow]> rows;
+    in property <int> now-index: -1;
+    // How many rows are the hand-built queue: the header empties those, not
+    // the playlist around them.
+    in property <int> queued-count;
     callback activated(int);
+    callback toggled(int);
     callback removed(int);
     callback reordered(int, int);
     callback cleared();
@@ -930,7 +936,7 @@ export component QueueTab inherits Rectangle {
     // As a row it would scroll under the finger, and a destructive control that
     // moves while you fling a list is a control you eventually hit by accident.
     // Fixed, it is also still there when the queue is long.
-    if root.rows.length > 0: Rectangle {
+    if root.queued-count > 0: Rectangle {
         height: Theme.touch-target;
         background: root.confirming ? #a33333 : Theme.bg-secondary;
 
@@ -949,7 +955,7 @@ export component QueueTab inherits Rectangle {
             Text {
                 text: root.confirming
                     ? @tr("¿Seguro? Toca otra vez")
-                    : @tr("Vaciar la cola ({})", root.rows.length);
+                    : @tr("Vaciar la cola ({})", root.queued-count);
                 color: root.confirming ? #ffffff : Theme.text-secondary;
                 font-size: Theme.font-body;
                 vertical-alignment: center;
@@ -991,6 +997,7 @@ export component QueueTab inherits Rectangle {
             // The row being carried rides above the rest and follows the finger.
             y: root.dragging == i ? root.drag-offset : 0px;
             opacity: root.dragging == i ? 0.85 : 1.0;
+            if row.divider: Rectangle { y: parent.height - 2px; height: 2px; background: Theme.accent; opacity: 0.6; }
 
             SwipeRow {
                 surface-color: row.playing ? Theme.bg-selected : Theme.bg-primary;
@@ -1007,8 +1014,8 @@ export component QueueTab inherits Rectangle {
                     spacing: Theme.gap;
 
                     Text {
-                        text: row.playing ? "▶" : "";
-                        color: Theme.accent;
+                        text: i == root.now-index ? "▶" : (row.queued ? "»" : "");
+                        color: i == root.now-index ? Theme.accent : Theme.text-muted;
                         width: 16px;
                         vertical-alignment: center;
                     }
@@ -1020,7 +1027,7 @@ export component QueueTab inherits Rectangle {
 
                         Text {
                             text: row.title;
-                            color: row.playing ? Theme.accent : Theme.text-primary;
+                            color: i == root.now-index ? Theme.accent : Theme.text-primary;
                             font-size: Theme.font-body;
                             overflow: elide;
                         }
@@ -1045,7 +1052,7 @@ export component QueueTab inherits Rectangle {
                     // umbral, el arrastre llega aquí. Por eso el asa se enciende
                     // al pulsar: es la única pista de que aguantar sirve para
                     // algo.
-                    Rectangle {
+                    if row.queued: Rectangle {
                         width: Theme.touch-target;
                         border-radius: Theme.radius;
                         background: grip.pressed ? Theme.bg-hover : transparent;

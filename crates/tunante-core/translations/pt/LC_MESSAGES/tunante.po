@@ -1174,3 +1174,6 @@ msgstr "Retomar só se passaram menos de"
 
 msgid "siempre"
 msgstr "sempre"
+
+msgid "Lista"
+msgstr "Lista"

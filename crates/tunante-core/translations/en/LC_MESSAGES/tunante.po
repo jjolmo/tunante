@@ -1174,3 +1174,6 @@ msgstr "Resume only if less than"
 
 msgid "siempre"
 msgstr "always"
+
+msgid "Lista"
+msgstr "Playlist"
