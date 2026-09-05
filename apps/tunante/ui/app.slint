@@ -54,6 +54,15 @@ export component AppWindow inherits Window {
     in property <string> now-title: @tr("Nada sonando");
     in property <string> now-artist;
     in property <string> now-album;
+    // The Playing carousel's neighbours, from the same queue walk as ◀◀/▶▶.
+    in property <string> prev-title;
+    in property <string> prev-artist;
+    in property <string> prev-album;
+    in property <image> prev-art;
+    in property <string> next-title;
+    in property <string> next-artist;
+    in property <string> next-album;
+    in property <image> next-art;
     in property <int> library-total;
     in-out property <int> tab: 0;
     in-out property <bool> playing: false;
@@ -951,6 +960,14 @@ export component AppWindow inherits Window {
                         artist: root.now-artist;
                         album: root.now-album;
                         art: root.now-art;
+                        prev-title: root.prev-title;
+                        prev-artist: root.prev-artist;
+                        prev-album: root.prev-album;
+                        prev-art: root.prev-art;
+                        next-title: root.next-title;
+                        next-artist: root.next-artist;
+                        next-album: root.next-album;
+                        next-art: root.next-art;
                         playing: root.playing;
                         shuffle: root.shuffle;
                         repeat: root.repeat;

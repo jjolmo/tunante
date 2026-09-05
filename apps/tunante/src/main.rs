@@ -5814,14 +5814,18 @@ fn decode_artwork(data_uri: &str, max_side: u32) -> Option<slint::Image> {
 
 /// Fetch and show the cover of whatever is playing, or clear it.
 fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
-    let art = path
-        .and_then(|p| {
-            let real = tunante_core::vgm_path::parse_vgm_path(p).0.to_string();
-            tunante_helper::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
-        })
-        .and_then(|uri| decode_artwork(&uri, max_side));
+    ui.set_now_art(load_artwork(path, max_side).unwrap_or_default());
+}
 
-    ui.set_now_art(art.unwrap_or_default());
+/// The cover for a track path, decoded and scaled — the same lookup the
+/// playing tab uses, as a value, so the carousel's neighbour cards can have
+/// theirs too.
+fn load_artwork(path: Option<&str>, max_side: u32) -> Option<slint::Image> {
+    path.and_then(|p| {
+        let real = tunante_core::vgm_path::parse_vgm_path(p).0.to_string();
+        tunante_helper::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
+    })
+    .and_then(|uri| decode_artwork(&uri, max_side))
 }
 
 /// Portadas de carpeta ya decodificadas y escaladas.
@@ -7838,6 +7842,29 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
     // the current track centred. The index moves every track; the rows only
     // when the context itself changes, so rebuild them only when the count no
     // longer matches — a track change within one album is not a new list.
+    // The carousel's neighbours: what ◀◀ / ▶▶ would play, from the same walk.
+    let card = |t: Option<&tunante_core::db::models::Track>| -> (String, String, String, Option<String>) {
+        match t {
+            Some(t) => (
+                if t.title.is_empty() { t.path.rsplit('/').next().unwrap_or("").to_string() } else { t.title.clone() },
+                t.artist.clone(),
+                t.album.clone(),
+                Some(t.path.clone()),
+            ),
+            None => (String::new(), String::new(), String::new(), None),
+        }
+    };
+    let (nt, na, nb, np) = card(p.queue().peek_next());
+    ui.set_next_title(nt.into());
+    ui.set_next_artist(na.into());
+    ui.set_next_album(nb.into());
+    ui.set_next_art(load_artwork(np.as_deref(), MAX_ART_SIDE).unwrap_or_default());
+    let (pt, pa, pb, pp) = card(p.queue().peek_prev());
+    ui.set_prev_title(pt.into());
+    ui.set_prev_artist(pa.into());
+    ui.set_prev_album(pb.into());
+    ui.set_prev_art(load_artwork(pp.as_deref(), MAX_ART_SIDE).unwrap_or_default());
+
     let tracks = p.queue().tracks();
     ui.set_context_index(p.current_index().map(|i| i as i32).unwrap_or(-1));
     if ui.get_context_rows().row_count() != tracks.len() {

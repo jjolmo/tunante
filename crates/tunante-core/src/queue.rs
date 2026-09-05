@@ -163,6 +163,93 @@ impl PlayQueue {
         None
     }
 
+    /// The track `next()` would return, without moving. What the Playing
+    /// screen's carousel shows on the card sliding in from the right: the
+    /// head of the hand-built queue if there is one, else the context's next
+    /// under the current repeat/shuffle rules, skipping the short filter the
+    /// same way `next()` does. `None` where `next()` would stop.
+    pub fn peek_next(&self) -> Option<&Track> {
+        if let Some(t) = self.user_queue.first() {
+            return Some(t);
+        }
+        if self.tracks.is_empty() {
+            return None;
+        }
+        let len = self.tracks.len();
+        let mut current = self.current_index;
+        for _ in 0..len {
+            let candidate_idx = match self.repeat {
+                RepeatMode::One => return current.map(|i| &self.tracks[i]),
+                RepeatMode::All => match current {
+                    Some(i) => {
+                        if self.shuffle {
+                            self.next_shuffle_index(i).0
+                        } else {
+                            (i + 1) % len
+                        }
+                    }
+                    None => 0,
+                },
+                RepeatMode::Off => match current {
+                    Some(i) => {
+                        if self.shuffle {
+                            let (ni, wrapped) = self.next_shuffle_index(i);
+                            if wrapped {
+                                return None;
+                            }
+                            ni
+                        } else {
+                            i + 1
+                        }
+                    }
+                    None => 0,
+                },
+            };
+            if candidate_idx >= len {
+                return None;
+            }
+            let track = &self.tracks[candidate_idx];
+            if self.short_filter_threshold_ms <= 0
+                || track.duration_ms >= self.short_filter_threshold_ms
+            {
+                return Some(track);
+            }
+            current = Some(candidate_idx);
+        }
+        None
+    }
+
+    /// The track `prev()` would return, without moving. Same rules, same
+    /// short-filter skipping. `None` where `prev()` would stop.
+    pub fn peek_prev(&self) -> Option<&Track> {
+        if self.tracks.is_empty() {
+            return None;
+        }
+        let len = self.tracks.len();
+        let mut current = self.current_index;
+        for _ in 0..len {
+            let prev_idx = match current {
+                Some(i) if i > 0 => i - 1,
+                Some(_) => {
+                    if self.repeat == RepeatMode::All {
+                        len - 1
+                    } else {
+                        return None;
+                    }
+                }
+                None => 0,
+            };
+            let track = &self.tracks[prev_idx];
+            if self.short_filter_threshold_ms <= 0
+                || track.duration_ms >= self.short_filter_threshold_ms
+            {
+                return Some(track);
+            }
+            current = Some(prev_idx);
+        }
+        None
+    }
+
     pub fn prev(&mut self) -> Option<Track> {
         if self.tracks.is_empty() {
             return None;

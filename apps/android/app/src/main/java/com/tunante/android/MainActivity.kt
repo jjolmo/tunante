@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import com.tunante.android.ui.Folder
 import com.tunante.android.ui.LibraryView
 import com.tunante.android.ui.DirListing
+import com.tunante.android.ui.TrackCard
 import com.tunante.android.ui.FolderPicker
 import com.tunante.android.ui.PlayerState
 import com.tunante.android.ui.Dest
@@ -262,8 +263,17 @@ class MainActivity : ComponentActivity() {
             queuedNext = s.optString("queuedNext"),
             queueLen = s.optInt("queueLen"),
             path = s.optString("path"),
+            next = s.optJSONObject("next")?.let(::card),
+            prev = s.optJSONObject("prev")?.let(::card),
         )
     }
+
+    private fun card(o: JSONObject) = TrackCard(
+        title = o.optString("title"),
+        artist = o.optString("artist"),
+        album = o.optString("album"),
+        path = o.optString("path"),
+    )
 
     private fun tracksFrom(array: org.json.JSONArray?): List<Track> {
         if (array == null) return emptyList()

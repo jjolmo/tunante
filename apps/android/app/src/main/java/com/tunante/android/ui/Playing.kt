@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
@@ -63,17 +67,50 @@ fun PlayingScreen(
             Modifier.fillMaxSize().padding(T.gap),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.weight(1f))
-            Cover(state.path, side)
-            Spacer(Modifier.height(T.gap))
-            Label(state.label, T.textPrimary, T.fontTitle, maxLines = 2)
-            if (state.artist.isNotEmpty()) {
-                Label(state.artist, T.textSecondary, T.fontBody, maxLines = 1)
+            // The cover and its three lines are a pager: the card follows the
+            // finger 1:1 and the next (or previous) track's card slides in
+            // beside it, so you see where you are going while you go. Release
+            // past the middle and that card is the one that plays — exactly
+            // what ▶▶ / ◀◀ would have given, because `prev`/`next` come from
+            // the same queue walk. The seek bar and the transport stay below,
+            // outside the pager: the bar has its own horizontal drag.
+            val now = TrackCard(state.label, state.artist, state.album, state.path)
+            val cards = listOfNotNull(state.prev, now, state.next)
+            val current = if (state.prev != null) 1 else 0
+            val pager = rememberPagerState(initialPage = current) { cards.size }
+            // Whenever the track changes — by the pager, the buttons, or the
+            // end of a song — re-centre on the new current card.
+            LaunchedEffect(state.path, cards.size) {
+                if (pager.currentPage != current) pager.scrollToPage(current)
             }
-            if (state.album.isNotEmpty()) {
-                Label(state.album, T.textMuted, T.fontSmall, maxLines = 1)
+            // Settling on a neighbour is the gesture's verdict.
+            LaunchedEffect(pager, current) {
+                snapshotFlow { pager.settledPage }.collect { page ->
+                    if (page > current) onNext() else if (page < current) onPrev()
+                }
             }
-            Spacer(Modifier.weight(1f))
+            HorizontalPager(
+                state = pager,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                beyondViewportPageCount = 1,
+                verticalAlignment = Alignment.CenterVertically,
+            ) { i ->
+                val card = cards[i]
+                Column(
+                    Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Cover(card.path, side)
+                    Spacer(Modifier.height(T.gap))
+                    Label(card.title, T.textPrimary, T.fontTitle, maxLines = 2)
+                    if (card.artist.isNotEmpty()) {
+                        Label(card.artist, T.textSecondary, T.fontBody, maxLines = 1)
+                    }
+                    if (card.album.isNotEmpty()) {
+                        Label(card.album, T.textMuted, T.fontSmall, maxLines = 1)
+                    }
+                }
+            }
 
             Seek(state, onSeek)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
