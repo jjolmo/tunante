@@ -10,12 +10,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.LaunchedEffect
@@ -50,10 +53,58 @@ fun PlayingScreen(
     onShuffle: (Boolean) -> Unit,
     onRepeat: (Int) -> Unit,
     onSeek: (Long) -> Unit,
+    // The «Lista», which in landscape is the right column of this screen.
+    list: List<Track> = emptyList(),
+    index: Int = -1,
+    queue: List<Track> = emptyList(),
+    onListPlay: (Int) -> Unit = {},
+    onListToggle: (Int) -> Unit = {},
+    onQueueMove: (Int, Int) -> Unit = { _, _ -> },
+    onClearQueue: () -> Unit = {},
 ) {
     if (!state.hasSource) {
         Column(Modifier.fillMaxSize().background(T.bgPrimary)) {
             EmptyNote(tr("No suena nada"), tr("Elige algo en la biblioteca."))
+        }
+        return
+    }
+
+    val landscape = LocalConfiguration.current.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    if (landscape) {
+        // Two columns, as NowPlayingTab lays them out in tabs.slint when the
+        // window is wider than it is tall: the cover, the name and the
+        // transport on the left, never wider than 30% of the screen (and never
+        // narrower than a usable transport); the «Lista» on the right, centred
+        // on what is sounding. No pager here — the list is how you move.
+        BoxWithConstraints(Modifier.fillMaxSize().background(T.bgPrimary)) {
+            val column = maxOf(maxWidth * 0.3f, 264.dp)
+            val side = minOf(column - T.gap * 2, maxHeight * 0.5f)
+            Row(Modifier.fillMaxSize()) {
+                Column(
+                    Modifier.width(column).fillMaxHeight().padding(T.gap),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Cover(state.path, side)
+                    Spacer(Modifier.height(T.gap))
+                    Label(state.label, T.textPrimary, T.fontTitle, maxLines = 2)
+                    if (state.artist.isNotEmpty()) {
+                        Label(state.artist, T.textSecondary, T.fontBody, maxLines = 1)
+                    }
+                    if (state.album.isNotEmpty()) {
+                        Label(state.album, T.textMuted, T.fontSmall, maxLines = 1)
+                    }
+                    Spacer(Modifier.height(T.gap))
+                    SeekBlock(state, onSeek)
+                    Transport(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, compact = true)
+                }
+                Box(Modifier.fillMaxHeight().width(1.dp).background(T.border))
+                NowList(
+                    list, index, queue, onListPlay, onListToggle, onQueueMove, onClearQueue,
+                    Modifier.weight(1f).fillMaxHeight(),
+                )
+            }
         }
         return
     }
@@ -124,38 +175,59 @@ fun PlayingScreen(
                 }
             }
 
-            Seek(state, onSeek)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Label(mmss(state.positionMs), T.textSecondary, T.fontSmall)
-                Label(mmss(state.durationMs), T.textSecondary, T.fontSmall)
-            }
+            SeekBlock(state, onSeek)
             Spacer(Modifier.height(T.gap))
+            Transport(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, compact = false)
+        }
+    }
+}
 
-            // Five controls at five sizes, exactly as widgets.slint lays the
-            // Transport out: the outer pair small, the skips larger, and play
-            // as a filled disc twice their weight. The sizes are what make the
-            // row read as a hierarchy rather than five equal buttons.
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = T.gap),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RoundButton(46.dp, state.shuffle, { onShuffle(!state.shuffle) }) {
-                    Icon(IconKind.Shuffle, if (state.shuffle) T.accent else T.textPrimary)
-                }
-                RoundGlyph(52.dp, "◀◀", onClick = onPrev)
-                PlayCircle(68.dp, state.playing, onTogglePlay)
-                RoundGlyph(52.dp, "▶▶", onClick = onNext)
-                // One icon carrying three states rather than three icons: off,
-                // the loop, and the loop with a dot for "this one". tunante
-                // spells the third `↻¹`, a character Android may not have.
-                RoundButton(46.dp, state.repeat != 0, { onRepeat((state.repeat + 1) % 3) }) {
-                    Icon(
-                        if (state.repeat == 2) IconKind.RepeatOne else IconKind.Repeat,
-                        if (state.repeat != 0) T.accent else T.textPrimary,
-                    )
-                }
-            }
+/** The seek bar with the two times under it. */
+@Composable
+private fun SeekBlock(state: PlayerState, onSeek: (Long) -> Unit) {
+    Seek(state, onSeek)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Label(mmss(state.positionMs), T.textSecondary, T.fontSmall)
+        Label(mmss(state.durationMs), T.textSecondary, T.fontSmall)
+    }
+}
+
+/**
+ * Five controls at five sizes, exactly as widgets.slint lays the Transport
+ * out: the outer pair small, the skips larger, and play as a filled disc twice
+ * their weight. The sizes are what make the row read as a hierarchy rather
+ * than five equal buttons. `compact` is the landscape column's scale.
+ */
+@Composable
+private fun Transport(
+    state: PlayerState,
+    onTogglePlay: () -> Unit,
+    onNext: () -> Unit,
+    onPrev: () -> Unit,
+    onShuffle: (Boolean) -> Unit,
+    onRepeat: (Int) -> Unit,
+    compact: Boolean,
+) {
+    val k = if (compact) 0.8f else 1f
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = if (compact) 0.dp else T.gap),
+        horizontalArrangement = Arrangement.SpaceAround,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RoundButton(46.dp * k, state.shuffle, { onShuffle(!state.shuffle) }) {
+            Icon(IconKind.Shuffle, if (state.shuffle) T.accent else T.textPrimary)
+        }
+        RoundGlyph(52.dp * k, "◀◀", onClick = onPrev)
+        PlayCircle(68.dp * k, state.playing, onTogglePlay)
+        RoundGlyph(52.dp * k, "▶▶", onClick = onNext)
+        // One icon carrying three states rather than three icons: off, the
+        // loop, and the loop with a dot for "this one". tunante spells the
+        // third `↻¹`, a character Android may not have.
+        RoundButton(46.dp * k, state.repeat != 0, { onRepeat((state.repeat + 1) % 3) }) {
+            Icon(
+                if (state.repeat == 2) IconKind.RepeatOne else IconKind.Repeat,
+                if (state.repeat != 0) T.accent else T.textPrimary,
+            )
         }
     }
 }

@@ -992,6 +992,27 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCycleFade(
 }
 
 /// Everything waiting, in order.
+/// The playlist — the context next/previous walk — and where we are in it.
+/// Asked for on track and queue changes, not every tick: a console is
+/// thousands of rows.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeContext<'a>(
+    env: JNIEnv<'a>,
+    _class: JClass,
+) -> jni::objects::JString<'a> {
+    let guard = ENGINE.lock().unwrap();
+    let out = match guard.as_ref() {
+        Some(e) => serde_json::json!({
+            "ok": true,
+            "tracks": e.queue().tracks(),
+            "index": e.queue().current_index().map(|i| i as i64).unwrap_or(-1),
+        })
+        .to_string(),
+        None => fail("nativeContext before nativeInit"),
+    };
+    env.new_string(out).expect("new_string")
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeQueue<'a>(
     env: JNIEnv<'a>,
@@ -1538,9 +1559,9 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativePlayCollectio
         };
         let mut guard = ENGINE.lock().unwrap();
         let engine = guard.as_mut().ok_or("nativePlayCollection before nativeInit")?;
-        // `set_tracks` alone keeps the user queue (verified in core's Queue):
-        // the replacement has to be said out loud.
-        engine.clear_user_queue();
+        // Replaces the playlist (context) only. The priority queue survives on
+        // purpose: `set_tracks` keeps it, and cidwel's model (2026-09-05, second
+        // pass) is that what you prioritised still plays first, then this.
         engine.set_tracks(tracks);
         engine.play_index(0)?;
         Ok(engine.state().to_string())

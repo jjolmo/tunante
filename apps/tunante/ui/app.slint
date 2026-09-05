@@ -46,6 +46,9 @@ export component AppWindow inherits Window {
     in property <[QueueRow]> context-rows;
     in property <int> context-index;
     callback context-activated(int);
+    callback context-toggled(int);
+    callback context-reordered(int, int);
+    callback context-cleared();
     in property <int> queue-placement;
     callback cycle-queue-placement();
     in property <bool> queue-always-visible;
@@ -1004,11 +1007,16 @@ export component AppWindow inherits Window {
                     }
 
                     if root.tab == 1: QueueTab {
-                        rows: root.queue-rows;
-                        activated(i) => { root.queue-activated(i); }
-                        removed(i) => { root.queue-removed(i); }
-                        reordered(from, to) => { root.queue-reordered(from, to); }
-                        cleared => { root.queue-cleared(); }
+                        // «Lista»: the playlist in playback order, with the
+                        // prioritised rows inside it — not the queue alone.
+                        rows: root.context-rows;
+                        now-index: root.context-index;
+                        queued-count: root.queue-rows.length;
+                        activated(i) => { root.context-activated(i); }
+                        toggled(i) => { root.context-toggled(i); }
+                        removed(i) => { root.context-toggled(i); }
+                        reordered(from, to) => { root.context-reordered(from, to); }
+                        cleared => { root.context-cleared(); }
                     }
 
                     if root.tab == 3: SettingsTab {

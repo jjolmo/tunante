@@ -72,6 +72,13 @@ class MainActivity : ComponentActivity() {
     /** "Resume only if less than N hours passed"; 0 = always. Read once the DB is open. */
     private var resumeHours by mutableStateOf(6)
     private var queue by mutableStateOf(emptyList<Track>())
+    /** The «Lista»: the playing context (folder, console, game…) and where we are in it. */
+    private var nowList by mutableStateOf(emptyList<Track>())
+    private var nowIndex by mutableStateOf(-1)
+    /** What the last poll saw, to reload the two lists only when they can have changed. */
+    private var seenPath = ""
+    private var seenQueued = -1
+    private var seenLen = -1
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -133,9 +140,11 @@ class MainActivity : ComponentActivity() {
                     onDest = { d -> if (d == Dest.Queue) reloadQueue(); dest = d },
                     roots = roots,
                     queue = queue,
-                    onQueueRemove = { NativeBridge.nativeDequeue(it.path); reloadQueue() },
-                    onQueuePlay = { NativeBridge.nativePlayQueued(it.path); reloadQueue() },
                     onQueueMove = { f, t -> NativeBridge.nativeMoveInQueue(f, t); reloadQueue() },
+                    nowList = nowList,
+                    nowIndex = nowIndex,
+                    onListPlay = ::playListRow,
+                    onListToggle = ::toggleListRow,
                     onEnqueueRow = ::enqueueRow,
                     onAddRowToPlaylist = ::addRowToPlaylist,
                     onNewPlaylistWithRow = ::newPlaylistWithRow,
@@ -264,6 +273,15 @@ class MainActivity : ComponentActivity() {
     private fun readState(): PlayerState {
         val s = JSONObject(NativeBridge.nativeState())
         if (!s.optBoolean("ok", false)) return PlayerState()
+        // The «Lista» follows the player: a new track, a longer or shorter
+        // queue, or a new context means the merged rows are stale.
+        val path = s.optString("path")
+        val queued = s.optInt("queued")
+        val len = s.optInt("queueLen")
+        if (path != seenPath || queued != seenQueued || len != seenLen) {
+            seenPath = path; seenQueued = queued; seenLen = len
+            reloadQueue()
+        }
         return PlayerState(
             playing = s.optBoolean("playing"),
             hasSource = s.optBoolean("hasSource"),
@@ -398,6 +416,39 @@ class MainActivity : ComponentActivity() {
     private fun reloadQueue() {
         val s = JSONObject(NativeBridge.nativeQueue())
         queue = if (s.optBoolean("ok", false)) tracksFrom(s.optJSONArray("tracks")) else emptyList()
+        val c = JSONObject(NativeBridge.nativeContext())
+        nowList = if (c.optBoolean("ok", false)) tracksFrom(c.optJSONArray("tracks")) else emptyList()
+        nowIndex = c.optInt("index", -1)
+    }
+
+    /**
+     * A row of the «Lista», as `mergedRows` numbers them: the rows up to and
+     * including the current one are playlist indices, then come the queued
+     * tracks, then the rest of the playlist shifted by the queue's length.
+     * The same arithmetic as `on_context_activated` in apps/tunante/src/main.rs.
+     */
+    private fun playListRow(i: Int) {
+        val cur = (nowIndex + 1).coerceIn(0, nowList.size)
+        val q = queue.size
+        when {
+            i < cur -> playAt(i)
+            i < cur + q -> NativeBridge.nativePlayQueued(queue[i - cur].path)
+            else -> playAt(i - q)
+        }
+        reloadQueue()
+    }
+
+    /** Swipe: a queued row leaves the queue, a playlist row joins it. */
+    private fun toggleListRow(i: Int) {
+        val cur = (nowIndex + 1).coerceIn(0, nowList.size)
+        val q = queue.size
+        if (i >= cur && i < cur + q) {
+            NativeBridge.nativeDequeue(queue[i - cur].path)
+        } else {
+            val ci = if (i < cur) i else i - q
+            nowList.getOrNull(ci)?.let { NativeBridge.nativeEnqueue(it.path) }
+        }
+        reloadQueue()
     }
 
     /** A new playlist with this one track in it, without leaving the library. */

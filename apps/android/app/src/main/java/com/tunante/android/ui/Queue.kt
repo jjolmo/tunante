@@ -9,12 +9,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,25 +26,68 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import kotlinx.coroutines.delay
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 /**
- * What is waiting, and the only screen where its order can be changed.
+ * One row of the «Lista»: a track, whether it was prioritised by hand, whether
+ * it is the last prioritised one (the rule under it says "the playlist resumes
+ * here"), and whether it is the one sounding.
+ */
+data class ListRow(val track: Track, val queued: Boolean, val divider: Boolean, val now: Boolean)
+
+/**
+ * The playlist in real playback order: everything up to and including the
+ * current track, then what was queued by hand, then the rest of the playlist.
+ * The current row keeps its playlist index, so centring on it needs no maths.
+ * Mirrors `push_now_playing` in apps/tunante/src/main.rs row for row.
+ */
+fun mergedRows(list: List<Track>, index: Int, queue: List<Track>): List<ListRow> {
+    val split = (index + 1).coerceIn(0, list.size)
+    val rows = ArrayList<ListRow>(list.size + queue.size)
+    list.subList(0, split).forEachIndexed { i, t -> rows.add(ListRow(t, false, false, i == index)) }
+    queue.forEachIndexed { k, t -> rows.add(ListRow(t, true, k == queue.lastIndex, false)) }
+    list.subList(split, list.size).forEach { rows.add(ListRow(it, false, false, false)) }
+    return rows
+}
+
+/**
+ * The «Lista» screen: the tab that used to show the queue alone.
  *
- * The queue is a layer over the folder you were listening to: emptying it does
- * not stop the music, and taking one track out does not disturb the rest.
+ * What plays next is the queue first and the playlist after, so that is what
+ * the screen shows, in that order, with a rule where the queue ends. Tapping a
+ * row plays it. Swiping toggles priority: a playlist row goes into the queue,
+ * a queued row comes out. The arrows reorder only the queued block — the
+ * playlist's order is the folder's, not ours. The same list is the right
+ * column of Playing in landscape, as it is in the compact shell.
  */
 @Composable
-fun QueueScreen(
-    tracks: List<Track>,
-    nowPath: String = "",
-    onRemove: (Track) -> Unit,
-    onPlay: (Track) -> Unit,
+fun ListScreen(
+    list: List<Track>,
+    index: Int,
+    queue: List<Track>,
+    onPlay: (Int) -> Unit,
+    onToggle: (Int) -> Unit,
     onMove: (Int, Int) -> Unit,
     onClear: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(T.bgPrimary)) {
+        NowList(list, index, queue, onPlay, onToggle, onMove, onClear, Modifier.fillMaxSize())
+    }
+}
+
+@Composable
+fun NowList(
+    list: List<Track>,
+    index: Int,
+    queue: List<Track>,
+    onPlay: (Int) -> Unit,
+    onToggle: (Int) -> Unit,
+    onMove: (Int, Int) -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.background(T.bgPrimary)) {
         // Emptying the queue cannot be undone, so it is asked once. The
         // question times out rather than staying armed: a red bar left across
         // the top of the screen is a trap for the next thumb.
@@ -53,7 +98,7 @@ fun QueueScreen(
                 confirming = false
             }
         }
-        if (tracks.isNotEmpty()) {
+        if (queue.isNotEmpty()) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -79,7 +124,7 @@ fun QueueScreen(
                 Spacer(Modifier.width(8.dp))
                 Label(
                     if (confirming) tr("¿Seguro? Toca otra vez")
-                    else tr("Vaciar la cola ({})").replace("{}", "${tracks.size}"),
+                    else tr("Vaciar la cola ({})").replace("{}", "${queue.size}"),
                     if (confirming) Color.White else T.textSecondary,
                     T.fontBody,
                     maxLines = 1,
@@ -88,25 +133,31 @@ fun QueueScreen(
             Rule()
         }
 
-        if (tracks.isEmpty()) {
-            EmptyNote(
-                tr("No hay nada esperando"),
-                tr("Desliza una pista en la biblioteca para ponerla en cola."),
-            )
+        if (list.isEmpty() && queue.isEmpty()) {
+            EmptyNote(tr("No suena nada"), tr("Elige algo en la biblioteca."))
             return@Column
         }
 
-        LazyColumn(Modifier.fillMaxSize()) {
-            itemsIndexed(tracks) { i, track ->
-                val sounding = track.path == nowPath
-                // Swipe to take it out, the same gesture and the same red the
-                // library rows and tabs.slint's queue use. The arrows stay:
-                // they are the only reordering that works with one thumb.
+        val rows = mergedRows(list, index, queue)
+        val cur = (index + 1).coerceIn(0, list.size)
+        val listState = rememberLazyListState()
+        // Centre on the sounding row whenever it moves — the compact shell's
+        // `qcol.recenter()`. Measured from what is visible now; before the
+        // first layout the estimate is a handful of rows.
+        LaunchedEffect(index, queue.size, rows.size) {
+            if (index < 0 || index >= rows.size) return@LaunchedEffect
+            val visible = listState.layoutInfo.visibleItemsInfo.size.takeIf { it > 0 } ?: 6
+            listState.animateScrollToItem((index - visible / 2).coerceAtLeast(0))
+        }
+
+        LazyColumn(Modifier.fillMaxSize(), state = listState) {
+            itemsIndexed(rows, key = { i, r -> "$i:${r.track.path}" }) { i, row ->
+                val track = row.track
                 SwipeRow(
-                    label = tr("Quitar"),
-                    onSwiped = { onRemove(track) },
-                    actionColor = T.destructive,
-                    surfaceColor = if (sounding) T.bgSelected else T.bgPrimary,
+                    label = if (row.queued) tr("Quitar de la cola") else tr("A la cola"),
+                    onSwiped = { onToggle(i) },
+                    actionColor = if (row.queued) T.destructive else T.accent,
+                    surfaceColor = if (row.now) T.bgSelected else T.bgPrimary,
                 ) {
                     Row(
                         Modifier
@@ -115,37 +166,45 @@ fun QueueScreen(
                             .padding(start = T.gap, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        // The marker, not the index: which one is sounding is
-                        // what you look for in a queue.
+                        // ▶ on the one sounding, » on what was prioritised.
                         Box(Modifier.width(16.dp)) {
-                            if (sounding) Label("▶", T.accent, T.fontSmall)
+                            if (row.now) Label("▶", T.accent, T.fontSmall)
+                            else if (row.queued) Label("»", T.textMuted, T.fontSmall)
                         }
                         Spacer(Modifier.width(T.gap))
-                        // Tapping jumps to it. The rest of the queue keeps its
-                        // order — skipping to the third thing waiting should not
-                        // throw away the first two.
                         Column(
                             Modifier
                                 .weight(1f)
                                 .heightIn(min = T.touchTarget)
-                                .clickable { onPlay(track) },
+                                .clickable { onPlay(i) },
                             verticalArrangement = Arrangement.Center,
                         ) {
                             Label(
                                 track.title.ifEmpty { track.path.substringAfterLast('/') },
-                                if (sounding) T.accent else T.textPrimary,
+                                if (row.now) T.accent else T.textPrimary,
                                 T.fontBody,
                                 maxLines = 1,
                             )
-                            if (track.artist.isNotEmpty()) {
-                                Label(track.artist, T.textSecondary, T.fontSmall, maxLines = 1)
+                            val sub = track.artist.ifEmpty { track.album }
+                            if (sub.isNotEmpty()) {
+                                Label(sub, T.textSecondary, T.fontSmall, maxLines = 1)
                             }
                         }
-                        Arrow("↑", i > 0) { onMove(i, i - 1) }
-                        Arrow("↓", i < tracks.lastIndex) { onMove(i, i + 1) }
+                        if (row.queued) {
+                            val q = i - cur
+                            Arrow("↑", q > 0) { onMove(q, q - 1) }
+                            Arrow("↓", q < queue.lastIndex) { onMove(q, q + 1) }
+                        } else {
+                            Spacer(Modifier.width(T.touchTarget * 2))
+                        }
                     }
                 }
-                Rule()
+                // The rule where the queue ends and the playlist resumes.
+                if (row.divider) {
+                    Box(Modifier.fillMaxWidth().height(2.dp).background(T.accent.copy(alpha = 0.6f)))
+                } else {
+                    Rule()
+                }
             }
         }
     }

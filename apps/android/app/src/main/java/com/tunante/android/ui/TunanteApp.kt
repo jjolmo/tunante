@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
@@ -148,9 +149,12 @@ fun TunanteApp(
     onAddRowToPlaylist: (Playlist, String, Boolean) -> Unit,
     onNewPlaylistWithRow: (String, String, Boolean) -> Unit,
     queue: List<Track>,
-    onQueueRemove: (Track) -> Unit,
-    onQueuePlay: (Track) -> Unit,
     onQueueMove: (Int, Int) -> Unit,
+    // The «Lista»: the playing context and where we are in it.
+    nowList: List<Track>,
+    nowIndex: Int,
+    onListPlay: (Int) -> Unit,
+    onListToggle: (Int) -> Unit,
 ) {
     // Declared out here, not inside the Column: the picker it drives is drawn
     // on top of the whole screen, which is a sibling of the Column and not a
@@ -175,19 +179,22 @@ fun TunanteApp(
         adding = null
     }
 
-    Column(Modifier.fillMaxSize().background(T.bgPrimary)) {
-        // Sideways changes destination, as it does in mini.
-        //
-        // Horizontal only, and on the container rather than on each screen: a
-        // vertical one would eat the list scrolling, which is the most used
-        // gesture in the app. It does not steal from the rows that swipe to
-        // queue, or from the seek bar, because Compose offers a pointer event
-        // to the deepest node first and this detector only sees what those
-        // leave unconsumed.
-        val slide = with(LocalDensity.current) { 60.dp.toPx() }
+    val landscape = LocalConfiguration.current.orientation ==
+        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+    // Sideways changes destination, as it does in mini.
+    //
+    // Horizontal only, and on the container rather than on each screen: a
+    // vertical one would eat the list scrolling, which is the most used
+    // gesture in the app. It does not steal from the rows that swipe to
+    // queue, or from the seek bar, because Compose offers a pointer event
+    // to the deepest node first and this detector only sees what those
+    // leave unconsumed.
+    val slide = with(LocalDensity.current) { 60.dp.toPx() }
+    // The screen for the destination; the same in both shapes, so it is one
+    // piece placed in either frame below.
+    val screen: @Composable (Modifier) -> Unit = { frame ->
         Box(
-            Modifier
-                .weight(1f)
+            frame
                 .pointerInput(dest) {
                     var moved = 0f
                     detectHorizontalDragGestures(
@@ -203,13 +210,18 @@ fun TunanteApp(
                 },
         ) {
             when (dest) {
-                Dest.Playing ->
-                    PlayingScreen(state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSeek)
-                Dest.Queue -> QueueScreen(
-                    tracks = queue,
-                    nowPath = state.path,
-                    onRemove = onQueueRemove,
-                    onPlay = onQueuePlay,
+                Dest.Playing -> PlayingScreen(
+                    state, onTogglePlay, onNext, onPrev, onShuffle, onRepeat, onSeek,
+                    list = nowList, index = nowIndex, queue = queue,
+                    onListPlay = onListPlay, onListToggle = onListToggle,
+                    onQueueMove = onQueueMove, onClearQueue = onClearQueue,
+                )
+                Dest.Queue -> ListScreen(
+                    list = nowList,
+                    index = nowIndex,
+                    queue = queue,
+                    onPlay = onListPlay,
+                    onToggle = onListToggle,
                     onMove = onQueueMove,
                     onClear = onClearQueue,
                 )
@@ -236,17 +248,34 @@ fun TunanteApp(
                 )
             }
         }
+    }
 
-        // Under every destination except Playing, which is `root.tab != 0` in
-        // app.slint. It used to be under Playing as well, on the argument that
-        // the bar is where the thumb already is; the desktop tried that, found
-        // the two transports were pushing each other off a short screen, and
-        // dropped it. The screen that has a full transport does not need a
-        // second one.
-        if (dest != Dest.Playing) {
-            MiniPlayer(state, onOpen = { onDest(Dest.Playing) }, onTogglePlay, onNext, onPrev)
+    if (landscape) {
+        // The compact shell's landscape frame: the destinations in a rail down
+        // the left, the screen beside it, the mini player under the screen.
+        Row(Modifier.fillMaxSize().background(T.bgPrimary)) {
+            BottomNav(dest, state.queued, onDest, vertical = true)
+            Column(Modifier.weight(1f).fillMaxSize()) {
+                screen(Modifier.weight(1f))
+                if (dest != Dest.Playing) {
+                    MiniPlayer(state, onOpen = { onDest(Dest.Playing) }, onTogglePlay, onNext, onPrev)
+                }
+            }
         }
-        BottomNav(dest, state.queued, onDest)
+    } else {
+        Column(Modifier.fillMaxSize().background(T.bgPrimary)) {
+            screen(Modifier.weight(1f))
+            // Under every destination except Playing, which is `root.tab != 0` in
+            // app.slint. It used to be under Playing as well, on the argument that
+            // the bar is where the thumb already is; the desktop tried that, found
+            // the two transports were pushing each other off a short screen, and
+            // dropped it. The screen that has a full transport does not need a
+            // second one.
+            if (dest != Dest.Playing) {
+                MiniPlayer(state, onOpen = { onDest(Dest.Playing) }, onTogglePlay, onNext, onPrev)
+            }
+            BottomNav(dest, state.queued, onDest)
+        }
     }
 
     adding?.let { track ->

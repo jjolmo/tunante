@@ -2686,10 +2686,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(ui) = weak.upgrade() else { return };
             // get_tracks_by_folder already answers for the whole subtree.
             let tracks = db_p.get_tracks_by_folder(&path).unwrap_or_default();
-            // Same intent as the tap: this folder, and only this folder, now.
-            if let Some(p) = player_p.borrow_mut().as_mut() {
-                p.clear_user_queue();
-            }
+            // Same intent as the tap: this folder becomes the playlist; the
+            // priority queue stays.
             play_collection(&ui, &player_p, &queue_model_p, tracks);
         });
     }
@@ -2972,13 +2970,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 Scope::Folder(path.to_string())
             };
-            // On the phone a tap on a category REPLACES the queue (cidwel,
-            // 2026-09-05): what you tap is what you listen to, hand-queued
-            // leftovers included. The desktop branch above never reaches here —
-            // there a click only opens the table and the queue is sacred.
-            if let Some(p) = player_v.borrow_mut().as_mut() {
-                p.clear_user_queue();
-            }
+            // A tap on a category replaces the PLAYLIST — the context that
+            // next/previous walk — and leaves the priority queue alone: what
+            // you queued by hand still plays first, then this (cidwel,
+            // 2026-09-05, second pass: "queue" meant the context, not the
+            // prioritised songs). The desktop branch above never reaches here.
             play_collection(&ui, &player_v, &queue_model_v, tracks);
             ui.set_tab(0);
         });
@@ -3262,10 +3258,78 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_context_activated(move |index| {
             let Some(ui) = weak.upgrade() else { return };
             if let Some(p) = player.borrow_mut().as_mut() {
-                if p.play_index(index.max(0) as usize).is_ok() {
+                let i = index.max(0) as usize;
+                let cur = p.current_index().map(|c| c + 1).unwrap_or(0);
+                let q = p.user_queue().len();
+                let ok = if i < cur {
+                    p.play_index(i).is_ok()
+                } else if i < cur + q {
+                    p.play_user(i - cur).is_ok()
+                } else {
+                    p.play_index(i - q).is_ok()
+                };
+                if ok {
                     push_now_playing(&ui, p);
                     refresh_queue(p, &queue_model);
                 }
+            }
+        });
+    }
+    {
+        // Swipe on a «Lista» row toggles priority: a playlist row goes into the
+        // queue, a queued row leaves it.
+        let (player, queue_model) = (player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_context_toggled(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(p) = player.borrow_mut().as_mut() {
+                let i = index.max(0) as usize;
+                let cur = p.current_index().map(|c| c + 1).unwrap_or(0);
+                let q = p.user_queue().len();
+                if i >= cur && i < cur + q {
+                    p.dequeue_user(i - cur);
+                } else {
+                    let ci = if i < cur { i } else { i - q };
+                    if let Some(t) = p.queue().tracks().get(ci).cloned() {
+                        p.enqueue(t);
+                    }
+                }
+                push_now_playing(&ui, p);
+                refresh_queue(p, &queue_model);
+            }
+        });
+    }
+    {
+        // Dragging a queued row of the «Lista» reorders the queue; the
+        // playlist keeps its own order, so a drag that leaves the queued block
+        // does nothing.
+        let (player, queue_model) = (player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_context_reordered(move |from, to| {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(p) = player.borrow_mut().as_mut() {
+                let cur = p.current_index().map(|c| c + 1).unwrap_or(0);
+                let q = p.user_queue().len();
+                let (from, to) = (from.max(0) as usize, to.max(0) as usize);
+                if from >= cur && from < cur + q && to >= cur && to < cur + q {
+                    p.move_user(from - cur, to - cur);
+                    push_now_playing(&ui, p);
+                    refresh_queue(p, &queue_model);
+                }
+            }
+        });
+    }
+    {
+        // "Vaciar la cola" empties what was prioritised, and only that: the
+        // playlist and the track sounding are untouched.
+        let (player, queue_model) = (player.clone(), queue_model.clone());
+        let weak = ui.as_weak();
+        ui.on_context_cleared(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Some(p) = player.borrow_mut().as_mut() {
+                p.clear_user_queue();
+                push_now_playing(&ui, p);
+                refresh_queue(p, &queue_model);
             }
         });
     }
@@ -7764,6 +7828,8 @@ fn refresh_queue(p: &player::Player, model: &VecModel<QueueRow>) {
             )),
             subtitle: SharedString::from(tunante_core::i18n::tr("a continuación")),
             playing: false,
+            queued: true,
+            divider: false,
         })
         .collect();
     model.set_vec(rows);
@@ -7936,34 +8002,31 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
     ui.set_prev_album(pb.into());
     ui.set_prev_art(load_artwork(pp.as_deref(), MAX_ART_SIDE).unwrap_or_default());
 
+    // «Lista»: the playlist in real playback order — everything up to and
+    // including the current track, then what was prioritised by hand (the last
+    // of those carries the rule), then the rest of the playlist. The current
+    // row's index is unchanged by the insertion, so centring still works.
     let tracks = p.queue().tracks();
-    ui.set_context_index(p.current_index().map(|i| i as i32).unwrap_or(-1));
-    if ui.get_context_rows().row_count() != tracks.len() {
-        let rows: Vec<QueueRow> = tracks
-            .iter()
-            .map(|t| QueueRow {
-                title: SharedString::from(if t.title.is_empty() {
-                    t.path.as_str()
-                } else {
-                    t.title.as_str()
-                }),
-                subtitle: SharedString::from(if !t.artist.is_empty() {
-                    t.artist.as_str()
-                } else {
-                    t.album.as_str()
-                }),
-                playing: false,
-            })
-            .collect();
-        ui.set_context_rows(ModelRc::from(Rc::new(VecModel::from(rows))));
+    let queued = p.user_queue();
+    let idx = p.current_index();
+    ui.set_context_index(idx.map(|i| i as i32).unwrap_or(-1));
+    let row_of = |t: &tunante_core::db::models::Track, queued: bool, divider: bool| QueueRow {
+        title: SharedString::from(if t.title.is_empty() { t.path.as_str() } else { t.title.as_str() }),
+        subtitle: SharedString::from(if !t.artist.is_empty() { t.artist.as_str() } else { t.album.as_str() }),
+        playing: false,
+        queued,
+        divider,
+    };
+    let split = idx.map(|i| i + 1).unwrap_or(0).min(tracks.len());
+    let mut rows: Vec<QueueRow> = Vec::with_capacity(tracks.len() + queued.len());
+    rows.extend(tracks[..split].iter().map(|t| row_of(t, false, false)));
+    for (k, t) in queued.iter().enumerate() {
+        rows.push(row_of(t, true, k + 1 == queued.len()));
     }
+    rows.extend(tracks[split..].iter().map(|t| row_of(t, false, false)));
+    ui.set_context_rows(ModelRc::from(Rc::new(VecModel::from(rows))));
 }
 
-/// Generated rows for `--rows`, to measure what the list costs.
-///
-/// Note what this is *not*: a stand-in for the real library. That one never
-/// materialises every row — the tree only builds what is expanded, and a search
-/// is capped. Holding all of these at once is the worst case, on purpose.
 fn generated_rows(n: usize) -> Vec<LibraryRow> {
     (0..n)
         .map(|i| {

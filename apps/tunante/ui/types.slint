@@ -41,6 +41,10 @@ export struct QueueRow {
     title: string,
     subtitle: string,
     playing: bool,
+    // In the merged «Lista»: a prioritised (hand-queued) row, and the last of
+    // them — the one that carries the rule where the playlist resumes.
+    queued: bool,
+    divider: bool,
 }
 
 export struct PlaylistRow {

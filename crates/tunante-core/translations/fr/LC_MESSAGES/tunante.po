@@ -1174,3 +1174,6 @@ msgstr "Reprendre seulement si moins de"
 
 msgid "siempre"
 msgstr "toujours"
+
+msgid "Lista"
+msgstr "Liste"
