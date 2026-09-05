@@ -235,7 +235,12 @@ def bare_literals(used: set[str]) -> list[tuple[Path, int, str]]:
                 if unescape(lit) in ok or KEYS.match(lit):
                     continue
                 stmt = statement(text, pos)
-                if LOGGING.search(stmt) or "#[cfg(test)]" in text[max(0, pos - 4000):pos] and "mod tests" in text[max(0, pos - 4000):pos]:
+                if LOGGING.search(stmt):
+                    continue
+                # Test modules assert on strings; nobody reads them on screen.
+                # `#[cfg(test)]` or `#[cfg(all(test, …))]`, then `mod tests`.
+                before = text[max(0, pos - 6000):pos]
+                if "mod tests" in before and re.search(r"#\[cfg\((?:all\()?test\b", before):
                     continue
                 found.append((f, text.count("\n", 0, pos) + 1, lit))
     for f in sorted(ANDROID.rglob("*.kt")) + sorted(ANDROID.rglob("*.java")):
