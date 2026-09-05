@@ -78,6 +78,7 @@ public final class NativeBridge {
 
     public static native String nativeCoverProgress();
     public static native String nativeScanProgress();
+    public static native String nativeCancelScan();
 
     public static native void nativeCancelCovers();
 

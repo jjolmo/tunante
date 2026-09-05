@@ -170,6 +170,7 @@ export component AppWindow inherits Window {
     in property <int> scan-done;
     in property <int> scan-total;
     in property <int> scan-found;
+    callback scan-cancelled();
 
     callback picker-enter(int);
     callback picker-toggle(int);
@@ -1342,5 +1343,6 @@ export component AppWindow inherits Window {
         done: root.scan-done;
         total: root.scan-total;
         found: root.scan-found;
+        cancelled => { root.scan-cancelled(); }
     }
 }

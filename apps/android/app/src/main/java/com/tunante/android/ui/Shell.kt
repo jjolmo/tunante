@@ -304,7 +304,7 @@ data class ScanState(val done: Int, val total: Int, val found: Int)
  * nothing else can be done.
  */
 @Composable
-fun ScanOverlay(scan: ScanState) {
+fun ScanOverlay(scan: ScanState, onCancel: () -> Unit) {
     androidx.activity.compose.BackHandler(enabled = true) {}
     Box(
         Modifier
@@ -366,6 +366,21 @@ fun ScanOverlay(scan: ScanState) {
                 )
                 Spacer(Modifier.weight(1f))
                 Label(tr("{} pistas encontradas").replace("{}", "${scan.found}"), T.textSecondary, T.fontSmall)
+            }
+            Spacer(Modifier.height(12.dp))
+            // Cancel keeps what has been scanned so far and stops asking for more.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(T.radius))
+                        .background(T.bgTertiary)
+                        .clickable(onClick = onCancel)
+                        .heightIn(min = T.touchTarget - 8.dp)
+                        .padding(horizontal = 18.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Label(tr("Cancelar"), T.textPrimary, T.fontBody)
+                }
             }
         }
     }

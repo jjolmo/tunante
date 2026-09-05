@@ -650,6 +650,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Progress from the scanning thread. `None` means it finished.
     // (scanned, total, added) while it runs; `None` when it finishes.
     let (scan_tx, scan_rx) = std::sync::mpsc::channel::<Option<(usize, usize, usize)>>();
+    // Raised by the modal's "Cancelar"; every scan thread resets it as it starts
+    // and polls it per file.
+    let scan_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let cancel = scan_cancel.clone();
+        ui.on_scan_cancelled(move || cancel.store(true, std::sync::atomic::Ordering::Relaxed));
+    }
 
     // Register folders as roots and scan them. Shared by the phone picker, the
     // desktop onboarding and "Añadir carpeta" in Ajustes, so there is one way
@@ -658,6 +665,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let db = db.clone();
         let scan_tx = scan_tx.clone();
         let dbfile = dbfile.clone();
+        let scan_cancel = scan_cancel.clone();
         Rc::new(move |ui: &AppWindow, folders: Vec<PathBuf>, watch: bool| {
             if folders.is_empty() {
                 return;
@@ -677,13 +685,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // second writer is fine, and the alternative — scanning on the UI
             // thread — freezes the app for the length of a real collection.
             let (tx, dbfile) = (scan_tx.clone(), dbfile.clone());
+            let cancel = scan_cancel.clone();
+            cancel.store(false, std::sync::atomic::Ordering::Relaxed);
             std::thread::spawn(move || {
                 let Ok(db) = Database::new(&dbfile) else {
                     let _ = tx.send(None);
                     return;
                 };
                 for folder in folders {
-                    let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
+                    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        break;
+                    }
+                    let _ = tunante_helper::scan::scan_folder_cancellable(&db, &folder, &probe_opts(&db), &cancel, |p| {
                         let _ = tx.send(Some((p.scanned, p.total, p.added)));
                     });
                 }
@@ -3612,6 +3625,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db, dbfile, scan_tx) = (db.clone(), dbfile.clone(), scan_tx.clone());
+        let scan_cancel = scan_cancel.clone();
         let weak = ui.as_weak();
         ui.on_rescan(move || {
             let Some(ui) = weak.upgrade() else { return };
@@ -3626,13 +3640,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             ui.set_scan_status(tunante_core::i18n::tr("Analizando…").into());
             let (tx, dbfile) = (scan_tx.clone(), dbfile.clone());
+            let cancel = scan_cancel.clone();
+            cancel.store(false, std::sync::atomic::Ordering::Relaxed);
             std::thread::spawn(move || {
                 let Ok(db) = Database::new(&dbfile) else {
                     let _ = tx.send(None);
                     return;
                 };
                 for folder in folders {
-                    let _ = tunante_helper::scan::scan_folder_with(&db, &folder, &probe_opts(&db), |p| {
+                    if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        break;
+                    }
+                    let _ = tunante_helper::scan::scan_folder_cancellable(&db, &folder, &probe_opts(&db), &cancel, |p| {
                         let _ = tx.send(Some((p.scanned, p.total, p.added)));
                     });
                 }

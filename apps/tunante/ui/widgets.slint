@@ -745,6 +745,8 @@ export component ScanOverlay inherits Rectangle {
     in property <int> done;
     in property <int> total;
     in property <int> found;
+    // Cancel keeps what has been scanned so far and stops asking for more.
+    callback cancelled();
 
     background: #000000cc;
     TouchArea {}
@@ -811,6 +813,24 @@ export component ScanOverlay inherits Rectangle {
                     text: @tr("{} pistas encontradas", root.found);
                     color: Theme.text-secondary;
                     font-size: Theme.font-small;
+                }
+            }
+            HorizontalLayout {
+                alignment: end;
+                padding-top: 6px;
+                Rectangle {
+                    width: cxt.preferred-width + 28px;
+                    height: 28px;
+                    border-radius: 3px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+                    background: cxa.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    cxt := Text {
+                        text: @tr("Cancelar");
+                        color: Theme.text-primary;
+                        font-size: Theme.font-body;
+                    }
+                    cxa := TouchArea { clicked => { root.cancelled(); } }
                 }
             }
         }
