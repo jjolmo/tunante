@@ -1285,3 +1285,51 @@ msgstr "Não foi possível descarregar"
 
 msgid "session_handle ilegible: {}"
 msgstr "session_handle ilegível: {}"
+
+msgid "Bienvenido a Tunante"
+msgstr "Bem-vindo ao Tunante"
+
+msgid "Tres cosas y a escuchar. Todo se puede cambiar luego en Ajustes."
+msgstr "Três coisas e a ouvir. Tudo se pode mudar depois nas Definições."
+
+msgid "Tu música"
+msgstr "A tua música"
+
+msgid "Las carpetas que Tunante analiza; la biblioteca se construye a partir de ellas."
+msgstr "As pastas que o Tunante analisa; a biblioteca constrói-se a partir delas."
+
+msgid "Ninguna carpeta todavía."
+msgstr "Ainda nenhuma pasta."
+
+msgid "Añadir carpeta…"
+msgstr "Adicionar pasta…"
+
+msgid "Vigilar cambios en estas carpetas"
+msgstr "Vigiar alterações nestas pastas"
+
+msgid "Lo que copies ahí aparece solo, sin volver a analizar."
+msgstr "O que copiares para lá aparece sozinho, sem voltar a analisar."
+
+msgid "En línea"
+msgstr "Online"
+
+msgid "Descargar carátulas automáticamente"
+msgstr "Descarregar capas automaticamente"
+
+msgid "Busca en internet la carátula de lo que suena y de los discos que no la tienen."
+msgstr "Procura na internet a capa do que está a tocar e dos discos que não a têm."
+
+msgid "Buscar actualizaciones al arrancar"
+msgstr "Procurar atualizações ao arrancar"
+
+msgid "Una consulta a GitHub por arranque; nada se instala sin preguntar."
+msgstr "Um pedido ao GitHub por arranque; nada se instala sem perguntar."
+
+msgid "Ahora no"
+msgstr "Agora não"
+
+msgid "Empezar"
+msgstr "Começar"
+
+msgid "Elige tus carpetas de música"
+msgstr "Escolhe as tuas pastas de música"

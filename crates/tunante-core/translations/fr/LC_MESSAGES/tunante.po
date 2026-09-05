@@ -1285,3 +1285,51 @@ msgstr "Téléchargement impossible"
 
 msgid "session_handle ilegible: {}"
 msgstr "session_handle illisible : {}"
+
+msgid "Bienvenido a Tunante"
+msgstr "Bienvenue dans Tunante"
+
+msgid "Tres cosas y a escuchar. Todo se puede cambiar luego en Ajustes."
+msgstr "Trois choses, puis on écoute. Tout se change ensuite dans les Réglages."
+
+msgid "Tu música"
+msgstr "Votre musique"
+
+msgid "Las carpetas que Tunante analiza; la biblioteca se construye a partir de ellas."
+msgstr "Les dossiers que Tunante analyse ; la bibliothèque se construit à partir d'eux."
+
+msgid "Ninguna carpeta todavía."
+msgstr "Aucun dossier pour l'instant."
+
+msgid "Añadir carpeta…"
+msgstr "Ajouter un dossier…"
+
+msgid "Vigilar cambios en estas carpetas"
+msgstr "Surveiller les changements dans ces dossiers"
+
+msgid "Lo que copies ahí aparece solo, sin volver a analizar."
+msgstr "Ce que vous y copiez apparaît tout seul, sans réanalyser."
+
+msgid "En línea"
+msgstr "En ligne"
+
+msgid "Descargar carátulas automáticamente"
+msgstr "Télécharger les pochettes automatiquement"
+
+msgid "Busca en internet la carátula de lo que suena y de los discos que no la tienen."
+msgstr "Cherche sur internet la pochette de ce qui joue et des albums qui n'en ont pas."
+
+msgid "Buscar actualizaciones al arrancar"
+msgstr "Vérifier les mises à jour au démarrage"
+
+msgid "Una consulta a GitHub por arranque; nada se instala sin preguntar."
+msgstr "Une requête à GitHub par lancement ; rien ne s'installe sans demander."
+
+msgid "Ahora no"
+msgstr "Pas maintenant"
+
+msgid "Empezar"
+msgstr "Commencer"
+
+msgid "Elige tus carpetas de música"
+msgstr "Choisissez vos dossiers de musique"
