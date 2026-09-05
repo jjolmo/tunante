@@ -34,14 +34,18 @@ data class Playlist(val id: String, val name: String, val trackCount: Int)
 
 /** Which tab is showing. The same four mini has. */
 enum class Tab(val label: String) {
-    /** Mirrors the disk. Honest, and it makes you walk down to a game whose
-     *  name you already know — which is what the next two are for. */
-    Library("Árbol"),
+    // Declaration order is display order (the row walks `Tab.entries`), and
+    // it is the desktop's: Discos first, the tree last. Nothing here keys off
+    // the ordinal — every comparison is by name — so the order is free to be
+    // whatever the compact shell shows.
     Albums("Discos"),
+    Consoles("Consolas"),
     /** By the album tag rather than by folder: what the rip says it is from. */
     Games("Juegos"),
-    Consoles("Consolas"),
     Playlists("Listas"),
+    /** Mirrors the disk. Honest, and it makes you walk down to a game whose
+     *  name you already know — which is what the ones before it are for. */
+    Library("Árbol"),
 }
 
 /**
