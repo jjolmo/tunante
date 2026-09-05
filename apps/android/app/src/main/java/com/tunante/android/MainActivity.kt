@@ -592,8 +592,16 @@ class MainActivity : ComponentActivity() {
     private fun openPicker() {
         picking = true
         // Start where the roots are if there are any, so the common case is
-        // "add another folder next to the one I already use".
-        listDirs(roots.firstOrNull()?.substringBeforeLast('/') ?: "")
+        // "add another folder next to the one I already use". With none, start
+        // at *this user's* external storage rather than letting the native side
+        // fall back to /storage/emulated/0: on a multi-user device (Android
+        // Automotive runs the driver as user 10) that path belongs to someone
+        // else, the listing comes back empty, and the picker shows a header
+        // over nothing.
+        listDirs(
+            roots.firstOrNull()?.substringBeforeLast('/')
+                ?: Environment.getExternalStorageDirectory().absolutePath
+        )
     }
 
     private fun listDirs(path: String) {
