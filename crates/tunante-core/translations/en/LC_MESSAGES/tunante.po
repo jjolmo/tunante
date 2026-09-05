@@ -1168,3 +1168,9 @@ msgstr "Are you sure?"
 
 msgid "Abrir"
 msgstr "Open"
+
+msgid "Reanudar si han pasado menos de"
+msgstr "Resume only if less than"
+
+msgid "siempre"
+msgstr "always"

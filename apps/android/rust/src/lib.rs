@@ -334,6 +334,12 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRestoreSessio
         let guard = DB.lock().unwrap();
         let db = guard.as_ref().ok_or("nativeRestoreSession before nativeOpenDb")?;
         let saved = tunante_core::Session::load(db);
+        // Read before `track_path` is moved out of `saved` below. Past the
+        // configured hours the list still comes back, on the track, but from
+        // the start and paused: a mid-song resume a day later is noise, not
+        // memory (cidwel, 2026-09-05; default 6 h, in settings).
+        let fresh = saved.resume_allowed(db);
+        let scope = saved.scope.clone();
 
         let mut engine = ENGINE.lock().unwrap();
         let engine = engine.as_mut().ok_or("nativeRestoreSession before nativeInit")?;
@@ -369,7 +375,8 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRestoreSessio
         // Propagating that error meant every single launch tried it, failed,
         // and left the queue holding a track that could never play. Forever,
         // because nothing ever overwrote the saved position.
-        if let Err(e) = engine.restore(tracks, index, saved.position_ms) {
+        let position = if fresh { saved.position_ms } else { 0 };
+        if let Err(e) = engine.restore(tracks, index, position) {
             log::warn!("not resuming {path}: {e}");
             engine.stop();
             engine.set_tracks(Vec::new());
@@ -377,8 +384,8 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeRestoreSessio
                                           "reason": e })
             .to_string());
         }
-        log::info!("resumed {path} at {} ms, paused", saved.position_ms);
-        Ok(serde_json::json!({ "ok": true, "restored": true }).to_string())
+        log::info!("resumed {path} at {position} ms, paused{}", if fresh { "" } else { " (stale session: position dropped)" });
+        Ok(serde_json::json!({ "ok": true, "restored": true, "fresh": fresh, "scope": scope, "path": path }).to_string())
     })()
     .unwrap_or_else(fail);
     env.new_string(out).expect("new_string")
@@ -412,6 +419,14 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeSaveSession(
         engine.repeat() as u8,
         engine.loops(),
         engine.fade_ms() / 1000,
+        // Android has no scope object yet: the list a track came from is its
+        // folder, which is also what nativeRestoreSession rebuilds.
+        engine
+            .current_path()
+            .as_deref()
+            .and_then(|p| Path::new(p.split('#').next().unwrap_or(p)).parent())
+            .map(|d| format!("folder:{}", d.to_string_lossy()))
+            .as_deref(),
     );
 }
 
@@ -928,6 +943,38 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCycleLoops(
 }
 
 /// Cycle the fade at the end of a looping track: none, 4, 8, 15 seconds.
+/// Cycle "resume only if less than N hours passed": 3 → 6 → 12 → 24 → always (0).
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCycleResumeHours(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    let guard = DB.lock().unwrap();
+    let Some(db) = guard.as_ref() else { return tunante_core::session::DEFAULT_RESUME_MAX_HOURS as jint };
+    let next = match tunante_core::session::resume_max_hours(db) {
+        3 => 6,
+        6 => 12,
+        12 => 24,
+        24 => 0,
+        _ => 3,
+    };
+    let _ = db.set_setting(tunante_core::session::KEY_RESUME_MAX_HOURS, &next.to_string());
+    next as jint
+}
+
+/// The current value of that setting, for the settings row.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeResumeHours(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    let guard = DB.lock().unwrap();
+    guard
+        .as_ref()
+        .map(|db| tunante_core::session::resume_max_hours(db) as jint)
+        .unwrap_or(tunante_core::session::DEFAULT_RESUME_MAX_HOURS as jint)
+}
+
 #[no_mangle]
 pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeCycleFade(
     _env: JNIEnv,

@@ -143,6 +143,12 @@ public final class NativeBridge {
     /** none -> 4 -> 8 -> 15 seconds. */
     public static native void nativeCycleFade();
 
+    /** "Resume only if less than N hours passed": cycle 3 → 6 → 12 → 24 → 0 (always); returns the new value. */
+    public static native int nativeCycleResumeHours();
+
+    /** The current value of that setting (0 = always). */
+    public static native int nativeResumeHours();
+
     /** Everything waiting, in order. */
     public static native String nativeQueue();
 

@@ -83,6 +83,8 @@ export component SettingsTab inherits Rectangle {
     callback toggle-continue-queue();
     in-out property <bool> resume-on-open;
     callback toggle-resume-on-open();
+    in property <int> resume-max-hours: 6;
+    callback cycle-resume-hours();
     in property <int> loop-max-mins;
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
@@ -235,6 +237,14 @@ export component SettingsTab inherits Rectangle {
             value: root.resume-on-open ? @tr("sí") : @tr("no");
             highlighted: root.resume-on-open;
             clicked => { root.toggle-resume-on-open(); }
+        }
+        // How long a saved position stays worth resuming. Past it the list
+        // and the track come back, but from the start: a mid-song resume a
+        // day later is noise, not memory. 6 h by default (cidwel, 2026-09-05).
+        SettingRow {
+            label: @tr("Reanudar si han pasado menos de");
+            value: root.resume-max-hours == 0 ? @tr("siempre") : (root.resume-max-hours + " h");
+            clicked => { root.cycle-resume-hours(); }
         }
         // Applies from the next scan: existing rows keep the durations they
         // were sealed with.

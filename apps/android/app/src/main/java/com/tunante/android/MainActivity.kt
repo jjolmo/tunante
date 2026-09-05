@@ -67,6 +67,10 @@ class MainActivity : ComponentActivity() {
      * starts there too.
      */
     private var dest by mutableStateOf(Dest.Library)
+    /** The track the library should scroll to once its rows are in: the one the session resumed. */
+    private var revealPath by mutableStateOf("")
+    /** "Resume only if less than N hours passed"; 0 = always. Read once the DB is open. */
+    private var resumeHours by mutableStateOf(6)
     private var queue by mutableStateOf(emptyList<Track>())
 
 
@@ -96,7 +100,19 @@ class MainActivity : ComponentActivity() {
         browse("")
         reloadPlaylists()
         reloadRoots()
-        Log.i(TAG, "session: " + NativeBridge.nativeRestoreSession())
+        resumeHours = NativeBridge.nativeResumeHours()
+        val session = JSONObject(NativeBridge.nativeRestoreSession())
+        Log.i(TAG, "session: $session")
+        // Back to the list the track came from, on the track (cidwel,
+        // 2026-09-05). Today Android's scope is the track's folder; a folder
+        // that no longer exists falls back to the root of the tree.
+        val scope = session.optString("scope")
+        if (session.optBoolean("restored") && scope.startsWith("folder:")) {
+            val folder = scope.removePrefix("folder:")
+            revealPath = session.optString("path")
+            switchTab(Tab.Library)
+            if (java.io.File(folder).isDirectory) browse(folder) else browse("")
+        }
 
         setContent {
             TunanteTheme {
@@ -142,6 +158,7 @@ class MainActivity : ComponentActivity() {
                     onEnqueue = { NativeBridge.nativeEnqueue(it.path) },
                     onRemoveFromPlaylist = ::removeFromPlaylist,
                     view = view,
+                    revealPath = revealPath,
                     state = state,
                     hasAllFiles = hasFiles,
                     onGrantFiles = ::requestAllFiles,
@@ -167,6 +184,8 @@ class MainActivity : ComponentActivity() {
                     onSeek = { NativeBridge.nativeSeek(it) },
                     onLoops = { NativeBridge.nativeCycleLoops() },
                     onFade = { NativeBridge.nativeCycleFade() },
+                    resumeHours = resumeHours,
+                    onResumeHours = { resumeHours = NativeBridge.nativeCycleResumeHours() },
                 )
             }
         }

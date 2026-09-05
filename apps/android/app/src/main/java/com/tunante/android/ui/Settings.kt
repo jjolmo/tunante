@@ -31,6 +31,8 @@ fun SettingsScreen(
     roots: List<String>,
     onLoops: () -> Unit,
     onFade: () -> Unit,
+    resumeHours: Int,
+    onResumeHours: () -> Unit,
     onSleep: (Int) -> Unit,
     onScan: () -> Unit,
     onPickFolders: () -> Unit,
@@ -45,6 +47,14 @@ fun SettingsScreen(
             tr("Fundido final"),
             if (state.fadeSeconds == 0) tr("sin fundido") else "${state.fadeSeconds} s",
             onClick = onFade,
+        )
+        // How long a saved position stays worth resuming. Past it the app still
+        // reopens the list you were in, on the track you were on, but starts
+        // clean instead of mid-song. Decided with cidwel: 6 h by default.
+        SettingRow(
+            tr("Reanudar si han pasado menos de"),
+            if (resumeHours == 0) tr("siempre") else "$resumeHours h",
+            onClick = onResumeHours,
         )
 
         Rule()

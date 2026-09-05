@@ -769,6 +769,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Restore the last session -------------------------------------------
     let saved = session::Session::load(&db);
+    // Kept aside: `saved` is shadowed further down, and the list reopens later.
+    let saved_scope: Option<String> = saved.scope.clone();
     ui.set_volume(saved.volume);
     ui.set_shuffle(saved.shuffle);
     ui.set_repeat(saved.repeat as i32);
@@ -875,18 +877,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .map(|v| v == "true")
                     .unwrap_or(false)
                     && db.get_setting("mini.was_playing").ok().flatten().as_deref() == Some("true")
-                    && db
-                        .get_setting("mini.closed_at")
-                        .ok()
-                        .flatten()
-                        .and_then(|v| v.parse::<u64>().ok())
-                        .zip(
-                            std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .ok()
-                                .map(|d| d.as_secs()),
-                        )
-                        .is_some_and(|(closed, now)| now.saturating_sub(closed) < 300);
+                    // Used to be five minutes, hard-coded. Now the configurable
+                    // "resume only if less than N hours passed" (default 6;
+                    // 0 = always) — a mid-song resume a day later is noise.
+                    && saved.resume_allowed(&db);
                 if let Some(p) = player.borrow_mut().as_mut() {
                     p.set_tracks(tracks.clone());
                     if p.play_index(start).is_ok() {
@@ -998,6 +992,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // back to that exact list — Favoritos to Favoritos, a console to its console
     // — and not to a generic "what's playing" view.
     let played_scope: Rc<RefCell<Scope>> = Rc::new(RefCell::new(Scope::Library));
+    // Back to the list the resumed track came from — Favoritos, a playlist, a
+    // console, a game, a folder — on both shells (cidwel, 2026-09-05). The
+    // desktop reuses the "click the now-playing name" path, which opens the
+    // table on that scope and centres the track; the compact shell switches
+    // the library tab and walks into the collection.
+    if let Some(scope) = saved_scope.as_deref().and_then(|s| scope_from_session(s, &db)) {
+        *played_scope.borrow_mut() = scope.clone();
+        if ui.get_desktop() {
+            ui.invoke_now_clicked();
+        } else {
+            let mut t = tree.borrow_mut();
+            match &scope {
+                Scope::Console(id) => { t.mode = library::Mode::Consoles; t.nav.push(format!("consola:{id}")); ui.set_library_mode(2); }
+                Scope::Game(name) => { t.mode = library::Mode::Games; t.nav.push(format!("juego:{name}")); ui.set_library_mode(3); }
+                Scope::Playlist { id, .. } => { t.mode = library::Mode::Playlists; t.nav.push(id.clone()); ui.set_library_mode(4); }
+                Scope::Folder(p) => { t.mode = library::Mode::Tree; t.nav.push(p.clone()); ui.set_library_mode(0); }
+                _ => {}
+            }
+            drop(t);
+            refresh_library(&ui, &tree, &db, &views);
+        }
+    }
     // The search box's latest text, flushed to the database by the timer —
     // a write per keystroke would be noise, the old app debounced too.
     let pending_search: Rc<RefCell<Option<String>>> = Rc::new(RefCell::new(None));
@@ -4014,6 +4030,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = db.set_setting("resume_playback_on_open", if next { "true" } else { "false" });
         });
     }
+    ui.set_resume_max_hours(tunante_core::session::resume_max_hours(&db) as i32);
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_cycle_resume_hours(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // 3 → 6 → 12 → 24 → siempre (0) → 3.
+            let next = match ui.get_resume_max_hours() { 3 => 6, 6 => 12, 12 => 24, 24 => 0, _ => 3 };
+            ui.set_resume_max_hours(next);
+            let _ = db.set_setting(tunante_core::session::KEY_RESUME_MAX_HOURS, &next.to_string());
+        });
+    }
     {
         let (db, weak) = (db.clone(), ui.as_weak());
         ui.on_cycle_loop_max(move || {
@@ -4954,6 +4981,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
+        let played_scope_t = played_scope.clone();
         let mut ticks: u64 = 0;
         let weak = ui.as_weak();
         timer.start(
@@ -5677,6 +5705,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // back, rather than two halves that can disagree.
                         ui.get_loop_count().max(0) as u32,
                         ui.get_fade_seconds().max(0) as u64,
+                        // Where the track came from, so reopening lands on the
+                        // same list (cidwel, 2026-09-05).
+                        scope_to_session(&played_scope_t.borrow()).as_deref(),
                     );
                 }
 
@@ -6422,6 +6453,46 @@ impl Scope {
             _ => ("", ""),
         }
     }
+}
+
+/// The played scope as the session stores it: `kind:payload`, or None for
+/// the whole library (nothing to reopen).
+fn scope_to_session(scope: &Scope) -> Option<String> {
+    Some(match scope {
+        Scope::Library => return None,
+        Scope::Faved => "faved".to_string(),
+        Scope::Folder(p) => format!("folder:{p}"),
+        Scope::Console(id) => format!("console:{id}"),
+        Scope::Playlist { id, .. } => format!("playlist:{id}"),
+        Scope::Queue { .. } => "queue".to_string(),
+        Scope::Game(name) => format!("game:{name}"),
+    })
+}
+
+/// Back from the session string. Playlists reload their ids; a playlist or a
+/// folder that no longer exists gives None, and the caller stays on the
+/// library rather than opening an empty table.
+fn scope_from_session(s: &str, db: &Database) -> Option<Scope> {
+    if s == "faved" {
+        return Some(Scope::Faved);
+    }
+    if s == "queue" {
+        return Some(Scope::Queue { paths: Vec::new() });
+    }
+    if let Some(p) = s.strip_prefix("folder:") {
+        return std::path::Path::new(p).is_dir().then(|| Scope::Folder(p.to_string()));
+    }
+    if let Some(id) = s.strip_prefix("console:") {
+        return Some(Scope::Console(id.to_string()));
+    }
+    if let Some(name) = s.strip_prefix("game:") {
+        return Some(Scope::Game(name.to_string()));
+    }
+    if let Some(id) = s.strip_prefix("playlist:") {
+        let tracks = db.get_playlist_tracks(id).ok()?;
+        return Some(Scope::Playlist { ids: tracks.iter().map(|t| t.id.clone()).collect(), id: id.to_string() });
+    }
+    None
 }
 
 struct TableState {

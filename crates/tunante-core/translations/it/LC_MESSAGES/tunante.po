@@ -1168,3 +1168,9 @@ msgstr "Sicuro?"
 
 msgid "Abrir"
 msgstr "Apri"
+
+msgid "Reanudar si han pasado menos de"
+msgstr "Riprendi solo se sono passate meno di"
+
+msgid "siempre"
+msgstr "sempre"

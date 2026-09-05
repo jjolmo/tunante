@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -118,6 +119,7 @@ fun TunanteApp(
     onEnqueue: (Track) -> Unit,
     onRemoveFromPlaylist: (Playlist, Track) -> Unit,
     view: LibraryView,
+    revealPath: String,
     state: PlayerState,
     hasAllFiles: Boolean,
     onGrantFiles: () -> Unit,
@@ -140,6 +142,8 @@ fun TunanteApp(
     onSeek: (Long) -> Unit,
     onLoops: () -> Unit,
     onFade: () -> Unit,
+    resumeHours: Int,
+    onResumeHours: () -> Unit,
     onEnqueueRow: (String, Boolean) -> Unit,
     onAddRowToPlaylist: (Playlist, String, Boolean) -> Unit,
     onNewPlaylistWithRow: (String, String, Boolean) -> Unit,
@@ -214,6 +218,8 @@ fun TunanteApp(
                     roots = roots,
                     onLoops = onLoops,
                     onFade = onFade,
+                    resumeHours = resumeHours,
+                    onResumeHours = onResumeHours,
                     onSleep = onSleep,
                     onScan = onScan,
                     onDownloadCovers = onDownloadCovers,
@@ -224,7 +230,7 @@ fun TunanteApp(
                     tab, onTab, playlists, openPlaylist, playlistTracks, onOpenPlaylist,
                     onClosePlaylist, onCreatePlaylist, onDeletePlaylist, onPlayPlaylistIndex,
                     onRenamePlaylist, onMovePlaylist, onEnqueuePlaylist, onEnqueueTrack,
-                    onEnqueue, onRemoveFromPlaylist, view, state, hasAllFiles, onGrantFiles,
+                    onEnqueue, onRemoveFromPlaylist, view, revealPath, state, hasAllFiles, onGrantFiles,
                     onQuery, onOpenFolder, onUp, onPlayIndex, { adding = it },
                     { menuFor = it },
                 )
@@ -310,6 +316,7 @@ private fun Library(
     onEnqueue: (Track) -> Unit,
     onRemoveFromPlaylist: (Playlist, Track) -> Unit,
     view: LibraryView,
+    revealPath: String,
     state: PlayerState,
     hasAllFiles: Boolean,
     onGrantFiles: () -> Unit,
@@ -382,7 +389,14 @@ private fun Library(
                     onOpenFolder(it.path)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                // Scroll to the track the session resumed, once the rows are in:
+                // the list you were in, on the track you were on.
+                val listState = rememberLazyListState()
+                LaunchedEffect(revealPath, tracks.size, folders.size) {
+                    val i = tracks.indexOfFirst { it.path == revealPath }
+                    if (i >= 0) listState.scrollToItem(folders.size + i)
+                }
+                LazyColumn(Modifier.fillMaxSize(), state = listState) {
                     // Folders first, then what is loose in this one. The order
                     // matters for the index handed to onPlayIndex: it counts
                     // tracks only, so the queue and the list agree.
