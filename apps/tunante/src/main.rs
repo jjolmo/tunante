@@ -5072,10 +5072,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if art_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
                     ui.set_cover_busy(false);
                     art_cache.borrow_mut().clear();
+                    // `art_seen` is the other half of that memory: it is what
+                    // stops a rebuild from asking twice. Forgetting the cache
+                    // without forgetting it left every folder marked as already
+                    // requested and nothing left to answer with, so the whole
+                    // grid went blank until the app was restarted — and this
+                    // fires on ordinary playback, every time auto-covers looks
+                    // for the playing track's art. The two are cleared together.
+                    views.art_seen.borrow_mut().clear();
                     let path = ui.get_now_path().to_string();
                     refresh_artwork(&ui, (!path.is_empty()).then_some(path.as_str()), MAX_ART_SIDE);
-                    let rows = tree.borrow().rows(&db);
-                    rows_model.set_vec(to_ui_rows(&rows));
+                    // The whole view, not just the rows: a grid only re-asks for
+                    // its covers while its cards are being built.
+                    refresh_library(&ui, &tree, &db, &views);
                 }
 
                 // Following the system: the watcher thread refreshed its
