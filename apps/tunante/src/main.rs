@@ -1062,6 +1062,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         play_from_path(&ui, &db, &player, &queue_model, &path.to_string_lossy());
     }
 
+    // The scope a track was played from, so clicking the now-playing name jumps
+    // back to that exact list — Favoritos to Favoritos, a console to its console
+    // — and not to a generic "what's playing" view.
+    let played_scope: Rc<RefCell<Scope>> = Rc::new(RefCell::new(Scope::Library));
+
     // --- Library: open a folder, or play a track -----------------------------
     {
         let (tree, db, rows_model, player, queue_model, views) = (
@@ -1072,6 +1077,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             queue_model.clone(),
             views.clone(),
         );
+        let played_scope_l = played_scope.clone();
         let weak = ui.as_weak();
 
         ui.on_library_activated(move |index| {
@@ -1108,18 +1114,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
+            // The folder the file sits in, worked out once: it is both the
+            // queue and the list to come back to.
+            let folder = std::path::Path::new(&path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+
             let tracks = match &open_playlist {
                 Some(id) => db.get_playlist_tracks(id).unwrap_or_default(),
                 // Playing a track makes its folder the queue, which is what
                 // anyone expects: tapping one song from an album queues the
                 // album.
-                None => {
-                    let folder = std::path::Path::new(&path)
-                        .parent()
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-                    db.get_tracks_by_folder(&folder).unwrap_or_default()
-                }
+                None => db.get_tracks_by_folder(&folder).unwrap_or_default(),
+            };
+
+            // Where this was played FROM. Every other way into the player sets
+            // this; the tree never did, so the scope kept whatever the last
+            // console or playlist had left in it and clicking the name in the
+            // transport walked off to a list nobody had opened for an hour.
+            *played_scope_l.borrow_mut() = match &open_playlist {
+                Some(id) => Scope::Playlist {
+                    ids: tracks.iter().map(|t| t.id.clone()).collect(),
+                    id: id.clone(),
+                },
+                None => Scope::Folder(folder),
             };
             // By path and not by the row index: with the search box narrowing the
             // rows, index `i` addresses the filtered list while the context here
@@ -1147,10 +1166,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table_model = Rc::new(VecModel::from(Vec::<TableRow>::new()));
     ui.set_table_rows(ModelRc::from(table_model.clone()));
     let table_state = Rc::new(RefCell::new(TableState::default()));
-    // The scope a track was played from, so clicking the now-playing name jumps
-    // back to that exact list — Favoritos to Favoritos, a console to its console
-    // — and not to a generic "what's playing" view.
-    let played_scope: Rc<RefCell<Scope>> = Rc::new(RefCell::new(Scope::Library));
     // Back to the list the resumed track came from — Favoritos, a playlist, a
     // console, a game, a folder — on both shells (cidwel, 2026-09-05). The
     // desktop reuses the "click the now-playing name" path, which opens the
