@@ -141,6 +141,36 @@ component HeaderCell inherits Rectangle {
     }
 }
 
+// One line of the app's own context menu.
+//
+// Slint will happily hand a right-click to the platform's menu, and that is
+// what this file used to do. But the platform draws it with the platform's
+// font and the platform's antialiasing, and neither is the one every list in
+// this window is drawn with — the menu arrived looking blurred and foreign
+// against the rows it was opened from. Drawing it here costs a component and
+// buys back the same typeface, sizes and colours as everything around it,
+// which is the rule the rest of this UI already follows.
+component MenuRow inherits Rectangle {
+    in property <string> label;
+    callback chosen();
+    height: 26px;
+    background: mt.has-hover ? Theme.bg-selected : transparent;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 14px;
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    mt := TouchArea {
+        clicked => { root.chosen(); }
+    }
+}
+
 export component TrackTable inherits Rectangle {
     in property <[TableRow]> rows;
     in property <[TableColumn]> columns;
@@ -526,6 +556,11 @@ export component TrackTable inherits Rectangle {
 
             for row[i] in root.rows: Rectangle {
                 property <bool> playing: row.path == root.now-path;
+                // Where the context menu should open: the pointer, taken at
+                // the moment of the right-click. Per row, so no two of them
+                // can disagree about it.
+                property <length> menu-x;
+                property <length> menu-y;
                 // Desktop matches the old Tauri TrackList: 26px rows, 12px cells.
                 height: root.row-h;
                 background: row.selected ? Theme.bg-selected
@@ -566,6 +601,11 @@ export component TrackTable inherits Rectangle {
                             if (ev.button == PointerEventButton.right && !row.selected) {
                                 root.row-clicked(i, false, false);
                             }
+                            if (ev.button == PointerEventButton.right) {
+                                parent.menu-x = self.mouse-x;
+                                parent.menu-y = self.mouse-y;
+                                menu.show();
+                            }
                             if (ev.button == PointerEventButton.middle) {
                                 root.row-middle-clicked(i);
                             }
@@ -574,57 +614,80 @@ export component TrackTable inherits Rectangle {
                     double-clicked => { root.activated(i); }
                 }
 
-                // Right-click, the desktop's other verb. Slint's native menu:
-                // it draws with the platform, not with our rectangles.
-                ContextMenuArea {
-                    Menu {
-                        MenuItem {
-                            title: @tr("Reproducir");
-                            activated => { root.activated(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Reproducir a continuación");
-                            activated => { root.play-next(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Encolar");
-                            activated => { root.enqueued(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Quitar de la cola");
-                            activated => { root.row-middle-clicked(i); }
-                        }
-                        if root.playlist-scope: MenuItem {
-                            title: @tr("Quitar de la lista");
-                            activated => { root.remove-from-playlist(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Añadir a lista…");
-                            activated => { root.add-to-playlist(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Editar metadatos…");
-                            activated => { root.edit-requested(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Reclasificar…");
-                            activated => { root.reclassify-requested(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Nombres de pistas…");
-                            activated => { root.names-requested(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Buscar carátula…");
-                            activated => { root.cover-requested(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Abrir carpeta");
-                            activated => { root.open-folder(i); }
-                        }
-                        MenuItem {
-                            title: @tr("Fijar carpeta");
-                            activated => { root.pin-folder(i); }
+                // Right-click, the desktop's other verb — drawn here now
+                // instead of handed to the platform, so it wears the same font
+                // as the rows behind it. See MenuRow for why that changed.
+                //
+                // Every entry reports before it closes. Closing tears down this
+                // popup's own element tree, and a callback emitted after that
+                // has nothing left to read its argument from — the exact bug
+                // that left every drop-down in the settings dialog silently
+                // doing nothing at all.
+                menu := PopupWindow {
+                    x: parent.menu-x;
+                    y: parent.menu-y;
+                    width: 240px;
+                    close-policy: close-on-click-outside;
+                    Rectangle {
+                        background: Theme.bg-secondary;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        border-radius: 3px;
+                        drop-shadow-blur: 12px;
+                        drop-shadow-color: #00000099;
+                        VerticalLayout {
+                            padding: 3px;
+                            MenuRow {
+                                label: @tr("Reproducir");
+                                chosen => { root.activated(i); menu.close(); }
+                            }
+                            MenuRow {
+                                label: @tr("Reproducir a continuación");
+                                chosen => { root.play-next(i); menu.close(); }
+                            }
+                            if row.queue-pos == "": MenuRow {
+                                label: @tr("Encolar");
+                                chosen => { root.enqueued(i); menu.close(); }
+                            }
+                            if row.queue-pos != "": MenuRow {
+                                label: @tr("Quitar de la cola");
+                                chosen => { root.row-middle-clicked(i); menu.close(); }
+                            }
+                            if root.playlist-scope: MenuRow {
+                                label: @tr("Quitar de la lista");
+                                chosen => { root.remove-from-playlist(i); menu.close(); }
+                            }
+                            MenuRow {
+                                label: @tr("Añadir a lista…");
+                                chosen => { root.add-to-playlist(i); menu.close(); }
+                            }
+                            MenuRow {
+                                label: @tr("Editar metadatos…");
+                                chosen => { root.edit-requested(i); menu.close(); }
+                            }
+                            MenuRow {
+                                label: @tr("Reclasificar…");
+                                chosen => { root.reclassify-requested(i); menu.close(); }
+                            }
+                            // Hidden for now, not removed: the entry and the
+                            // `names-requested` callback behind it are intact,
+                            // so bringing it back is uncommenting these lines.
+                            // MenuRow {
+                            //     label: @tr("Nombres de pistas…");
+                            //     chosen => { root.names-requested(i); menu.close(); }
+                            // }
+                            MenuRow {
+                                label: @tr("Buscar carátula…");
+                                chosen => { root.cover-requested(i); menu.close(); }
+                            }
+                            MenuRow {
+                                label: @tr("Abrir carpeta");
+                                chosen => { root.open-folder(i); menu.close(); }
+                            }
+                            MenuRow {
+                                label: @tr("Fijar carpeta");
+                                chosen => { root.pin-folder(i); menu.close(); }
+                            }
                         }
                     }
                 }
