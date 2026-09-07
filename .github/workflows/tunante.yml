@@ -774,6 +774,11 @@ jobs:
           # The container is root and /out is bind-mounted from the host:
           # without this the runner's user cannot read them to upload.
           chmod a+r /out/*.apk
+          # And the directory, not only the files in it. Renaming a file is a
+          # write to its *directory*, so a+r on the packages alone left the
+          # rename below failing with "Permission denied" on a name the step
+          # had every right to read.
+          chmod a+rwx /out
           ls -l /out
           ALPINE
 
