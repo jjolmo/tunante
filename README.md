@@ -1,6 +1,6 @@
 # Tunante
 
-![Tunante Screenshot](screenshot.png)
+![Tunante: a Secret of Mana soundtrack filtered in the track table, consoles counted down the sidebar, and the cover in the transport bar](screenshot.png)
 
 *I have codevibed this to understand how replaceable I am as a programmer.*
 
