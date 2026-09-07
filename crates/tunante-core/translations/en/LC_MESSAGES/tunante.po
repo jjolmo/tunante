@@ -1357,3 +1357,6 @@ msgstr "Install v{}"
 
 msgid "v{} disponible"
 msgstr "v{} available"
+
+msgid "Otros"
+msgstr "Others"

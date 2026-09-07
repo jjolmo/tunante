@@ -91,6 +91,11 @@ fn juegos(n: usize) -> String {
 // Everything with no console is grouped rather than dropped: the point of this
 // view is to reach music, and hiding a third of the library because it is an
 // mp3 would defeat it.
+// `label_es` is the *source* string, not the shown one: console names are
+// Spanish in the catalogue and reach the screen through `tr()`, exactly as
+// every other string here does. Calling it without translating is what left
+// "Otros" sitting in Spanish in an English sidebar while the same bucket read
+// correctly everywhere main.rs painted it.
 pub use tunante_core::console::{
     display_order as console_order, key_of as console_key, label_es as console_label,
 };
@@ -421,7 +426,7 @@ impl Tree {
             let total: usize = albums.values().sum();
 
             out.push(Row {
-                label: console_label(&console).to_string(),
+                label: tunante_core::i18n::tr(console_label(&console)),
                 detail: format!("{} · {}", juegos(albums.len()), pistas(total)),
                 depth: 0,
                 is_folder: true,
@@ -737,7 +742,7 @@ impl Tree {
                     consolas
                         .into_iter()
                         .map(|(c, (_juegos_n, pistas_n))| Cell {
-                            title: console_label(&c).to_string(),
+                            title: tunante_core::i18n::tr(console_label(&c)),
                             // Sólo las pistas: "4 juegos · 489 pistas" no cabe
                             // en una tarjeta de tres columnas y se cortaba en
                             // "489 pista". Cuántos juegos hay se ve al entrar.
@@ -841,7 +846,7 @@ impl Tree {
         let mut out: Vec<(String, String, usize)> = acc
             .into_iter()
             .map(|(c, n)| {
-                let label = console_label(&c).to_string();
+                let label = tunante_core::i18n::tr(console_label(&c));
                 (c, label, n)
             })
             .collect();
