@@ -196,8 +196,15 @@ component Combo inherits Rectangle {
                     }
                     ot := TouchArea {
                         clicked => {
-                            pop.close();
+                            // Report first, close second. Closing the popup
+                            // tears down this very `for` body, and with it the
+                            // `o`/`i` the argument is read from — so a close
+                            // that came first left the callback with nothing to
+                            // send, and every drop-down in this dialog silently
+                            // did nothing. The database had no row for a single
+                            // one of them.
                             root.picked(root.keys.length > 0 ? root.keys[i] : o);
+                            pop.close();
                         }
                     }
                 }
@@ -291,8 +298,6 @@ export component DesktopSettings inherits Rectangle {
     callback toggle-titlebar-track();
     in property <string> album-game-label;
     callback toggle-album-game();
-    in property <bool> show-cover;
-    callback toggle-show-cover();
     in property <bool> show-faved;
     callback toggle-show-faved();
     in property <bool> show-folders;
@@ -963,7 +968,6 @@ export component DesktopSettings inherits Rectangle {
                                 }
                                 Group {
                                     title: @tr("Secciones del sidebar");
-                                    Check { label: @tr("Carátula del reproductor"); checked: root.show-cover; toggled => { root.toggle-show-cover(); } }
                                     Check { label: @tr("Favoritos"); checked: root.show-faved; toggled => { root.toggle-show-faved(); } }
                                     Check { label: @tr("Carpetas"); checked: root.show-folders; toggled => { root.toggle-show-folders(); } }
                                     Check { label: @tr("Consolas (acceso rápido)"); checked: root.show-consoles; toggled => { root.toggle-show-consoles(); } }

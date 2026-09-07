@@ -22,8 +22,6 @@ export component SettingsTab inherits Rectangle {
     callback toggle-titlebar-track();
     in property <string> album-game-label;
     callback toggle-album-game();
-    in property <bool> show-cover;
-    callback toggle-show-cover();
     in property <bool> show-faved;
     callback toggle-show-faved();
     in property <bool> show-folders;
@@ -509,12 +507,6 @@ export component SettingsTab inherits Rectangle {
         Rectangle { height: 1px; background: Theme.border; }
 
         // Which sidebar sections earn their pixels — the old Appearance tab.
-        SettingRow {
-            label: @tr("Carátula en el sidebar");
-            value: root.show-cover ? @tr("sí") : @tr("no");
-            highlighted: root.show-cover;
-            clicked => { root.toggle-show-cover(); }
-        }
         SettingRow {
             label: @tr("Favoritos en el sidebar");
             value: root.show-faved ? @tr("sí") : @tr("no");
