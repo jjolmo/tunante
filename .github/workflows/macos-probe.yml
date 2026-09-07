@@ -9,18 +9,23 @@ name: macOS probe
 # explicit macOS ones — but "looks ready" is not an answer, and nobody here has
 # a Mac to ask.
 #
-# So this job asks CI instead, and asks one question only: does it build. It
-# packages nothing, attaches nothing to a release, and runs on no trigger of its
-# own. When it comes out green twice in a row it belongs in tunante.yml as a
+# So this job asks CI instead. It started by asking one question only — does it
+# build — and now also assembles the .app, because "it compiles" and "there is
+# something a Mac can open" turned out to be two different questions. It still
+# attaches nothing to a release and runs on no trigger of its own. When it comes out green twice in a row it belongs in tunante.yml as a
 # real job next to Windows; while it is red it stays here, where a failure
 # costs nothing and blocks nobody.
 #
 # What it deliberately does NOT prove:
 #   * that the binary launches (a CI runner has no session to open a window in)
 #   * that anything is audible (no audio device either)
-#   * that a library can be added at all — pick() in filedialog.rs is the stub
-#     on macOS, so the folder dialog returns an error. That is the known gap,
-#     and it is the next thing to fix if this comes out green.
+#   * that the folder dialog actually opens. filedialog.rs now has a macOS arm
+#     that hands NSOpenPanel to the event loop, since AppKit refuses it from any
+#     other thread, but a headless runner cannot prove a panel appears.
+#
+# Nothing here is signed or notarised. Gatekeeper will therefore refuse the
+# bundle on first launch until it is opened once with right-click -> Open. That
+# is the price of not having a $99/year Apple Developer account, not a defect.
 
 on:
   workflow_dispatch:
@@ -89,3 +94,60 @@ jobs:
             lipo -info "$bin"
             otool -L "$bin" | sed -n '2,12p'
           done
+
+      # A .app is a directory with a shape and nothing more. Both binaries go
+      # side by side in Contents/MacOS because the player finds the decoder as a
+      # sibling of itself — the bundle is what makes that lookup succeed, not
+      # decoration.
+      - name: Bundle it as Tunante.app
+        run: |
+          VERSION=$(grep -m1 '^version' apps/tunante/Cargo.toml | cut -d'"' -f2)
+          APP="pack/Tunante.app"
+          rm -rf pack
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp target/release/tunante target/release/tunante-decoder "$APP/Contents/MacOS/"
+          sed "s/@VERSION@/$VERSION/g" apps/tunante/dist/macos/Info.plist > "$APP/Contents/Info.plist"
+
+          # The icon is generated here rather than checked in: assets/logo.png is
+          # the only drawing anyone edits, gen-icons.py owns every file under
+          # dist/icons, and icons.yml fails the build when they drift — a
+          # twenty-first output for that check to police is the wrong trade for a
+          # file only macOS reads. scale() is imported from that script instead of
+          # reimplemented so the pixel-art rule cannot diverge: the logo is 32x32,
+          # so every size below except 16 is an exact multiple and stays nearest.
+          python3 -m pip install --quiet pillow 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pillow
+          python3 - <<'PY'
+          import importlib.util, pathlib
+          from PIL import Image
+
+          spec = importlib.util.spec_from_file_location('genicons', 'scripts/gen-icons.py')
+          gen = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(gen)
+
+          logo = Image.open('assets/logo.png')
+          out = pathlib.Path('pack/tunante.iconset')
+          out.mkdir(parents=True)
+          for base in (16, 32, 128, 256, 512):
+              gen.scale(logo, base).save(out / f'icon_{base}x{base}.png')
+              gen.scale(logo, base * 2).save(out / f'icon_{base}x{base}@2x.png')
+          PY
+          iconutil -c icns pack/tunante.iconset -o "$APP/Contents/Resources/tunante.icns"
+          rm -rf pack/tunante.iconset
+
+          # It has to be a bundle to the OS, not only to us.
+          plutil -lint "$APP/Contents/Info.plist"
+          find pack -type f | sed 's|^|  |'
+          du -sh "$APP"
+
+      # ditto, not zip: it is the one that preserves the executable bits and the
+      # bundle structure, and a .app that arrives without +x does not open.
+      # A zip rather than a DMG, and attached to nothing — this is still the
+      # probe. The point is something a person with a Mac can download and try.
+      - name: Zip the bundle
+        run: ditto -c -k --keepParent pack/Tunante.app Tunante-macos-arm64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Tunante-macos-arm64
+          path: Tunante-macos-arm64.zip
