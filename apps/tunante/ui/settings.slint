@@ -101,8 +101,12 @@ component Check inherits Rectangle {
             height: 16px;
             border-radius: 3px;
             border-width: 1px;
-            border-color: root.checked ? Theme.accent : (t.has-hover ? Theme.text-secondary : Theme.text-muted);
-            background: root.checked ? Theme.accent : Theme.bg-secondary;
+            // Disabled greys the box too, not just the label. A ticked box in
+            // full accent colour next to dimmed text reads as "still live",
+            // which is the opposite of what it is.
+            border-color: !root.enabled ? Theme.text-muted
+                : (root.checked ? Theme.accent : (t.has-hover ? Theme.text-secondary : Theme.text-muted));
+            background: root.checked ? (root.enabled ? Theme.accent : Theme.text-muted) : Theme.bg-secondary;
             Text {
                 text: "✓";
                 visible: root.checked;
@@ -628,14 +632,21 @@ export component DesktopSettings inherits Rectangle {
                                         checked: root.show-in-tray;
                                         toggled => { root.toggle-show-in-tray(); }
                                     }
+                                    // The three below configure a tray icon.
+                                    // With no icon there is nothing for them to
+                                    // configure, so they say so rather than
+                                    // accepting choices that go nowhere.
                                     Check {
                                         label: @tr("Cerrar a la bandeja");
                                         checked: root.close-to-tray;
+                                        enabled: root.show-in-tray;
                                         toggled => { root.toggle-close-to-tray(); }
                                     }
                                     FormRow {
                                         label: @tr("Icono de bandeja");
+                                        dim: !root.show-in-tray;
                                         Combo {
+                                            enabled: root.show-in-tray;
                                             options: root.tray-style-options;
                                             value: root.tray-style-label;
                                             picked(k) => { root.set-choice("traystyle", k); }
@@ -643,7 +654,9 @@ export component DesktopSettings inherits Rectangle {
                                     }
                                     FormRow {
                                         label: @tr("Click en el icono de bandeja");
+                                        dim: !root.show-in-tray;
                                         Combo {
+                                            enabled: root.show-in-tray;
                                             options: root.tray-click-options;
                                             value: root.tray-click-label;
                                             picked(k) => { root.set-choice("trayclick", k); }
