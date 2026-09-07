@@ -81,7 +81,34 @@ pub fn make_desktop_entry() -> Result<(), String> {
     let data = std::env::var("XDG_DATA_HOME")
         .unwrap_or_else(|_| format!("{home}/.local/share"));
 
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    // /proc/self/exe keeps pointing at the inode after the file behind it is
+    // replaced, and the kernel marks that by appending " (deleted)" to the link
+    // target — which std hands back verbatim, suffix and all. So a rebuild or a
+    // self-update under a running player wrote an Exec= line naming a path that
+    // cannot exist, and clicking the launcher afterwards did nothing at all,
+    // silently, because there is nothing there to fail.
+    //
+    // Strip it only when the path as given is not there, so a binary genuinely
+    // called "tunante (deleted)" would still be honoured. And refuse rather
+    // than write an entry that cannot work: a menu item that does nothing is
+    // worse than a button that says it failed.
+    let exe = {
+        let raw = std::env::current_exe().map_err(|e| e.to_string())?;
+        let exe = if raw.exists() {
+            raw
+        } else {
+            match raw.to_str().and_then(|s| s.strip_suffix(" (deleted)")) {
+                Some(s) => std::path::PathBuf::from(s),
+                None => raw,
+            }
+        };
+        if !exe.exists() {
+            return Err(tunante_core::i18n::tr(
+                "el ejecutable ya no está donde se lanzó; reinicia y vuelve a intentarlo",
+            ));
+        }
+        exe
+    };
 
     let icon_dir = Path::new(&data).join("icons/hicolor/128x128/apps");
     std::fs::create_dir_all(&icon_dir).map_err(|e| e.to_string())?;

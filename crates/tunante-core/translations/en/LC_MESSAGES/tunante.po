@@ -1360,3 +1360,6 @@ msgstr "v{} available"
 
 msgid "Otros"
 msgstr "Others"
+
+msgid "el ejecutable ya no está donde se lanzó; reinicia y vuelve a intentarlo"
+msgstr "the executable is no longer where it was launched from; restart and try again"
