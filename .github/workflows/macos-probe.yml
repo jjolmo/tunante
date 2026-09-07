@@ -30,20 +30,15 @@ env:
 
 jobs:
   build:
-    name: macOS ${{ matrix.arch }}
-    # Neither arch is the obvious one to try first: Apple Silicon is what a
-    # current Mac is, Intel is what an older one still is, and the vendored
-    # emulator cores are the part most likely to care about the difference.
-    # fail-fast off so one of them failing still leaves the other's answer.
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-14
-          - arch: x86_64
-            runner: macos-13
-    runs-on: ${{ matrix.runner }}
+    name: macOS arm64
+    # Apple Silicon only, deliberately. The first run of this workflow asked
+    # both architectures, and the Intel half (macos-13) sat queued for 2h18m
+    # without ever being handed a machine, while arm64 finished all eleven
+    # steps in seven minutes. That is runner availability, not a build problem —
+    # but waiting hours for an answer that may never come buys nothing, because
+    # the work that follows this probe (the folder dialog, the .app bundle) is
+    # the same on both. Put the Intel entry back the day something needs it.
+    runs-on: macos-14
     # ~1.7 GB of vendored C. The Linux jobs take well under this; a macOS
     # runner that needs more than an hour and a half has hung, not been slow.
     timeout-minutes: 90
@@ -56,7 +51,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: .
-          key: macos-${{ matrix.arch }}
+          key: macos-arm64
           cache-on-failure: true
 
       # No fontconfig and no ALSA, unlike Linux: text goes through CoreText and
