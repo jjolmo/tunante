@@ -265,6 +265,11 @@ jobs:
       # for a release that needed no bump commit and a main that moved since.
       - name: Move to the release's tag
         if: github.event_name == 'workflow_run'
+        # bash, or this is PowerShell reading a shell script. The rest of this
+        # job already says so; this step did not, and the `if` above meant only
+        # a real release could ever find out — a manual run skips it, so it went
+        # green every time it was tested and failed the first time it mattered.
+        shell: bash
         run: |
           git fetch -q --tags origin main
           TAG=$(git tag --points-at origin/main | head -1)
