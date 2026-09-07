@@ -667,6 +667,35 @@ mod tests {
         assert_eq!(matched(&idx, "Chrono Trigger"), Some(("Chrono Trigger (USA)".into(), Confidence::Exact)));
     }
 
+    /// The hyphen the ripper did not use, end to end.
+    ///
+    /// Every name here is real: these are the four SNES entries
+    /// thumbnails.libretro.com actually carries, and `Romancing SaGa 3` is what
+    /// the SPC set's album tag says. Console and game were both detected
+    /// correctly and the cover still never downloaded, because "Sa-Ga" folds to
+    /// two tokens and "SaGa" to one.
+    ///
+    /// The region ranking has to do its half too: of four spellings of the same
+    /// game, the plain (Japan) release is the one a download should write, not
+    /// the sample ROM.
+    #[test]
+    fn a_hyphen_in_the_archive_and_none_in_the_tag_still_match() {
+        let idx = Index::new(vec![
+            "Romancing Sa-Ga 3 (Japan).png".into(),
+            "Romancing Sa-Ga 3 (Japan) (Rev 1).png".into(),
+            "Romancing Sa-Ga 3 (Japan) (Sample).png".into(),
+            "Romancing Sa-Ga 3 (Japan) (Taikenban Sample ROM).png".into(),
+            "Romancing Sa-Ga 2 (Japan).png".into(),
+        ]);
+        let (file, _) = matched(&idx, "Romancing SaGa 3").expect("no match for the tag's spelling");
+        assert_eq!(file, "Romancing Sa-Ga 3 (Japan).png");
+
+        // And the neighbouring game is still its own: closing up the spaces
+        // must not make every title in a series interchangeable.
+        let (file, _) = matched(&idx, "Romancing SaGa 2").unwrap();
+        assert_eq!(file, "Romancing Sa-Ga 2 (Japan).png");
+    }
+
     /// The archive carries a subtitle the folder does not.
     #[test]
     fn a_missing_subtitle_is_not_a_missing_match() {
