@@ -9,15 +9,21 @@
 //! Linux talks to the XDG FileChooser portal over the zbus the app already
 //! speaks for the tray, MPRIS and the shortcuts: no GTK, and it works under
 //! Wayland, X11, KDE and GNOME alike, with each desktop's own dialog. Windows
-//! uses IFileDialog through `rfd`.
+//! and macOS use `rfd`, which is IFileDialog on one and NSOpenPanel on the
+//! other.
 //!
 //! The dialog runs on its own thread and reports through a channel that the
 //! 500 ms timer in main.rs drains — the same shape as every other worker.
+//! macOS is the exception, and it is not a stylistic one: NSOpenPanel may only
+//! be touched from the main thread, so opening it from that worker is a hang,
+//! not a warning. There the work hops back onto the event loop instead. The
+//! channel is the same either way, so nothing upstream knows which happened.
 
 use std::path::PathBuf;
 use std::sync::mpsc::Sender;
 
 /// Open the dialog; the chosen folders (none when cancelled) arrive on `tx`.
+#[cfg(not(target_os = "macos"))]
 pub fn pick_folders(title: String, tx: Sender<Vec<PathBuf>>) {
     std::thread::Builder::new()
         .name("folder-dialog".into())
@@ -31,6 +37,25 @@ pub fn pick_folders(title: String, tx: Sender<Vec<PathBuf>>) {
             let _ = tx.send(picked);
         })
         .ok();
+}
+
+/// Open the dialog; the chosen folders (none when cancelled) arrive on `tx`.
+///
+/// No worker thread here. AppKit puts NSOpenPanel on the main thread and
+/// nowhere else, so this asks the event loop to run it — which is also where
+/// a modal dialog belongs, since it owns the window while it is open. The
+/// caller still just waits on the channel.
+#[cfg(target_os = "macos")]
+pub fn pick_folders(title: String, tx: Sender<Vec<PathBuf>>) {
+    let sent = slint::invoke_from_event_loop(move || {
+        let picked = rfd::FileDialog::new().set_title(title).pick_folders().unwrap_or_default();
+        let _ = tx.send(picked);
+    });
+    // The loop is gone (the window is closing). Nobody is left to answer, and
+    // the caller must not wait forever for a folder that is never coming.
+    if sent.is_err() {
+        log::warn!("folder dialog: no event loop to open it on");
+    }
 }
 
 #[cfg(target_os = "linux")]
@@ -110,7 +135,7 @@ fn pick(title: &str) -> Result<Vec<PathBuf>, String> {
         .unwrap_or_default())
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "windows")))]
+#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
 fn pick(_title: &str) -> Result<Vec<PathBuf>, String> {
     Err(tunante_core::i18n::tr("no disponible aquí"))
 }
