@@ -5,9 +5,11 @@ name: tunante
 # `backend-winit` covers Wayland and X11, so the same binary runs on a phone and
 # on a desktop.
 #
-# So this builds it three ways:
+# So this builds it four ways:
 #   * glibc x86_64 and aarch64, the ordinary Linux binaries most people want
 #   * Windows x86_64
+#   * macOS arm64, which came back after the retired Tauri app took the last
+#     .dmg with it — Apple Silicon only, on purpose: see the job for why
 #   * Alpine/musl aarch64, which is how the phone actually builds it
 # and packages the last one as an Alpine .apk.
 #
@@ -347,6 +349,154 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || {
             echo "release $TAG never appeared; leaving the artifact as the only copy"; exit 0; }
           gh release upload "$TAG" "${{ steps.pack.outputs.name }}.zip" --clobber
+          echo "attached to $TAG"
+
+  # macOS, arm64 only. Intel is absent on measurement, not on principle: asked
+  # for once, the macos-13 runner sat queued 2h18m without ever being handed a
+  # machine while this job finished in seven minutes. Add it back the day
+  # somebody needs it and has the patience to find out whether that has changed.
+  #
+  # Nothing here is signed or notarised, so Gatekeeper refuses the app on first
+  # launch until it is opened once with right-click -> Open. That is the price of
+  # not having a paid Apple Developer account, and it is the same price the
+  # retired Tauri app paid before it.
+  macos:
+    # Nothing to attach to if the release that triggered this one failed.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    name: macOS arm64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # The commit the release was built from, not the tip of main.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      # release.yml commits the version bump and tags *that* commit, so the
+      # commit the release was asked from is one behind the tag. Move to the tag.
+      - name: Move to the release's tag
+        if: github.event_name == 'workflow_run'
+        run: |
+          git fetch -q --tags origin main
+          TAG=$(git tag --points-at origin/main | head -1)
+          [ -z "$TAG" ] && TAG=$(git tag --sort=-creatordate | head -1)
+          if [ -n "$TAG" ]; then
+            git checkout -q "$TAG" && git submodule update -q --init --recursive 2>/dev/null || true
+            echo "at $TAG ($(git rev-parse --short HEAD))"
+          else
+            echo "no tag to move to; staying on $(git rev-parse --short HEAD)"
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          key: mini-macos
+          cache-on-failure: true
+
+      - name: Stamp the release version into the build
+        if: github.event_name != 'pull_request'
+        run: |
+          git fetch -q --tags origin 2>/dev/null || true
+          TAG=$(git tag --points-at HEAD | head -1)
+          [ -n "$TAG" ] && echo "TUNANTE_VERSION=${TAG#v}" >> "$GITHUB_ENV" \
+            || echo "no tag; building unstamped"
+
+      - name: Build
+        run: cargo build --release -p tunante -p tunante-decoder
+
+      # The same bar as every other build of this app.
+      - name: Music format smoke test
+        run: cargo test --release -p tunante-codec -p tunante-decoder -- --nocapture
+
+      # A .app is a directory with a shape and nothing more. Both binaries go
+      # side by side in Contents/MacOS because the player finds the decoder as a
+      # sibling of itself — the bundle is what makes that lookup succeed, not
+      # decoration.
+      - name: Bundle it as Tunante.app
+        id: pack
+        run: |
+          VERSION="${TUNANTE_VERSION:-$(grep -m1 '^version' apps/tunante/Cargo.toml | cut -d'"' -f2)}"
+          APP="pack/Tunante.app"
+          rm -rf pack
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp target/release/tunante target/release/tunante-decoder "$APP/Contents/MacOS/"
+          sed "s/@VERSION@/$VERSION/g" apps/tunante/dist/macos/Info.plist > "$APP/Contents/Info.plist"
+
+          # The icon is generated here rather than checked in: assets/logo.png is
+          # the only drawing anyone edits, gen-icons.py owns every file under
+          # dist/icons, and icons.yml fails the build when they drift — a
+          # twenty-first output for that check to police is the wrong trade for a
+          # file only macOS reads. scale() is imported from that script instead of
+          # reimplemented so the pixel-art rule cannot diverge: the logo is 32x32,
+          # so every size below except 16 is an exact multiple and stays nearest.
+          python3 -m pip install --quiet pillow 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pillow
+          python3 - <<'PY'
+          import importlib.util, pathlib
+          from PIL import Image
+
+          spec = importlib.util.spec_from_file_location('genicons', 'scripts/gen-icons.py')
+          gen = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(gen)
+
+          logo = Image.open('assets/logo.png')
+          out = pathlib.Path('pack/tunante.iconset')
+          out.mkdir(parents=True)
+          for base in (16, 32, 128, 256, 512):
+              gen.scale(logo, base).save(out / f'icon_{base}x{base}.png')
+              gen.scale(logo, base * 2).save(out / f'icon_{base}x{base}@2x.png')
+          PY
+          iconutil -c icns pack/tunante.iconset -o "$APP/Contents/Resources/tunante.icns"
+          rm -rf pack/tunante.iconset
+
+          # It has to be a bundle to the OS, not only to us.
+          plutil -lint "$APP/Contents/Info.plist"
+          find pack -type f | sed 's|^|  |'
+
+          # A .dmg, named as the AppImages are and as the old Tauri builds were.
+          # The symlink is what makes the window a drag-and-drop install instead
+          # of a folder somebody has to know what to do with.
+          NAME="Tunante_${VERSION}_aarch64"
+          mkdir -p pack/dmg
+          cp -R "$APP" pack/dmg/
+          ln -s /Applications pack/dmg/Applications
+          hdiutil create -volname Tunante -srcfolder pack/dmg -ov -format UDZO "$NAME.dmg"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          ls -lh "$NAME.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.name }}
+          path: ${{ steps.pack.outputs.name }}.dmg
+
+      - name: Wait for this commit's tag
+        id: tag
+        if: github.event_name != 'pull_request'
+        run: |
+          for _ in $(seq 1 30); do
+            git fetch -q --tags origin 2>/dev/null || true
+            TAG=$(git tag --points-at HEAD | head -1)
+            [ -n "$TAG" ] && break
+            echo "waiting for release.yml to tag this commit…"
+            sleep 20
+          done
+          [ -n "$TAG" ] && echo "tag=$TAG" >> "$GITHUB_OUTPUT" || echo "no tag for this commit"
+
+      - name: Attach it to the release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          [ -n "$TAG" ] || { echo "no tag; leaving the artifact as the only copy"; exit 0; }
+          for _ in $(seq 1 30); do
+            gh release view "$TAG" >/dev/null 2>&1 && break
+            echo "waiting for release $TAG…"
+            sleep 20
+          done
+          gh release view "$TAG" >/dev/null 2>&1 || {
+            echo "release $TAG never appeared; leaving the artifact as the only copy"; exit 0; }
+          gh release upload "$TAG" "${{ steps.pack.outputs.name }}.dmg" --clobber
           echo "attached to $TAG"
 
   # How the phone actually builds it: Alpine's own rust, musl, aarch64.
