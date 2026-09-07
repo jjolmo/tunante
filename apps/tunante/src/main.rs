@@ -4302,7 +4302,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.set_auto_covers(get_bool("auto_download_cover_art", false));
         ui.set_covers_in_folder(get_bool("store_covers_in_folder", false));
         ui.set_titlebar_track(get_bool("show_track_in_titlebar", true));
-        ui.set_show_cover(get_bool("show_cover_art", true));
         ui.set_show_faved(get_bool("show_faved", true));
         ui.set_show_folders(get_bool("show_folders_list", true));
         ui.set_show_playlists(get_bool("show_playlists", true));
@@ -4319,7 +4318,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }};
     }
-    sidebar_toggle!(on_toggle_show_cover, get_show_cover, set_show_cover, "show_cover_art");
     sidebar_toggle!(on_toggle_show_faved, get_show_faved, set_show_faved, "show_faved");
     sidebar_toggle!(on_toggle_show_folders, get_show_folders, set_show_folders, "show_folders_list");
     sidebar_toggle!(on_toggle_show_playlists, get_show_playlists, set_show_playlists, "show_playlists");
@@ -5367,7 +5365,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Covers arrived: drop what we remember about folder art —
                 // including the misses — and redraw whatever is on screen.
                 if art_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
-                    ui.set_cover_busy(false);
                     art_cache.borrow_mut().clear();
                     // `art_seen` is the other half of that memory: it is what
                     // stops a rebuild from asking twice. Forgetting the cache
@@ -5781,7 +5778,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         {
                             let store = ui.get_covers_in_folder();
                             let dirty = std::sync::Arc::clone(&art_dirty);
-                            ui.set_cover_busy(true);
                             std::thread::spawn(move || {
                                 let opts = tunante_art::resolver::BulkOptions {
                                     min_confidence: tunante_art::Confidence::High,

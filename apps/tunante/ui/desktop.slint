@@ -298,8 +298,6 @@ export component DesktopShell inherits Rectangle {
     callback toggle-titlebar-track();
     in property <string> album-game-label;
     callback toggle-album-game();
-    in property <bool> show-cover;
-    callback toggle-show-cover();
     in property <bool> show-faved;
     callback toggle-show-faved();
     in property <bool> show-folders;
@@ -407,7 +405,6 @@ export component DesktopShell inherits Rectangle {
     in-out property <string> reclass-console-filter;
     callback reclass-console-filter-changed(string);
     /// Playlist drag-reorder state: source row, live pixel delta.
-    in property <bool> cover-busy;
     property <int> pl-src: -1;
     property <length> pl-delta;
     property <bool> pl-drag-active: false;
@@ -961,26 +958,6 @@ export component DesktopShell inherits Rectangle {
                     }
                     }
 
-                    if root.show-cover && root.now-art.width == 0 && root.cover-busy: Text {
-                        text: @tr("buscando carátula…");
-                        color: Theme.text-muted;
-                        font-size: Theme.font-small;
-                        horizontal-alignment: center;
-                    }
-
-                    // The old desktop gave its bottom-left corner to the
-                    // playing cover; the 68px thumb in the transport was the
-                    // one thing people missed most on the side-by-side.
-                    if root.show-cover && root.now-art.width > 0: HorizontalLayout {
-                        alignment: center;
-                        padding-top: Theme.gap;
-                        padding-bottom: Theme.gap;
-                        Artwork {
-                            side: 178px;
-                            art: root.now-art;
-                            fit: root.cover-fit;
-                        }
-                    }
                 }
             }
 
@@ -1148,6 +1125,11 @@ export component DesktopShell inherits Rectangle {
             }
         }
 
+        // The list runs right into the transport, and two surfaces of nearly
+        // the same value with nothing between them read as one. A single line,
+        // the same seam the rest of the app uses.
+        Rectangle { height: 1px; background: Theme.border; }
+
         // --- Transport bar ---
         Rectangle {
             height: 92px;
@@ -1157,11 +1139,47 @@ export component DesktopShell inherits Rectangle {
                 padding: Theme.gap;
                 spacing: Theme.gap * 1.5;
 
+                // 68px in the bar, and the same cover four times that while
+                // the pointer rests on it. The preview is always "with
+                // background" whatever cover-fit says: it exists to be looked
+                // at, and letterboxing or stretching it defeats the point.
                 VerticalLayout {
                     alignment: center;
-                    Artwork {
-                        side: 68px;
-                        art: root.now-art;
+                    Rectangle {
+                        width: 68px;
+                        height: 68px;
+                        Artwork {
+                            side: 68px;
+                            art: root.now-art;
+                        }
+                        cover-hover := TouchArea { }
+
+                        // Deliberately not a PopupWindow. A popup takes the
+                        // pointer grab with it, so the hover that opened it
+                        // immediately reads as false, which closes it, which
+                        // gives the hover back — the cover flickered on and off
+                        // for as long as the pointer rested on it. A plain
+                        // element with no touch area of its own grabs nothing.
+                        //
+                        // It is allowed to draw outside its parent because the
+                        // transport bar is the later sibling in the column and
+                        // nothing between here and there clips, so the preview
+                        // lands over the list rather than under it. Above the
+                        // thumbnail, never on top of it: covering the very
+                        // pixels being hovered is what starts the flicker.
+                        if cover-hover.has-hover && root.now-art.width > 0: Rectangle {
+                            x: 0;
+                            y: -272px - Theme.gap;
+                            width: 272px;
+                            height: 272px;
+                            drop-shadow-blur: 16px;
+                            drop-shadow-color: #000000cc;
+                            Artwork {
+                                side: 272px;
+                                art: root.now-art;
+                                fit: 2;
+                            }
+                        }
                     }
                 }
 
@@ -1448,8 +1466,6 @@ export component DesktopShell inherits Rectangle {
                     toggle-titlebar-track => { root.toggle-titlebar-track(); }
                     album-game-label: root.album-game-label;
                     toggle-album-game => { root.toggle-album-game(); }
-                    show-cover: root.show-cover;
-                    toggle-show-cover => { root.toggle-show-cover(); }
                     show-faved: root.show-faved;
                     toggle-show-faved => { root.toggle-show-faved(); }
                     show-folders: root.show-folders;
