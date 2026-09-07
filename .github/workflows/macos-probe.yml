@@ -1,0 +1,96 @@
+name: macOS probe
+
+# Does this tree compile on macOS at all?
+#
+# There has been no Mac build since the Tauri desktop was retired in 577901c,
+# and the DMG in v0.1.283 is the last one that ever existed. The source looks
+# ready for it — every module that touches the system is gated with a
+# `not(any(linux, windows))` arm, and watch.rs and cache.rs already carry
+# explicit macOS ones — but "looks ready" is not an answer, and nobody here has
+# a Mac to ask.
+#
+# So this job asks CI instead, and asks one question only: does it build. It
+# packages nothing, attaches nothing to a release, and runs on no trigger of its
+# own. When it comes out green twice in a row it belongs in tunante.yml as a
+# real job next to Windows; while it is red it stays here, where a failure
+# costs nothing and blocks nobody.
+#
+# What it deliberately does NOT prove:
+#   * that the binary launches (a CI runner has no session to open a window in)
+#   * that anything is audible (no audio device either)
+#   * that a library can be added at all — pick() in filedialog.rs is the stub
+#     on macOS, so the folder dialog returns an error. That is the known gap,
+#     and it is the next thing to fix if this comes out green.
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: macOS ${{ matrix.arch }}
+    # Neither arch is the obvious one to try first: Apple Silicon is what a
+    # current Mac is, Intel is what an older one still is, and the vendored
+    # emulator cores are the part most likely to care about the difference.
+    # fail-fast off so one of them failing still leaves the other's answer.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: x86_64
+            runner: macos-13
+    runs-on: ${{ matrix.runner }}
+    # ~1.7 GB of vendored C. The Linux jobs take well under this; a macOS
+    # runner that needs more than an hour and a half has hung, not been slow.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+          key: macos-${{ matrix.arch }}
+          cache-on-failure: true
+
+      # No fontconfig and no ALSA, unlike Linux: text goes through CoreText and
+      # audio through CoreAudio, both of them part of the OS. cmake is for the
+      # vendored cores and ships on the runner image — installed here only if
+      # some future image drops it, so the step is a no-op that reports rather
+      # than a minute of brew.
+      - name: System dependencies
+        run: |
+          command -v cmake >/dev/null || brew install cmake
+          echo "cmake:  $(cmake --version | head -1)"
+          echo "clang:  $(clang --version | head -1)"
+          echo "rustc:  $(rustc --version)"
+
+      - name: Build
+        run: cargo build --release -p tunante -p tunante-decoder
+
+      # The repository's own bar for "no regression": decode a real fixture
+      # through every emulator backend and assert the PCM is not silence. It is
+      # informational here on purpose — this run is allowed to answer "it
+      # compiles but a core is wrong on macOS", which is a useful answer and a
+      # different problem from the one being asked about.
+      - name: Music format smoke test
+        continue-on-error: true
+        run: cargo test --release -p tunante-codec -p tunante-decoder -- --nocapture
+
+      # Both binaries, the right architecture, and what they link against. The
+      # player finds the decoder as a sibling of itself, so two files that exist
+      # is the shape a Mac build would have to ship in.
+      - name: What was actually built
+        run: |
+          for bin in target/release/tunante target/release/tunante-decoder; do
+            echo "=== $bin"
+            ls -lh "$bin"
+            lipo -info "$bin"
+            otool -L "$bin" | sed -n '2,12p'
+          done
