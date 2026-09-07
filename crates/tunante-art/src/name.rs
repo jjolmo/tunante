@@ -190,6 +190,29 @@ pub fn normalize(raw: &str) -> Normalized {
         }
     }
 
+    // The same spellings with the word boundaries closed up.
+    //
+    // Every non-alphanumeric character became a space above, which turns the
+    // archive's `Sa-Ga` into two tokens and a tag's `SaGa` into one: `romancing
+    // sa ga 3` and `romancing saga 3` are the same game and could never meet.
+    // Squashing both sides gives them one spelling in common. It loosens less
+    // than it looks — a key with no separators is only reachable by a name whose
+    // letters and digits are identical, in the same order — and it fixes the
+    // whole family at once, every `Sa-Ga`, `R-Type` and `F-Zero` whose ripper
+    // disagreed with No-Intro about the hyphen.
+    //
+    // Applied to the roman/arabic variants too, since `Sa-Ga II` in the archive
+    // against `SaGa 2` in a tag needs both rules before it matches.
+    let squashed: Vec<String> = std::iter::once(&key)
+        .chain(alts.iter())
+        .map(|k| k.chars().filter(|c| !c.is_whitespace()).collect::<String>())
+        .collect();
+    for s in squashed {
+        if s != key && !alts.contains(&s) {
+            alts.push(s);
+        }
+    }
+
     Normalized { key, tokens, alts, groups }
 }
 
@@ -319,15 +342,22 @@ mod tests {
     /// a ten, in three separate long-running series.
     #[test]
     fn x_is_not_ten_and_i_is_not_one() {
+        // Not `alts.is_empty()` any more. normalize also offers the name with
+        // its word boundaries closed up, which is not a numeral reading and
+        // cannot make the matcher confidently wrong. What must never turn up is
+        // a digit the name never had — that is the whole hazard here.
+        let has_digit = |n: &Normalized| {
+            n.alts.iter().any(|a| a.chars().any(|c| c.is_ascii_digit()))
+        };
         for name in ["Mega Man X", "Final Fantasy X", "Rockman X"] {
             let n = normalize(name);
             assert!(
-                n.alts.is_empty(),
+                !has_digit(&n),
                 "{name:?} should offer no numeral alternative, got {:?}",
                 n.alts
             );
         }
-        assert!(normalize("Final Fantasy I").alts.is_empty());
+        assert!(!has_digit(&normalize("Final Fantasy I")));
     }
 
     #[test]
@@ -405,6 +435,27 @@ mod tests {
         // Which is why the numeral variants are generated as *alternates* and
         // compared for equality, rather than left to the fuzzy stage.
         assert!(normalize("Final Fantasy VII").alts.contains(&"final fantasy 7".to_string()));
+    }
+
+    /// The archive hyphenates what the ripper did not, and the two never met.
+    ///
+    /// Real names, both of them: the file on thumbnails.libretro.com is
+    /// `Romancing Sa-Ga 3 (Japan).png`, and the SPC set's album tag says
+    /// `Romancing SaGa 3`. Nothing else about the track was wrong — right
+    /// console, right game — and the cover still never downloaded.
+    #[test]
+    fn a_hyphen_the_ripper_did_not_use_still_matches() {
+        let tag = normalize("Romancing SaGa 3");
+        let archive = normalize("Romancing Sa-Ga 3 (Japan)");
+        assert_ne!(tag.key, archive.key, "the primary keys genuinely differ");
+        let shared: Vec<&str> = tag.keys().filter(|k| archive.keys().any(|a| a == *k)).collect();
+        assert!(!shared.is_empty(), "no spelling in common: {:?} vs {:?}",
+                tag.keys().collect::<Vec<_>>(), archive.keys().collect::<Vec<_>>());
+
+        // And it must not turn into a free-for-all: a different game whose
+        // letters are not the same in the same order still has to miss.
+        let other = normalize("Romancing SaGa 2");
+        assert!(!tag.keys().any(|k| other.keys().any(|o| o == k)));
     }
 
     /// A leading rip marker goes; a title that merely starts with one of those
