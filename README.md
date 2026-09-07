@@ -127,7 +127,10 @@ Grab the newest [release](https://github.com/jjolmo/tunante/releases):
 |-------|-----|
 | `tunante-x86_64-linux-gnu.tar.gz` | An ordinary desktop or laptop |
 | `tunante-aarch64-linux-gnu.tar.gz` | ARM boards, ARM laptops, an ARM desktop |
+| `Tunante_*_amd64.AppImage` | The same Linux build, if you would rather not unpack |
+| `Tunante_*_aarch64.AppImage` | The same, on ARM |
 | `tunante-x86_64-windows.zip` | Windows |
+| `Tunante_*_aarch64.dmg` | macOS, Apple Silicon — see below |
 | `tunante-*-r0.apk` (Alpine, musl, aarch64) | postmarketOS and any Alpine phone |
 | `tunante-android-*.apk` | Android — see below |
 
@@ -148,9 +151,18 @@ the same library and settings (it adopts the old app's database on first
 start). The move is by hand exactly once; updates take care of themselves
 afterwards.
 
-**macOS**: the new stack has not been built for macOS yet; the last Tauri
-release ([v0.1.283](https://github.com/jjolmo/tunante/releases/tag/v0.1.283))
-still works there, quarantine dance included (`xattr -cr /Applications/Tunante.app`).
+**macOS**: Apple Silicon, as a `.dmg` — open it and drag Tunante across to the
+Applications shortcut inside. Both binaries travel in the bundle, so nothing has
+to be kept side by side by hand there.
+
+It is not signed and not notarised, so the *first* launch needs right-click →
+**Open** rather than a double click (or `xattr -cr /Applications/Tunante.app`);
+after that it opens like anything else. There is no self-updater on macOS yet:
+the updater is Linux-only, so a new version means a new `.dmg`.
+
+No Intel build. The runner for it never came free once, and every Mac that
+matters now is Apple Silicon; the job is a handful of lines away from taking
+Intel back if that stops being true.
 
 ## tunante-android
 
@@ -163,6 +175,9 @@ the screen is different.
 cd apps/android && ./build.sh     # both ABIs
 ABIS="arm64-v8a" ./build.sh       # phone only, skips the emulator build
 ```
+
+Android 8.0 (API 26) and up, built against SDK 34. Both ABIs ship:
+`arm64-v8a` for a phone, `x86_64` for the emulator.
 
 Needs `ANDROID_NDK_HOME` and a JDK 17+. The APK is at
 `apps/android/app/build/outputs/apk/`, and signed builds are attached to
@@ -182,7 +197,7 @@ Two apps under `apps/`, what they share under `crates/`, third-party C under
 `vendor/`. The Cargo workspace root is the repository root.
 
 ```
-apps/tunante/                    # The player (Slint): desktop shell + phone shell
+apps/tunante/                 # The player (Slint): desktop shell + phone shell
 apps/android/                 # Android app (Gradle, Kotlin, Compose)
   rust/                       #   Its JNI half (cdylib)
 
@@ -222,8 +237,14 @@ cargo check --workspace --all-targets --exclude tunante-android
 # The format smoke test: every emulator backend decodes a real fixture
 cargo test -p tunante-codec -p tunante-decoder --release
 
-# The phone configuration (no tray, no updater, no GTK)
+# The phone configuration (no tray, no updater, no ureq)
 cargo build --release --no-default-features -p tunante
+
+# The one the check above excludes. Run it after touching anything shared:
+# a field added to a struct in tunante-core compiles everywhere you looked
+# and breaks the one place you did not.
+ANDROID_NDK_HOME=~/Android/Sdk/ndk/27.3.13750724 RUSTUP_TOOLCHAIN=stable \
+  cargo ndk -t arm64-v8a --platform 26 check -p tunante-android
 ```
 
 ## Tech Stack
