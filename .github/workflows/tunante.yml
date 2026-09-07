@@ -777,6 +777,25 @@ jobs:
           ls -l /out
           ALPINE
 
+      # abuild names its output the way Alpine names packages — tunante-0.10.2-r0.apk
+      # — and nothing in that says Alpine. On the releases page it landed beside
+      # tunante-android-0.10.2.apk, the same extension standing for a different
+      # operating system entirely, and the only way to tell them apart was to
+      # know already. The suffix goes on here rather than in the recipe: the
+      # name inside the package stays canonical, which is what `apk add` reads,
+      # and only the download is renamed. Done as a loop so a subpackage, if the
+      # recipe ever grows one, is disambiguated too.
+      - name: Say which apk this is
+        run: |
+          for f in out/*.apk; do
+            b=$(basename "$f" .apk)
+            case "$b" in
+              *-alpine-aarch64) ;;
+              *) mv "$f" "out/${b}-alpine-aarch64.apk" ;;
+            esac
+          done
+          ls -l out
+
       - name: What is inside it
         run: |
           for f in out/*.apk; do
