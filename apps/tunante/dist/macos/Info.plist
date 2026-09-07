@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What makes a directory an app on macOS. @VERSION@ is filled in at build time
+  from the tag, the same version the About line and the updater already agree on.
+
+  CFBundleExecutable names only the player. tunante-decoder sits next to it in
+  Contents/MacOS all the same, because the player looks for the decoder as a
+  sibling of itself — the bundle is not decoration here, it is the directory
+  that makes that lookup succeed.
+
+  The identifier is the retired Tauri app's on purpose. That app's database is
+  adopted by this one when it is found (store.rs), so the two are one library
+  and one product to anyone using them; handing macOS a second identity would
+  scatter preferences and Gatekeeper's record across two names for no gain.
+
+  11.0 is the floor because the build is arm64 only, and no Apple Silicon Mac
+  ever shipped with anything older.
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Tunante</string>
+	<key>CFBundleDisplayName</key>
+	<string>Tunante</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.tunante.app</string>
+	<key>CFBundleExecutable</key>
+	<string>tunante</string>
+	<key>CFBundleIconFile</key>
+	<string>tunante</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>es</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.music</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+</dict>
+</plist>
