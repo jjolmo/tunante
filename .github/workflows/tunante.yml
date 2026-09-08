@@ -792,6 +792,9 @@ jobs:
       # recipe ever grows one, is disambiguated too.
       - name: Say which apk this is
         run: |
+          # out/ was written by the packaging container as root; the runner's
+          # user cannot rename inside it until it owns it (v0.10.3 died here).
+          sudo chown -R "$(id -u):$(id -g)" out
           for f in out/*.apk; do
             b=$(basename "$f" .apk)
             case "$b" in
