@@ -717,11 +717,12 @@ export component TrackTable inherits Rectangle {
                                 : (ci == 0 && row.queue-pos != ""
                                     ? row.queue-pos + " " + row.cells[ci]
                                     : row.cells[ci]);
-                            // Selected or playing rows sit on a blue ground;
-                            // white keeps their text legible where accent-on-
-                            // accent would vanish.
+                            // Selected or playing rows sit on the selection
+                            // ground: white on the dark theme's blue, ink on
+                            // the light theme's pale one. A literal white here
+                            // was unreadable in the light theme.
                             color: row.selected || playing
-                                ? #ffffff
+                                ? Theme.text-on-selected
                                 : (ci == 0 && row.queue-pos != ""
                                     ? Theme.accent
                                 // The old desktop painted every cell text-primary;
