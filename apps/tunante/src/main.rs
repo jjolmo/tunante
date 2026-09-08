@@ -6112,11 +6112,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // but if you press play anyway that is your business and the
                 // banner is enough of an answer.
                 output_watch.note_playing(p.is_playing());
-                let silent = output_watch.is_silent();
+                // Two ways to have no sound, one banner: PulseAudio parking the
+                // stream on a null sink, and the engine giving up on a stream
+                // that answered every poll with an error.
+                let silent = output_watch.is_silent() || p.output_lost();
                 if silent != was_silent.get() {
                     was_silent.set(silent);
                     if silent && p.is_playing() {
                         p.toggle_play();
+                    }
+                    if silent {
+                        eprintln!(
+                            "aviso: no hay salida de audio; la interfaz funciona, el sonido no"
+                        );
                     }
                     ui.set_output_warning(SharedString::from(if silent {
                         tunante_core::i18n::tr("Sin salida de audio")
