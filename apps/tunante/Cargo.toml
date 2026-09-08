@@ -46,6 +46,10 @@ uuid = { version = "1", features = ["v4"] }
 # would cost more than the feature.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 base64 = "0.22"
+# The system's UI language where the environment does not say: a macOS or
+# Windows app launched from the desktop has no LANG, and reading nothing left
+# every such install in Spanish with "Sistema" selected.
+sys-locale = "0.3"
 
 # Two renderers, chosen at run time with SLINT_BACKEND.
 #

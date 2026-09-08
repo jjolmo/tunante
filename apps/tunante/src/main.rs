@@ -8220,23 +8220,31 @@ fn apply_language(code: &str) {
     }
 }
 
-/// The UI language from the environment: the primary subtag of the first set
-/// locale variable (`es_ES.UTF-8` → `es`). Empty for the neutral `C`/`POSIX`
-/// locales or when nothing is set, which leaves the bundled Spanish source.
+/// The UI language the system is set to: the primary subtag (`es_ES.UTF-8`
+/// → `es`, `en-US` → `en`).
+///
+/// The locale variables first, as on any Linux desktop. When none is set —
+/// a macOS or Windows app launched from the desktop has no `LANG` — the
+/// platform's own answer through `sys_locale` (CoreFoundation, the Windows
+/// user locale). Empty for the neutral `C`/`POSIX` locales or when nothing
+/// at all is known, which leaves the bundled Spanish source. Without the
+/// second step an English Mac opened its first run in Spanish with
+/// "Sistema" selected, which read as a lie.
 fn ui_language_from_env() -> String {
+    fn primary(value: &str) -> Option<String> {
+        let base = value.split('.').next().unwrap_or("");
+        if base.is_empty() || base == "C" || base == "POSIX" {
+            return None;
+        }
+        let primary = base.split(['_', '-', '@']).next().unwrap_or("");
+        (!primary.is_empty()).then(|| primary.to_ascii_lowercase())
+    }
     for var in ["LC_ALL", "LC_MESSAGES", "LANG"] {
-        if let Ok(value) = std::env::var(var) {
-            let base = value.split('.').next().unwrap_or("");
-            if base.is_empty() || base == "C" || base == "POSIX" {
-                continue;
-            }
-            let primary = base.split(['_', '-']).next().unwrap_or("");
-            if !primary.is_empty() {
-                return primary.to_ascii_lowercase();
-            }
+        if let Some(p) = std::env::var(var).ok().as_deref().and_then(primary) {
+            return p;
         }
     }
-    String::new()
+    sys_locale::get_locale().as_deref().and_then(primary).unwrap_or_default()
 }
 
 /// Show the window if it is hidden, hide it if it is shown — the tray's

@@ -5985,6 +5985,7 @@ dependencies = [
  "serde_json",
  "slint",
  "slint-build",
+ "sys-locale",
  "tunante-art",
  "tunante-audio",
  "tunante-core",
