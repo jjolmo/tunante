@@ -4,7 +4,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderRow, ShortcutRow } from "types.slint";
-import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow, ArmedRow } from "widgets.slint";
+import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow, ArmedRow, FolderIcon } from "widgets.slint";
 
 export component SettingsTab inherits Rectangle {
     in property <float> volume;
@@ -152,7 +152,7 @@ export component SettingsTab inherits Rectangle {
                 spacing: Theme.gap;
 
                 Text {
-                    text: "🕪";
+                    text: "♫";
                     color: Theme.text-muted;
                     font-size: 16px;
                     vertical-alignment: center;
@@ -954,7 +954,7 @@ export component QueueTab inherits Rectangle {
             alignment: center;
 
             Text {
-                text: root.confirming ? "✕" : "🗑";
+                text: root.confirming ? "✕" : "⌫";
                 color: root.confirming ? #ffffff : Theme.text-secondary;
                 font-size: Theme.font-body;
                 vertical-alignment: center;
@@ -1543,8 +1543,12 @@ export component LibraryTab inherits Rectangle {
                         width: 14px;
                         vertical-alignment: center;
                     }
-                    Text {
-                        text: row.is-folder ? "🗀" : "♪";
+                    if row.is-folder: Rectangle {
+                        width: 18px;
+                        FolderIcon { size: 16px; }
+                    }
+                    if !row.is-folder: Text {
+                        text: "♪";
                         color: Theme.text-muted;
                         width: 18px;
                         vertical-alignment: center;
@@ -1711,7 +1715,7 @@ export component LibraryTab inherits Rectangle {
                 // Sólo tiene sentido en una carpeta: para un fichero suelto las
                 // dos entradas harían lo mismo y una de ellas sobraría.
                 if root.menu-is-folder: MenuAction {
-                    glyph: "🗀";
+                    folder: true;
                     label: @tr("Añadir sólo esta carpeta");
                     clicked => {
                         root.enqueue-path(root.menu-path, false);
@@ -1777,7 +1781,7 @@ export component LibraryTab inherits Rectangle {
                     }
                 }
                 if root.menu-is-folder: MenuAction {
-                    glyph: "📌";
+                    glyph: "⚑";
                     label: @tr("Fijar en el sidebar");
                     clicked => {
                         root.pin-path(root.menu-path);
@@ -1785,7 +1789,7 @@ export component LibraryTab inherits Rectangle {
                     }
                 }
                 if root.menu-is-folder: MenuAction {
-                    glyph: "🗀";
+                    folder: true;
                     label: @tr("Abrir en el gestor de archivos");
                     clicked => {
                         root.reveal-path(root.menu-path);
@@ -1849,7 +1853,7 @@ export component LibraryTab inherits Rectangle {
                 // arma. La entrada no cambia de sitio ni de alto entre los dos
                 // estados: el segundo toque cae donde cayó el primero.
                 MenuAction {
-                    glyph: root.pl-confirm-delete ? "✕" : "🗑";
+                    glyph: root.pl-confirm-delete ? "✕" : "⌫";
                     label: root.pl-confirm-delete
                         ? @tr("¿Seguro? Toca otra vez")
                         : @tr("Borrar la lista");

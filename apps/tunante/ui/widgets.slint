@@ -148,9 +148,23 @@ export component SwipeRow inherits Rectangle {
 }
 
 // One tab of the bottom bar / side rail.
+// A folder, drawn. The glyph U+1F5C0 that stood here is outside the Basic
+// Multilingual Plane and missing from the fonts a Mac ships, where it came out
+// as a box; two rectangles need no font at all.
+export component FolderIcon inherits Rectangle {
+    in property <color> ink: Theme.text-muted;
+    in property <length> size: 18px;
+    width: root.size;
+    height: root.size * 0.72;
+    Rectangle { x: 0; y: 0; width: root.size * 0.45; height: root.size * 0.22; border-radius: 1px; background: root.ink; }
+    Rectangle { x: 0; y: root.size * 0.12; width: root.size; height: root.size * 0.6; border-radius: 2px; background: root.ink; }
+}
+
 export component TabButton inherits Rectangle {
     in property <string> label;
     in property <string> glyph;
+    // The library tab's icon is drawn, not typed.
+    in property <bool> folder;
     in property <bool> selected;
     callback clicked();
 
@@ -161,7 +175,11 @@ export component TabButton inherits Rectangle {
         alignment: center;
         spacing: 2px;
 
-        Text {
+        if root.folder: HorizontalLayout {
+            alignment: center;
+            FolderIcon { size: 20px; ink: root.selected ? Theme.text-primary : Theme.text-secondary; }
+        }
+        if !root.folder: Text {
             text: root.glyph;
             font-size: 18px;
             horizontal-alignment: center;
@@ -213,7 +231,7 @@ export component TabSwitcher inherits Rectangle {
         }
         TabButton {
             height: 60px;
-            glyph: "🗀";
+            folder: true;
             label: @tr("Biblioteca");
             selected: root.tab == 2;
             clicked => { root.tab = 2; }
@@ -839,6 +857,7 @@ export component ScanOverlay inherits Rectangle {
 
 export component MenuAction inherits Rectangle {
     in property <string> glyph;
+    in property <bool> folder;
     in property <string> label;
     callback clicked();
 
@@ -851,7 +870,11 @@ export component MenuAction inherits Rectangle {
         padding-right: Theme.gap;
         spacing: Theme.gap;
 
-        Text {
+        if root.folder: Rectangle {
+            width: 20px;
+            FolderIcon { size: 16px; ink: Theme.text-secondary; }
+        }
+        if !root.folder: Text {
             text: root.glyph;
             color: Theme.text-secondary;
             font-size: Theme.font-body;

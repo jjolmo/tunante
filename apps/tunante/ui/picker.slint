@@ -1,6 +1,7 @@
 // First run: pick the folders the library is built from.
 
 import { ListView } from "std-widgets.slint";
+import { FolderIcon } from "widgets.slint";
 import { Theme } from "theme.slint";
 import { FolderEntry } from "types.slint";
 
@@ -107,11 +108,9 @@ export component FolderPicker inherits Rectangle {
                         horizontal-stretch: 1;
                         HorizontalLayout {
                             spacing: 8px;
-                            Text {
-                                text: "🗀";
-                                color: Theme.text-muted;
+                            Rectangle {
                                 width: 18px;
-                                vertical-alignment: center;
+                                FolderIcon { size: 16px; }
                             }
                             Text {
                                 text: e.name;
