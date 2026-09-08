@@ -73,13 +73,13 @@ component SidebarEntry inherits Rectangle {
             text: root.glyph;
             // Blue and a touch larger so Favoritos reads at a glance; white on
             // the blue selection, where accent-on-accent would vanish.
-            color: root.active ? #ffffff : Theme.accent;
+            color: root.active ? Theme.text-on-selected : Theme.accent;
             font-size: Theme.compact ? 16px : 19px;
             vertical-alignment: center;
         }
         Text {
             text: root.label;
-            color: root.active ? #ffffff : Theme.text-primary;
+            color: root.active ? Theme.text-on-selected : Theme.text-primary;
             font-size: Theme.font-body;
             vertical-alignment: center;
             overflow: elide;
@@ -88,7 +88,7 @@ component SidebarEntry inherits Rectangle {
         }
         if root.count != "": Text {
             text: root.count;
-            color: root.active ? #ffffffcc : Theme.text-muted;
+            color: root.active ? Theme.text-on-selected-muted : Theme.text-muted;
             font-size: Theme.font-small;
             vertical-alignment: center;
         }
@@ -555,6 +555,7 @@ export component DesktopShell inherits Rectangle {
     in property <[string]> language-options;
     callback set-choice(string, string);
     in-out property <bool> close-to-tray;
+    in property <bool> has-tray;
     callback toggle-close-to-tray();
     in property <bool> show-in-tray;
     callback toggle-show-in-tray();
@@ -778,11 +779,11 @@ export component DesktopShell inherits Rectangle {
                                 vertical-alignment: center;
                             }
                             // The unpin, only under the pointer: a row of
-                            // permanent ✕ reads as a warning, not a control.
+                            // permanent × reads as a warning, not a control.
                             if pft.has-hover && pf.removable: Rectangle {
                                 width: 18px;
                                 Text {
-                                    text: "✕";
+                                    text: "×";
                                     color: pfx.has-hover ? Theme.text-primary : Theme.text-muted;
                                     font-size: Theme.font-small;
                                     vertical-alignment: center;
@@ -1563,6 +1564,7 @@ export component DesktopShell inherits Rectangle {
                     language-options: root.language-options;
                     set-choice(s, k) => { root.set-choice(s, k); }
                     close-to-tray <=> root.close-to-tray;
+                    has-tray: root.has-tray;
                     toggle-close-to-tray => { root.toggle-close-to-tray(); }
                     show-in-tray: root.show-in-tray;
                     toggle-show-in-tray => { root.toggle-show-in-tray(); }

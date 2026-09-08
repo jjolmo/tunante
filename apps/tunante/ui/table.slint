@@ -348,7 +348,7 @@ export component TrackTable inherits Rectangle {
                     border-radius: Theme.radius;
                     background: scx.has-hover ? Theme.bg-hover : transparent;
                     Text {
-                        text: "✕";
+                        text: "×";
                         color: scx.has-hover ? Theme.text-primary : Theme.text-muted;
                         font-size: Theme.font-small;
                         vertical-alignment: center;
@@ -703,7 +703,7 @@ export component TrackTable inherits Rectangle {
                             width: parent.width;
                             height: 100%;
                             text: playing ? "▶" : row.queue-pos;
-                            color: row.selected ? #ffffff : Theme.accent;
+                            color: row.selected ? Theme.text-on-selected : Theme.accent;
                             font-size: Theme.compact ? 12px : Theme.font-body;
                             vertical-alignment: center;
                             horizontal-alignment: center;

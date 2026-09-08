@@ -142,9 +142,22 @@ pub fn open_source_with(
         Ok(Box::new(OggOpusSource::new(file).map_err(decoder_err)?))
     } else if is_standard_format(ext) {
         let file = File::open(actual_path)?;
-        Ok(Box::new(
-            Decoder::try_from(file).map_err(|e| OpenError::Decoder(e.to_string()))?,
-        ))
+        match Decoder::try_from(file) {
+            Ok(d) => Ok(Box::new(d)),
+            Err(e) => {
+                // An MPEG stream inside a WAV container (`fmt` tag 0x0055),
+                // often behind an ID3v2 tag: how some 2003-era OC ReMix rips
+                // were made. symphonia recognises neither the wrapper nor the
+                // tag in front of it, but the `data` chunk is a plain MPEG
+                // stream, and that it decodes.
+                if let Some(payload) = riff_mpeg_payload(actual_path) {
+                    let d = Decoder::new(BufReader::new(std::io::Cursor::new(payload)))
+                        .map_err(|e| OpenError::Decoder(e.to_string()))?;
+                    return Ok(Box::new(d));
+                }
+                Err(OpenError::Decoder(e.to_string()))
+            }
+        }
     } else {
         // vgmstream covers 700+ containers (BCSTM, ADX, HCA, …). If it declines,
         // symphonia gets a last look — some files carry an unexpected extension.
@@ -159,4 +172,43 @@ pub fn open_source_with(
             }
         }
     }
+}
+
+/// The MPEG frames inside a RIFF/WAVE file whose format tag says MPEG Layer 3
+/// (0x0055) or MPEG (0x0050), with any ID3v2 tag in front of the RIFF header
+/// skipped. `None` for anything else, so the caller's own error stands.
+fn riff_mpeg_payload(path: &Path) -> Option<Vec<u8>> {
+    let bytes = std::fs::read(path).ok()?;
+    let mut at = 0usize;
+    // ID3v2: "ID3", version (2), flags (1), synchsafe size (4); a footer flag
+    // adds ten more bytes after the tag.
+    if bytes.len() > 10 && &bytes[..3] == b"ID3" {
+        let size = bytes[6..10]
+            .iter()
+            .fold(0usize, |acc, b| (acc << 7) | (*b & 0x7f) as usize);
+        at = 10 + size + if bytes[5] & 0x10 != 0 { 10 } else { 0 };
+    }
+    let riff = bytes.get(at..at + 12)?;
+    if &riff[..4] != b"RIFF" || &riff[8..12] != b"WAVE" {
+        return None;
+    }
+    let mut pos = at + 12;
+    let mut is_mpeg = false;
+    while pos + 8 <= bytes.len() {
+        let id = &bytes[pos..pos + 4];
+        let len = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
+        let body = pos + 8;
+        if id == b"fmt " {
+            let tag = u16::from_le_bytes(bytes.get(body..body + 2)?.try_into().ok()?);
+            is_mpeg = matches!(tag, 0x0055 | 0x0050);
+        } else if id == b"data" {
+            if !is_mpeg {
+                return None;
+            }
+            let end = (body + len).min(bytes.len());
+            return Some(bytes[body..end].to_vec());
+        }
+        pos = body + len + (len & 1);
+    }
+    None
 }

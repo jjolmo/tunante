@@ -58,6 +58,7 @@ export component SettingsTab inherits Rectangle {
     callback show-log();
     callback reset-app();
     in-out property <bool> close-to-tray;
+    in property <bool> has-tray;
     callback toggle-close-to-tray();
     in property <string> mouse-buttons-label;
     in property <bool> mouse-buttons-on;
@@ -415,7 +416,7 @@ export component SettingsTab inherits Rectangle {
                     border-radius: Theme.radius;
                     background: xt.has-hover ? Theme.bg-hover : transparent;
                     Text {
-                        text: "✕";
+                        text: "×";
                         color: xt.has-hover ? Theme.text-primary : Theme.text-muted;
                         font-size: Theme.font-body;
                         vertical-alignment: center;
@@ -559,17 +560,17 @@ export component SettingsTab inherits Rectangle {
         // What a click on the tray icon does. One channel on this stack
         // (ayatana routes Activate and SecondaryActivate to one target), so
         // the old middle-click action list rides the click there is.
-        SettingRow {
+        if root.has-tray: SettingRow {
             label: @tr("Click en el icono de bandeja");
             value: root.tray-click-label;
             clicked => { root.cycle-tray-click(); }
         }
-        SettingRow {
+        if root.has-tray: SettingRow {
             label: @tr("Icono de bandeja");
             value: root.tray-style-label;
             clicked => { root.cycle-tray-style(); }
         }
-        SettingRow {
+        if root.has-tray: SettingRow {
             label: @tr("Cerrar a la bandeja");
             value: root.close-to-tray ? @tr("sí") : @tr("no");
             highlighted: root.close-to-tray;
@@ -869,14 +870,14 @@ export component NowPlayingTab inherits Rectangle {
                                 // White on the blue selection — accent-on-accent
                                 // has almost no contrast (the same trap the
                                 // sidebar hit).
-                                color: i == root.now-index ? #ffffff : Theme.text-primary;
+                                color: i == root.now-index ? Theme.text-on-selected : Theme.text-primary;
                                 font-size: Theme.font-body;
                                 overflow: elide;
                                 animate color { duration: 220ms; easing: ease-out; }
                             }
                             Text {
                                 text: row.subtitle;
-                                color: i == root.now-index ? #ffffffcc : Theme.text-muted;
+                                color: i == root.now-index ? Theme.text-on-selected-muted : Theme.text-muted;
                                 font-size: Theme.font-small;
                                 overflow: elide;
                             }
@@ -954,7 +955,7 @@ export component QueueTab inherits Rectangle {
             alignment: center;
 
             Text {
-                text: root.confirming ? "✕" : "⌫";
+                text: root.confirming ? "×" : "⌫";
                 color: root.confirming ? #ffffff : Theme.text-secondary;
                 font-size: Theme.font-body;
                 vertical-alignment: center;
@@ -1750,7 +1751,7 @@ export component LibraryTab inherits Rectangle {
                 // Dentro de una lista hay una acción más que en ningún otro
                 // sitio: sacar la pista de donde está.
                 if root.playlist-open: MenuAction {
-                    glyph: "✕";
+                    glyph: "×";
                     label: @tr("Quitar de la lista");
                     clicked => {
                         root.playlist-track-removed(root.menu-path);
@@ -1844,7 +1845,7 @@ export component LibraryTab inherits Rectangle {
                 }
 
                 MenuAction {
-                    glyph: "✕";
+                    glyph: "×";
                     label: @tr("Cancelar");
                     clicked => { root.menu-path = ""; }
                 }
@@ -1899,7 +1900,7 @@ export component LibraryTab inherits Rectangle {
                 // arma. La entrada no cambia de sitio ni de alto entre los dos
                 // estados: el segundo toque cae donde cayó el primero.
                 MenuAction {
-                    glyph: root.pl-confirm-delete ? "✕" : "⌫";
+                    glyph: root.pl-confirm-delete ? "×" : "⌫";
                     label: root.pl-confirm-delete
                         ? @tr("¿Seguro? Toca otra vez")
                         : @tr("Borrar la lista");
@@ -1927,7 +1928,7 @@ export component LibraryTab inherits Rectangle {
                 }
 
                 MenuAction {
-                    glyph: "✕";
+                    glyph: "×";
                     label: @tr("Cancelar");
                     clicked => { root.pl-menu-id = ""; }
                 }
@@ -1998,7 +1999,7 @@ export component LibraryTab inherits Rectangle {
                 }
 
                 MenuAction {
-                    glyph: "✕";
+                    glyph: "×";
                     label: @tr("Cancelar");
                     clicked => { root.pending-path = ""; }
                 }

@@ -23,6 +23,10 @@ export global Theme {
     out property <color> bg-tertiary:    #e8e8e8.mix(#2d2d30, 1 - t);
     out property <color> bg-hover:       #d4d4d4.mix(#3e3e42, 1 - t);
     out property <color> bg-selected:    #cce5ff.mix(#094771, 1 - t);
+    // Text on the selected row: white on the dark blue, ink on the light one.
+    // A literal white here was invisible in the light theme.
+    out property <color> text-on-selected:       #1e1e1e.mix(#ffffff, 1 - t);
+    out property <color> text-on-selected-muted: #1e1e1ecc.mix(#ffffffcc, 1 - t);
     out property <color> text-primary:   #1e1e1e.mix(#cccccc, 1 - t);
     out property <color> text-secondary: #616161.mix(#969696, 1 - t);
     out property <color> text-muted:     #a0a0a0.mix(#5a5a5a, 1 - t);
