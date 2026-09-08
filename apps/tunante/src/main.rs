@@ -688,8 +688,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cancel = scan_cancel.clone();
             cancel.store(false, std::sync::atomic::Ordering::Relaxed);
             std::thread::spawn(move || {
+                // Whatever happens on this thread — a panic included — the
+                // finish is reported, or the modal would sit there for ever.
+                struct Finished(std::sync::mpsc::Sender<Option<(usize, usize, usize)>>);
+                impl Drop for Finished {
+                    fn drop(&mut self) {
+                        let _ = self.0.send(None);
+                    }
+                }
+                let _finished = Finished(tx.clone());
                 let Ok(db) = Database::new(&dbfile) else {
-                    let _ = tx.send(None);
                     return;
                 };
                 for folder in folders {
@@ -700,7 +708,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = tx.send(Some((p.scanned, p.total, p.added)));
                     });
                 }
-                let _ = tx.send(None);
             });
         })
     };
@@ -3658,8 +3665,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let cancel = scan_cancel.clone();
             cancel.store(false, std::sync::atomic::Ordering::Relaxed);
             std::thread::spawn(move || {
+                // Whatever happens on this thread — a panic included — the
+                // finish is reported, or the modal would sit there for ever.
+                struct Finished(std::sync::mpsc::Sender<Option<(usize, usize, usize)>>);
+                impl Drop for Finished {
+                    fn drop(&mut self) {
+                        let _ = self.0.send(None);
+                    }
+                }
+                let _finished = Finished(tx.clone());
                 let Ok(db) = Database::new(&dbfile) else {
-                    let _ = tx.send(None);
                     return;
                 };
                 for folder in folders {
@@ -3670,7 +3685,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = tx.send(Some((p.scanned, p.total, p.added)));
                     });
                 }
-                let _ = tx.send(None);
             });
         });
     }
