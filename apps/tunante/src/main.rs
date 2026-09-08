@@ -4812,6 +4812,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .unwrap_or(false),
     ));
     ui.set_close_to_tray(close_to_tray.get());
+    // The tray is a StatusNotifierItem over D-Bus: Linux only. Elsewhere the
+    // rows that configure it would configure nothing.
+    ui.set_has_tray(cfg!(all(target_os = "linux", feature = "tray")));
     {
         let flag = close_to_tray.clone();
         ui.window().on_close_requested(move || {
