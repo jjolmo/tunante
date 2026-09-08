@@ -4841,13 +4841,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_close_to_tray(close_to_tray.get());
     // The tray is a StatusNotifierItem over D-Bus: Linux only. Elsewhere the
     // rows that configure it would configure nothing.
-    ui.set_has_tray(cfg!(all(target_os = "linux", feature = "tray")));
+    ui.set_has_tray(cfg!(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")));
     {
         let flag = close_to_tray.clone();
         ui.window().on_close_requested(move || {
             // Only hide to the tray if there IS a tray: no icon means no way
             // back, so without one the close button quits, as it always did.
-            if cfg!(all(target_os = "linux", feature = "tray")) && show_in_tray && flag.get() {
+            if cfg!(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")) && show_in_tray && flag.get() {
                 slint::CloseRequestResponse::HideWindow
             } else {
                 let _ = slint::quit_event_loop();

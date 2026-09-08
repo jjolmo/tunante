@@ -119,6 +119,11 @@ futures-lite = "2"
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip", "json"], optional = true }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
+# The tray on macOS (NSStatusItem) and Windows (notification area): the crate
+# the Tauri desktop used, with no default features so no GTK anywhere. Linux
+# keeps its StatusNotifierItem over ksni; both answer to the same `tray`
+# feature and the same TrayAction channel.
+tray-icon = { version = "0.21", default-features = false, optional = true }
 # The native folder dialog: IFileDialog on Windows, NSOpenPanel on macOS. No
 # default features: those pull the XDG portal + GTK stack, which is Linux's
 # business and handled by filedialog.rs over the zbus the app already has.
@@ -126,7 +131,7 @@ rfd = { version = "0.16", default-features = false }
 
 [features]
 default = ["tray", "updater"]
-tray = ["dep:ksni"]
+tray = ["dep:ksni", "dep:tray-icon"]
 updater = ["dep:ureq"]
 
 [build-dependencies]

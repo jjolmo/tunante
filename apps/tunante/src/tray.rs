@@ -317,24 +317,173 @@ mod imp {
 #[cfg(all(target_os = "linux", feature = "tray"))]
 pub use imp::{poll, set_style, set_tooltip, spawn, take_scroll};
 
+/// macOS and Windows: the same five verbs through `tray-icon`, which on those
+/// two uses the native status item and the notification area — no GTK.
+///
+/// The icon has to be created on the main thread once the event loop runs
+/// (an NSStatusItem outside the loop never appears), so `spawn` only arms a
+/// one-shot Slint timer and the building happens inside it. Events come out
+/// of tray-icon's own channels and are read by `poll` from the UI timer, the
+/// same place the Linux tray's are.
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "tray"))]
+mod native {
+    use super::TrayAction;
+    use std::cell::RefCell;
+    use std::sync::Mutex;
+    use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
+    use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
+
+    struct Live {
+        tray: TrayIcon,
+        ids: [(MenuId, TrayAction); 5],
+    }
+    thread_local! {
+        static LIVE: RefCell<Option<Live>> = const { RefCell::new(None) };
+    }
+    static STYLE: Mutex<u8> = Mutex::new(0);
+    static TOOLTIP: Mutex<String> = Mutex::new(String::new());
+
+    fn icon_for(style: u8) -> Option<Icon> {
+        // 0 system, 1 symbolic, 2 logo. macOS wants a template (black on
+        // transparent, recoloured by the menu bar) for anything but the logo;
+        // Windows shows colour, so only "symbolic" goes monochrome there.
+        let bytes: &[u8] = match style {
+            2 => include_bytes!("../dist/icons/128x128/tunante.png"),
+            1 if cfg!(target_os = "windows") => include_bytes!("../dist/icons/tray/mono-white.png"),
+            0 if cfg!(target_os = "windows") => include_bytes!("../dist/icons/128x128/tunante.png"),
+            _ => include_bytes!("../dist/icons/tray/mono-black.png"),
+        };
+        let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
+        let (w, h) = rgba.dimensions();
+        Icon::from_rgba(rgba.into_raw(), w, h).ok()
+    }
+
+    fn is_template(style: u8) -> bool {
+        cfg!(target_os = "macos") && style != 2
+    }
+
+    fn build() {
+        let style = *STYLE.lock().unwrap();
+        let menu = Menu::new();
+        let mk = |label: &str| MenuItem::new(tunante_core::i18n::tr(label), true, None);
+        let show = mk("Mostrar/Ocultar");
+        let play = mk("Reproducir/Pausa");
+        let next = mk("Siguiente");
+        let prev = mk("Anterior");
+        let quit = mk("Salir");
+        let _ = menu.append_items(&[
+            &show,
+            &PredefinedMenuItem::separator(),
+            &play,
+            &next,
+            &prev,
+            &PredefinedMenuItem::separator(),
+            &quit,
+        ]);
+        let ids = [
+            (show.id().clone(), TrayAction::ToggleWindow),
+            (play.id().clone(), TrayAction::PlayPause),
+            (next.id().clone(), TrayAction::Next),
+            (prev.id().clone(), TrayAction::Prev),
+            (quit.id().clone(), TrayAction::Quit),
+        ];
+        let tooltip = TOOLTIP.lock().map(|t| t.clone()).unwrap_or_default();
+        let mut builder = TrayIconBuilder::new()
+            .with_menu(Box::new(menu))
+            .with_tooltip(if tooltip.is_empty() { "Tunante" } else { tooltip.as_str() })
+            // Left click is ours (show/hide, as on Linux); the menu is the
+            // right button's.
+            .with_menu_on_left_click(false);
+        if let Some(icon) = icon_for(style) {
+            builder = builder.with_icon(icon);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            builder = builder.with_icon_as_template(is_template(style));
+        }
+        match builder.build() {
+            Ok(tray) => LIVE.with(|l| *l.borrow_mut() = Some(Live { tray, ids })),
+            Err(e) => eprintln!("sin icono de bandeja: {e}"),
+        }
+    }
+
+    pub fn spawn(style: u8) {
+        *STYLE.lock().unwrap() = style;
+        // Inside the event loop, on its thread: the timer fires once it runs.
+        slint::Timer::single_shot(std::time::Duration::from_millis(100), build);
+    }
+
+    pub fn poll() -> Option<TrayAction> {
+        if let Ok(ev) = MenuEvent::receiver().try_recv() {
+            return LIVE.with(|l| {
+                l.borrow()
+                    .as_ref()
+                    .and_then(|live| live.ids.iter().find(|(id, _)| *id == ev.id).map(|(_, a)| *a))
+            });
+        }
+        while let Ok(ev) = TrayIconEvent::receiver().try_recv() {
+            if let TrayIconEvent::Click { button, button_state: MouseButtonState::Up, .. } = ev {
+                return match button {
+                    MouseButton::Left => Some(TrayAction::ToggleWindow),
+                    MouseButton::Middle => Some(TrayAction::MiddleClick),
+                    MouseButton::Right => None,
+                };
+            }
+        }
+        None
+    }
+
+    pub fn set_style(style: u8) {
+        *STYLE.lock().unwrap() = style;
+        LIVE.with(|l| {
+            if let Some(live) = l.borrow().as_ref() {
+                let _ = live.tray.set_icon(icon_for(style));
+                #[cfg(target_os = "macos")]
+                live.tray.set_icon_as_template(is_template(style));
+            }
+        });
+    }
+
+    pub fn set_tooltip(text: &str) {
+        if let Ok(mut t) = TOOLTIP.lock() {
+            if *t == text {
+                return;
+            }
+            *t = text.to_string();
+        }
+        LIVE.with(|l| {
+            if let Some(live) = l.borrow().as_ref() {
+                let _ = live.tray.set_tooltip(Some(text));
+            }
+        });
+    }
+
+    pub fn take_scroll() -> i32 {
+        0
+    }
+}
+
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "tray"))]
+pub use native::{poll, set_style, set_tooltip, spawn, take_scroll};
+
 // Same shape as the mpris stubs: the event loop in main.rs never has to know
 // which platform it is on. The tray is Linux-only (SNI is freedesktop), and the
 // phone build turns the feature off to keep D-Bus and ksni out of that image.
-#[cfg(not(all(target_os = "linux", feature = "tray")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
 pub fn spawn(_style: u8) {}
 
-#[cfg(not(all(target_os = "linux", feature = "tray")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
 pub fn poll() -> Option<TrayAction> {
     None
 }
 
-#[cfg(not(all(target_os = "linux", feature = "tray")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
 pub fn set_style(_style: u8) {}
 
-#[cfg(not(all(target_os = "linux", feature = "tray")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
 pub fn take_scroll() -> i32 {
     0
 }
 
-#[cfg(not(all(target_os = "linux", feature = "tray")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
 pub fn set_tooltip(_text: &str) {}
