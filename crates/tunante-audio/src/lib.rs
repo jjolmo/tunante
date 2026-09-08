@@ -33,7 +33,7 @@ use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{DeviceSinkBuilder, MixerDeviceSink, Player, Source};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use thiserror::Error;
 use tunante_core::dsp::{DspSettings, DspSource};
@@ -156,12 +156,196 @@ pub fn default_output_device_name() -> Option<String> {
         .and_then(|d| d.name().ok())
 }
 
-/// Open an OS audio sink for the given selection, attaching an error callback that
-/// flags the engine for a rebuild when the underlying stream fails (e.g. the device
-/// is unplugged). Returns the opened sink and the actual device name.
+/// A run of errors broken by this much quiet means the stream recovered: the
+/// next error starts a new run rather than continuing the old one.
+const QUIET: Duration = Duration::from_secs(2);
+/// How often a failure that keeps repeating is allowed to say so again.
+const REPEAT_EVERY: Duration = Duration::from_secs(5);
+/// How long a stream may fail without a single quiet gap before the engine
+/// stops it instead of letting it spin.
+const GIVE_UP: Duration = Duration::from_secs(10);
+
+/// How the output stream is behaving, shared with the cpal error callback.
+///
+/// The callback runs on the audio thread and knows nothing about the engine, so
+/// everything it has to say arrives through here: whether the device needs
+/// re-opening, whether the same error is simply repeating, and whether it has
+/// been failing long enough to be worth giving up on.
+///
+/// It exists because the obvious version — log the error and carry on — is a
+/// way to fill a disk. On a headless machine ALSA opens the default device
+/// happily and then returns POLLERR on every poll: one error per buffer period,
+/// forever, with nothing ever coming out. Two runs wrote 15.4 GiB each of the
+/// same single line and filled a 31 GB tmpfs between them.
+struct StreamHealth {
+    /// Set when an error means the device itself is gone; polled by
+    /// [`AudioEngine::reconcile_output`], which re-opens the stream.
+    rebuild: AtomicBool,
+    /// Set when the stream has failed without pause for [`GIVE_UP`]: there is
+    /// nothing behind it and re-opening only starts the same spin again.
+    lost: AtomicBool,
+    log: Mutex<ErrorLog>,
+}
+
+/// Collapses identical consecutive errors into one line plus a periodic tally.
+struct ErrorLog {
+    /// The message last written verbatim. Anything equal to it is a repeat.
+    last: String,
+    /// Repeats swallowed since the last line was written.
+    swallowed: u64,
+    /// When a line was last written, and when an error last arrived. `None`
+    /// until the first of each — a stream that has never failed has no history
+    /// to compare against.
+    last_written: Option<Instant>,
+    last_error: Option<Instant>,
+    /// Start of the current unbroken run of errors.
+    streak_started: Instant,
+}
+
+impl StreamHealth {
+    fn new() -> Self {
+        Self {
+            rebuild: AtomicBool::new(false),
+            lost: AtomicBool::new(false),
+            log: Mutex::new(ErrorLog {
+                last: String::new(),
+                swallowed: 0,
+                last_written: None,
+                last_error: None,
+                streak_started: Instant::now(),
+            }),
+        }
+    }
+
+    /// Record one error from the stream.
+    ///
+    /// `now` is a parameter rather than an `Instant::now()` inside so the whole
+    /// policy — collapse, tally, give up — can be driven through a made-up
+    /// timeline in a test instead of one that takes ten real seconds.
+    fn note(&self, err: &rodio::cpal::StreamError, now: Instant) {
+        use rodio::cpal::StreamError as StreamErr;
+
+        // A transient glitch, NOT a device problem, so it must not trigger a
+        // rebuild. `rebuild_output` re-opens the file and seeks back, and on
+        // emulated formats (2SF, PSF, USF...) that seek re-runs the emulator
+        // from the start -- expensive enough to cause the next underrun, which
+        // rebuilds again. That feedback loop made NDS tracks restart every few
+        // seconds.
+        let underrun = matches!(err, StreamErr::BufferUnderrun);
+        if !underrun {
+            self.rebuild.store(true, Ordering::SeqCst);
+        }
+
+        // try_lock, not lock: this runs on the audio thread and all that is
+        // behind the mutex is bookkeeping for a log line. Losing one repeat out
+        // of thousands under contention costs nothing; blocking the thread that
+        // feeds the speaker would not be free.
+        let Ok(mut log) = self.log.try_lock() else {
+            return;
+        };
+
+        // Two quiet seconds mean the stream worked in between, so this is a new
+        // problem starting rather than the old one still going.
+        let fresh = match log.last_error {
+            Some(t) => now.duration_since(t) >= QUIET,
+            None => true,
+        };
+        if fresh {
+            log.streak_started = now;
+            log.last.clear();
+            log.swallowed = 0;
+        }
+        log.last_error = Some(now);
+
+        let text = err.to_string();
+        if text != log.last {
+            if underrun {
+                log::warn!("[audio] buffer underrun (audio glitch, no rebuild)");
+            } else {
+                log::warn!("[audio] output stream error ({text}); scheduling rebuild");
+            }
+            log.last = text;
+            log.swallowed = 0;
+            log.last_written = Some(now);
+        } else {
+            log.swallowed += 1;
+            let due = match log.last_written {
+                Some(t) => now.duration_since(t) >= REPEAT_EVERY,
+                None => true,
+            };
+            if due {
+                log::warn!(
+                    "[audio] still failing after {:.0}s: {} more of the same ({})",
+                    now.duration_since(log.streak_started).as_secs_f32(),
+                    log.swallowed,
+                    log.last
+                );
+                log.swallowed = 0;
+                log.last_written = Some(now);
+            }
+        }
+
+        // Underruns are excluded on purpose: they are what a machine too slow to
+        // keep up produces, and tearing the output down over them would silence
+        // a player that was merely stuttering.
+        if !underrun && now.duration_since(log.streak_started) >= GIVE_UP {
+            self.lost.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// Take the pending rebuild request, if there is one.
+    fn take_rebuild(&self) -> bool {
+        self.rebuild.swap(false, Ordering::SeqCst)
+    }
+
+    fn is_lost(&self) -> bool {
+        self.lost.load(Ordering::SeqCst)
+    }
+
+    /// Drop a rebuild request that is about to be honoured.
+    ///
+    /// Deliberately does not touch the streak: a rebuild is an attempt at a
+    /// cure, not evidence of one. Were the streak cleared here, the five-second
+    /// rebuild cooldown would keep resetting a ten-second countdown and the
+    /// engine would never reach [`GIVE_UP`]. What clears it is [`QUIET`] — a
+    /// stream that ran two seconds without complaining is working.
+    fn clear_pending(&self) {
+        self.rebuild.store(false, Ordering::SeqCst);
+    }
+
+    /// Forget everything. For a deliberate fresh start — engine startup, or the
+    /// user picking a different output device — where the new stream deserves
+    /// the full countdown rather than the tail of the old one's.
+    fn reset(&self) {
+        self.rebuild.store(false, Ordering::SeqCst);
+        self.lost.store(false, Ordering::SeqCst);
+        if let Ok(mut log) = self.log.lock() {
+            log.last.clear();
+            log.swallowed = 0;
+            log.last_written = None;
+            log.last_error = None;
+            log.streak_started = Instant::now();
+        }
+    }
+}
+
+/// The error callback every stream gets, whichever path opened it.
+///
+/// `Clone` because [`DeviceSinkBuilder::open_sink_or_fallback`] retries the
+/// device's other configurations and needs a callback per attempt; the clone is
+/// an `Arc` bump, and every copy reports into the same health.
+fn error_callback(
+    health: Arc<StreamHealth>,
+) -> impl Fn(rodio::cpal::StreamError) + Clone + Send + 'static {
+    move |err: rodio::cpal::StreamError| health.note(&err, Instant::now())
+}
+
+/// Open an OS audio sink for the given selection, attaching the error callback
+/// that flags the engine for a rebuild when the underlying stream fails (e.g.
+/// the device is unplugged). Returns the opened sink and the actual device name.
 fn open_device_sink(
     selection: &OutputSelection,
-    rebuild_flag: Arc<AtomicBool>,
+    health: Arc<StreamHealth>,
 ) -> Result<(MixerDeviceSink, String), AudioError> {
     let host = rodio::cpal::default_host();
 
@@ -181,34 +365,67 @@ fn open_device_sink(
 
     let sink = DeviceSinkBuilder::from_device(device)
         .map_err(|e| AudioError::OutputError(e.to_string()))?
-        .with_error_callback(move |err: rodio::cpal::StreamError| {
-            use rodio::cpal::StreamError as StreamErr;
-            match err {
-                // A transient glitch, NOT a device problem, so it must not
-                // trigger a rebuild. `rebuild_output` re-opens the file and
-                // seeks back, and on emulated formats (2SF, PSF, USF...) that
-                // seek re-runs the emulator from the start -- expensive enough
-                // to cause the next underrun, which rebuilds again. That
-                // feedback loop made NDS tracks restart every few seconds.
-                StreamErr::BufferUnderrun => {
-                    log::warn!("[audio] buffer underrun (audio glitch, no rebuild)");
-                }
-                // The device is really gone or the stream is dead: only these
-                // are worth the cost of rebuilding.
-                other => {
-                    log::warn!("[audio] output stream error ({other}); scheduling rebuild");
-                    rebuild_flag.store(true, Ordering::SeqCst);
-                }
-            }
-        })
+        .with_error_callback(error_callback(health))
         .open_stream()
         .map_err(|e| AudioError::OutputError(e.to_string()))?;
 
     Ok((sink, name))
 }
 
+/// Rodio's resilient chain — the default device, then any other that will open,
+/// each retried across its supported configurations — wearing our callback.
+///
+/// `DeviceSinkBuilder::open_default_sink()` is that chain in one call and is
+/// what this used to fall back to. It keeps rodio's *default* callback, though:
+/// an unconditional `eprintln!` per error, no rate limit, no way to give up.
+/// That was the one path in the engine that logged without a bound, and it is
+/// the path that filled the tmpfs. The convenience is not worth it — the
+/// fallback has to be exactly as careful as the direct open.
+fn open_fallback_sink(
+    health: Arc<StreamHealth>,
+) -> Result<(MixerDeviceSink, String), AudioError> {
+    let host = rodio::cpal::default_host();
+
+    // The default first, then the rest. It usually appears in both lists; a
+    // second attempt at a device that already worked never happens, because the
+    // first one returned.
+    let mut devices: Vec<rodio::cpal::Device> = Vec::new();
+    if let Some(d) = host.default_output_device() {
+        devices.push(d);
+    }
+    if let Ok(rest) = host.output_devices() {
+        devices.extend(rest);
+    }
+
+    let mut last_err: Option<String> = None;
+    for device in devices {
+        let name = device.name().unwrap_or_else(|_| "unknown".to_string());
+        let builder = match DeviceSinkBuilder::from_device(device) {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = Some(e.to_string());
+                continue;
+            }
+        };
+        match builder
+            .with_error_callback(error_callback(health.clone()))
+            .open_sink_or_fallback()
+        {
+            Ok(sink) => return Ok((sink, name)),
+            Err(e) => last_err = Some(e.to_string()),
+        }
+    }
+
+    Err(AudioError::OutputError(last_err.unwrap_or_else(|| {
+        "no output device available".to_string()
+    })))
+}
+
 pub struct AudioEngine {
-    _device: MixerDeviceSink,
+    /// `None` once the engine has given up on a stream that would not stop
+    /// failing: there is no output, and playing anything has to say so rather
+    /// than pretend.
+    _device: Option<MixerDeviceSink>,
     player: Player,
     volume: f32,
     timer: PlaybackTimer,
@@ -242,9 +459,23 @@ pub struct AudioEngine {
     desired_output: OutputSelection,
     /// Name of the device the current stream is actually open on.
     active_device_name: Option<String>,
-    /// Set by the cpal error callback when the stream dies (device unplugged);
-    /// polled by the output supervisor to trigger a rebuild.
-    rebuild_flag: Arc<AtomicBool>,
+    /// What the cpal error callback reports: a stream that died (device
+    /// unplugged) and wants re-opening, or one that has failed so relentlessly
+    /// that it is not worth re-opening at all. Polled by the output supervisor.
+    health: Arc<StreamHealth>,
+    /// Consecutive failed attempts at re-opening the output, and the device
+    /// name the last one failed on.
+    ///
+    /// A device *change* normally skips the rebuild cooldown, because plugging
+    /// in headphones is a one-off event that should be honoured at once. But
+    /// when the reopen fails, the name it was reaching for stays different from
+    /// the one still open, so "changed" never stops being true and the cooldown
+    /// never applies: measured, that is one failed attempt and one error line
+    /// every five seconds, for as long as the app runs. Remembering the name
+    /// that refused turns the event back into what it is — the same failure,
+    /// still happening — and the count decides when to stop asking.
+    failed_rebuilds: u32,
+    last_failed_target: Option<String>,
     /// The path (incl. any vgm subsong suffix) of the current track, so the
     /// output can be rebuilt without losing what's playing.
     current_path: Option<String>,
@@ -260,20 +491,17 @@ unsafe impl Sync for AudioEngine {}
 
 impl AudioEngine {
     pub fn new() -> Result<Self, AudioError> {
-        let rebuild_flag = Arc::new(AtomicBool::new(false));
-        let (device, active_name) = open_device_sink(&OutputSelection::System, rebuild_flag.clone())
-            // Fall back to rodio's resilient default-sink chain if the direct
-            // open fails. No error callback in that case, but the app still boots.
-            .or_else(|_| {
-                DeviceSinkBuilder::open_default_sink()
-                    .map(|d| (d, "default".to_string()))
-                    .map_err(|e| AudioError::OutputError(e.to_string()))
-            })?;
+        let health = Arc::new(StreamHealth::new());
+        let (device, active_name) = open_device_sink(&OutputSelection::System, health.clone())
+            // Fall back to rodio's resilient chain if the direct open fails —
+            // rebuilt in `open_fallback_sink` so that it carries the same error
+            // callback. It used to call rodio's own, which did not.
+            .or_else(|_| open_fallback_sink(health.clone()))?;
         let player = Player::connect_new(&device.mixer());
         player.set_volume(0.8);
 
         Ok(Self {
-            _device: device,
+            _device: Some(device),
             player,
             volume: 0.8,
             timer: PlaybackTimer::new(),
@@ -290,7 +518,9 @@ impl AudioEngine {
             fade_generation: 0,
             desired_output: OutputSelection::System,
             active_device_name: Some(active_name),
-            rebuild_flag,
+            health,
+            failed_rebuilds: 0,
+            last_failed_target: None,
             current_path: None,
             current_duration_hint: 0,
             dsp: DspSettings::default(),
@@ -334,6 +564,13 @@ impl AudioEngine {
         duration_hint_ms: i64,
         initial_volume: f32,
     ) -> Result<(), AudioError> {
+        // Nothing to play into: the engine gave up on a stream that would not
+        // stop failing. Say so once, per attempt, instead of opening a decoder
+        // to feed a device that is not there.
+        if self._device.is_none() {
+            return Err(AudioError::OutputError("no audio output".to_string()));
+        }
+
         // Remember what's playing so the output device can be rebuilt (on a
         // device switch/unplug) by reopening this same source at its position.
         self.current_path = Some(path.to_string_lossy().to_string());
@@ -348,7 +585,7 @@ impl AudioEngine {
         // globals were torn down before the next one came up. Gone: the old
         // decoder's globals die with the old decoder's process.
         self.player.stop();
-        self.player = Player::connect_new(&self._device.mixer());
+        self.player = Player::connect_new(&self.mixer_device().mixer());
         self.player.set_volume(initial_volume.clamp(0.0, 1.0));
 
         log::info!("[play_file] path={}", path.display());
@@ -502,7 +739,41 @@ impl AudioEngine {
     /// the current track and playback position.
     pub fn set_output_selection(&mut self, selection: OutputSelection) -> Result<(), AudioError> {
         self.desired_output = selection;
+        // A device the user picked deserves the full countdown, not what is
+        // left of the previous one's — and this is the way back from a stream
+        // the engine had given up on.
+        self.health.reset();
+        self.failed_rebuilds = 0;
+        self.last_failed_target = None;
         self.rebuild_output()
+    }
+
+    /// True once the engine has stopped an output that would not stop failing.
+    /// The app shows its "no audio output" banner on this.
+    pub fn output_lost(&self) -> bool {
+        self.health.is_lost() && self._device.is_none()
+    }
+
+    /// The open sink. Only called where one has just been checked for or
+    /// installed; `_device` is `None` exactly while the output is given up on,
+    /// and every path into playback returns early in that case.
+    fn mixer_device(&self) -> &MixerDeviceSink {
+        self._device
+            .as_ref()
+            .expect("output sink checked before use")
+    }
+
+    /// Stop an output that only produces errors.
+    ///
+    /// Dropping the sink is the point: it is what ends the stream, and with it
+    /// the flood of callbacks. Everything else here is the app being told the
+    /// truth — nothing is playing, because nothing can.
+    fn shutdown_output(&mut self) {
+        self.player.stop();
+        self.timer.pause();
+        self.was_playing = false;
+        self.has_source = false;
+        self._device = None;
     }
 
     /// Re-open the OS audio sink for the currently desired output and resume the
@@ -515,14 +786,14 @@ impl AudioEngine {
         let path = self.current_path.clone();
         let hint = self.current_duration_hint;
 
-        self.rebuild_flag.store(false, Ordering::SeqCst);
-        let (device, name) = open_device_sink(&self.desired_output, self.rebuild_flag.clone())?;
+        self.health.clear_pending();
+        let (device, name) = open_device_sink(&self.desired_output, self.health.clone())?;
 
         // Drop the old stream and connect a fresh player to the new device.
         self.player.stop();
-        self._device = device;
+        self._device = Some(device);
         self.active_device_name = Some(name);
-        self.player = Player::connect_new(&self._device.mixer());
+        self.player = Player::connect_new(&self.mixer_device().mixer());
         self.player.set_volume(self.volume);
 
         // Restore the current track at its previous position and play state.
@@ -543,26 +814,75 @@ impl AudioEngine {
     /// changed (system default switched to freshly-connected headphones). Returns
     /// the new active device name when a rebuild happened, so the UI can be told.
     pub fn reconcile_output(&mut self) -> Option<String> {
-        let flagged = self.rebuild_flag.swap(false, Ordering::SeqCst);
+        let flagged = self.health.take_rebuild();
         let target = self.resolve_target_name();
         let changed = match (&target, &self.active_device_name) {
             (Some(t), Some(a)) => t != a,
             (Some(_), None) => true,
             _ => false,
         };
+
+        // A target we have not already failed on. Only this counts as the
+        // one-off event that jumps the rebuild cooldown; the name that just
+        // refused to open is not news however many ticks it is repeated over.
+        let new_target = changed && self.last_failed_target.as_deref() != target.as_deref();
+
+        // The stream has been failing without a single quiet gap: every poll
+        // an error, nothing ever coming out. Re-opening it would open the same
+        // dead device and start the same spin, so stop instead and let the app
+        // say there is no audio output. Hardware that genuinely arrived is the
+        // exception and still gets an attempt — it is exactly the thing that
+        // could fix this.
+        if self.health.is_lost() && !new_target {
+            if self._device.is_some() {
+                log::error!(
+                    "[audio] output failing continuously with nothing coming out; \
+                     stopping the stream. Pick an output device in Ajustes to retry."
+                );
+                self.shutdown_output();
+            }
+            return None;
+        }
+
+        // Enough refusals from the same target: stop asking. Note what this
+        // does *not* do — it does not touch the open stream. A reopen that
+        // fails says nothing about the sink already playing, and tearing that
+        // down over it would silence a player that was working.
+        const GIVE_UP_AFTER: u32 = 5;
+        if self.failed_rebuilds >= GIVE_UP_AFTER && !new_target {
+            return None;
+        }
+
         if flagged || changed {
             // A device change is a deliberate, one-off event and always wins.
             // An error flag is rate-limited: rebuilding costs a restart+seek,
             // so repeating it on every tick would be worse than the glitch.
             const MIN_GAP: Duration = Duration::from_secs(5);
-            if !changed && self.last_rebuild.elapsed() < MIN_GAP {
+            if !new_target && self.last_rebuild.elapsed() < MIN_GAP {
                 log::debug!("[audio] rebuild requested again too soon; ignoring");
                 return None;
             }
             self.last_rebuild = Instant::now();
             match self.rebuild_output() {
-                Ok(()) => return self.active_device_name.clone(),
-                Err(e) => log::error!("[audio] output rebuild failed: {e}"),
+                Ok(()) => {
+                    self.failed_rebuilds = 0;
+                    self.last_failed_target = None;
+                    return self.active_device_name.clone();
+                }
+                Err(e) => {
+                    self.failed_rebuilds = self.failed_rebuilds.saturating_add(1);
+                    self.last_failed_target = target;
+                    // Said once. After that the only thing left to report is
+                    // that it is over.
+                    if self.failed_rebuilds == 1 {
+                        log::error!("[audio] output rebuild failed: {e}");
+                    } else if self.failed_rebuilds == GIVE_UP_AFTER {
+                        log::error!(
+                            "[audio] the output has refused to open {GIVE_UP_AFTER} times \
+                             ({e}); no longer retrying. Pick an output device in Ajustes."
+                        );
+                    }
+                }
             }
         }
         None
@@ -582,5 +902,91 @@ impl AudioEngine {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rodio::cpal::{BackendSpecificError, StreamError};
+    use std::sync::atomic::AtomicUsize;
+
+    /// Every line the code under test writes, counted. `StreamHealth` reports
+    /// through the `log` facade, so counting there is the only way to assert
+    /// what it actually says out loud.
+    static LINES: AtomicUsize = AtomicUsize::new(0);
+
+    struct Counter;
+    impl log::Log for Counter {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+        fn log(&self, _: &log::Record) {
+            LINES.fetch_add(1, Ordering::SeqCst);
+        }
+        fn flush(&self) {}
+    }
+
+    fn written() -> usize {
+        LINES.swap(0, Ordering::SeqCst)
+    }
+
+    fn pollerr() -> StreamError {
+        StreamError::BackendSpecific {
+            err: BackendSpecificError {
+                description: "`alsa::poll()` returned POLLERR".to_string(),
+            },
+        }
+    }
+
+    /// The whole policy in one test on purpose: the line counter is global, so
+    /// two tests running side by side would count each other's output.
+    #[test]
+    fn a_stream_that_only_fails_is_logged_once_and_then_dropped() {
+        let _ = log::set_logger(&Counter);
+        log::set_max_level(log::LevelFilter::Trace);
+
+        let health = StreamHealth::new();
+        let err = pollerr();
+        let t0 = Instant::now();
+        written();
+
+        // Twelve seconds of the same error every 10 ms — the shape ALSA
+        // produces on a machine with no sound server, once per buffer period.
+        let mut lost_at = None;
+        for i in 0..1200u64 {
+            health.note(&err, t0 + Duration::from_millis(i * 10));
+            if lost_at.is_none() && health.is_lost() {
+                lost_at = Some(i * 10);
+            }
+        }
+
+        // 1200 errors, three lines: the first, and a tally at five and ten
+        // seconds. This is the whole point — the version this replaces wrote
+        // 181 million of them.
+        assert_eq!(written(), 3);
+        assert_eq!(lost_at, Some(GIVE_UP.as_millis() as u64));
+
+        // A quiet gap means the stream worked in between, so the next error is
+        // a new problem: it is logged in full and the countdown starts over.
+        health.reset();
+        health.note(&err, t0);
+        health.note(&err, t0 + QUIET);
+        assert_eq!(written(), 2);
+        assert!(!health.is_lost());
+
+        // The same twelve seconds of underruns instead: collapsed just as
+        // hard, but never rebuilt and never given up on. A machine too slow to
+        // keep up stutters; it does not deserve to have its output taken away.
+        health.reset();
+        for i in 0..1200u64 {
+            health.note(
+                &StreamError::BufferUnderrun,
+                t0 + Duration::from_millis(i * 10),
+            );
+        }
+        assert_eq!(written(), 3);
+        assert!(!health.is_lost());
+        assert!(!health.take_rebuild());
     }
 }

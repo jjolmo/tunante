@@ -79,6 +79,13 @@ impl Player {
         self.engine.reconcile_output()
     }
 
+    /// True once the engine has stopped an output that only produced errors —
+    /// a headless machine with no sound server is the everyday case. Feeds the
+    /// same "Sin salida de audio" banner as the null-sink watch.
+    pub fn output_lost(&self) -> bool {
+        self.engine.output_lost()
+    }
+
     pub fn set_fade_kick(&mut self, kick: impl Fn() + 'static) {
         self.fade_kick = Some(Box::new(kick));
     }
