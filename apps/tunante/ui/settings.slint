@@ -305,6 +305,8 @@ export component DesktopSettings inherits Rectangle {
     in property <bool> show-faved;
     callback toggle-show-faved();
     in property <bool> show-folders;
+    in property <[string]> sidebar-order;
+    callback sidebar-section-moved(int, int);
     callback toggle-show-folders();
     in property <bool> show-playlists;
     callback toggle-show-playlists();
@@ -987,9 +989,18 @@ export component DesktopSettings inherits Rectangle {
                                 Group {
                                     title: @tr("Secciones del sidebar");
                                     Check { label: @tr("Favoritos"); checked: root.show-faved; toggled => { root.toggle-show-faved(); } }
-                                    Check { label: @tr("Carpetas"); checked: root.show-folders; toggled => { root.toggle-show-folders(); } }
-                                    Check { label: @tr("Consolas (acceso rápido)"); checked: root.show-consoles; toggled => { root.toggle-show-consoles(); } }
-                                    Check { label: @tr("Listas (acceso rápido)"); checked: root.show-playlists; toggled => { root.toggle-show-playlists(); } }
+                                    // The sections in their order; ▲▼ move them, the box shows or hides.
+                                    // (Ctrl + drag on a section title in the sidebar does the same.)
+                                    for key[i] in root.sidebar-order: HorizontalLayout {
+                                        spacing: 6px;
+                                        if key == "library": Check { label: @tr("Biblioteca"); checked: true; enabled: false; }
+                                        if key == "folders": Check { label: @tr("Carpetas"); checked: root.show-folders; toggled => { root.toggle-show-folders(); } }
+                                        if key == "consoles": Check { label: @tr("Consolas (acceso rápido)"); checked: root.show-consoles; toggled => { root.toggle-show-consoles(); } }
+                                        if key == "playlists": Check { label: @tr("Listas (acceso rápido)"); checked: root.show-playlists; toggled => { root.toggle-show-playlists(); } }
+                                        Rectangle { horizontal-stretch: 1; }
+                                        Push { label: "▲"; enabled: i > 0; clicked => { root.sidebar-section-moved(i, i - 1); } }
+                                        Push { label: "▼"; enabled: i < root.sidebar-order.length - 1; clicked => { root.sidebar-section-moved(i, i + 1); } }
+                                    }
                                 }
                             }
 
