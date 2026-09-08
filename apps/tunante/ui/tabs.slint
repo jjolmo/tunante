@@ -1142,6 +1142,12 @@ export component LibraryTab inherits Rectangle {
     // reconstruyen al desplegar una carpeta, y una tarjeta de la rejilla no
     // tiene índice de fila siquiera. Vacía = cerrado.
     property <string> menu-path;
+    // Desktop: right-click menus on cells and rows instead of the long-press
+    // sheet. The compact shell leaves it off and keeps the sheet.
+    in property <bool> native-menu;
+    // "Put this row in the middle": the row index and a tick that says now.
+    in property <int> reveal-row;
+    in property <int> reveal-tick;
     property <string> menu-name;
     property <bool> menu-is-folder;
     callback enqueue-path(string, bool);
@@ -1245,6 +1251,11 @@ export component LibraryTab inherits Rectangle {
                     label: @tr("Juegos");
                     selected: root.mode == 3;
                     clicked => { root.switch-mode(3); }
+                }
+                ModeTab {
+                    label: @tr("Artistas");
+                    selected: root.mode == 5;
+                    clicked => { root.switch-mode(5); }
                 }
                 ModeTab {
                     label: @tr("Listas");
@@ -1486,6 +1497,11 @@ export component LibraryTab inherits Rectangle {
                         width: linea.cell-w;
                         cell: cell;
                         current: cell.playing;
+                        native-menu: root.native-menu;
+                        play => { root.play-path(cell.path); }
+                        enqueue => { root.enqueue-path(cell.path, true); }
+                        add-to-list => { root.pending-path = cell.path; root.pending-deep = true; }
+                        open => { root.open-path(cell.path); }
                         tapped => { root.grid-tapped(cell.path); }
                         held => {
                             root.menu-path = cell.path;
@@ -1502,6 +1518,16 @@ export component LibraryTab inherits Rectangle {
         // El árbol y, con las mismas filas, las pistas de una lista abierta: una
         // pista se dibuja igual venga de donde venga, así que esto no se duplica.
         if !root.grid && !root.showing-playlists: ListView {
+            // A local mirror of the tick, so its change is observed here, in
+            // the one scope that may write this list's viewport.
+            property <int> seen: root.reveal-tick;
+            changed seen => {
+                self.viewport-y = clamp(
+                    -(root.reveal-row * Theme.touch-target) + self.height / 2 - Theme.touch-target / 2,
+                    min(0px, self.height - self.viewport-height),
+                    0px
+                );
+            }
             // Slint's default style builds its Flickable with `interactive: false`,
             // so the list only scrolls by its scrollbar and the finger does nothing.
             // Fine for a desktop with a wheel; wrong for anything held in a hand.
@@ -1532,6 +1558,26 @@ export component LibraryTab inherits Rectangle {
                     root.menu-is-folder = row.is-folder;
                 }
 
+                // Right-click, on the desktop: the same verbs the sheet offers.
+                if root.native-menu: ContextMenuArea {
+                    Menu {
+                        if row.is-folder: MenuItem { title: @tr("Reproducir carpeta"); activated => { root.play-path(row.path); } }
+                        if !row.is-folder: MenuItem { title: @tr("Reproducir"); activated => { root.activated(i); } }
+                        MenuItem {
+                            title: row.is-folder ? @tr("Añadir todo, con las subcarpetas") : @tr("Añadir a la cola");
+                            activated => { root.enqueue-path(row.path, true); }
+                        }
+                        if row.is-folder: MenuItem { title: @tr("Añadir sólo esta carpeta"); activated => { root.enqueue-path(row.path, false); } }
+                        MenuItem {
+                            title: row.is-folder ? @tr("Añadir carpeta y subcarpetas a lista") : @tr("Añadir a una lista");
+                            activated => { root.pending-path = row.path; root.pending-deep = true; }
+                        }
+                        if row.is-folder: MenuSeparator {}
+                        if row.is-folder: MenuItem { title: @tr("Abrir"); activated => { root.open-path(row.path); } }
+                        if row.is-folder: MenuItem { title: @tr("Fijar en el sidebar"); activated => { root.pin-path(row.path); } }
+                    }
+                }
+
                 HorizontalLayout {
                     padding-left: Theme.gap + row.depth * 16px;
                     padding-right: Theme.gap;
@@ -1545,11 +1591,11 @@ export component LibraryTab inherits Rectangle {
                     }
                     if row.is-folder: Rectangle {
                         width: 18px;
-                        FolderIcon { size: 16px; }
+                        FolderIcon { size: 16px; ink: row.expanded ? Theme.text-secondary : Theme.text-muted; }
                     }
                     if !row.is-folder: Text {
                         text: "♪";
-                        color: Theme.text-muted;
+                        color: row.path == root.now-path ? Theme.text-primary : Theme.text-muted;
                         width: 18px;
                         vertical-alignment: center;
                     }

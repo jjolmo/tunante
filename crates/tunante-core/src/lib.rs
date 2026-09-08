@@ -13,6 +13,7 @@ pub mod classify;
 pub mod clock;
 pub mod console;
 pub mod db;
+pub mod artists;
 pub mod games;
 pub mod i18n;
 #[cfg(feature = "dsp")]

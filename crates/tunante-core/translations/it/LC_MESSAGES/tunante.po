@@ -1363,3 +1363,9 @@ msgstr "Altri"
 
 msgid "el ejecutable ya no está donde se lanzó; reinicia y vuelve a intentarlo"
 msgstr "l'eseguibile non è più dove è stato avviato; riavvia e riprova"
+
+msgid "Artistas"
+msgstr "Artisti"
+
+msgid "Artista · {}"
+msgstr "Artista · {}"

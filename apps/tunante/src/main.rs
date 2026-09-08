@@ -1145,7 +1145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ids: tracks.iter().map(|t| t.id.clone()).collect(),
                     id: id.clone(),
                 },
-                None => Scope::Folder(folder),
+                None => Scope::Tree(folder),
             };
             // By path and not by the row index: with the search box narrowing the
             // rows, index `i` addresses the filtered list while the context here
@@ -1187,8 +1187,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match &scope {
                 Scope::Console(id) => { t.mode = library::Mode::Consoles; t.nav.push(format!("consola:{id}")); ui.set_library_mode(2); }
                 Scope::Game(name) => { t.mode = library::Mode::Games; t.nav.push(format!("juego:{name}")); ui.set_library_mode(3); }
+                Scope::Artist(name) => { t.mode = library::Mode::Artists; t.nav.push(format!("artista:{name}")); ui.set_library_mode(5); }
                 Scope::Playlist { id, .. } => { t.mode = library::Mode::Playlists; t.nav.push(id.clone()); ui.set_library_mode(4); }
-                Scope::Folder(p) => { t.mode = library::Mode::Tree; t.nav.push(p.clone()); ui.set_library_mode(0); }
+                Scope::Folder(p) | Scope::Tree(p) => { t.mode = library::Mode::Tree; t.nav.push(p.clone()); ui.set_library_mode(0); }
                 _ => {}
             }
             drop(t);
@@ -2582,6 +2583,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (st, player, model) = (table_state.clone(), player.clone(), table_model.clone());
         let (db_now, played_scope_n) = (db.clone(), played_scope.clone());
+        let (tree_n, views_n) = (tree.clone(), views.clone());
         let weak = ui.as_weak();
         ui.on_now_clicked(move || {
             let Some(ui) = weak.upgrade() else { return };
@@ -2593,6 +2595,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None => return,
             };
             let scope = played_scope_n.borrow().clone();
+            // Played from the tree: back to the tree, ancestors open, the
+            // track's row scrolled into the middle — not to the table.
+            if ui.get_desktop() {
+                if let Scope::Tree(_) = &scope {
+                    {
+                        let mut t = tree_n.borrow_mut();
+                        t.mode = library::Mode::Tree;
+                        t.nav.clear();
+                        t.reveal(&path);
+                    }
+                    ui.set_library_mode(0);
+                    ui.set_desktop_centre(1);
+                    refresh_library(&ui, &tree_n, &db_now, &views_n);
+                    let row = tree_n.borrow().rows(&db_now).iter().position(|r| r.path == path);
+                    if let Some(i) = row {
+                        ui.set_library_reveal_row(i as i32);
+                        ui.set_library_reveal_tick(ui.get_library_reveal_tick() + 1);
+                    }
+                    return;
+                }
+            }
             let mut st = st.borrow_mut();
             if !st.built {
                 st.built = true;
@@ -2999,7 +3022,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None => Scope::Library,
             };
             rebuild_table(&mut st, &model);
-            let scoped = matches!(st.scope, Scope::Folder(_));
+            let scoped = matches!(st.scope, Scope::Folder(_) | Scope::Tree(_));
             ui.set_table_faved(false);
             ui.set_table_scope_kind(SharedString::from(if scoped { "folder" } else { "" }));
             ui.set_table_folder_id(if scoped { id } else { SharedString::from("") });
@@ -3092,6 +3115,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 let scope = if let Some(game) = path.strip_prefix("juego:") {
                     Scope::Game(game.to_string())
+                } else if let Some(artist) = path.strip_prefix("artista:") {
+                    Scope::Artist(artist.to_string())
                 } else {
                     // A disc/album is a real folder.
                     Scope::Folder(path.to_string())
@@ -3134,6 +3159,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .into_iter()
                     .cloned()
                     .collect()
+            } else if let Some(artist) = path.strip_prefix("artista:") {
+                let all = db_v.get_all_tracks().unwrap_or_default();
+                tunante_core::artists::tracks_of(&all, artist)
+                    .into_iter()
+                    .cloned()
+                    .collect()
             } else {
                 db_v.get_tracks_by_folder(&path).unwrap_or_default()
             };
@@ -3149,6 +3180,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Scope::Console(c.to_string())
             } else if let Some(g) = path.strip_prefix("juego:") {
                 Scope::Game(g.to_string())
+            } else if let Some(a) = path.strip_prefix("artista:") {
+                Scope::Artist(a.to_string())
             } else {
                 Scope::Folder(path.to_string())
             };
@@ -4359,10 +4392,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ui.set_show_discos(get_bool_setting(&db, "lib_show_discos", true));
     ui.set_show_consoles_view(get_bool_setting(&db, "lib_show_consoles", true));
     ui.set_show_juegos(get_bool_setting(&db, "lib_show_juegos", true));
+    ui.set_show_artistas(get_bool_setting(&db, "lib_show_artistas", true));
     ui.set_show_listas_view(get_bool_setting(&db, "lib_show_listas", true));
     sidebar_toggle!(on_toggle_show_discos, get_show_discos, set_show_discos, "lib_show_discos");
     sidebar_toggle!(on_toggle_show_consoles_view, get_show_consoles_view, set_show_consoles_view, "lib_show_consoles");
     sidebar_toggle!(on_toggle_show_juegos, get_show_juegos, set_show_juegos, "lib_show_juegos");
+    sidebar_toggle!(on_toggle_show_artistas, get_show_artistas, set_show_artistas, "lib_show_artistas");
     sidebar_toggle!(on_toggle_show_listas_view, get_show_listas_view, set_show_listas_view, "lib_show_listas");
     ui.set_auto_update(get_bool_setting(&db, "auto_update_on_startup", false));
     ui.set_ask_update(get_bool_setting(&db, "ask_updates_on_startup", true));
@@ -6642,6 +6677,13 @@ fn tracks_for_path(
     if let Some(juego) = path.strip_prefix("juego:") {
         return tracks_of_game(db, roots, juego);
     }
+    if let Some(artista) = path.strip_prefix("artista:") {
+        let all: Vec<_> = roots
+            .iter()
+            .flat_map(|r| db.get_tracks_by_folder(&r.to_string_lossy()).unwrap_or_default())
+            .collect();
+        return tunante_core::artists::tracks_of(&all, artista).into_iter().cloned().collect();
+    }
     if let Some((consola, dir)) = path.split_once('\u{1}') {
         return db
             .get_tracks_by_folder(dir)
@@ -6857,17 +6899,24 @@ enum Scope {
     Queue { paths: Vec<String> },
     /// One game, by its name — every track `tunante_core::games` groups under it.
     Game(String),
+    /// One artist, by name — every track `tunante_core::artists` files under it.
+    Artist(String),
+    /// A folder played from the tree. Scoped like [`Scope::Folder`] everywhere,
+    /// but the track name in the transport goes back to the tree, on the
+    /// track, rather than to the table.
+    Tree(String),
 }
 
 impl Scope {
     /// (kind, id) for the sidebar to know what to light up.
     fn tag(&self) -> (&'static str, &str) {
         match self {
-            Scope::Folder(_) => ("folder", ""),
+            Scope::Folder(_) | Scope::Tree(_) => ("folder", ""),
             Scope::Console(id) => ("console", id),
             Scope::Playlist { id, .. } => ("playlist", id),
             Scope::Queue { .. } => ("queue", ""),
             Scope::Game(_) => ("game", ""),
+            Scope::Artist(_) => ("artist", ""),
             _ => ("", ""),
         }
     }
@@ -6880,10 +6929,12 @@ fn scope_to_session(scope: &Scope) -> Option<String> {
         Scope::Library => return None,
         Scope::Faved => "faved".to_string(),
         Scope::Folder(p) => format!("folder:{p}"),
+        Scope::Tree(p) => format!("tree:{p}"),
         Scope::Console(id) => format!("console:{id}"),
         Scope::Playlist { id, .. } => format!("playlist:{id}"),
         Scope::Queue { .. } => "queue".to_string(),
         Scope::Game(name) => format!("game:{name}"),
+        Scope::Artist(name) => format!("artist:{name}"),
     })
 }
 
@@ -6897,6 +6948,9 @@ fn scope_from_session(s: &str, db: &Database) -> Option<Scope> {
     if s == "queue" {
         return Some(Scope::Queue { paths: Vec::new() });
     }
+    if let Some(p) = s.strip_prefix("tree:") {
+        return std::path::Path::new(p).is_dir().then(|| Scope::Tree(p.to_string()));
+    }
     if let Some(p) = s.strip_prefix("folder:") {
         return std::path::Path::new(p).is_dir().then(|| Scope::Folder(p.to_string()));
     }
@@ -6905,6 +6959,9 @@ fn scope_from_session(s: &str, db: &Database) -> Option<Scope> {
     }
     if let Some(name) = s.strip_prefix("game:") {
         return Some(Scope::Game(name.to_string()));
+    }
+    if let Some(name) = s.strip_prefix("artist:") {
+        return Some(Scope::Artist(name.to_string()));
     }
     if let Some(id) = s.strip_prefix("playlist:") {
         let tracks = db.get_playlist_tracks(id).ok()?;
@@ -7658,7 +7715,8 @@ fn scope_label(db: &Database, scope: &Scope) -> String {
         Scope::Console(id) => tunante_core::i18n::tr("Consola · {}")
             .replace("{}", &tunante_core::i18n::tr(tunante_core::console::label_es(id))),
         Scope::Game(name) => return tunante_core::i18n::tr("Juego · {}").replace("{}", name),
-        Scope::Folder(f) => tunante_core::i18n::tr("Carpeta · {}").replace(
+        Scope::Artist(name) => return tunante_core::i18n::tr("Artista · {}").replace("{}", name),
+        Scope::Folder(f) | Scope::Tree(f) => tunante_core::i18n::tr("Carpeta · {}").replace(
             "{}",
             &
             std::path::Path::new(f)
@@ -7767,6 +7825,10 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                 .filter_map(|id| by_id.get(id.as_str()).map(|t| (*t).clone()))
                 .collect()
         }
+        Scope::Artist(name) => tunante_core::artists::tracks_of(&st.all, name)
+            .into_iter()
+            .cloned()
+            .collect(),
         Scope::Game(name) => tunante_core::games::tracks_of(&st.all, name)
             .into_iter()
             .cloned()
@@ -7776,7 +7838,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
             .iter()
             .filter(|t| match &st.scope {
                 Scope::Faved => t.rating > 0,
-                Scope::Folder(f) => {
+                Scope::Folder(f) | Scope::Tree(f) => {
                     // Boundary-aware: /a/b must not catch /a/bc.
                     let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
                     real.strip_prefix(f.as_str())

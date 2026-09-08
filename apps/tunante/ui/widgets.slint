@@ -1044,6 +1044,13 @@ export component GridItem inherits Rectangle {
     in property <bool> current;
     callback tapped();
     callback held();
+    // The desktop's right-click menu, in place of the phone's long-press
+    // sheet: the shell that embeds the grid says which one it wants.
+    in property <bool> native-menu;
+    callback play();
+    callback enqueue();
+    callback add-to-list();
+    callback open();
 
     property <bool> already-held: false;
 
@@ -1131,6 +1138,16 @@ export component GridItem inherits Rectangle {
                 root.already-held = true;
                 root.held();
             }
+        }
+    }
+
+    if root.native-menu: ContextMenuArea {
+        Menu {
+            MenuItem { title: @tr("Reproducir"); activated => { root.play(); } }
+            MenuItem { title: @tr("Encolar todo"); activated => { root.enqueue(); } }
+            MenuItem { title: @tr("Añadir a una lista"); activated => { root.add-to-list(); } }
+            MenuSeparator {}
+            MenuItem { title: @tr("Abrir"); activated => { root.open(); } }
         }
     }
 }

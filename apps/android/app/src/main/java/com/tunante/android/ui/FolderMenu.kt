@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
  */
 fun rowKey(tab: Tab, here: String, folderPath: String): String = when {
     tab == Tab.Games -> "juego:$folderPath"
+    tab == Tab.Artists -> "artista:$folderPath"
     tab == Tab.Consoles && here.isEmpty() -> "consola:$folderPath"
     tab == Tab.Consoles -> "$here$folderPath"
     else -> folderPath
