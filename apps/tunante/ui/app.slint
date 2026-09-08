@@ -102,6 +102,8 @@ export component AppWindow inherits Window {
     in property <bool> show-faved;
     callback toggle-show-faved();
     in property <bool> show-folders;
+    in property <[string]> sidebar-order;
+    callback sidebar-section-moved(int, int);
     callback toggle-show-folders();
     in property <bool> show-playlists;
     callback toggle-show-playlists();
@@ -851,6 +853,8 @@ export component AppWindow inherits Window {
                         show-faved: root.show-faved;
                         toggle-show-faved => { root.toggle-show-faved(); }
                         show-folders: root.show-folders;
+                        sidebar-order: root.sidebar-order;
+                        sidebar-section-moved(a, b) => { root.sidebar-section-moved(a, b); }
                         toggle-show-folders => { root.toggle-show-folders(); }
                         show-playlists: root.show-playlists;
                         toggle-show-playlists => { root.toggle-show-playlists(); }

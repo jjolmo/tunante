@@ -4380,6 +4380,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             });
         }};
     }
+    // The sidebar's sections in the user's order. Unknown or missing keys
+    // fall back to the default order, so a stale setting cannot lose one.
+    {
+        const KEYS: [&str; 4] = ["library", "folders", "consoles", "playlists"];
+        let saved = db.get_setting("sidebar_order").ok().flatten().unwrap_or_default();
+        let mut order: Vec<&str> = saved.split(',').filter(|k| KEYS.contains(k)).collect();
+        for k in KEYS {
+            if !order.contains(&k) {
+                order.push(k);
+            }
+        }
+        let model = Rc::new(VecModel::from(order.iter().map(|k| SharedString::from(*k)).collect::<Vec<_>>()));
+        ui.set_sidebar_order(ModelRc::from(model.clone()));
+        let db = db.clone();
+        ui.on_sidebar_section_moved(move |from, to| {
+            let n = model.row_count();
+            let (from, to) = (from.max(0) as usize, to.max(0) as usize);
+            if from >= n || to >= n || from == to {
+                return;
+            }
+            let mut v: Vec<SharedString> = (0..n).filter_map(|i| model.row_data(i)).collect();
+            let k = v.remove(from);
+            v.insert(to, k);
+            let _ = db.set_setting("sidebar_order", &v.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(","));
+            model.set_vec(v);
+        });
+    }
     sidebar_toggle!(on_toggle_show_faved, get_show_faved, set_show_faved, "show_faved");
     sidebar_toggle!(on_toggle_show_folders, get_show_folders, set_show_folders, "show_folders_list");
     sidebar_toggle!(on_toggle_show_playlists, get_show_playlists, set_show_playlists, "show_playlists");

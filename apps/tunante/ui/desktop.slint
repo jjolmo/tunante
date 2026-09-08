@@ -108,15 +108,47 @@ component SectionHeader inherits Rectangle {
     in-out property <bool> collapsed;
     in property <bool> has-add;
     callback add-clicked();
+    // Hold Ctrl and a grip appears; drag it and the section moves. The
+    // header reports the drag in its own coordinates; the shell knows where
+    // the sections are and works out the drop.
+    in property <bool> draggable;
+    callback drag-started();
+    callback drag-moved(length);
+    callback drag-ended();
+    property <bool> ctrl;
 
     height: Theme.compact ? 18px : 26px;
     background: transparent;
 
     // Whole-row toggle first, so the "+" declared after wins its own area.
     ha := TouchArea {
-        clicked => { root.collapsed = !root.collapsed; }
+        mouse-cursor: root.draggable && root.ctrl ? grab : default;
+        clicked => { if (!root.ctrl) { root.collapsed = !root.collapsed; } }
+        moved => {
+            if (root.draggable && root.ctrl && self.pressed) {
+                root.drag-moved(self.mouse-y - self.pressed-y);
+            }
+        }
+        pointer-event(ev) => {
+            root.ctrl = ev.modifiers.control;
+            if (root.draggable && ev.button == PointerEventButton.left) {
+                if (ev.kind == PointerEventKind.down && ev.modifiers.control) {
+                    root.drag-started();
+                }
+                if (ev.kind == PointerEventKind.up || ev.kind == PointerEventKind.cancel) {
+                    root.drag-ended();
+                }
+            }
+        }
     }
     HorizontalLayout {
+        if root.draggable && root.ctrl && ha.has-hover: Text {
+            text: "≡";
+            color: Theme.accent;
+            font-size: Theme.font-small;
+            vertical-alignment: center;
+            width: 14px;
+        }
         Text {
             text: root.title;
             color: Theme.text-muted;
@@ -409,6 +441,27 @@ export component DesktopShell inherits Rectangle {
     in-out property <string> reclass-console-filter;
     callback reclass-console-filter-changed(string);
     /// Playlist drag-reorder state: source row, live pixel delta.
+    // The four sidebar sections, in the order the user keeps them.
+    in property <[string]> sidebar-order;
+    callback sidebar-section-moved(int, int);
+    // A section drag: which one, whether it moved far enough to count, and
+    // where the sections currently sit (kept by index, from the loop below).
+    property <int> sec-src: -1;
+    property <int> sec-drop: -1;
+    property <bool> sec-drag-active: false;
+    property <length> sec-top-0; property <length> sec-top-1; property <length> sec-top-2; property <length> sec-top-3;
+    property <length> sec-h-0; property <length> sec-h-1; property <length> sec-h-2; property <length> sec-h-3;
+    pure function sec-top(i: int) -> length { i == 0 ? sec-top-0 : (i == 1 ? sec-top-1 : (i == 2 ? sec-top-2 : sec-top-3)) }
+    pure function sec-h(i: int) -> length { i == 0 ? sec-h-0 : (i == 1 ? sec-h-1 : (i == 2 ? sec-h-2 : sec-h-3)) }
+    pure function sec-mid(i: int) -> length { sec-top(i) + sec-h(i) / 2 }
+    // Where a pointer at `y` (in the sections column) would drop `src`:
+    // the number of other sections whose middle is above it.
+    pure function sec-drop-at(src: int, y: length) -> int {
+        (0 != src && sec-mid(0) < y && 0 < sidebar-order.length ? 1 : 0)
+        + (1 != src && sec-mid(1) < y && 1 < sidebar-order.length ? 1 : 0)
+        + (2 != src && sec-mid(2) < y && 2 < sidebar-order.length ? 1 : 0)
+        + (3 != src && sec-mid(3) < y && 3 < sidebar-order.length ? 1 : 0)
+    }
     property <int> pl-src: -1;
     property <length> pl-delta;
     property <bool> pl-drag-active: false;
@@ -656,8 +709,36 @@ export component DesktopShell inherits Rectangle {
                             // Keep the scrollbar off the entries: without this
                             // gutter it sits over the counts and the selection.
                             padding-right: 10px;
+                    for key[si] in root.sidebar-order: VerticalLayout {
+                        spacing: 2px;
+                        opacity: root.sec-drag-active && root.sec-src == si ? 0.5 : 1.0;
+                        // Where this section sits, for the drop computation.
+                        changed y => { if (si == 0) { root.sec-top-0 = self.y; } else if (si == 1) { root.sec-top-1 = self.y; } else if (si == 2) { root.sec-top-2 = self.y; } else { root.sec-top-3 = self.y; } }
+                        changed height => { if (si == 0) { root.sec-h-0 = self.height; } else if (si == 1) { root.sec-h-1 = self.height; } else if (si == 2) { root.sec-h-2 = self.height; } else { root.sec-h-3 = self.height; } }
+                        init => {
+                            if (si == 0) { root.sec-top-0 = self.y; root.sec-h-0 = self.height; }
+                            else if (si == 1) { root.sec-top-1 = self.y; root.sec-h-1 = self.height; }
+                            else if (si == 2) { root.sec-top-2 = self.y; root.sec-h-2 = self.height; }
+                            else { root.sec-top-3 = self.y; root.sec-h-3 = self.height; }
+                        }
+                        // The drop line: the section a dragged one would land before.
+                        if root.sec-drag-active && root.sec-drop == si && root.sec-src != si: Rectangle { height: 2px; background: Theme.accent; }
+                    if key == "library": VerticalLayout {
+                        spacing: 2px;
                     SectionHeader {
                         title: @tr("Biblioteca");
+                        draggable: true;
+                        drag-started => { root.sec-src = si; root.sec-drop = -1; root.sec-drag-active = false; }
+                        drag-moved(dy) => {
+                            if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
+                            root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
+                        }
+                        drag-ended => {
+                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
+                                root.sidebar-section-moved(si, root.sec-drop);
+                            }
+                            root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                        }
                         collapsed <=> root.collapse-biblioteca;
                     }
                     if !root.collapse-biblioteca: VerticalLayout {
@@ -724,9 +805,24 @@ export component DesktopShell inherits Rectangle {
                     }
                     }
 
-                    if root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
+                    }
+                    if key == "folders": VerticalLayout {
+                        spacing: 2px;
+                    if si > 0 && root.show-folders && root.pinned-folders.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-folders && root.pinned-folders.length > 0: SectionHeader {
                         title: @tr("Carpetas");
+                        draggable: true;
+                        drag-started => { root.sec-src = si; root.sec-drop = -1; root.sec-drag-active = false; }
+                        drag-moved(dy) => {
+                            if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
+                            root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
+                        }
+                        drag-ended => {
+                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
+                                root.sidebar-section-moved(si, root.sec-drop);
+                            }
+                            root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                        }
                         collapsed <=> root.collapse-carpetas;
                     }
                     for pf in (root.show-folders && !root.collapse-carpetas) ? root.pinned-folders : []: Rectangle {
@@ -795,9 +891,24 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
+                    }
+                    if key == "consoles": VerticalLayout {
+                        spacing: 2px;
+                    if si > 0 && root.show-consoles && root.sidebar-consoles.length > 0: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-consoles && root.sidebar-consoles.length > 0: SectionHeader {
                         title: @tr("Consolas");
+                        draggable: true;
+                        drag-started => { root.sec-src = si; root.sec-drop = -1; root.sec-drag-active = false; }
+                        drag-moved(dy) => {
+                            if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
+                            root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
+                        }
+                        drag-ended => {
+                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
+                                root.sidebar-section-moved(si, root.sec-drop);
+                            }
+                            root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                        }
                         collapsed <=> root.collapse-consolas;
                     }
                     for sc in (root.show-consoles && !root.collapse-consolas) ? root.sidebar-consoles : []: Rectangle {
@@ -855,9 +966,24 @@ export component DesktopShell inherits Rectangle {
                         }
                     }
 
-                    if root.show-playlists: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
+                    }
+                    if key == "playlists": VerticalLayout {
+                        spacing: 2px;
+                    if si > 0 && root.show-playlists: Rectangle { height: Theme.compact ? 2px : Theme.gap; }
                     if root.show-playlists: SectionHeader {
                         title: @tr("Listas");
+                        draggable: true;
+                        drag-started => { root.sec-src = si; root.sec-drop = -1; root.sec-drag-active = false; }
+                        drag-moved(dy) => {
+                            if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
+                            root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
+                        }
+                        drag-ended => {
+                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
+                                root.sidebar-section-moved(si, root.sec-drop);
+                            }
+                            root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                        }
                         collapsed <=> root.collapse-listas;
                         has-add: true;
                         // "+" lands you where lists are born and managed.
@@ -965,6 +1091,8 @@ export component DesktopShell inherits Rectangle {
                                 }
                             }
                         }
+                    }
+                    }
                     }
                     }
                     }
@@ -1484,6 +1612,8 @@ export component DesktopShell inherits Rectangle {
                     show-faved: root.show-faved;
                     toggle-show-faved => { root.toggle-show-faved(); }
                     show-folders: root.show-folders;
+                    sidebar-order: root.sidebar-order;
+                    sidebar-section-moved(a, b) => { root.sidebar-section-moved(a, b); }
                     toggle-show-folders => { root.toggle-show-folders(); }
                     show-playlists: root.show-playlists;
                     toggle-show-playlists => { root.toggle-show-playlists(); }
