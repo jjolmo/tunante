@@ -262,6 +262,8 @@ export component DesktopShell inherits Rectangle {
     in-out property <string> search;
     in property <bool> autofocus-search;
     in-out property <int> library-mode;
+    in property <int> library-reveal-row;
+    in property <int> library-reveal-tick;
 
     // Sidebar section fold state — view-only, lives here in the UI.
     property <bool> collapse-biblioteca;
@@ -314,6 +316,8 @@ export component DesktopShell inherits Rectangle {
     callback toggle-show-consoles-view();
     in property <bool> show-juegos;
     callback toggle-show-juegos();
+    in property <bool> show-artistas;
+    callback toggle-show-artistas();
     in property <bool> show-listas-view;
     callback toggle-show-listas-view();
     in property <bool> caps-all;
@@ -613,7 +617,9 @@ export component DesktopShell inherits Rectangle {
     // The one piece of state the shell owns: which pane the centre shows.
     // 0 = the track table · 1 = the phone's library views · 2 = settings.
     // Everything else lives in Rust, same as always.
-    property <int> centre: 0;
+    // Which pane the middle shows; in-out so Rust can send the window to the
+    // library (the track name in the transport goes back to the tree).
+    in-out property <int> centre: 0;
 
     VerticalLayout {
         HorizontalLayout {
@@ -704,6 +710,11 @@ export component DesktopShell inherits Rectangle {
                         label: @tr("Juegos");
                         active: root.centre == 1 && root.library-mode == 3;
                         clicked => { root.centre = 1; root.library-mode-changed(3); }
+                    }
+                    if root.show-artistas: SidebarEntry {
+                        label: @tr("Artistas");
+                        active: root.centre == 1 && root.library-mode == 5;
+                        clicked => { root.centre = 1; root.library-mode-changed(5); }
                     }
                     if root.show-listas-view: SidebarEntry {
                         label: @tr("Listas");
@@ -1042,6 +1053,9 @@ export component DesktopShell inherits Rectangle {
                     hide-tabs: true;
                     now-path: root.now-path;
                     mode <=> root.library-mode;
+                    native-menu: true;
+                    reveal-row: root.library-reveal-row;
+                    reveal-tick: root.library-reveal-tick;
                     mode-changed(i) => { root.library-mode-changed(i); }
                     grid-lines: root.library-grid-lines;
                     grid: root.library-grid;
@@ -1482,6 +1496,8 @@ export component DesktopShell inherits Rectangle {
                     toggle-show-consoles-view => { root.toggle-show-consoles-view(); }
                     show-juegos: root.show-juegos;
                     toggle-show-juegos => { root.toggle-show-juegos(); }
+                    show-artistas: root.show-artistas;
+                    toggle-show-artistas => { root.toggle-show-artistas(); }
                     show-listas-view: root.show-listas-view;
                     toggle-show-listas-view => { root.toggle-show-listas-view(); }
                     caps-all: root.caps-all;

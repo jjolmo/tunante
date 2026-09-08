@@ -42,6 +42,8 @@ enum class Tab(val label: String) {
     Consoles("Consolas"),
     /** By the album tag rather than by folder: what the rip says it is from. */
     Games("Juegos"),
+    /** By the album-artist or artist tag, across folders and consoles. */
+    Artists("Artistas"),
     Playlists("Listas"),
     /** Mirrors the disk. Honest, and it makes you walk down to a game whose
      *  name you already know — which is what the ones before it are for. */

@@ -566,6 +566,13 @@ fn row_tracks(db: &Database, row: &str, deep: bool) -> Vec<tunante_core::db::mod
             .cloned()
             .collect();
     }
+    if let Some(artist) = row.strip_prefix("artista:") {
+        let tracks = all();
+        return tunante_core::artists::tracks_of(&tracks, artist)
+            .into_iter()
+            .cloned()
+            .collect();
+    }
     if let Some(console) = row.strip_prefix("consola:") {
         return all()
             .into_iter()
@@ -850,6 +857,41 @@ pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeGames<'a>(
         }
 
         let tracks = tunante_core::games::tracks_of(&all, &want);
+        Ok(serde_json::json!({ "ok": true, "folders": [], "tracks": tracks }).to_string())
+    })()
+    .unwrap_or_else(fail);
+    env.new_string(out).expect("new_string")
+}
+
+/// One row per artist, from the album-artist or artist tag, across folders —
+/// the same shape as `nativeGames`. An empty `artist` lists them all; a name
+/// lists that artist's tracks.
+#[no_mangle]
+pub extern "system" fn Java_com_tunante_android_NativeBridge_nativeArtists<'a>(
+    mut env: JNIEnv<'a>,
+    _class: JClass,
+    artist: JString,
+) -> jni::objects::JString<'a> {
+    let out = (|| -> Result<String, String> {
+        let want = jstring_to_string(&mut env, &artist)?;
+        let guard = DB.lock().unwrap();
+        let db = guard.as_ref().ok_or("nativeArtists before nativeOpenDb")?;
+        let all = db.get_all_tracks().map_err(|e| e.to_string())?;
+
+        if want.is_empty() {
+            let folders: Vec<_> = tunante_core::artists::index(&all)
+                .into_iter()
+                .map(|a| {
+                    serde_json::json!({ "path": a.name, "name": a.name, "count": a.count,
+                                        "cover": a.first_track })
+                })
+                .collect();
+            return Ok(
+                serde_json::json!({ "ok": true, "folders": folders, "tracks": [] }).to_string()
+            );
+        }
+
+        let tracks = tunante_core::artists::tracks_of(&all, &want);
         Ok(serde_json::json!({ "ok": true, "folders": [], "tracks": tracks }).to_string())
     })()
     .unwrap_or_else(fail);

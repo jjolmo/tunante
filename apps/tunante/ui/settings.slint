@@ -409,6 +409,8 @@ export component DesktopSettings inherits Rectangle {
     callback toggle-show-consoles-view();
     in property <bool> show-juegos;
     callback toggle-show-juegos();
+    in property <bool> show-artistas;
+    callback toggle-show-artistas();
     in property <bool> show-listas-view;
     callback toggle-show-listas-view();
     in property <bool> caps-all;
@@ -977,6 +979,7 @@ export component DesktopSettings inherits Rectangle {
                                     Check { label: @tr("Discos"); checked: root.show-discos; toggled => { root.toggle-show-discos(); } }
                                     Check { label: @tr("Consolas"); checked: root.show-consoles-view; toggled => { root.toggle-show-consoles-view(); } }
                                     Check { label: @tr("Juegos"); checked: root.show-juegos; toggled => { root.toggle-show-juegos(); } }
+                                    Check { label: @tr("Artistas"); checked: root.show-artistas; toggled => { root.toggle-show-artistas(); } }
                                     Check { label: @tr("Listas"); checked: root.show-listas-view; toggled => { root.toggle-show-listas-view(); } }
                                 }
                                 Group {

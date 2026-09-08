@@ -548,6 +548,7 @@ class MainActivity : ComponentActivity() {
             Tab.Library -> browse("")
             Tab.Albums -> load { NativeBridge.nativeAlbums() }
             Tab.Games -> load { NativeBridge.nativeGames("") }
+            Tab.Artists -> load { NativeBridge.nativeArtists("") }
             Tab.Consoles -> load { NativeBridge.nativeConsoles("") }
             Tab.Playlists -> reloadPlaylists()
         }
@@ -592,6 +593,7 @@ class MainActivity : ComponentActivity() {
         when (tab) {
             // The index tabs navigate by name, so the name is also the label.
             Tab.Games -> load(path, path) { NativeBridge.nativeGames(path) }
+            Tab.Artists -> load(path, path) { NativeBridge.nativeArtists(path) }
             // Consoles has three levels. At the top a row is a console and its
             // name is the key; below that a row is one of its directories, and
             // the key has to carry both -- a folder holding .spc rips and mp3s

@@ -115,6 +115,8 @@ export component AppWindow inherits Window {
     callback toggle-show-consoles-view();
     in property <bool> show-juegos;
     callback toggle-show-juegos();
+    in property <bool> show-artistas;
+    callback toggle-show-artistas();
     in property <bool> show-listas-view;
     callback toggle-show-listas-view();
     in property <bool> caps-all;
@@ -159,6 +161,8 @@ export component AppWindow inherits Window {
     animate theme-t { duration: 450ms; easing: ease-in-out; }
     changed theme-t => { Theme.t = self.theme-t; }
 
+    // The desktop shell's middle pane (0 playing, 1 library), reachable from Rust.
+    in-out property <int> desktop-centre;
     in-out property <bool> setup-mode;
     in property <[FolderEntry]> picker-entries;
     in property <string> picker-path;
@@ -196,6 +200,9 @@ export component AppWindow inherits Window {
     callback library-reclassify-path(string);
     callback library-pin-path(string);
     callback library-reveal-path(string);
+    // Scroll the tree so this row sits in the middle, whenever the tick moves.
+    in property <int> library-reveal-row;
+    in property <int> library-reveal-tick;
     in-out property <int> library-mode: 0;
     callback library-mode-changed(int);
     in property <[GridLine]> library-grid-lines;
@@ -646,6 +653,7 @@ export component AppWindow inherits Window {
             reject
         }
         ds := DesktopShell {
+            centre <=> root.desktop-centre;
             width: parent.width;
             height: parent.height;
             // A grid view destroys the table's FocusScope; without this the
@@ -743,6 +751,8 @@ export component AppWindow inherits Window {
             toggle-show-consoles-view => { root.toggle-show-consoles-view(); }
             show-juegos: root.show-juegos;
             toggle-show-juegos => { root.toggle-show-juegos(); }
+            show-artistas: root.show-artistas;
+            toggle-show-artistas => { root.toggle-show-artistas(); }
             show-listas-view: root.show-listas-view;
             toggle-show-listas-view => { root.toggle-show-listas-view(); }
             caps-all: root.caps-all;
@@ -1201,6 +1211,8 @@ export component AppWindow inherits Window {
                         cramped: root.cramped;
                         now-path: root.now-path;
                         mode <=> root.library-mode;
+                        reveal-row: root.library-reveal-row;
+                        reveal-tick: root.library-reveal-tick;
                         mode-changed(i) => { root.library-mode-changed(i); }
                         grid-lines: root.library-grid-lines;
                         grid: root.library-grid;

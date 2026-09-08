@@ -135,6 +135,7 @@ public final class NativeBridge {
      * By the album tag, not by folder — see nativeAlbums for the other answer.
      */
     public static native String nativeGames(String game);
+    public static native String nativeArtists(String artist);
 
     /** Empty {@code console} lists the consoles; naming one lists its tracks. */
     public static native String nativeConsoles(String console);
