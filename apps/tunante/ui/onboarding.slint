@@ -176,11 +176,14 @@ export component OnboardingSheet inherits Rectangle {
                             padding-left: 10px;
                             padding-right: 4px;
                             spacing: 8px;
-                            Text {
-                                text: "🖿";
-                                color: Theme.text-secondary;
-                                font-size: Theme.font-body;
-                                vertical-alignment: center;
+                            // A folder, drawn: the glyph U+1F5BF is missing
+                            // from the fonts a Mac ships and came out as a box.
+                            Rectangle {
+                                width: 18px;
+                                y: (parent.height - 13px) / 2;
+                                height: 13px;
+                                Rectangle { x: 0; y: 0; width: 8px; height: 4px; border-radius: 1px; background: Theme.text-secondary; }
+                                Rectangle { x: 0; y: 2px; width: 18px; height: 11px; border-radius: 2px; background: Theme.text-secondary; }
                             }
                             Text {
                                 text: f;

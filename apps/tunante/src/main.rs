@@ -5678,24 +5678,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                // The watcher changed rows underneath: re-read whatever view
-                // is on screen, and the table's caches with it.
-                if library_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
-                    // The rows changed on disk: drop the grouped-view caches so
-                    // the reads below rebuild from the database.
-                    tree.borrow().invalidate();
-                    refresh_counts(&db, &ui);
-                    refresh_pinned(&db, &pinned_model);
-                    refresh_library_folders(&db, &folders_model);
-                    refresh_sidebar_consoles(&db, &tree, &consoles_side);
-                    refresh_library(&ui, &tree, &db, &views);
-                    let mut st = table_state.borrow_mut();
-                    if st.built {
-                        st.all = db.get_all_tracks().unwrap_or_default();
-                        rebuild_table(&mut st, &table_model);
-                    }
-                }
-
                 if scan_done {
                     ui.set_scan_status(SharedString::new());
                     ui.set_scan_done(0);
@@ -5716,7 +5698,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui.set_tab(2);
                     // The folder list can have just grown; watch the newcomers.
                     sync_watches();
+                    // And everything on screen re-reads the database: the
+                    // desktop's table, sidebar and counts were left showing
+                    // the library as it was before the scan, until a restart.
+                    library_dirty.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
+
+                // The watcher changed rows underneath: re-read whatever view
+                // is on screen, and the table's caches with it.
+                if library_dirty.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    // The rows changed on disk: drop the grouped-view caches so
+                    // the reads below rebuild from the database.
+                    tree.borrow().invalidate();
+                    refresh_counts(&db, &ui);
+                    refresh_pinned(&db, &pinned_model);
+                    refresh_library_folders(&db, &folders_model);
+                    refresh_sidebar_consoles(&db, &tree, &consoles_side);
+                    refresh_library(&ui, &tree, &db, &views);
+                    let mut st = table_state.borrow_mut();
+                    if st.built {
+                        st.all = db.get_all_tracks().unwrap_or_default();
+                        rebuild_table(&mut st, &table_model);
+                    }
+                }
+
 
                 // A second launch knocked: bring the window up, and if it
                 // carried a file, play it. Before the player borrow below —
