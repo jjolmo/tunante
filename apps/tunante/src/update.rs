@@ -37,7 +37,7 @@ pub const CURRENT_VERSION: &str = match option_env!("TUNANTE_VERSION") {
 /// from replacing the binary someone is actively working on.
 pub const IS_RELEASE: bool = option_env!("TUNANTE_VERSION").is_some();
 
-#[cfg(all(target_os = "linux", feature = "updater"))]
+#[cfg(all(any(target_os = "linux", target_os = "macos"), feature = "updater"))]
 mod imp {
     use super::UpdateMsg;
     use std::path::Path;
@@ -90,18 +90,7 @@ mod imp {
             return Ok(UpdateMsg::UpToDate);
         }
 
-        // Inside an AppImage the swap-next-to-current_exe trick is useless:
-        // current_exe lives in a read-only squashfs. What CAN be replaced is
-        // the outer file itself — $APPIMAGE — with the release's AppImage,
-        // which is exactly the move the old Tauri updater proved works.
-        let wanted = match appimage_self() {
-            Some(_) => format!(
-                "Tunante_{}_{}.AppImage",
-                tag.trim_start_matches('v'),
-                appimage_arch()
-            ),
-            None => format!("tunante-{}-linux-gnu.tar.gz", std::env::consts::ARCH),
-        };
+        let wanted = wanted_asset(tag.trim_start_matches('v'));
         let asset = body["assets"]
             .as_array()
             .into_iter()
@@ -121,7 +110,41 @@ mod imp {
         }
     }
 
-    /// Download the tarball and swap both binaries in place.
+    /// The release asset this build can install.
+    #[cfg(target_os = "linux")]
+    fn wanted_asset(version: &str) -> String {
+        // Inside an AppImage the swap-next-to-current_exe trick is useless:
+        // current_exe lives in a read-only squashfs. What CAN be replaced is
+        // the outer file itself — $APPIMAGE — with the release's AppImage,
+        // which is exactly the move the old Tauri updater proved works.
+        match appimage_self() {
+            Some(_) => format!("Tunante_{}_{}.AppImage", version, appimage_arch()),
+            None => format!("tunante-{}-linux-gnu.tar.gz", std::env::consts::ARCH),
+        }
+    }
+
+    /// The .dmg, named as CI names it. Only Apple Silicon is built, so an
+    /// Intel Mac never finds its asset and reads as up to date.
+    #[cfg(target_os = "macos")]
+    fn wanted_asset(version: &str) -> String {
+        format!("Tunante_{}_{}.dmg", version, std::env::consts::ARCH)
+    }
+
+    fn download(url: &str) -> Result<Vec<u8>, String> {
+        agent()
+            .get(url)
+            .call()
+            .map_err(|e| format!("descarga fallida: {e}"))?
+            .body_mut()
+            .with_config()
+            // The stripped pair is ~30 MB; a corrupted CDN answer should fail
+            // loudly rather than fill the disk.
+            .limit(512 * 1024 * 1024)
+            .read_to_vec()
+            .map_err(|e| format!("descarga fallida: {e}"))
+    }
+
+    /// Download the release and put it in place of the running app.
     pub fn spawn_install(tx: Sender<UpdateMsg>, version: String, url: String) {
         std::thread::spawn(move || {
             let msg = match install(&url) {
@@ -134,12 +157,14 @@ mod imp {
 
     /// The running AppImage's path, when there is one. The runtime exports
     /// it; a plain binary never sees the variable.
+    #[cfg(target_os = "linux")]
     fn appimage_self() -> Option<std::path::PathBuf> {
         std::env::var_os("APPIMAGE").map(Into::into)
     }
 
     /// Tauri's bundler said amd64 where uname says x86_64, and the asset
     /// names keep that spelling so v0.1.283's updater can find them too.
+    #[cfg(target_os = "linux")]
     fn appimage_arch() -> &'static str {
         match std::env::consts::ARCH {
             "x86_64" => "amd64",
@@ -147,18 +172,9 @@ mod imp {
         }
     }
 
+    #[cfg(target_os = "linux")]
     fn install(url: &str) -> Result<(), String> {
-        let bytes = agent()
-            .get(url)
-            .call()
-            .map_err(|e| format!("descarga fallida: {e}"))?
-            .body_mut()
-            .with_config()
-            // The stripped pair is ~30 MB; a corrupted CDN answer should fail
-            // loudly rather than fill the disk.
-            .limit(512 * 1024 * 1024)
-            .read_to_vec()
-            .map_err(|e| format!("descarga fallida: {e}"))?;
+        let bytes = download(url)?;
 
         // The AppImage path: one file, swapped in place. Rename is atomic on
         // one filesystem and the mounted squashfs keeps the running app alive.
@@ -208,9 +224,93 @@ mod imp {
         Ok(())
     }
 
+    /// The macOS install: the .dmg is mounted, Tunante.app copied next to
+    /// the running bundle, its quarantine cleared, and the two swapped by
+    /// rename. This is what the old desktop's update_mac.sh did by hand.
+    ///
+    /// The quarantine step is the one that matters: an unsigned app that
+    /// keeps the attribute the download put on it is refused by Gatekeeper
+    /// on next launch. And a bundle macOS has *translocated* (run straight
+    /// from a downloaded folder, so current_exe sits under AppTranslocation)
+    /// cannot be replaced in place; the copy in /Applications is used then.
+    #[cfg(target_os = "macos")]
+    fn install(url: &str) -> Result<(), String> {
+        use std::process::Command;
+        let bytes = download(url)?;
+
+        let work = std::env::temp_dir().join(format!("tunante-update-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&work);
+        std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+        let dmg = work.join("release.dmg");
+        std::fs::write(&dmg, &bytes).map_err(|e| e.to_string())?;
+        let mount = work.join("mount");
+        std::fs::create_dir_all(&mount).map_err(|e| e.to_string())?;
+
+        let attached = Command::new("hdiutil")
+            .args(["attach", "-nobrowse", "-quiet", "-mountpoint"])
+            .arg(&mount)
+            .arg(&dmg)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !attached.success() {
+            let _ = std::fs::remove_dir_all(&work);
+            return Err(tunante_core::i18n::tr("no se pudo montar el .dmg"));
+        }
+        let detach = || {
+            let _ = Command::new("hdiutil").args(["detach", "-quiet"]).arg(&mount).status();
+            let _ = std::fs::remove_dir_all(&work);
+        };
+
+        let fresh = mount.join("Tunante.app");
+        if !fresh.is_dir() {
+            detach();
+            return Err(tunante_core::i18n::tr("el .dmg no trae Tunante.app"));
+        }
+
+        // …/Tunante.app/Contents/MacOS/tunante → …/Tunante.app
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let own = exe.ancestors().nth(3).map(Path::to_path_buf);
+        let translocated = exe.to_string_lossy().contains("/AppTranslocation/");
+        let target = match own {
+            Some(b) if !translocated && b.extension().is_some_and(|x| x == "app") => b,
+            _ => std::path::PathBuf::from("/Applications/Tunante.app"),
+        };
+        let parent = target
+            .parent()
+            .ok_or_else(|| tunante_core::i18n::tr("el ejecutable no tiene directorio"))?;
+        let incoming = parent.join("Tunante.app.new");
+        let outgoing = parent.join("Tunante.app.old");
+        let _ = std::fs::remove_dir_all(&incoming);
+
+        // ditto keeps the bundle whole (resource forks, permissions).
+        let copied = Command::new("ditto").arg(&fresh).arg(&incoming).status().map_err(|e| e.to_string())?;
+        if !copied.success() {
+            detach();
+            return Err(tunante_core::i18n::tr("no se pudo escribir junto a {}: {}")
+                .replacen("{}", &target.display().to_string(), 1)
+                .replacen("{}", "ditto", 1));
+        }
+        let _ = Command::new("xattr").args(["-cr"]).arg(&incoming).status();
+
+        let _ = std::fs::remove_dir_all(&outgoing);
+        if target.exists() {
+            std::fs::rename(&target, &outgoing).map_err(|e| e.to_string())?;
+        }
+        if let Err(e) = std::fs::rename(&incoming, &target) {
+            // Put the old one back rather than leave no app at all.
+            let _ = std::fs::rename(&outgoing, &target);
+            detach();
+            return Err(e.to_string());
+        }
+        let _ = std::fs::remove_dir_all(&outgoing);
+        detach();
+        Ok(())
+    }
+
     /// Replace `dest` with `fresh`: copy in as a sibling, then two renames.
     /// Rename is atomic on one filesystem, and Linux is fine renaming the
     /// binary this very process is running from.
+    #[cfg(target_os = "linux")]
     fn swap_in(fresh: &Path, dest: &Path) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
 
@@ -233,21 +333,28 @@ mod imp {
     }
 }
 
-#[cfg(not(all(target_os = "linux", feature = "updater")))]
+#[cfg(not(all(any(target_os = "linux", target_os = "macos"), feature = "updater")))]
 mod imp {
     use super::UpdateMsg;
     use std::sync::mpsc::Sender;
 
+    // Windows, and the phone build (no ureq): nothing here replaces the
+    // running app, and the row should say so rather than claim a package
+    // manager that a Windows box does not have.
+    fn no_updater() -> String {
+        if cfg!(target_os = "windows") {
+            tunante_core::i18n::tr("esta versión no se actualiza sola; descarga la nueva en github.com/jjolmo/tunante/releases")
+        } else {
+            tunante_core::i18n::tr("esta build se actualiza con su gestor de paquetes")
+        }
+    }
+
     pub fn spawn_check(tx: Sender<UpdateMsg>) {
-        let _ = tx.send(UpdateMsg::Error(
-            tunante_core::i18n::tr("esta build se actualiza con su gestor de paquetes"),
-        ));
+        let _ = tx.send(UpdateMsg::Error(no_updater()));
     }
 
     pub fn spawn_install(tx: Sender<UpdateMsg>, _version: String, _url: String) {
-        let _ = tx.send(UpdateMsg::Error(
-            tunante_core::i18n::tr("esta build se actualiza con su gestor de paquetes"),
-        ));
+        let _ = tx.send(UpdateMsg::Error(no_updater()));
     }
 }
 

@@ -1369,3 +1369,12 @@ msgstr "Artisti"
 
 msgid "Artista · {}"
 msgstr "Artista · {}"
+
+msgid "no se pudo montar el .dmg"
+msgstr "il .dmg non si è potuto montare"
+
+msgid "el .dmg no trae Tunante.app"
+msgstr "il .dmg non contiene Tunante.app"
+
+msgid "esta versión no se actualiza sola; descarga la nueva en github.com/jjolmo/tunante/releases"
+msgstr "questa versione non si aggiorna da sola; scarica la nuova su github.com/jjolmo/tunante/releases"
