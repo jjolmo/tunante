@@ -1,6 +1,6 @@
 [package]
 name = "tunante"
-version = "0.11.1"
+version = "0.11.2"
 edition = "2021"
 description = "Tunante: native Slint UI, one binary from phone to desktop"
 license = "GPL-2.0-or-later"
