@@ -9,7 +9,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow, FolderRow, ShortcutRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet, ConsoleArt } from "widgets.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet, ConsoleArt, MenuRow, MenuDivider } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 import { DesktopSettings } from "settings.slint";
@@ -293,6 +293,7 @@ export component DesktopShell inherits Rectangle {
     in property <string> now-album;
     in property <string> now-path;
     in property <image> now-art;
+    in property <image> now-backdrop;
     in-out property <bool> playing;
     in-out property <bool> shuffle;
     in-out property <int> repeat;
@@ -861,6 +862,9 @@ export component DesktopShell inherits Rectangle {
                     }
                     for pf in (root.show-folders && !root.collapse-carpetas) ? root.pinned-folders : []: Rectangle {
                         height: Theme.compact ? 26px : 34px;
+                        // Where the right-click landed, for the menu below.
+                        property <length> menu-x;
+                        property <length> menu-y;
                         background: root.centre == 0 && root.table-scope-kind == "folder"
                             && root.table-folder-id == pf.id
                             ? Theme.bg-selected
@@ -879,21 +883,49 @@ export component DesktopShell inherits Rectangle {
                                     && ev.button == PointerEventButton.middle) {
                                     root.random-from("folder", pf.id);
                                 }
+                                if (ev.kind == PointerEventKind.down
+                                    && ev.button == PointerEventButton.right) {
+                                    parent.menu-x = self.mouse-x;
+                                    parent.menu-y = self.mouse-y;
+                                    pfmenu.show();
+                                }
                             }
                         }
-                        ContextMenuArea {
-                            Menu {
-                                MenuItem {
-                                    title: @tr("Reproducir");
-                                    activated => { root.folder-played(pf.id); }
-                                }
-                                MenuItem {
-                                    title: @tr("Abrir en el gestor de archivos");
-                                    activated => { root.folder-revealed(pf.id); }
-                                }
-                                MenuItem {
-                                    title: @tr("Quitar de aquí");
-                                    activated => { root.folder-unpinned(pf.id); }
+                        // Drawn by the app, not by the platform — the same menu
+                        // the track table opens. See MenuRow in widgets.slint:
+                        // a platform menu arrives in the platform's font, and
+                        // these rows sit inches from a list that draws its own.
+                        pfmenu := PopupWindow {
+                            x: parent.menu-x;
+                            y: parent.menu-y;
+                            width: 240px;
+                            close-policy: close-on-click-outside;
+                            Rectangle {
+                                background: Theme.bg-secondary;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                border-radius: 3px;
+                                drop-shadow-blur: 12px;
+                                drop-shadow-color: #00000099;
+                                VerticalLayout {
+                                    padding: 3px;
+                                    // Every entry reports before it closes:
+                                    // closing tears down this popup's element
+                                    // tree, and a callback emitted after that
+                                    // has nothing left to read its argument from.
+                                    MenuRow {
+                                        label: @tr("Reproducir");
+                                        chosen => { root.folder-played(pf.id); pfmenu.close(); }
+                                    }
+                                    MenuDivider {}
+                                    MenuRow {
+                                        label: @tr("Abrir en el gestor de archivos");
+                                        chosen => { root.folder-revealed(pf.id); pfmenu.close(); }
+                                    }
+                                    MenuRow {
+                                        label: @tr("Quitar de aquí");
+                                        chosen => { root.folder-unpinned(pf.id); pfmenu.close(); }
+                                    }
                                 }
                             }
                         }
@@ -954,6 +986,8 @@ export component DesktopShell inherits Rectangle {
                     for sc in (root.show-consoles && !root.collapse-consolas) ? root.sidebar-consoles : []: Rectangle {
                         height: Theme.compact ? 26px : 34px;
                         border-radius: 6px;
+                        property <length> menu-x;
+                        property <length> menu-y;
                         background: (root.centre == 0 && root.table-scope-kind == "console"
                                 && root.table-folder-id == sc.id)
                             || (root.centre == 1 && root.library-mode == 2
@@ -970,6 +1004,12 @@ export component DesktopShell inherits Rectangle {
                                 if (ev.kind == PointerEventKind.down
                                     && ev.button == PointerEventButton.middle) {
                                     root.random-from("console", sc.id);
+                                }
+                                if (ev.kind == PointerEventKind.down
+                                    && ev.button == PointerEventButton.right) {
+                                    parent.menu-x = self.mouse-x;
+                                    parent.menu-y = self.mouse-y;
+                                    scmenu.show();
                                 }
                             }
                         }
@@ -1000,20 +1040,35 @@ export component DesktopShell inherits Rectangle {
                                 vertical-alignment: center;
                             }
                         }
-                        ContextMenuArea {
-                            Menu {
-                                MenuItem {
-                                    title: @tr("Reproducir");
-                                    activated => { root.console-played(sc.id); }
-                                }
-                                // The grid of this console's games, covers
-                                // and all — the same place the Consolas view
-                                // reaches by hand, one step instead of three.
-                                MenuItem {
-                                    title: @tr("Abrir en rejilla");
-                                    activated => {
-                                        root.centre = 1;
-                                        root.console-opened(sc.id);
+                        scmenu := PopupWindow {
+                            x: parent.menu-x;
+                            y: parent.menu-y;
+                            width: 240px;
+                            close-policy: close-on-click-outside;
+                            Rectangle {
+                                background: Theme.bg-secondary;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                border-radius: 3px;
+                                drop-shadow-blur: 12px;
+                                drop-shadow-color: #00000099;
+                                VerticalLayout {
+                                    padding: 3px;
+                                    MenuRow {
+                                        label: @tr("Reproducir");
+                                        chosen => { root.console-played(sc.id); scmenu.close(); }
+                                    }
+                                    MenuDivider {}
+                                    // The grid of this console's games, covers
+                                    // and all — the same place the Consolas view
+                                    // reaches by hand, one step instead of three.
+                                    MenuRow {
+                                        label: @tr("Abrir en rejilla");
+                                        chosen => {
+                                            root.centre = 1;
+                                            root.console-opened(sc.id);
+                                            scmenu.close();
+                                        }
                                     }
                                 }
                             }
@@ -1050,6 +1105,8 @@ export component DesktopShell inherits Rectangle {
                     VerticalLayout {
                         for pl[pli] in (root.show-playlists && !root.collapse-listas) ? root.all-playlists : []: Rectangle {
                             height: Theme.compact ? 26px : 34px;
+                            property <length> menu-x;
+                            property <length> menu-y;
                             background: root.centre == 0 && root.table-scope-kind == "playlist"
                                 && root.table-folder-id == pl.id
                                 ? Theme.bg-selected
@@ -1108,6 +1165,12 @@ export component DesktopShell inherits Rectangle {
                                         && ev.button == PointerEventButton.middle) {
                                         root.random-from("playlist", pl.id);
                                     }
+                                    if (ev.kind == PointerEventKind.down
+                                        && ev.button == PointerEventButton.right) {
+                                        parent.menu-x = self.mouse-x;
+                                        parent.menu-y = self.mouse-y;
+                                        plmenu.show();
+                                    }
                                 }
                                 clicked => {
                                     if (root.pl-drag-active) {
@@ -1125,26 +1188,41 @@ export component DesktopShell inherits Rectangle {
                                     }
                                 }
                             }
-                            ContextMenuArea {
-                                Menu {
-                                    MenuItem {
-                                        title: @tr("Reproducir");
-                                        activated => { root.playlist-played(pl.id); }
-                                    }
-                                    MenuItem {
-                                        title: @tr("Encolar todo");
-                                        activated => { root.playlist-enqueue-id(pl.id); }
-                                    }
-                                    MenuItem {
-                                        title: @tr("Renombrar…");
-                                        activated => {
-                                            root.centre = 1;
-                                            root.playlist-open-requested(pl.id);
+                            plmenu := PopupWindow {
+                                x: parent.menu-x;
+                                y: parent.menu-y;
+                                width: 240px;
+                                close-policy: close-on-click-outside;
+                                Rectangle {
+                                    background: Theme.bg-secondary;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+                                    border-radius: 3px;
+                                    drop-shadow-blur: 12px;
+                                    drop-shadow-color: #00000099;
+                                    VerticalLayout {
+                                        padding: 3px;
+                                        MenuRow {
+                                            label: @tr("Reproducir");
+                                            chosen => { root.playlist-played(pl.id); plmenu.close(); }
                                         }
-                                    }
-                                    MenuItem {
-                                        title: @tr("Borrar");
-                                        activated => { root.playlist-delete(pl.id); }
+                                        MenuRow {
+                                            label: @tr("Encolar todo");
+                                            chosen => { root.playlist-enqueue-id(pl.id); plmenu.close(); }
+                                        }
+                                        MenuDivider {}
+                                        MenuRow {
+                                            label: @tr("Renombrar…");
+                                            chosen => {
+                                                root.centre = 1;
+                                                root.playlist-open-requested(pl.id);
+                                                plmenu.close();
+                                            }
+                                        }
+                                        MenuRow {
+                                            label: @tr("Borrar");
+                                            chosen => { root.playlist-delete(pl.id); plmenu.close(); }
+                                        }
                                     }
                                 }
                             }
@@ -1384,6 +1462,7 @@ export component DesktopShell inherits Rectangle {
                             Artwork {
                                 side: 272px;
                                 art: root.now-art;
+                                backdrop: root.now-backdrop;
                                 fit: 2;
                             }
                         }

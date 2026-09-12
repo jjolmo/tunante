@@ -1393,3 +1393,33 @@ msgstr "Konsole anzeigen: {}"
 
 msgid "Ver el álbum: {}"
 msgstr "Album anzeigen: {}"
+
+msgid "Hay una actualización"
+msgstr "Update verfügbar"
+
+msgid "Actualización lista"
+msgstr "Update bereit"
+
+msgid "La versión v{} ya está disponible."
+msgstr "Version v{} ist verfügbar."
+
+msgid "v{} está instalada. Reinicia para usarla."
+msgstr "v{} ist installiert. Zum Verwenden neu starten."
+
+msgid "Actualizar ahora"
+msgstr "Jetzt aktualisieren"
+
+msgid "Reiniciar ahora"
+msgstr "Jetzt neu starten"
+
+msgid "Reiniciar"
+msgstr "Neu starten"
+
+msgid "Más tarde"
+msgstr "Später"
+
+msgid "Omitir v{}"
+msgstr "v{} überspringen"
+
+msgid "v{} descargada."
+msgstr "v{} heruntergeladen."

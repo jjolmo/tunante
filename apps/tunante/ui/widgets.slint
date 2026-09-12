@@ -6,6 +6,52 @@ import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderEntry, ConsoleOption, CoverCandidate, PlanRow } from "types.slint";
 
+// One line of the app's own context menu.
+//
+// Slint will happily hand a right-click to the platform's menu, and that is
+// what the track table used to do. But the platform draws it with the
+// platform's font and the platform's antialiasing, and neither is the one
+// every list in this window is drawn with — the menu arrived looking blurred
+// and foreign against the rows it was opened from. Drawing it here costs a
+// component and buys back the same typeface, sizes and colours as everything
+// around it, which is the rule the rest of this UI already follows.
+//
+// Lives here, rather than in the one file that first needed it, because a
+// second list now opens the same menu and "the same style" is the whole point:
+// two copies would be two things to keep in step.
+export component MenuRow inherits Rectangle {
+    in property <string> label;
+    callback chosen();
+    height: 26px;
+    background: mt.has-hover ? Theme.bg-selected : transparent;
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 14px;
+        Text {
+            text: root.label;
+            color: Theme.text-primary;
+            font-size: Theme.font-body;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    mt := TouchArea {
+        clicked => { root.chosen(); }
+    }
+}
+
+// The hairline between groups of that hand-drawn menu. Slint's
+// `MenuSeparator` belongs to the platform `Menu` the table header opens and
+// cannot be used here, for the same reason MenuRow exists at all.
+export component MenuDivider inherits Rectangle {
+    height: 7px;
+    Rectangle {
+        y: 3px;
+        height: 1px;
+        background: Theme.border;
+    }
+}
+
 export component SwipeRow inherits Rectangle {
     in property <string> action-label;
     in property <color> action-color: Theme.accent;
@@ -17,6 +63,9 @@ export component SwipeRow inherits Rectangle {
     callback swiped();
     callback tapped();
     callback held();
+    /// Right-click, with where in the row it landed. Reported rather than
+    /// handled so each list draws its own verbs; the phone never sends it.
+    callback context-menu(length, length);
 
     // How far it has to travel to count. Short enough to feel light, long
     // enough that brushing the glass while scrolling does not fire it.
@@ -102,8 +151,18 @@ export component SwipeRow inherits Rectangle {
                 // gesture almost never fires.
                 pointer-event(e) => {
                     if (e.kind == PointerEventKind.down) {
-                        root.already-held = false;
-                        hold.running = true;
+                        // The right button is the desktop's menu and nothing
+                        // else: arming the long press on it too would pop the
+                        // phone's sheet behind the menu half a second later.
+                        // Touch arrives as Left (i-slint-core input.rs, the
+                        // first finger is forwarded as a mouse press), so the
+                        // long press is untouched by this.
+                        if (e.button == PointerEventButton.right) {
+                            root.context-menu(self.mouse-x, self.mouse-y);
+                        } else {
+                            root.already-held = false;
+                            hold.running = true;
+                        }
                     } else if (e.kind == PointerEventKind.up
                             || e.kind == PointerEventKind.cancel) {
                         hold.running = false;
@@ -285,6 +344,10 @@ export component Artwork inherits Rectangle {
     // 0 recortada (cover) · 1 entera (contain) · 2 con fondo · 3 estirada
     // (fill) · 4 original (preserve). Thumbnails leave it at 0.
     in property <int> fit: 0;
+    /// The same cover, blurred, for `fit == 2`. Blurred in Rust because Slint
+    /// has no blur filter for content — see `backdrop_of` in main.rs. Left
+    /// empty by every caller that does not use that fit, which costs nothing.
+    in property <image> backdrop;
 
     height: root.side;
     width: root.side;
@@ -292,15 +355,28 @@ export component Artwork inherits Rectangle {
     border-radius: Theme.radius;
     clip: true;
 
-    // "Con fondo": Slint has no blur filter, so the backdrop is the same
-    // cover cropped to fill and dimmed, with the whole image on top — the
-    // effect blur mode is after, minus the blur itself.
-    if root.fit == 2 && root.art.width > 0: Image {
-        source: root.art;
+    // "Con fondo": the cover blurred, cropped to fill, with the whole image
+    // sharp on top.
+    //
+    // This used to be the same cover SHARP behind itself, only dimmed, because
+    // Slint has no blur filter for content and the mode shipped without the
+    // one thing it is named after. The result was a picture standing on a
+    // darker copy of its own contents, and the eye could not find the edge
+    // where the artwork stopped. The blur now happens in Rust, on a 48 px
+    // thumbnail, and the renderer's smooth scaling softens it further on the
+    // way up — so it is cheaper than the sharp version it replaces.
+    //
+    // Dimmed a little less than before (0.25 → 0.40), picked by rendering the
+    // panel at 0.25/0.30/0.40/0.55 and looking: what made the old backdrop
+    // intrusive was that it competed as a picture, not that it was bright, and
+    // at 0.25 a blurred one is so near black that the mode stops meaning
+    // anything. At 0.55 it starts pulling the eye again.
+    if root.fit == 2 && root.backdrop.width > 0: Image {
+        source: root.backdrop;
         width: 100%;
         height: 100%;
         image-fit: cover;
-        opacity: 0.25;
+        opacity: 0.40;
     }
 
     Image {

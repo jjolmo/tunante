@@ -25,6 +25,32 @@ export { ColumnChoice, ConsoleOption, CoverCandidate, GridCell, GridLine, Librar
 // So Rust can flip the palette: ui.global::<Theme>().set_dark(false).
 export { Theme }
 
+// The update prompt's button. Deliberately a copy of `Push` in
+// settings.slint rather than an export of it: that one belongs to the
+// settings screen, and a shared widget owned by neither is how two screens
+// start dragging each other's changes around.
+component UpdateButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary;
+    callback clicked();
+    height: 28px;
+    width: max(104px, ub.preferred-width + 26px);
+    border-radius: 3px;
+    border-width: 1px;
+    border-color: root.primary ? Theme.accent : Theme.border;
+    background: root.primary
+        ? (uba.has-hover ? Theme.accent-hover : Theme.accent)
+        : (uba.has-hover ? Theme.bg-hover : Theme.bg-tertiary);
+    ub := Text {
+        text: root.label;
+        color: root.primary ? #ffffff : Theme.text-primary;
+        font-size: Theme.font-body;
+    }
+    uba := TouchArea {
+        clicked => { root.clicked(); }
+    }
+}
+
 export component AppWindow inherits Window {
     // «Título - Artista — Tunante» while something plays: the taskbar and
     // alt-tab tell you what is on without a glance inside.
@@ -63,10 +89,12 @@ export component AppWindow inherits Window {
     in property <string> prev-artist;
     in property <string> prev-album;
     in property <image> prev-art;
+    in property <image> prev-backdrop;
     in property <string> next-title;
     in property <string> next-artist;
     in property <string> next-album;
     in property <image> next-art;
+    in property <image> next-backdrop;
     in property <int> library-total;
     in-out property <int> tab: 0;
     in-out property <bool> playing: false;
@@ -75,6 +103,7 @@ export component AppWindow inherits Window {
     in property <int> position-ms;
     in property <int> duration-ms;
     in property <image> now-art;
+    in property <image> now-backdrop;
     in property <int> cover-fit;
     // The path of the track playing, so a row can recognise itself. Cheaper and
     // steadier than marking rows in Rust: `to_ui_rows` is called from five
@@ -296,6 +325,20 @@ export component AppWindow inherits Window {
     callback cycle-tray-click();
     in property <bool> update-skippable;
     callback skip-update();
+    /// The updater's two prompts, back from the Tauri app this replaced.
+    ///
+    /// `update-offer` holds the version the startup check found and opens the
+    /// modal; `update-ready` holds one already in place and waiting on a
+    /// restart. Both empty nearly always. In-out because "Más tarde" is pure
+    /// dismissal — there is nothing for Rust to remember about it.
+    in-out property <string> update-offer;
+    in-out property <string> update-ready;
+    /// The line inside the modal: what the download is doing, or why it
+    /// stopped. `update-working` hides the verbs while it runs, so the dialog
+    /// cannot be told to install the same thing twice.
+    in property <string> update-note;
+    in property <bool> update-working;
+    callback restart-now();
     in property <string> desktop-entry-label;
     callback make-desktop-entry();
     in property <string> add-files-label;
@@ -686,6 +729,7 @@ export component AppWindow inherits Window {
             now-album: root.now-album;
             now-path: root.now-path;
             now-art: root.now-art;
+            now-backdrop: root.now-backdrop;
             playing: root.playing;
             shuffle: root.shuffle;
             repeat: root.repeat;
@@ -1073,14 +1117,17 @@ export component AppWindow inherits Window {
                         artist: root.now-artist;
                         album: root.now-album;
                         art: root.now-art;
+                        backdrop: root.now-backdrop;
                         prev-title: root.prev-title;
                         prev-artist: root.prev-artist;
                         prev-album: root.prev-album;
                         prev-art: root.prev-art;
+                        prev-backdrop: root.prev-backdrop;
                         next-title: root.next-title;
                         next-artist: root.next-artist;
                         next-album: root.next-album;
                         next-art: root.next-art;
+                        next-backdrop: root.next-backdrop;
                         playing: root.playing;
                         shuffle: root.shuffle;
                         repeat: root.repeat;
@@ -1351,6 +1398,136 @@ export component AppWindow inherits Window {
         total: root.bulk-total;
         apply => { root.bulk-apply(); }
         cancelled => { root.bulk-cancelled(); }
+    }
+
+    // The update prompt, ported back from the Tauri app's UpdateDialog — the
+    // one thing the Slint rewrite dropped. Every state the updater produces
+    // used to land on a grey label inside Ajustes, so "Avisar de
+    // actualizaciones al arrancar" notified nowhere at all, and a version that
+    // had already been downloaded sat there unread until somebody went looking.
+    //
+    // Two shapes, as it had: a modal when the check has something to offer,
+    // and a corner nudge when an auto-update already put one in place without
+    // ever asking. The modal turns into the restart prompt rather than handing
+    // off to the nudge, so the conversation finishes where it started.
+    if root.update-offer != "": Rectangle {
+        width: root.width;
+        height: root.height;
+        background: #00000099;
+        // Swallows the click, so the backdrop dismisses nothing by accident.
+        TouchArea {}
+        Rectangle {
+            width: min(420px, root.width - 32px);
+            height: card.preferred-height;
+            background: Theme.bg-primary;
+            border-width: 1px;
+            border-color: Theme.border;
+            border-radius: Theme.radius;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #000000aa;
+            card := VerticalLayout {
+                padding: 18px;
+                spacing: 10px;
+                Text {
+                    text: root.update-ready != ""
+                        ? @tr("Actualización lista")
+                        : @tr("Hay una actualización");
+                    color: Theme.text-primary;
+                    font-size: Theme.font-title;
+                }
+                Text {
+                    text: root.update-ready != ""
+                        ? @tr("v{} está instalada. Reinicia para usarla.", root.update-ready)
+                        : @tr("La versión v{} ya está disponible.", root.update-offer);
+                    color: Theme.text-secondary;
+                    font-size: Theme.font-body;
+                    wrap: word-wrap;
+                }
+                if root.update-note != "": Text {
+                    text: root.update-note;
+                    color: Theme.accent;
+                    font-size: Theme.font-small;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    alignment: end;
+                    if root.update-ready != "": UpdateButton {
+                        label: @tr("Reiniciar ahora");
+                        primary: true;
+                        clicked => { root.restart-now(); }
+                    }
+                    if root.update-ready == "" && !root.update-working: UpdateButton {
+                        label: @tr("Actualizar ahora");
+                        primary: true;
+                        clicked => { root.check-update(); }
+                    }
+                    if root.update-ready == "" && !root.update-working
+                            && root.update-skippable: UpdateButton {
+                        label: @tr("Omitir v{}", root.update-offer);
+                        clicked => {
+                            root.skip-update();
+                            root.update-offer = "";
+                        }
+                    }
+                    UpdateButton {
+                        label: @tr("Más tarde");
+                        clicked => {
+                            root.update-offer = "";
+                            root.update-ready = "";
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The silent path: the binaries were already swapped at startup and no
+    // dialog was ever opened, so this is the first anyone hears of it. One
+    // verb, and an X for people who would rather finish the album first.
+    if root.update-ready != "" && root.update-offer == "": Rectangle {
+        x: root.width - self.width - 16px;
+        y: root.height - self.height - 110px;
+        width: min(360px, root.width - 32px);
+        height: ut.preferred-height + 18px;
+        background: Theme.bg-secondary;
+        border-width: 1px;
+        border-color: Theme.accent;
+        border-radius: Theme.radius;
+        drop-shadow-blur: 12px;
+        drop-shadow-color: #00000099;
+        ut := HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 10px;
+            spacing: 10px;
+            Text {
+                text: @tr("v{} descargada.", root.update-ready);
+                color: Theme.text-primary;
+                font-size: Theme.font-small;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+            VerticalLayout {
+                alignment: center;
+                UpdateButton {
+                    label: @tr("Reiniciar");
+                    primary: true;
+                    clicked => { root.restart-now(); }
+                }
+            }
+            Rectangle {
+                width: 22px;
+                Text {
+                    text: "✕";
+                    color: Theme.text-muted;
+                    font-size: Theme.font-small;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+                TouchArea { clicked => { root.update-ready = ""; } }
+            }
+        }
     }
 
     if root.output-picking: OutputPickSheet {
