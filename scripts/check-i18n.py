@@ -110,6 +110,8 @@ IDENTICAL_OK = {
     "Tecla · Silenciar", "Título", "Vibecoded por jjolmo.", "anterior", "buscar",
     "claro", "estéreo", "limitador", "mostrar/ocultar", "nada", "parar", "repetir",
     "silenciar", "simbólico", "vinculando…", "{}/{} · {} encontradas", "Álbum", "Música", "{} encontradas", "v{} disponible", "Artistas", "Artista · {}",
+    # Portuguese spells the word exactly as Spanish does, like "Álbum" above.
+    "Álbum · {}",
 }
 
 

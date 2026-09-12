@@ -54,6 +54,8 @@ component SidebarEntry inherits Rectangle {
     in property <bool> active;
     /// Double click: play this collection, the old desktop's shortcut.
     callback played();
+    /// Middle click: one track out of this collection, picked at random.
+    callback surprise();
     /// The old desktop put a number beside every entry; the answer to
     /// "how big is my library" should not need a click.
     in property <string> count;
@@ -96,6 +98,12 @@ component SidebarEntry inherits Rectangle {
     t := TouchArea {
         clicked => { root.clicked(); }
         double-clicked => { root.played(); }
+        pointer-event(ev) => {
+            if (ev.kind == PointerEventKind.down
+                && ev.button == PointerEventButton.middle) {
+                root.surprise();
+            }
+        }
     }
 }
 
@@ -420,6 +428,12 @@ export component DesktopShell inherits Rectangle {
     in property <string> pick-heading;
     callback playlist-picked(string);
     callback playlist-created-for-add(string);
+    in property <string> table-menu-game;
+    in property <string> table-menu-artist;
+    in property <string> table-menu-console;
+    in property <string> table-menu-album;
+    callback table-row-menu-opened(int);
+    callback table-scope-from-row(int, string);
     callback table-open-folder(int);
     callback table-pin-folder(int);
     callback table-column-moved(int, int);
@@ -433,6 +447,10 @@ export component DesktopShell inherits Rectangle {
     in property <[PlaylistRow]> sidebar-consoles;
     callback console-opened(string);
     callback console-played(string);
+    /// Middle click on any sidebar collection: play one track out of it,
+    /// picked at random. The first argument names the kind ("", "faved",
+    /// "queue", "folder", "console", "playlist"), the second identifies it.
+    callback random-from(string, string);
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
@@ -753,6 +771,7 @@ export component DesktopShell inherits Rectangle {
                             root.table-faved-changed(false);
                         }
                         played => { root.sidebar-play-all(); }
+                        surprise => { root.random-from("", ""); }
                     }
                     if root.show-faved: SidebarEntry {
                         label: @tr("Favoritos");
@@ -763,6 +782,7 @@ export component DesktopShell inherits Rectangle {
                             root.centre = 0;
                             root.table-faved-changed(true);
                         }
+                        surprise => { root.random-from("faved", ""); }
                     }
                     // Queue as a sidebar entry (placement 0). Shown while it has
                     // items — the old "Queued" view — or always, if the user
@@ -772,36 +792,43 @@ export component DesktopShell inherits Rectangle {
                         count: root.queue-rows.length;
                         active: root.centre == 0 && root.table-scope-kind == "queue";
                         clicked => { root.centre = 0; root.queue-opened-in-table(); }
+                        surprise => { root.random-from("queue", ""); }
                     }
                     if root.show-files: SidebarEntry {
                         label: @tr("Árbol");
                         active: root.centre == 1 && root.library-mode == 0;
                         clicked => { root.centre = 1; root.library-mode-changed(0); }
+                        surprise => { root.random-from("", ""); }
                     }
                     if root.show-discos: SidebarEntry {
                         label: @tr("Discos");
                         active: root.centre == 1 && root.library-mode == 1;
                         clicked => { root.centre = 1; root.library-mode-changed(1); }
+                        surprise => { root.random-from("", ""); }
                     }
                     if root.show-consoles-view: SidebarEntry {
                         label: @tr("Consolas");
                         active: root.centre == 1 && root.library-mode == 2;
                         clicked => { root.centre = 1; root.library-mode-changed(2); }
+                        surprise => { root.random-from("", ""); }
                     }
                     if root.show-juegos: SidebarEntry {
                         label: @tr("Juegos");
                         active: root.centre == 1 && root.library-mode == 3;
                         clicked => { root.centre = 1; root.library-mode-changed(3); }
+                        surprise => { root.random-from("", ""); }
                     }
                     if root.show-artistas: SidebarEntry {
                         label: @tr("Artistas");
                         active: root.centre == 1 && root.library-mode == 5;
                         clicked => { root.centre = 1; root.library-mode-changed(5); }
+                        surprise => { root.random-from("", ""); }
                     }
                     if root.show-listas-view: SidebarEntry {
                         label: @tr("Listas");
                         active: root.centre == 1 && root.library-mode == 4;
                         clicked => { root.centre = 1; root.library-mode-changed(4); }
+                        surprise => { root.random-from("", ""); }
                     }
                     }
 
@@ -840,6 +867,12 @@ export component DesktopShell inherits Rectangle {
                                 root.folder-opened(pf.id);
                             }
                             double-clicked => { root.folder-played(pf.id); }
+                            pointer-event(ev) => {
+                                if (ev.kind == PointerEventKind.down
+                                    && ev.button == PointerEventButton.middle) {
+                                    root.random-from("folder", pf.id);
+                                }
+                            }
                         }
                         ContextMenuArea {
                             Menu {
@@ -924,6 +957,12 @@ export component DesktopShell inherits Rectangle {
                                 root.console-opened-in-table(sc.id);
                             }
                             double-clicked => { root.console-played(sc.id); }
+                            pointer-event(ev) => {
+                                if (ev.kind == PointerEventKind.down
+                                    && ev.button == PointerEventButton.middle) {
+                                    root.random-from("console", sc.id);
+                                }
+                            }
                         }
                         HorizontalLayout {
                             padding-left: 10px;
@@ -958,9 +997,15 @@ export component DesktopShell inherits Rectangle {
                                     title: @tr("Reproducir");
                                     activated => { root.console-played(sc.id); }
                                 }
+                                // The grid of this console's games, covers
+                                // and all — the same place the Consolas view
+                                // reaches by hand, one step instead of three.
                                 MenuItem {
-                                    title: @tr("Carátulas…");
-                                    activated => { root.showing-settings = true; }
+                                    title: @tr("Abrir en rejilla");
+                                    activated => {
+                                        root.centre = 1;
+                                        root.console-opened(sc.id);
+                                    }
                                 }
                             }
                         }
@@ -1049,6 +1094,10 @@ export component DesktopShell inherits Rectangle {
                                             && root.pl-drop != pli) {
                                             root.playlist-reordered(pli, root.pl-drop);
                                         }
+                                    }
+                                    if (ev.kind == PointerEventKind.down
+                                        && ev.button == PointerEventButton.middle) {
+                                        root.random-from("playlist", pl.id);
                                     }
                                 }
                                 clicked => {
@@ -1157,6 +1206,12 @@ export component DesktopShell inherits Rectangle {
                     enqueued(i) => { root.table-enqueued(i); }
                     play-next(i) => { root.table-play-next(i); }
                     add-to-playlist(i) => { root.table-add-to-playlist(i); }
+                    menu-game: root.table-menu-game;
+                    menu-artist: root.table-menu-artist;
+                    menu-console: root.table-menu-console;
+                    menu-album: root.table-menu-album;
+                    row-menu-opened(i) => { root.table-row-menu-opened(i); }
+                    scope-from-row(i, kind) => { root.table-scope-from-row(i, kind); }
                     open-folder(i) => { root.table-open-folder(i); }
                     pin-folder(i) => { root.table-pin-folder(i); }
                     column-moved(de, a) => { root.table-column-moved(de, a); }

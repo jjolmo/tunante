@@ -47,8 +47,8 @@ msgstr "Open in file manager"
 msgid "Quitar de aquí"
 msgstr "Remove from here"
 
-msgid "Carátulas…"
-msgstr "Cover art…"
+msgid "Abrir en rejilla"
+msgstr "Open in grid"
 
 msgid "Encolar todo"
 msgstr "Queue all"
@@ -1378,3 +1378,18 @@ msgstr "the .dmg does not contain Tunante.app"
 
 msgid "esta versión no se actualiza sola; descarga la nueva en github.com/jjolmo/tunante/releases"
 msgstr "this build does not update itself; download the new one at github.com/jjolmo/tunante/releases"
+
+msgid "Álbum · {}"
+msgstr "Album · {}"
+
+msgid "Ver el juego: {}"
+msgstr "Show game: {}"
+
+msgid "Ver el artista: {}"
+msgstr "Show artist: {}"
+
+msgid "Ver la consola: {}"
+msgstr "Show console: {}"
+
+msgid "Ver el álbum: {}"
+msgstr "Show album: {}"

@@ -7,7 +7,7 @@ pub use classification::{ClassificationOverride, UnclassifiedFolder, CLASSIFIER_
 use crate::classify::Classifier;
 use models::{MonitoredFolder, PinnedFolder, Playlist, Setting, Track};
 use rusqlite::{params, Connection};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
@@ -27,6 +27,19 @@ pub struct Database {
     /// because `Connection` is already `!Sync`, so a `Database` is only ever
     /// reachable through a mutex anyway.
     classifier: RefCell<Option<Arc<Classifier>>>,
+    /// Tracks shorter than this are left out of every listing query.
+    ///
+    /// The player already refused to play them — the queue skips anything
+    /// under the threshold — but the lists kept showing them, so the setting
+    /// read as broken: the row is there, you click it, and the next track
+    /// plays instead. Filtering here rather than at each of the thirty-odd
+    /// call sites is the whole point: a listing that forgot to ask would be
+    /// the bug coming straight back.
+    ///
+    /// Zero, the default, hides nothing. Only the player sets it; the scanner
+    /// and the helper open their own `Database` and never touch it, so an
+    /// import still sees every file on disk.
+    hide_shorter_than_ms: Cell<i64>,
 }
 
 /// Escape a path so it can be used as a literal prefix inside a `LIKE` pattern.
@@ -114,7 +127,7 @@ impl Database {
             );
         }
 
-        let db = Self { conn, classifier: RefCell::new(None) };
+        let db = Self { conn, classifier: RefCell::new(None), hide_shorter_than_ms: Cell::new(0) };
         // Rebuilds the derived console/game table when the rules have changed.
         // Idempotent, and a no-op on every open but the first after an upgrade.
         db.ensure_classified()?;
@@ -122,6 +135,38 @@ impl Database {
     }
 
     // --- Tracks ---
+
+    /// Hide tracks shorter than `ms` from every listing. Zero shows all.
+    pub fn set_hide_shorter_than_ms(&self, ms: i64) {
+        self.hide_shorter_than_ms.set(ms.max(0));
+    }
+
+    pub fn hide_shorter_than_ms(&self) -> i64 {
+        self.hide_shorter_than_ms.get()
+    }
+
+    /// Drop what the setting hides. A duration of zero survives: that is an
+    /// unprobed file, not a short one, and dropping those would empty the
+    /// library of everything the scanner has not measured yet.
+    /// The same rule as `hide_short`, written for a query that counts rather
+    /// than loads. Empty when nothing is hidden. The threshold is an `i64`
+    /// this code owns, so interpolating it is not a way in.
+    fn short_sql(&self) -> String {
+        let min = self.hide_shorter_than_ms.get();
+        if min > 0 {
+            format!(" AND (duration_ms <= 0 OR duration_ms >= {min})")
+        } else {
+            String::new()
+        }
+    }
+
+    fn hide_short(&self, tracks: &mut Vec<Track>) {
+        let min = self.hide_shorter_than_ms.get();
+        if min > 0 {
+            tracks.retain(|t| t.duration_ms <= 0 || t.duration_ms >= min);
+        }
+    }
+
 
     /// Insert a track, upserting on path conflict. Returns the actual stored track ID
     /// (which may differ from track.id if the path already existed).
@@ -227,6 +272,15 @@ impl Database {
     }
 
     pub fn get_all_tracks(&self) -> Result<Vec<Track>, DbError> {
+        let mut tracks = self.get_all_tracks_unfiltered()?;
+        self.hide_short(&mut tracks);
+        Ok(tracks)
+    }
+
+    /// Every row, whatever the short-track setting says. For the passes that
+    /// work over the files themselves — bulk cover art, the rating import —
+    /// where leaving a file out because it is short would quietly skip it.
+    pub fn get_all_tracks_unfiltered(&self) -> Result<Vec<Track>, DbError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, path, title, artist, album, album_artist, track_number, disc_number, duration_ms, sample_rate, channels, bitrate, codec, file_size, has_artwork, rating, header_game
              FROM tracks ORDER BY album_artist, album, disc_number, track_number, title",
@@ -376,6 +430,7 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?;
 
         self.stamp(&mut tracks)?;
+        self.hide_short(&mut tracks);
         Ok(tracks)
     }
 
@@ -477,6 +532,7 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?;
 
         self.stamp(&mut tracks)?;
+        self.hide_short(&mut tracks);
         Ok(tracks)
     }
 
@@ -886,7 +942,11 @@ impl Database {
     /// the sidebar's numbers, in one pass.
     pub fn count_tracks(&self) -> Result<(i64, i64), DbError> {
         Ok(self.conn.query_row(
-            "SELECT COUNT(*), COUNT(CASE WHEN rating > 0 THEN 1 END) FROM tracks",
+            &format!(
+                "SELECT COUNT(*), COUNT(CASE WHEN rating > 0 THEN 1 END)
+                 FROM tracks WHERE 1 = 1{}",
+                self.short_sql()
+            ),
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?)
@@ -896,7 +956,10 @@ impl Database {
     /// child path continues with '/', so /a/b never counts /a/bc.
     pub fn count_tracks_under(&self, folder: &str) -> Result<i64, DbError> {
         Ok(self.conn.query_row(
-            "SELECT COUNT(*) FROM tracks WHERE path LIKE ?1 || '/%'",
+            &format!(
+                "SELECT COUNT(*) FROM tracks WHERE path LIKE ?1 || '/%'{}",
+                self.short_sql()
+            ),
             params![folder],
             |r| r.get(0),
         )?)
@@ -944,6 +1007,7 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?;
 
         self.stamp(&mut tracks)?;
+        self.hide_short(&mut tracks);
         Ok(tracks)
     }
 
@@ -1040,6 +1104,7 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()?;
 
         self.stamp(&mut tracks)?;
+        self.hide_short(&mut tracks);
         Ok(tracks)
     }
 
