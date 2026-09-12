@@ -6601,6 +6601,20 @@ fn refresh_library(
     let t = tree.borrow();
     let mode = t.mode;
 
+    // Which console we are inside, for the sidebar's highlight. Set before the
+    // Listas branch returns, so leaving Consolas clears it rather than leaving
+    // a console lit under a different view.
+    ui.set_library_console_id(SharedString::from(
+        if mode == library::Mode::Consoles {
+            t.nav
+                .first()
+                .map(|k| k.trim_start_matches("consola:"))
+                .unwrap_or("")
+        } else {
+            ""
+        },
+    ));
+
     // Siempre, no sólo en el modo Listas: el selector de «añadir a una lista» se
     // abre desde el árbol y desde las rejillas, y si el modelo sólo se llenase
     // al visitar Listas saldría vacío para quien no haya pasado por allí. Es una
@@ -8824,6 +8838,91 @@ mod tests {
         let mut paths: Vec<&str> = rows.iter().map(|r| r.path.as_str()).collect();
         paths.sort();
         assert_eq!(paths, ["/m/disc1/a.psf", "/m/disc2/b.psf"]);
+
+        let _ = std::fs::remove_file(file);
+    }
+
+    /// Like `db_with`, but classified: `console_id` is NOT a column on
+    /// `tracks`, it is derived from the codec and the path and cached in
+    /// `track_classification`. So the codec has to be a real one and the pass
+    /// has to be run — a track with no console is not game music, and
+    /// `games::index` skips it.
+    fn db_with_console(rows: &[(&str, &str, &str)]) -> (std::path::PathBuf, Database) {
+        static N: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let mut file = std::env::temp_dir();
+        file.push(format!(
+            "tunante-test-con-{}-{}.db",
+            std::process::id(),
+            N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ));
+        let _ = std::fs::remove_file(&file);
+        let db = Database::new(&file).expect("open");
+        for (path, album, codec) in rows {
+            let t = Track {
+                id: (*path).to_string(),
+                path: (*path).to_string(),
+                title: (*path).to_string(),
+                artist: String::new(),
+                album: (*album).to_string(),
+                album_artist: String::new(),
+                duration_ms: 1000,
+                codec: (*codec).to_string(),
+                ..Default::default()
+            };
+            db.insert_track(&t).expect("insert");
+        }
+        db.reclassify_all().expect("classify");
+        (file, db)
+    }
+
+    /// "Abrir en rejilla" has to reach a grid.
+    ///
+    /// A console's level 1 was its whole track list, flat, so the one sidebar
+    /// entry that says "rejilla" was the one that could not show one: it landed
+    /// on rows drawn exactly like the tree. This walks the two steps that menu
+    /// takes — into the console, then into a game — because nothing else in
+    /// this app reaches that level on the desktop.
+    #[test]
+    fn a_console_opens_onto_a_grid_of_its_games() {
+        // Two folders for one game on purpose: the cards come from the games
+        // index, so this is one card, not two.
+        let (file, db) = db_with_console(&[
+            ("/m/SMB Disco 1/a.nsf", "Super Mario Bros", "nsf"),
+            ("/m/SMB Disco 2/b.nsf", "Super Mario Bros", "nsf"),
+            ("/m/Zelda/c.nsf", "Zelda", "nsf"),
+            ("/m/Chrono/d.spc", "Chrono Trigger", "spc"),
+        ]);
+        let mut tree = library::Tree::new(vec![std::path::PathBuf::from("/m")]);
+        tree.mode = library::Mode::Consoles;
+        tree.nav.push("consola:nes".to_string());
+
+        let cells = tree
+            .grid(&db, library::Mode::Consoles)
+            .expect("a console opens onto a GRID, not a list");
+        let mut titles: Vec<&str> = cells.iter().map(|c| c.title.as_str()).collect();
+        titles.sort();
+        assert_eq!(titles, ["Super Mario Bros", "Zelda"], "another console leaked in");
+        assert!(
+            cells.iter().all(|c| c.path.starts_with("juego:")),
+            "cards must be keyed like the Juegos grid's, or opening one resolves nothing"
+        );
+        // A rip split across two folders is ONE card, as it is in Juegos —
+        // which is why these come from the games index and not from read_dir.
+        assert_eq!(cells.len(), 2);
+
+        // One step further: the game's tracks, addressed by the card's key
+        // while the view is still Consolas. That mismatch is what used to make
+        // `grid_tracks` read "juego:Super Mario Bros" as a directory.
+        tree.nav.push("juego:Super Mario Bros".to_string());
+        assert!(
+            tree.grid(&db, library::Mode::Consoles).is_none(),
+            "a game's tracks are a list, not a grid"
+        );
+        assert_eq!(tree.crumb(), "Super Mario Bros");
+        let rows = tree.grid_tracks(&db, library::Mode::Consoles);
+        let mut paths: Vec<&str> = rows.iter().map(|r| r.path.as_str()).collect();
+        paths.sort();
+        assert_eq!(paths, ["/m/SMB Disco 1/a.nsf", "/m/SMB Disco 2/b.nsf"]);
 
         let _ = std::fs::remove_file(file);
     }

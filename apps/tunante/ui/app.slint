@@ -210,6 +210,12 @@ export component AppWindow inherits Window {
     in property <[GridLine]> library-grid-lines;
     in property <bool> library-grid;
     in property <string> library-crumb;
+    /// Which console the library view is currently inside, "" at the top
+    /// level. The sidebar lights the row you opened with it: without this the
+    /// highlight jumped off the console and onto the generic "Consolas" entry,
+    /// so acting on one row moved the selection to another.
+    in property <string> library-console-id;
+
     callback library-grid-tapped(string);
     callback library-back();
     /// Tres tarjetas de ancho en vertical, ocho en apaisado. Rust reparte las
@@ -692,6 +698,7 @@ export component AppWindow inherits Window {
             library-grid-lines: root.library-grid-lines;
             library-grid: root.library-grid;
             library-crumb: root.library-crumb;
+            library-console-id: root.library-console-id;
             library-columns: root.library-columns;
             table-rows: root.table-rows;
             table-columns: root.table-columns;

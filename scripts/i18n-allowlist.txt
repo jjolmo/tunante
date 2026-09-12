@@ -5,3 +5,4 @@ los  # stop word in the cover-art title matcher (tunante-art), compared, never s
 las  # same
 Español  # the language's own name in the language picker: every language is listed in itself
 Música  # a candidate folder name under $HOME (picker.rs), never drawn
+Écailles  # album name in a unit test fixture (main.rs), never drawn

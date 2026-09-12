@@ -784,8 +784,44 @@ impl Tree {
                         .collect(),
                 )
             }
-            // A console no longer drills into its folders: level 1 is its whole
-            // track list (None → the list view, filled by grid_tracks).
+            // Level 1 of a console: the games on that machine, as cards with
+            // covers.
+            //
+            // This level used to be the console's whole track list, flat, which
+            // left the sidebar's "Abrir en rejilla" as the one entry promising a
+            // grid that could not produce one — a console went grid → list,
+            // skipping the games level that the promise is about.
+            //
+            // Built from `games::index` rather than from the folders so these
+            // cards match the Juegos grid exactly: a rip split across `Disc 1`
+            // and `Disc 2` is one game in both, where one card per folder would
+            // make it two.
+            (Mode::Consoles, 1) => {
+                let quiero = self.nav[0].trim_start_matches("consola:").to_string();
+                let tracks: Vec<Track> = self
+                    .all_tracks(db)
+                    .iter()
+                    .filter(|t| console_key(t) == quiero)
+                    .cloned()
+                    .collect();
+                Some(
+                    tunante_core::games::index(&tracks)
+                        .into_iter()
+                        .map(|g| Cell {
+                            title: g.name.clone(),
+                            subtitle: pistas(g.count),
+                            art_dir: Path::new(vgm_path::parse_vgm_path(&g.first_track).0)
+                                .parent()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_default(),
+                            console: String::new(),
+                            // Keyed like the Juegos grid's cards, so opening one
+                            // resolves by name through the same path.
+                            path: format!("juego:{}", g.name),
+                        })
+                        .collect(),
+                )
+            }
             _ => None,
         }
     }
@@ -813,32 +849,22 @@ impl Tree {
     /// Las pistas del nivel actual, cuando el nivel actual son pistas.
     pub fn grid_tracks(&self, db: &Database, mode: Mode) -> Vec<Row> {
         let Some(dir) = self.nav.last() else { return Vec::new() };
-        // A console opens straight to every track it holds, flat — not down
-        // into its folders. Desktop shows the same set in the powerful table.
-        if mode == Mode::Consoles && self.nav.len() == 1 {
-            let quiero = self.nav[0].trim_start_matches("consola:").to_string();
-            let tracks: Vec<Track> = self
-                .all_tracks(db)
-                .iter()
-                .filter(|t| console_key(t) == quiero)
-                .cloned()
-                .collect();
-            let mut out = Vec::new();
-            self.push_tracks(tracks, 0, &mut out);
-            if !self.filter.trim().is_empty() {
-                let q = plegar(self.filter.trim());
-                out.retain(|r| plegar(&r.label).contains(&q));
-            }
-            return out;
-        }
         if mode == Mode::Consoles && self.nav.is_empty() {
             return Vec::new();
         }
         // A game is a name, not a directory, so its tracks cannot come from
         // read_dir the way every other grid level's do.
-        if mode == Mode::Artists {
+        //
+        // Keyed off the ROW rather than the view, because the two no longer
+        // agree: a game opened from inside a console is `juego:<name>` while
+        // the mode is still Consolas. The mode is kept as the fallback for a
+        // bare key, which is how these levels were addressed before the
+        // prefixes existed.
+        let artist = dir
+            .strip_prefix("artista:")
+            .or_else(|| (mode == Mode::Artists).then_some(dir.as_str()));
+        if let Some(artist) = artist {
             let mut out = Vec::new();
-            let artist = dir.strip_prefix("artista:").unwrap_or(dir);
             self.push_tracks(self.artist_tracks(db, artist), 0, &mut out);
             if !self.filter.trim().is_empty() {
                 let q = plegar(self.filter.trim());
@@ -846,9 +872,11 @@ impl Tree {
             }
             return out;
         }
-        if mode == Mode::Games {
+        let game = dir
+            .strip_prefix("juego:")
+            .or_else(|| (mode == Mode::Games).then_some(dir.as_str()));
+        if let Some(game) = game {
             let mut out = Vec::new();
-            let game = dir.strip_prefix("juego:").unwrap_or(dir);
             self.push_tracks(self.game_tracks(db, game), 0, &mut out);
             if !self.filter.trim().is_empty() {
                 let q = plegar(self.filter.trim());
