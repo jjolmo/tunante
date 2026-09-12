@@ -313,6 +313,12 @@ export component DesktopShell inherits Rectangle {
     in property <[GridLine]> library-grid-lines;
     in property <bool> library-grid;
     in property <string> library-crumb;
+    /// Which console the library view is currently inside, "" at the top
+    /// level. The sidebar lights the row you opened with it: without this the
+    /// highlight jumped off the console and onto the generic "Consolas" entry,
+    /// so acting on one row moved the selection to another.
+    in property <string> library-console-id;
+
     in property <int> library-columns;
     in property <[QueueRow]> queue-rows;
     in property <int> queue-placement;
@@ -808,7 +814,8 @@ export component DesktopShell inherits Rectangle {
                     }
                     if root.show-consoles-view: SidebarEntry {
                         label: @tr("Consolas");
-                        active: root.centre == 1 && root.library-mode == 2;
+                        active: root.centre == 1 && root.library-mode == 2
+                            && root.library-console-id == "";
                         clicked => { root.centre = 1; root.library-mode-changed(2); }
                         surprise => { root.random-from("", ""); }
                     }
@@ -947,8 +954,10 @@ export component DesktopShell inherits Rectangle {
                     for sc in (root.show-consoles && !root.collapse-consolas) ? root.sidebar-consoles : []: Rectangle {
                         height: Theme.compact ? 26px : 34px;
                         border-radius: 6px;
-                        background: root.centre == 0 && root.table-scope-kind == "console"
-                            && root.table-folder-id == sc.id
+                        background: (root.centre == 0 && root.table-scope-kind == "console"
+                                && root.table-folder-id == sc.id)
+                            || (root.centre == 1 && root.library-mode == 2
+                                && root.library-console-id == sc.id)
                             ? Theme.bg-selected
                             : (sct.has-hover ? Theme.bg-hover : transparent);
                         sct := TouchArea {
