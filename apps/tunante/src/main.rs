@@ -988,6 +988,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(p) = player.borrow_mut().as_mut() {
             p.set_short_filter(secs * 1000);
         }
+        // And out of every listing too, not just out of what plays next.
+        db.set_hide_shorter_than_ms(secs * 1000);
         secs as i32
     });
     ui.set_fade_seconds(
@@ -1642,6 +1644,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
     }
+    /// A position in `len`, picked from the clock. Not a general-purpose
+    /// random: for "surprise me" out of a collection, the sub-second part of
+    /// the current time is as unpredictable as a click can be, and it costs no
+    /// dependency.
+    fn random_index(len: usize) -> usize {
+        if len <= 1 {
+            return 0;
+        }
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as usize)
+            .unwrap_or(0)
+            % len
+    }
+
     // Double-click on a sidebar collection plays it — random start when
     // shuffle is on, like the old desktop.
     fn play_collection(
@@ -1654,15 +1671,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return;
         }
         if let Some(p) = player.borrow_mut().as_mut() {
-            let start = if p.shuffle() {
-                (std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.subsec_nanos() as usize)
-                    .unwrap_or(0))
-                    % tracks.len()
-            } else {
-                0
-            };
+            let start = if p.shuffle() { random_index(tracks.len()) } else { 0 };
             p.set_tracks(tracks.clone());
             match p.play_index(start) {
                 Ok(()) => push_now_playing(ui, p),
@@ -1723,6 +1732,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect();
             *played_scope_p.borrow_mut() = Scope::Folder(folder);
             play_collection(&ui, &player_p, &queue_model_p, tracks);
+        });
+    }
+    // The row menu's "see everything of…" group. The four labels are filled
+    // just before the popup opens rather than carried on every row: one set of
+    // strings for the whole table instead of four more on each of thirty
+    // thousand. Slint calls this synchronously from the same handler that shows
+    // the menu, so the entries are already worded by the time it draws.
+    {
+        let st = table_state.clone();
+        let weak = ui.as_weak();
+        ui.on_table_row_menu_opened(move |index| {
+            let Some(ui) = weak.upgrade() else { return };
+            let st = st.borrow();
+            let track = st.tracks.get(index as usize);
+            let label = |kind: &str| {
+                SharedString::from(track.map(|t| row_scope_label(t, kind)).unwrap_or_default())
+            };
+            ui.set_table_menu_game(label("game"));
+            ui.set_table_menu_artist(label("artist"));
+            ui.set_table_menu_console(label("console"));
+            ui.set_table_menu_album(label("album"));
+        });
+    }
+    {
+        let (db_s, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let weak = ui.as_weak();
+        ui.on_table_scope_from_row(move |index, kind| {
+            let Some(ui) = weak.upgrade() else { return };
+            let scope = {
+                let st = st.borrow();
+                st.tracks
+                    .get(index as usize)
+                    .and_then(|t| row_scope(t, &kind))
+                    .map(|(_, scope)| scope)
+            };
+            let Some(scope) = scope else { return };
+            open_scope_in_table(&ui, &db_s, &st, &model, scope);
         });
     }
     {
@@ -2687,7 +2733,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             tree_c.borrow_mut().mode = library::Mode::Consoles;
             tree_c.borrow_mut().nav.clear();
             tree_c.borrow_mut().nav.push(format!("consola:{id}"));
-            ui.set_library_mode(1);
+            // 2 is Consolas. It used to say 1 (Discos), which lit the wrong
+            // entry in the sidebar while the grid below showed the console.
+            ui.set_library_mode(2);
             refresh_library(&ui, &tree_c, &db_c, &views_c);
         });
     }
@@ -2705,6 +2753,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .collect();
             *played_scope_c.borrow_mut() = Scope::Console(id.to_string());
             play_collection(&ui, &player_c, &queue_c, tracks);
+        });
+    }
+    // Middle click on any sidebar collection: one track out of it, at random.
+    // The collection still becomes the playing context, so what follows is the
+    // rest of it — the alternative, playing one track and stopping, is a dead
+    // end nobody asks for twice.
+    {
+        let (db_r, player_r, queue_r) = (db.clone(), player.clone(), queue_model.clone());
+        let played_scope_r = played_scope.clone();
+        let weak = ui.as_weak();
+        ui.on_random_from(move |kind, id| {
+            let Some(ui) = weak.upgrade() else { return };
+            let (tracks, scope) = match kind.as_str() {
+                "faved" => (db_r.get_faved_tracks().unwrap_or_default(), Scope::Faved),
+                "queue" => {
+                    let tracks = player_r
+                        .borrow()
+                        .as_ref()
+                        .map(|p| p.user_queue().to_vec())
+                        .unwrap_or_default();
+                    let paths = tracks.iter().map(|t| t.path.clone()).collect();
+                    (tracks, Scope::Queue { paths })
+                }
+                "folder" => {
+                    let Some(folder) = sidebar_folder_path(&db_r, &id) else { return };
+                    let tracks = db_r.get_tracks_by_folder(&folder).unwrap_or_default();
+                    (tracks, Scope::Folder(folder))
+                }
+                "console" => {
+                    let tracks: Vec<_> = db_r
+                        .get_all_tracks()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|t| tunante_core::console::key_of(t) == id.as_str())
+                        .collect();
+                    (tracks, Scope::Console(id.to_string()))
+                }
+                "playlist" => {
+                    let tracks = db_r.get_playlist_tracks(&id).unwrap_or_default();
+                    let ids = tracks.iter().map(|t| t.id.clone()).collect();
+                    (tracks, Scope::Playlist { ids, id: id.to_string() })
+                }
+                _ => (db_r.get_all_tracks().unwrap_or_default(), Scope::Library),
+            };
+            if tracks.is_empty() {
+                return;
+            }
+            *played_scope_r.borrow_mut() = scope;
+            let start = random_index(tracks.len());
+            if let Some(p) = player_r.borrow_mut().as_mut() {
+                p.set_tracks(tracks);
+                match p.play_index(start) {
+                    Ok(()) => push_now_playing(&ui, p),
+                    Err(e) => show_play_error(&ui, &e),
+                }
+                refresh_queue(p, &queue_r);
+            }
         });
     }
     // Where the queue lives (desktop): 0 entrada en el sidebar, 1 lista en el
@@ -3121,26 +3226,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // A disc/album is a real folder.
                     Scope::Folder(path.to_string())
                 };
-                let mut st = table_v.borrow_mut();
-                if !st.built {
-                    st.built = true;
-                    st.all = db_v.get_all_tracks().unwrap_or_default();
-                }
-                if st.sort_key == "__scope__" {
-                    st.sort_key = "title".to_string();
-                }
-                let (kind, _) = scope.tag();
-                st.scope = scope;
-                rebuild_table(&mut st, &tmodel_v);
-                ui.set_table_faved(false);
-                ui.set_table_scope_kind(SharedString::from(kind));
-                ui.set_table_folder_id(SharedString::from(""));
-                ui.set_table_scope_label(SharedString::from(scope_label(&db_v, &st.scope)));
-                ui.set_table_sort_col(
-                    st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
-                );
-                drop(st);
-                ui.set_show_table_tick(ui.get_show_table_tick() + 1);
+                open_scope_in_table(&ui, &db_v, &table_v, &tmodel_v, scope);
                 return;
             }
             // The phone plays the tapped collection — a disc, a game or a
@@ -3743,7 +3829,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (plans, weak) = (bulk_plans_model.clone(), ui.as_weak());
         ui.on_descargar_caratulas(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let tracks = db.get_all_tracks().unwrap_or_default();
+            // Unfiltered: a jingle too short for the lists still belongs to an
+            // album whose cover is being fetched.
+            let tracks = db.get_all_tracks_unfiltered().unwrap_or_default();
             if tracks.is_empty() {
                 return;
             }
@@ -3762,7 +3850,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_bulk_apply(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let tracks = db.get_all_tracks().unwrap_or_default();
+            let tracks = db.get_all_tracks_unfiltered().unwrap_or_default();
             cancel.store(false, std::sync::atomic::Ordering::SeqCst);
             ui.set_bulk_busy(true);
             ui.set_bulk_status(SharedString::from(tunante_core::i18n::tr("Descargando…")));
@@ -3977,8 +4065,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (dbfile, dirty) = (dbfile.clone(), library_dirty.clone());
         let order = db.get_setting("rating_source_priority").ok().flatten();
+        // Ratings are imported for the whole library, not just what the
+        // short-track setting lets through.
         let items: Vec<(i32, String, String)> = db
-            .get_all_tracks()
+            .get_all_tracks_unfiltered()
             .unwrap_or_default()
             .into_iter()
             .map(|t| (t.rating, t.path, t.id))
@@ -4284,6 +4374,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let (db, weak, player) = (db.clone(), ui.as_weak(), player.clone());
+        let (tree_s, views_s) = (tree.clone(), views.clone());
+        let (st_s, model_s, consoles_s) =
+            (table_state.clone(), table_model.clone(), consoles_side.clone());
         ui.on_cycle_short_filter(move || {
             let Some(ui) = weak.upgrade() else { return };
             // desactivado → 5 → 10 → … → 60 → desactivado, in 5 s steps.
@@ -4293,6 +4386,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let _ = db.set_setting("mini.short_filter_secs", &next.to_string());
             if let Some(p) = player.borrow_mut().as_mut() {
                 p.set_short_filter(next as i64 * 1000);
+            }
+            // The lists are all built from caches that were filled under the
+            // old threshold, so changing it has to throw them away. Without
+            // this the setting only took effect on the next launch, which is
+            // indistinguishable from it not working.
+            db.set_hide_shorter_than_ms(next as i64 * 1000);
+            tree_s.borrow().invalidate();
+            refresh_counts(&db, &ui);
+            refresh_sidebar_consoles(&db, &tree_s, &consoles_s);
+            refresh_library(&ui, &tree_s, &db, &views_s);
+            let mut st = st_s.borrow_mut();
+            if st.built {
+                st.all = db.get_all_tracks().unwrap_or_default();
+                rebuild_table(&mut st, &model_s);
             }
         });
     }
@@ -6923,7 +7030,9 @@ fn output_label(stored: &str) -> String {
 /// of collection in the one powerful table — playlists and consoles included
 /// — and the grande shell does the same: this is what makes the sidebar's
 /// lists and consoles land in columns-and-sorting instead of the phone grid.
-#[derive(Clone, Default, PartialEq)]
+// Debug is for the tests' assert_eq!, which prints the two scopes when they
+// disagree — without it a failure says only "left != right".
+#[derive(Clone, Debug, Default, PartialEq)]
 enum Scope {
     #[default]
     Library,
@@ -6939,6 +7048,13 @@ enum Scope {
     Game(String),
     /// One artist, by name — every track `tunante_core::artists` files under it.
     Artist(String),
+    /// One album, by its tag — every track whose `album` field matches.
+    ///
+    /// Not the sidebar's "Álbumes", which groups by the folder a file sits in
+    /// and is a [`Scope::Folder`]. This is what the table's Álbum column
+    /// actually shows, and the two disagree whenever a disc is split across
+    /// folders or one folder holds two discs.
+    Album(String),
     /// A folder played from the tree. Scoped like [`Scope::Folder`] everywhere,
     /// but the track name in the transport goes back to the tree, on the
     /// track, rather than to the table.
@@ -6955,6 +7071,7 @@ impl Scope {
             Scope::Queue { .. } => ("queue", ""),
             Scope::Game(_) => ("game", ""),
             Scope::Artist(_) => ("artist", ""),
+            Scope::Album(_) => ("album", ""),
             _ => ("", ""),
         }
     }
@@ -6973,6 +7090,7 @@ fn scope_to_session(scope: &Scope) -> Option<String> {
         Scope::Queue { .. } => "queue".to_string(),
         Scope::Game(name) => format!("game:{name}"),
         Scope::Artist(name) => format!("artist:{name}"),
+        Scope::Album(name) => format!("album:{name}"),
     })
 }
 
@@ -7000,6 +7118,9 @@ fn scope_from_session(s: &str, db: &Database) -> Option<Scope> {
     }
     if let Some(name) = s.strip_prefix("artist:") {
         return Some(Scope::Artist(name.to_string()));
+    }
+    if let Some(name) = s.strip_prefix("album:") {
+        return Some(Scope::Album(name.to_string()));
     }
     if let Some(id) = s.strip_prefix("playlist:") {
         let tracks = db.get_playlist_tracks(id).ok()?;
@@ -7711,6 +7832,98 @@ fn table_console_label(t: &tunante_core::db::models::Track) -> String {
     tunante_core::i18n::tr(tunante_core::console::label_es(tunante_core::console::key_of(t)))
 }
 
+/// What the row menu can filter a track by: the words for the entry, and the
+/// scope it opens.
+///
+/// The value comes from the same function the scope filters with, never from
+/// the cell the table painted. They disagree often enough to matter: the
+/// Artista column shows `artist`, while the artist scope groups by
+/// `album_artist` when there is one, so a compilation's row would have offered
+/// a name that matches nothing and opened an empty table. The Consola cell is
+/// a translated label and the scope wants the key behind it.
+fn row_scope(t: &tunante_core::db::models::Track, kind: &str) -> Option<(String, Scope)> {
+    match kind {
+        "game" => {
+            let name = tunante_core::games::game_of(t);
+            (!name.is_empty()).then(|| (name.clone(), Scope::Game(name)))
+        }
+        "artist" => {
+            let name = tunante_core::artists::artist_of(t).to_string();
+            (!name.is_empty()).then(|| (name.clone(), Scope::Artist(name)))
+        }
+        "console" => {
+            // An unclassified track has no console, and "Ver la consola: Otros"
+            // on an ordinary album is noise rather than an offer.
+            let key = tunante_core::console::key_of(t);
+            (key != tunante_core::console::UNKNOWN)
+                .then(|| (table_console_label(t), Scope::Console(key.to_string())))
+        }
+        "album" => {
+            let name = t.album.trim().to_string();
+            (!name.is_empty()).then(|| (name.clone(), Scope::Album(name)))
+        }
+        _ => None,
+    }
+}
+
+/// The row menu's wording for one of those entries. Empty when the row has
+/// nothing of that kind, which is what hides the entry.
+fn row_scope_label(t: &tunante_core::db::models::Track, kind: &str) -> String {
+    let Some((name, _)) = row_scope(t, kind) else {
+        return String::new();
+    };
+    // Spelled out per kind on purpose: a game and its album share a name often
+    // enough that "Ver todo de X" twice in one menu would be a coin toss.
+    //
+    // Each literal sits inside its own tr() rather than being picked by the
+    // match and translated after: scripts/check-i18n.py reads the source, and a
+    // string it only ever sees assigned to a variable is one it reports as
+    // never reaching the catalog.
+    let pattern = match kind {
+        "game" => tunante_core::i18n::tr("Ver el juego: {}"),
+        "artist" => tunante_core::i18n::tr("Ver el artista: {}"),
+        "console" => tunante_core::i18n::tr("Ver la consola: {}"),
+        "album" => tunante_core::i18n::tr("Ver el álbum: {}"),
+        _ => return String::new(),
+    };
+    pattern.replace("{}", &name)
+}
+
+/// Point the table at a scope and bring it up — the desktop's "open this,
+/// filtered".
+///
+/// Lifted out of the Juegos grid's tap handler so the row menu opens a game
+/// exactly the way a card in that grid does: same sort reset, same chip, same
+/// sidebar highlight. Two callers, one behaviour.
+fn open_scope_in_table(
+    ui: &AppWindow,
+    db: &Database,
+    state: &RefCell<TableState>,
+    model: &VecModel<TableRow>,
+    scope: Scope,
+) {
+    let mut st = state.borrow_mut();
+    if !st.built {
+        st.built = true;
+        st.all = db.get_all_tracks().unwrap_or_default();
+    }
+    if st.sort_key == "__scope__" {
+        st.sort_key = "title".to_string();
+    }
+    let (kind, _) = scope.tag();
+    st.scope = scope;
+    rebuild_table(&mut st, model);
+    ui.set_table_faved(false);
+    ui.set_table_scope_kind(SharedString::from(kind));
+    ui.set_table_folder_id(SharedString::from(""));
+    ui.set_table_scope_label(SharedString::from(scope_label(db, &st.scope)));
+    ui.set_table_sort_col(
+        st.visible.iter().position(|k| k == &st.sort_key).map(|i| i as i32).unwrap_or(-1),
+    );
+    drop(st);
+    ui.set_show_table_tick(ui.get_show_table_tick() + 1);
+}
+
 /// The sidebar's pinned folders, re-read whole: the list is short and the
 /// database is the one truth about it.
 fn refresh_pinned(db: &Database, model: &VecModel<PinnedRow>) {
@@ -7754,6 +7967,7 @@ fn scope_label(db: &Database, scope: &Scope) -> String {
             .replace("{}", &tunante_core::i18n::tr(tunante_core::console::label_es(id))),
         Scope::Game(name) => return tunante_core::i18n::tr("Juego · {}").replace("{}", name),
         Scope::Artist(name) => return tunante_core::i18n::tr("Artista · {}").replace("{}", name),
+        Scope::Album(name) => return tunante_core::i18n::tr("Álbum · {}").replace("{}", name),
         Scope::Folder(f) | Scope::Tree(f) => tunante_core::i18n::tr("Carpeta · {}").replace(
             "{}",
             &
@@ -7883,6 +8097,7 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
                         .is_some_and(|rest| rest.starts_with('/'))
                 }
                 Scope::Console(c) => tunante_core::console::key_of(t) == c.as_str(),
+                Scope::Album(a) => t.album.trim() == a.as_str(),
                 _ => true,
             })
             .cloned()
@@ -8755,5 +8970,111 @@ mod tests {
         rebuild_table(&mut st, &model);
         let kept: Vec<_> = st.tracks.iter().map(|t| t.path.as_str()).collect();
         assert_eq!(kept, ["/z.nsf", "/x.nsf"], "playlist order or id resolution broke");
+    }
+
+    /// A Track for the row menu's tests, fields spelled out for the same
+    /// reason `scoped` does it.
+    fn tagged(path: &str, artist: &str, album_artist: &str, album: &str, game: &str, console: &str) -> Track {
+        Track {
+            id: path.to_string(),
+            path: path.to_string(),
+            title: path.to_string(),
+            artist: artist.to_string(),
+            album: album.to_string(),
+            album_artist: album_artist.to_string(),
+            track_number: None,
+            disc_number: None,
+            duration_ms: 1000,
+            sample_rate: None,
+            channels: None,
+            bitrate: None,
+            codec: "test".into(),
+            file_size: 0,
+            has_artwork: false,
+            rating: 0,
+            modified_at: 0,
+            game: game.to_string(),
+            header_game: String::new(),
+            console_id: console.to_string(),
+        }
+    }
+
+    /// The row menu offers the name the SCOPE groups by, not the one the cell
+    /// paints — and this is the whole reason `row_scope` exists.
+    ///
+    /// On a compilation the Artista column shows the track artist while the
+    /// artist scope groups by the album artist. Offering what the cell shows
+    /// would have opened a table with nothing in it, which is the kind of bug
+    /// that looks like an empty library rather than a wrong lookup.
+    #[test]
+    fn the_artist_entry_offers_the_grouping_name_not_the_painted_cell() {
+        let t = tagged("/a.mp3", "Nobuo Uematsu", "Varios Artistas", "FF7 OST", "", "");
+
+        assert_eq!(cell_for(&t, "artist", false, 0), "Nobuo Uematsu", "the column paints the track artist");
+
+        let (name, scope) = row_scope(&t, "artist").expect("an artist entry");
+        assert_eq!(name, "Varios Artistas");
+        assert_eq!(scope, Scope::Artist("Varios Artistas".to_string()));
+
+        // And why it matters: the painted name finds nothing.
+        assert!(
+            tunante_core::artists::tracks_of(std::slice::from_ref(&t), "Nobuo Uematsu").is_empty(),
+            "the cell's name would have opened an empty table"
+        );
+        assert_eq!(
+            tunante_core::artists::tracks_of(std::slice::from_ref(&t), &name).len(),
+            1
+        );
+    }
+
+    /// The console entry carries the key the scope filters on, while the words
+    /// stay the translated label — and an unclassified track has no console to
+    /// offer at all.
+    #[test]
+    fn the_console_entry_carries_the_key_and_skips_the_unclassified() {
+        let snes = tagged("/b.spc", "", "", "", "", "snes");
+        let (label, scope) = row_scope(&snes, "console").expect("a console entry");
+        assert_eq!(scope, Scope::Console("snes".to_string()));
+        assert_eq!(label, table_console_label(&snes), "the words are the label, not the key");
+
+        let loose = tagged("/c.mp3", "Alcest", "", "Souvenirs", "", "");
+        assert!(row_scope(&loose, "console").is_none(), "«Otros» is noise, not an offer");
+    }
+
+    /// An untagged rip still gets a game entry: `game_of` falls back to the
+    /// album, so the menu offers what the Juegos grid would file it under even
+    /// where the Juego column is blank.
+    #[test]
+    fn an_untagged_rip_still_offers_its_game() {
+        let t = tagged("/d.psf", "", "", "Chrono Trigger", "", "psx");
+        assert_eq!(cell_for(&t, "game", false, 0), "", "the column has nothing to paint");
+        let (name, scope) = row_scope(&t, "game").expect("a game entry");
+        assert_eq!(name, "Chrono Trigger");
+        assert_eq!(scope, Scope::Game("Chrono Trigger".to_string()));
+    }
+
+    /// The album scope is the TAG, not the folder: that is what separates it
+    /// from `Scope::Folder`, which is what the sidebar's «Álbumes» opens.
+    #[test]
+    fn an_album_scope_keeps_only_that_tag() {
+        let mut st = TableState {
+            all: vec![
+                tagged("/one/a.mp3", "", "", "Souvenirs", "", ""),
+                tagged("/two/b.mp3", "", "", "Souvenirs", "", ""),
+                tagged("/one/c.mp3", "", "", "Écailles", "", ""),
+            ],
+            scope: Scope::Album("Souvenirs".to_string()),
+            built: true,
+            ..TableState::default()
+        };
+        let model = VecModel::from(Vec::<TableRow>::new());
+        rebuild_table(&mut st, &model);
+        let mut kept: Vec<_> = st.tracks.iter().map(|t| t.path.as_str()).collect();
+        kept.sort();
+        assert_eq!(
+            kept,
+            ["/one/a.mp3", "/two/b.mp3"],
+            "an album split across two folders is still one album"
+        );
     }
 }

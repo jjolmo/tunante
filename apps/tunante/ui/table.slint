@@ -171,6 +171,18 @@ component MenuRow inherits Rectangle {
     }
 }
 
+// The hairline between groups of that hand-drawn menu. Slint's
+// `MenuSeparator` belongs to the platform `Menu` the header opens and cannot
+// be used here, for the same reason MenuRow exists at all.
+component MenuDivider inherits Rectangle {
+    height: 7px;
+    Rectangle {
+        y: 3px;
+        height: 1px;
+        background: Theme.border;
+    }
+}
+
 export component TrackTable inherits Rectangle {
     in property <[TableRow]> rows;
     in property <[TableColumn]> columns;
@@ -192,6 +204,18 @@ export component TrackTable inherits Rectangle {
     /// Open the playlist picker on this row (or the selection it sits in).
     callback add-to-playlist(int);
     /// Reveal the row's file in the system file manager.
+    /// The row menu's four "see everything of…" entries, already worded by
+    /// Rust — empty means this row has no such value and the entry is not
+    /// drawn. Filled by `row-menu-opened` just before the popup shows, so one
+    /// set of strings serves every row.
+    in property <string> menu-game;
+    in property <string> menu-artist;
+    in property <string> menu-console;
+    in property <string> menu-album;
+    /// Emitted before the row menu opens, so Rust can word the four above.
+    callback row-menu-opened(int);
+    /// "Show me everything of this row's game / artist / console / album."
+    callback scope-from-row(int, string);
     callback open-folder(int);
     /// Pin the row's folder to the sidebar.
     callback pin-folder(int);
@@ -604,6 +628,10 @@ export component TrackTable inherits Rectangle {
                             if (ev.button == PointerEventButton.right) {
                                 parent.menu-x = self.mouse-x;
                                 parent.menu-y = self.mouse-y;
+                                // Word the scope entries for THIS row before
+                                // drawing: the callback is synchronous, so the
+                                // labels are in place by the time show() runs.
+                                root.row-menu-opened(i);
                                 menu.show();
                             }
                             if (ev.button == PointerEventButton.middle) {
@@ -661,6 +689,30 @@ export component TrackTable inherits Rectangle {
                                 label: @tr("Añadir a lista…");
                                 chosen => { root.add-to-playlist(i); menu.close(); }
                             }
+                            // Where the row leads, before what edits it.
+                            // Each entry names its own field: a game and its
+                            // album share a name often enough that two reading
+                            // "Ver todo de X" would be a coin toss.
+                            if root.menu-game != "" || root.menu-artist != ""
+                                || root.menu-album != "" || root.menu-console != "": MenuDivider {}
+                            if root.menu-game != "": MenuRow {
+                                label: root.menu-game;
+                                chosen => { root.scope-from-row(i, "game"); menu.close(); }
+                            }
+                            if root.menu-artist != "": MenuRow {
+                                label: root.menu-artist;
+                                chosen => { root.scope-from-row(i, "artist"); menu.close(); }
+                            }
+                            if root.menu-album != "": MenuRow {
+                                label: root.menu-album;
+                                chosen => { root.scope-from-row(i, "album"); menu.close(); }
+                            }
+                            if root.menu-console != "": MenuRow {
+                                label: root.menu-console;
+                                chosen => { root.scope-from-row(i, "console"); menu.close(); }
+                            }
+                            if root.menu-game != "" || root.menu-artist != ""
+                                || root.menu-album != "" || root.menu-console != "": MenuDivider {}
                             MenuRow {
                                 label: @tr("Editar metadatos…");
                                 chosen => { root.edit-requested(i); menu.close(); }

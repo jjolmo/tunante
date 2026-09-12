@@ -386,6 +386,12 @@ export component AppWindow inherits Window {
     in property <string> pick-heading;
     callback playlist-picked(string);
     callback playlist-created-for-add(string);
+    in property <string> table-menu-game;
+    in property <string> table-menu-artist;
+    in property <string> table-menu-console;
+    in property <string> table-menu-album;
+    callback table-row-menu-opened(int);
+    callback table-scope-from-row(int, string);
     callback table-open-folder(int);
     callback table-pin-folder(int);
     callback table-column-moved(int, int);
@@ -397,6 +403,10 @@ export component AppWindow inherits Window {
     in property <[PlaylistRow]> sidebar-consoles;
     callback console-opened(string);
     callback console-played(string);
+    /// Middle click on any sidebar collection: play one track out of it,
+    /// picked at random. The first argument names the kind ("", "faved",
+    /// "queue", "folder", "console", "playlist"), the second identifies it.
+    callback random-from(string, string);
     in property <string> total-count;
     in property <string> faved-count;
     in property <string> now-stars;
@@ -708,6 +718,12 @@ export component AppWindow inherits Window {
             pick-heading: root.pick-heading;
             playlist-picked(id) => { root.playlist-picked(id); }
             playlist-created-for-add(name) => { root.playlist-created-for-add(name); }
+            table-menu-game: root.table-menu-game;
+            table-menu-artist: root.table-menu-artist;
+            table-menu-console: root.table-menu-console;
+            table-menu-album: root.table-menu-album;
+            table-row-menu-opened(i) => { root.table-row-menu-opened(i); }
+            table-scope-from-row(i, kind) => { root.table-scope-from-row(i, kind); }
             table-open-folder(i) => { root.table-open-folder(i); }
             table-pin-folder(i) => { root.table-pin-folder(i); }
             table-column-moved(de, a) => { root.table-column-moved(de, a); }
@@ -719,6 +735,7 @@ export component AppWindow inherits Window {
         sidebar-consoles: root.sidebar-consoles;
         console-opened(id) => { root.console-opened(id); }
         console-played(id) => { root.console-played(id); }
+        random-from(kind, id) => { root.random-from(kind, id); }
             total-count: root.total-count;
             faved-count: root.faved-count;
             now-stars: root.now-stars;
