@@ -5113,6 +5113,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Some((version, url)) => {
                     ui.set_update_skippable(false);
                     ui.set_update_available(SharedString::new());
+                    ui.set_update_working(true);
+                    ui.set_update_note(SharedString::from(
+                        tunante_core::i18n::tr("Descargando v{}…").replace("{}", &version),
+                    ));
                     ui.set_update_status(SharedString::from(
                         tunante_core::i18n::tr("Descargando v{}…").replace("{}", &version),
                     ));
@@ -5127,6 +5131,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // Restart into the version that was just swapped in.
+    //
+    // The same move `on_reset_app` makes, minus the deleting: drop the
+    // single-instance socket first so the child becomes primary instead of
+    // handing straight back to a process on its way out, then exec a fresh one
+    // in its own process group.
+    //
+    // Nothing is saved here on purpose. The session is written by the 500 ms
+    // timer's heartbeat and on every track change, and closing the window saves
+    // nothing extra — so this loses exactly as little as quitting by hand does,
+    // and duplicating that write is a second copy to keep in step.
+    {
+        ui.on_restart_now(move || {
+            single::release();
+            if let Ok(exe) = std::env::current_exe() {
+                let mut cmd = std::process::Command::new(exe);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::process::CommandExt;
+                    cmd.process_group(0);
+                }
+                let _ = cmd
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+            }
+            std::process::exit(0);
+        });
+    }
     {
         let (db, pending) = (db.clone(), update_pending.clone());
         let weak = ui.as_weak();
@@ -5678,16 +5712,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tunante_core::i18n::tr("v{} disponible").replace("{}", &version),
                                 ));
                                 ui.set_update_skippable(true);
+                                // And, the part Ajustes could never do on its
+                                // own: say so where somebody is actually
+                                // looking. This is what "Avisar de
+                                // actualizaciones al arrancar" promises.
+                                ui.set_update_note(SharedString::new());
+                                ui.set_update_working(false);
+                                ui.set_update_offer(SharedString::from(version.as_str()));
                                 *update_pending.borrow_mut() = Some((version, url));
                             }
                         }
                         update::UpdateMsg::Installed(version) => {
                             ui.set_update_available(SharedString::new());
+                            ui.set_update_working(false);
+                            ui.set_update_note(SharedString::new());
+                            // With the modal open this turns it into the
+                            // restart prompt; with it closed — the silent
+                            // auto-update — the corner nudge takes it, which is
+                            // the only word anybody gets on that path.
+                            ui.set_update_ready(SharedString::from(version.as_str()));
                             ui.set_update_status(SharedString::from(
                                 tunante_core::i18n::tr("v{} instalada — reinicia la app").replace("{}", &version),
                             ));
                         }
                         update::UpdateMsg::Error(e) => {
+                            // An install somebody asked for has to say why it
+                            // stopped even when the silent startup check would
+                            // not: the modal hides its verbs while it works, so
+                            // a swallowed error would strand it with nothing but
+                            // "Más tarde".
+                            ui.set_update_working(false);
+                            if !ui.get_update_offer().is_empty() {
+                                ui.set_update_note(SharedString::from(e.clone()));
+                            }
                             // The silent startup check failing (no network,
                             // package-managed build) is not worth a row of
                             // red text nobody asked for.
@@ -6421,40 +6478,88 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// 4 MB of RGBA for a square that is never shown bigger than the screen's
 /// width — and holding the full-size decode is exactly the mistake that has
 /// Amberol sitting at 3 GB with a thousand songs.
-fn decode_artwork(data_uri: &str, max_side: u32) -> Option<slint::Image> {
+/// How small the blurred backdrop is kept.
+///
+/// It is only ever drawn stretched across the square behind the cover, and the
+/// renderer's smooth scaling does most of the softening on the way up — so the
+/// blur runs on a thumbnail instead of on 720 px, which is what makes it free.
+/// Small enough to be a wash of the cover's colours, large enough not to read
+/// as four coloured blocks.
+const BACKDROP_SIDE: u32 = 48;
+
+/// Decode a `data:` cover URI, scaled down to `max_side`.
+fn decode_cover(data_uri: &str, max_side: u32) -> Option<image::DynamicImage> {
     use base64::Engine;
 
     let b64 = data_uri.split(",").nth(1)?;
     let bytes = base64::engine::general_purpose::STANDARD.decode(b64).ok()?;
 
     let decoded = image::load_from_memory(&bytes).ok()?;
-    let decoded = if decoded.width().max(decoded.height()) > max_side {
+    Some(if decoded.width().max(decoded.height()) > max_side {
         decoded.thumbnail(max_side, max_side)
     } else {
         decoded
-    };
-    let rgba = decoded.to_rgba8();
+    })
+}
 
+fn to_slint_image(img: &image::DynamicImage) -> slint::Image {
+    let rgba = img.to_rgba8();
     let mut buffer =
         slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(rgba.width(), rgba.height());
     buffer.make_mut_bytes().copy_from_slice(rgba.as_raw());
-    Some(slint::Image::from_rgba8(buffer))
+    slint::Image::from_rgba8(buffer)
+}
+
+/// The blurred backdrop behind a cover, for the "con fondo" fit.
+///
+/// That mode used to put the SAME cover behind itself — sharp, cropped to fill
+/// and dimmed — so the artwork's edge landed on a slightly darker copy of its
+/// own contents and there was no telling where the cover stopped. Blurring it
+/// is what the mode was always described as doing; widgets.slint said as much
+/// and could not do it, because Slint has no blur filter for content. (1.17
+/// still has none: the only `blur` in its builtins belongs to BoxShadow, which
+/// draws shadows.)
+fn backdrop_of(img: &image::DynamicImage) -> slint::Image {
+    let blurred = backdrop_pixels(img);
+    let mut buffer =
+        slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(blurred.width(), blurred.height());
+    buffer.make_mut_bytes().copy_from_slice(blurred.as_raw());
+    slint::Image::from_rgba8(buffer)
+}
+
+/// The backdrop's pixels, before they become a `slint::Image` — split out so a
+/// test can look at them, because "is it actually blurred" is not a question
+/// you can ask a `slint::Image`.
+fn backdrop_pixels(img: &image::DynamicImage) -> image::RgbaImage {
+    let small = img.thumbnail(BACKDROP_SIDE, BACKDROP_SIDE).to_rgba8();
+    // Sigma on a 48 px thumbnail, so it is worth a lot more than it looks —
+    // and the renderer softens it further stretching it up to the panel.
+    // Picked by rendering 2/3/4/6 and looking: below 4 the backdrop starts
+    // showing form again, and form behind the cover is the whole thing this
+    // exists to stop. 4 is as sharp as it can be and still read as colour.
+    image::imageops::fast_blur(&small, 4.0)
 }
 
 /// Fetch and show the cover of whatever is playing, or clear it.
 fn refresh_artwork(ui: &AppWindow, path: Option<&str>, max_side: u32) {
-    ui.set_now_art(load_artwork(path, max_side).unwrap_or_default());
+    let (art, backdrop) = load_artwork(path, max_side).unwrap_or_default();
+    ui.set_now_art(art);
+    ui.set_now_backdrop(backdrop);
 }
 
 /// The cover for a track path, decoded and scaled — the same lookup the
 /// playing tab uses, as a value, so the carousel's neighbour cards can have
 /// theirs too.
-fn load_artwork(path: Option<&str>, max_side: u32) -> Option<slint::Image> {
-    path.and_then(|p| {
+/// The cover and its blurred backdrop, from one decode. Both or neither: the
+/// backdrop is made from the same pixels, so there is no case where a cover
+/// arrives without one.
+fn load_artwork(path: Option<&str>, max_side: u32) -> Option<(slint::Image, slint::Image)> {
+    let uri = path.and_then(|p| {
         let real = tunante_core::vgm_path::parse_vgm_path(p).0.to_string();
         tunante_helper::artwork(std::path::Path::new(&real), std::time::Duration::from_secs(5))
-    })
-    .and_then(|uri| decode_artwork(&uri, max_side))
+    })?;
+    let img = decode_cover(&uri, max_side)?;
+    Some((to_slint_image(&img), backdrop_of(&img)))
 }
 
 /// Portadas de carpeta ya decodificadas y escaladas.
@@ -8689,12 +8794,16 @@ fn push_now_playing(ui: &AppWindow, p: &player::Player) {
     ui.set_next_title(nt.into());
     ui.set_next_artist(na.into());
     ui.set_next_album(nb.into());
-    ui.set_next_art(load_artwork(np.as_deref(), MAX_ART_SIDE).unwrap_or_default());
+    let (na_art, na_back) = load_artwork(np.as_deref(), MAX_ART_SIDE).unwrap_or_default();
+    ui.set_next_art(na_art);
+    ui.set_next_backdrop(na_back);
     let (pt, pa, pb, pp) = card(p.queue().peek_prev());
     ui.set_prev_title(pt.into());
     ui.set_prev_artist(pa.into());
     ui.set_prev_album(pb.into());
-    ui.set_prev_art(load_artwork(pp.as_deref(), MAX_ART_SIDE).unwrap_or_default());
+    let (pa_art, pa_back) = load_artwork(pp.as_deref(), MAX_ART_SIDE).unwrap_or_default();
+    ui.set_prev_art(pa_art);
+    ui.set_prev_backdrop(pa_back);
 
     // «Lista»: the playlist in real playback order — everything up to and
     // including the current track, then what was prioritised by hand (the last
@@ -8925,6 +9034,43 @@ mod tests {
         assert_eq!(paths, ["/m/SMB Disco 1/a.nsf", "/m/SMB Disco 2/b.nsf"]);
 
         let _ = std::fs::remove_file(file);
+    }
+
+    /// The "con fondo" backdrop is actually blurred.
+    ///
+    /// It shipped without the blur — Slint has no filter for it, so the mode
+    /// drew the same cover sharp behind itself and the artwork's edge vanished
+    /// into a darker copy of its own contents. A hard black/white edge is the
+    /// cheapest way to prove a blur happened: nothing in the source is grey, so
+    /// any grey at all can only have come from neighbouring pixels being mixed.
+    #[test]
+    fn the_cover_backdrop_is_blurred_not_just_dimmed() {
+        let mut src = image::RgbaImage::new(160, 160);
+        for (x, _y, px) in src.enumerate_pixels_mut() {
+            *px = if x < 80 {
+                image::Rgba([0, 0, 0, 255])
+            } else {
+                image::Rgba([255, 255, 255, 255])
+            };
+        }
+        let src = image::DynamicImage::ImageRgba8(src);
+
+        let out = backdrop_pixels(&src);
+        assert!(
+            out.width() <= BACKDROP_SIDE && out.height() <= BACKDROP_SIDE,
+            "the backdrop is drawn stretched and must stay a thumbnail"
+        );
+
+        // Down the middle row: how many pixels are neither black nor white.
+        let mid = out.height() / 2;
+        let greys = (0..out.width())
+            .map(|x| out.get_pixel(x, mid).0[0])
+            .filter(|v| *v > 24 && *v < 231)
+            .count();
+        assert!(
+            greys >= 8,
+            "only {greys} mixed pixels across the edge — that is a sharp copy, not a blur"
+        );
     }
 
     /// A crumb is a name here, not a path, so it must not be cut at a slash.

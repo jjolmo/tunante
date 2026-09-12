@@ -4,7 +4,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { GridCell, GridLine, LibraryRow, QueueRow, PlaylistRow, FolderRow, ShortcutRow } from "types.slint";
-import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow, ArmedRow, FolderIcon } from "widgets.slint";
+import { SwipeRow, TabButton, TabSwitcher, Artwork, MiniPlayer, SeekBar, TimeRow, RoundButton, TrackInfo, Transport, SettingRow, MenuAction, ConsoleArt, GridItem, ModeTab, NameSheet, DbSliderRow, ArmedRow, FolderIcon, MenuRow, MenuDivider } from "widgets.slint";
 
 export component SettingsTab inherits Rectangle {
     in property <float> volume;
@@ -637,6 +637,7 @@ export component NowPlayingTab inherits Rectangle {
     in property <string> album;
     in property <bool> portrait;
     in property <image> art;
+    in property <image> backdrop;
     in property <int> art-fit;
     // The cards either side of the portrait carousel: what ◀◀ and ▶▶ would
     // play. Empty title = no card that way (the queue would stop there).
@@ -644,10 +645,12 @@ export component NowPlayingTab inherits Rectangle {
     in property <string> prev-artist;
     in property <string> prev-album;
     in property <image> prev-art;
+    in property <image> prev-backdrop;
     in property <string> next-title;
     in property <string> next-artist;
     in property <string> next-album;
     in property <image> next-art;
+    in property <image> next-backdrop;
     // The finger's horizontal offset while dragging the carousel, and the
     // snap it eases back (or through) to on release.
     property <length> drag: 0px;
@@ -696,7 +699,12 @@ export component NowPlayingTab inherits Rectangle {
                 spacing: Theme.gap;
                 animate x { duration: 180ms; easing: ease-out; }
                 HorizontalLayout { alignment: center;
-                    Artwork { side: root.art-portrait; art: root.prev-art; fit: root.art-fit; }
+                    Artwork {
+                        side: root.art-portrait;
+                        art: root.prev-art;
+                        backdrop: root.prev-backdrop;
+                        fit: root.art-fit;
+                    }
                 }
                 TrackInfo { title: root.prev-title; artist: root.prev-artist; album: root.prev-album; centered: true; }
             }
@@ -707,7 +715,12 @@ export component NowPlayingTab inherits Rectangle {
                 spacing: Theme.gap;
                 animate x { duration: 180ms; easing: ease-out; }
                 HorizontalLayout { alignment: center;
-                    Artwork { side: root.art-portrait; art: root.art; fit: root.art-fit; }
+                    Artwork {
+                        side: root.art-portrait;
+                        art: root.art;
+                        backdrop: root.backdrop;
+                        fit: root.art-fit;
+                    }
                 }
                 TrackInfo { title: root.title; artist: root.artist; album: root.album; centered: true; }
             }
@@ -718,7 +731,12 @@ export component NowPlayingTab inherits Rectangle {
                 spacing: Theme.gap;
                 animate x { duration: 180ms; easing: ease-out; }
                 HorizontalLayout { alignment: center;
-                    Artwork { side: root.art-portrait; art: root.next-art; fit: root.art-fit; }
+                    Artwork {
+                        side: root.art-portrait;
+                        art: root.next-art;
+                        backdrop: root.next-backdrop;
+                        fit: root.art-fit;
+                    }
                 }
                 TrackInfo { title: root.next-title; artist: root.next-artist; album: root.next-album; centered: true; }
             }
@@ -782,7 +800,12 @@ export component NowPlayingTab inherits Rectangle {
             // Centre the cover: on a short window it is narrower than the column.
             HorizontalLayout {
                 alignment: center;
-                Artwork { side: root.art-landscape; art: root.art; fit: root.art-fit; }
+                Artwork {
+                    side: root.art-landscape;
+                    art: root.art;
+                    backdrop: root.backdrop;
+                    fit: root.art-fit;
+                }
             }
 
             TrackInfo {
@@ -1535,11 +1558,15 @@ export component LibraryTab inherits Rectangle {
             mouse-drag-pan-enabled: true;
             vertical-stretch: 1;
 
-            for row[i] in root.rows: Rectangle {
+            for row[i] in root.rows: rowbox := Rectangle {
                 height: Theme.touch-target;
                 // La fila que se lleva el dedo va por encima del resto.
                 y: root.dragging == i ? root.drag-offset : 0px;
                 opacity: root.dragging == i ? 0.85 : 1.0;
+                // Where the right-click landed, for the menu below. Named so
+                // the popup inside the SwipeRow can reach back out to it.
+                property <length> menu-x;
+                property <length> menu-y;
 
                 SwipeRow {
                 height: Theme.touch-target;
@@ -1558,24 +1585,76 @@ export component LibraryTab inherits Rectangle {
                     root.menu-name = row.title;
                     root.menu-is-folder = row.is-folder;
                 }
+                context-menu(mx, my) => {
+                    if (root.native-menu) {
+                        rowbox.menu-x = mx;
+                        rowbox.menu-y = my;
+                        rowmenu.show();
+                    }
+                }
 
                 // Right-click, on the desktop: the same verbs the sheet offers.
-                if root.native-menu: ContextMenuArea {
-                    Menu {
-                        if row.is-folder: MenuItem { title: @tr("Reproducir carpeta"); activated => { root.play-path(row.path); } }
-                        if !row.is-folder: MenuItem { title: @tr("Reproducir"); activated => { root.activated(i); } }
-                        MenuItem {
-                            title: row.is-folder ? @tr("Añadir todo, con las subcarpetas") : @tr("Añadir a la cola");
-                            activated => { root.enqueue-path(row.path, true); }
+                //
+                // Drawn here rather than handed to the platform, exactly as the
+                // track table's is — they sit side by side in one window, and a
+                // platform menu on this list next to the app's own on that one
+                // was two typefaces answering the same gesture. See MenuRow.
+                rowmenu := PopupWindow {
+                    x: rowbox.menu-x;
+                    y: rowbox.menu-y;
+                    width: 260px;
+                    close-policy: close-on-click-outside;
+                    Rectangle {
+                        background: Theme.bg-secondary;
+                        border-width: 1px;
+                        border-color: Theme.border;
+                        border-radius: 3px;
+                        drop-shadow-blur: 12px;
+                        drop-shadow-color: #00000099;
+                        VerticalLayout {
+                            padding: 3px;
+                            // Every entry reports before it closes: closing
+                            // tears down this popup's element tree, and a
+                            // callback emitted after that has nothing left to
+                            // read `row` from.
+                            if row.is-folder: MenuRow {
+                                label: @tr("Reproducir carpeta");
+                                chosen => { root.play-path(row.path); rowmenu.close(); }
+                            }
+                            if !row.is-folder: MenuRow {
+                                label: @tr("Reproducir");
+                                chosen => { root.activated(i); rowmenu.close(); }
+                            }
+                            MenuRow {
+                                label: row.is-folder
+                                    ? @tr("Añadir todo, con las subcarpetas")
+                                    : @tr("Añadir a la cola");
+                                chosen => { root.enqueue-path(row.path, true); rowmenu.close(); }
+                            }
+                            if row.is-folder: MenuRow {
+                                label: @tr("Añadir sólo esta carpeta");
+                                chosen => { root.enqueue-path(row.path, false); rowmenu.close(); }
+                            }
+                            MenuRow {
+                                label: row.is-folder
+                                    ? @tr("Añadir carpeta y subcarpetas a lista")
+                                    : @tr("Añadir a una lista");
+                                chosen => {
+                                    root.pending-path = row.path;
+                                    root.pending-deep = true;
+                                    rowmenu.close();
+                                }
+                            }
+                            if row.is-folder: MenuDivider {}
+                            if row.is-folder: MenuRow {
+                                label: @tr("Abrir");
+                                chosen => { root.open-path(row.path); rowmenu.close(); }
+                            }
+                            if row.is-folder: MenuRow {
+                                label: @tr("Fijar en el sidebar");
+                                chosen => { root.pin-path(row.path); rowmenu.close(); }
+                            }
                         }
-                        if row.is-folder: MenuItem { title: @tr("Añadir sólo esta carpeta"); activated => { root.enqueue-path(row.path, false); } }
-                        MenuItem {
-                            title: row.is-folder ? @tr("Añadir carpeta y subcarpetas a lista") : @tr("Añadir a una lista");
-                            activated => { root.pending-path = row.path; root.pending-deep = true; }
-                        }
-                        if row.is-folder: MenuSeparator {}
-                        if row.is-folder: MenuItem { title: @tr("Abrir"); activated => { root.open-path(row.path); } }
-                        if row.is-folder: MenuItem { title: @tr("Fijar en el sidebar"); activated => { root.pin-path(row.path); } }
                     }
                 }
 

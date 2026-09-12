@@ -11,6 +11,7 @@
 import { ListView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { ColumnChoice, TableColumn, TableRow } from "types.slint";
+import { MenuRow, MenuDivider } from "widgets.slint";
 
 component HeaderCell inherits Rectangle {
     in property <string> label;
@@ -138,48 +139,6 @@ component HeaderCell inherits Rectangle {
                 }
             }
         }
-    }
-}
-
-// One line of the app's own context menu.
-//
-// Slint will happily hand a right-click to the platform's menu, and that is
-// what this file used to do. But the platform draws it with the platform's
-// font and the platform's antialiasing, and neither is the one every list in
-// this window is drawn with — the menu arrived looking blurred and foreign
-// against the rows it was opened from. Drawing it here costs a component and
-// buys back the same typeface, sizes and colours as everything around it,
-// which is the rule the rest of this UI already follows.
-component MenuRow inherits Rectangle {
-    in property <string> label;
-    callback chosen();
-    height: 26px;
-    background: mt.has-hover ? Theme.bg-selected : transparent;
-    HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 14px;
-        Text {
-            text: root.label;
-            color: Theme.text-primary;
-            font-size: Theme.font-body;
-            vertical-alignment: center;
-            overflow: elide;
-        }
-    }
-    mt := TouchArea {
-        clicked => { root.chosen(); }
-    }
-}
-
-// The hairline between groups of that hand-drawn menu. Slint's
-// `MenuSeparator` belongs to the platform `Menu` the header opens and cannot
-// be used here, for the same reason MenuRow exists at all.
-component MenuDivider inherits Rectangle {
-    height: 7px;
-    Rectangle {
-        y: 3px;
-        height: 1px;
-        background: Theme.border;
     }
 }
 

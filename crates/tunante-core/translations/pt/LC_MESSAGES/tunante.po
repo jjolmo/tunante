@@ -1393,3 +1393,33 @@ msgstr "Ver o console: {}"
 
 msgid "Ver el álbum: {}"
 msgstr "Ver o álbum: {}"
+
+msgid "Hay una actualización"
+msgstr "Atualização disponível"
+
+msgid "Actualización lista"
+msgstr "Atualização pronta"
+
+msgid "La versión v{} ya está disponible."
+msgstr "A versão v{} está disponível."
+
+msgid "v{} está instalada. Reinicia para usarla."
+msgstr "v{} está instalada. Reinicie para usá-la."
+
+msgid "Actualizar ahora"
+msgstr "Atualizar agora"
+
+msgid "Reiniciar ahora"
+msgstr "Reiniciar agora"
+
+msgid "Reiniciar"
+msgstr "Reiniciar"
+
+msgid "Más tarde"
+msgstr "Mais tarde"
+
+msgid "Omitir v{}"
+msgstr "Pular a v{}"
+
+msgid "v{} descargada."
+msgstr "v{} baixada."
