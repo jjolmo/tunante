@@ -140,7 +140,14 @@ fn read_metadata_all_inner_opts(
     // Standard format via lofty; if lofty fails, use a fallback based on filename/fs metadata.
     match read_metadata(path) {
         Ok(t) => Ok(vec![t]),
-        Err(_) => read_metadata_fallback(path).map(|t| vec![t]),
+        Err(e) => {
+            // Not an error for the caller — a file with an unreadable tag is
+            // still playable and still belongs in the library — but said out
+            // loud, because the `Err(_)` that used to be here is why a whole
+            // album reading 0:00 went unexplained.
+            log::debug!("[metadata] {}: {e}; usando el fallback", path.display());
+            read_metadata_fallback(path).map(|t| vec![t])
+        }
     }
 }
 
@@ -362,6 +369,34 @@ fn detect_codec(path: &Path) -> String {
 
 /// Fallback metadata reader for files that no specialized reader supports.
 /// Creates a basic Track from filename and filesystem metadata.
+/// The audio properties alone, for a file whose tags lofty refuses to parse.
+///
+/// One malformed frame aborts the whole read: measured on an otherwise perfect
+/// 320 kbps MP3 whose ID3v2 tag carries a frame marked encrypted with no data
+/// length indicator, which lofty rejects in every parsing mode — `Relaxed`
+/// included, which is the first thing anyone tries. The audio after that tag is
+/// fine and ffprobe reads it without a murmur; only the tag is broken.
+///
+/// With `read_tags(false)` the tag is never parsed, and the same file gives up
+/// its duration, sample rate and bitrate. That is the difference between a
+/// library that says 0:00 and one that tells the truth.
+fn audio_properties_only(path: &Path) -> Option<(i64, Option<i32>, Option<i32>, Option<i32>)> {
+    use lofty::config::{ParseOptions, ParsingMode};
+    use lofty::file::AudioFile;
+
+    let opts = ParseOptions::new()
+        .read_tags(false)
+        .parsing_mode(ParsingMode::Relaxed);
+    let file = lofty::probe::Probe::open(path).ok()?.options(opts).read().ok()?;
+    let p = file.properties();
+    Some((
+        p.duration().as_millis() as i64,
+        p.sample_rate().map(|r| r as i32),
+        p.channels().map(|c| c as i32),
+        p.audio_bitrate().map(|b| b as i32),
+    ))
+}
+
 fn read_metadata_fallback(path: &Path) -> Result<Track, MetadataError> {
     let file_name = path
         .file_stem()
@@ -381,6 +416,11 @@ fn read_metadata_fallback(path: &Path) -> Result<Track, MetadataError> {
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
 
+    // A broken tag is not a broken file. The names come from the filename here,
+    // as they always did; the numbers can still come from the audio.
+    let (duration_ms, sample_rate, channels, bitrate) =
+        audio_properties_only(path).unwrap_or((0, None, None, None));
+
     Ok(Track {
         id: Uuid::new_v4().to_string(),
         path: path.to_string_lossy().to_string(),
@@ -390,10 +430,10 @@ fn read_metadata_fallback(path: &Path) -> Result<Track, MetadataError> {
         album_artist: String::new(),
         track_number,
         disc_number: None,
-        duration_ms: 0,
-        sample_rate: None,
-        channels: None,
-        bitrate: None,
+        duration_ms,
+        sample_rate,
+        channels,
+        bitrate,
         codec,
         file_size: file_meta.len() as i64,
         has_artwork: false,
@@ -468,4 +508,74 @@ fn parse_title_and_track_number(filename: &str) -> (String, Option<i32>) {
         }
     }
     (trimmed.to_string(), None)
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An ID3v2.3 tag holding one frame flagged encrypted with no data length
+    /// indicator — the exact shape lofty refuses, taken from a commercial rip
+    /// whose whole album listed as 0:00.
+    fn tag_with_encrypted_frame() -> Vec<u8> {
+        let data: &[u8] = &[0x00, b'x', b'x'];
+        let mut frame = Vec::new();
+        frame.extend_from_slice(b"TIT2");
+        frame.extend_from_slice(&(data.len() as u32).to_be_bytes());
+        // Format flags: bit 6 of the second byte is encryption. Setting it
+        // without the compression bit means no data length indicator follows,
+        // which is what lofty errors on.
+        frame.extend_from_slice(&[0x00, 0x40]);
+        frame.extend_from_slice(data);
+
+        let size = frame.len() as u32;
+        let mut tag = Vec::new();
+        tag.extend_from_slice(b"ID3");
+        tag.extend_from_slice(&[0x03, 0x00, 0x00]);
+        // Syncsafe: seven bits per byte.
+        tag.extend_from_slice(&[
+            ((size >> 21) & 0x7f) as u8,
+            ((size >> 14) & 0x7f) as u8,
+            ((size >> 7) & 0x7f) as u8,
+            (size & 0x7f) as u8,
+        ]);
+        tag.extend_from_slice(&frame);
+        tag
+    }
+
+    /// A broken tag must not cost the duration.
+    ///
+    /// One malformed frame makes lofty reject the file whole, and the fallback
+    /// that catches it used to report zeroes — so 122 perfectly good 320 kbps
+    /// MP3s listed as 0:00 and nobody could see why, because the error was
+    /// discarded with `Err(_)`. The audio is untouched; only the tag is bad.
+    #[test]
+    fn a_broken_tag_does_not_cost_the_duration() {
+        let fixture = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/sine.mp3");
+        let mut bytes = tag_with_encrypted_frame();
+        bytes.extend_from_slice(&std::fs::read(fixture).expect("fixture"));
+
+        let mut path = std::env::temp_dir();
+        path.push(format!("tunante-badtag-{}.mp3", std::process::id()));
+        std::fs::write(&path, &bytes).expect("write");
+
+        // The premise: lofty really does refuse this file outright. Without
+        // this the test could pass on a file that was never broken.
+        assert!(
+            lofty::read_from_path(&path).is_err(),
+            "the fixture no longer reproduces the tag lofty rejects"
+        );
+
+        let tracks = read_metadata_all(&path).expect("metadata");
+        let t = &tracks[0];
+        assert!(
+            t.duration_ms > 0,
+            "a file lofty cannot tag-parse still has a duration; got {}",
+            t.duration_ms
+        );
+        assert_eq!(t.sample_rate, Some(44100));
+
+        let _ = std::fs::remove_file(&path);
+    }
 }

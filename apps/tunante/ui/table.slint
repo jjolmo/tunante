@@ -98,16 +98,33 @@ component HeaderCell inherits Rectangle {
             }
         }
     }
+    /// Where a resize drag began, in WINDOW coordinates rather than in the
+    /// handle's own.
+    ///
+    /// The handle sits at `root.width - 5px`, so it travels with the column it
+    /// resizes. Measured against `pressed-x`, that is a feedback loop: widen by
+    /// Δ and the handle moves right by Δ under a pointer that has not moved,
+    /// which drops `mouse-x` by exactly Δ. The next delta reads as zero, the
+    /// column snaps back to the width the drag started at, and the move after
+    /// that widens it again — so the column strobed between two widths for as
+    /// long as you dragged it. Window coordinates do not move when the handle
+    /// does, which takes the column's own width out of its own input.
+    property <length> drag-origin;
     // The resize handle, drawn last so it wins the 5px it needs.
     rh := TouchArea {
         x: root.width - 5px;
         width: 5px;
         height: 100%;
         mouse-cursor: col-resize;
-        moved => { root.resized(self.mouse-x - self.pressed-x); }
+        moved => {
+            root.resized(self.absolute-position.x + self.mouse-x - root.drag-origin);
+        }
         pointer-event(ev) => {
             if (ev.button == PointerEventButton.left) {
-                if (ev.kind == PointerEventKind.down) { root.resize-started(); }
+                if (ev.kind == PointerEventKind.down) {
+                    root.drag-origin = self.absolute-position.x + self.mouse-x;
+                    root.resize-started();
+                }
                 if (ev.kind == PointerEventKind.up) { root.resize-done(); }
             }
         }
