@@ -1244,9 +1244,20 @@ export component DesktopShell inherits Rectangle {
                 sbh := TouchArea {
                     mouse-cursor: ew-resize;
                     property <int> base;
+                    /// Where the drag began, in WINDOW coordinates.
+                    ///
+                    /// This seam is laid out after the sidebar, so it travels
+                    /// with the width it sets. Against `pressed-x` that feeds
+                    /// back on itself: widen by Δ and the handle moves right by
+                    /// Δ under a still pointer, `mouse-x` drops by Δ, the delta
+                    /// reads zero and the width snaps back to `base` — then the
+                    /// next move widens it again. The table's column handles
+                    /// had the same loop and it strobed visibly while dragging.
+                    property <length> origin;
                     pointer-event(ev) => {
                         if (ev.kind == PointerEventKind.down) {
                             self.base = root.sidebar-width;
+                            self.origin = self.absolute-position.x + self.mouse-x;
                         }
                         if (ev.kind == PointerEventKind.up) {
                             root.sidebar-resized(root.sidebar-width);
@@ -1254,7 +1265,8 @@ export component DesktopShell inherits Rectangle {
                     }
                     moved => {
                         root.sidebar-width = clamp(
-                            self.base + (self.mouse-x - self.pressed-x) / 1px,
+                            self.base
+                                + (self.absolute-position.x + self.mouse-x - self.origin) / 1px,
                             150, 500);
                     }
                 }
