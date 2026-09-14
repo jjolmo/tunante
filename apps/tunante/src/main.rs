@@ -8394,16 +8394,25 @@ fn shortcut_combo(text: &str, ctrl: bool, alt: bool, shift: bool) -> Option<Stri
         '\u{f72d}' => "AvPág".to_string(),
         c @ '\u{f704}'..='\u{f726}' => format!("F{}", c as u32 - 0xf703),
         c if c.is_control() => {
-            // With Ctrl held, winit/X11 hands us the control byte (Ctrl+A =
-            // 0x01, Ctrl+P = 0x10) instead of the letter. Fold it back so
-            // "Ctrl+P" is a real combo and not a dropped control character.
-            let code = c as u32;
-            if ctrl && (1..=26).contains(&code) {
-                char::from_u32(code + 0x60)
-                    .map(|l| l.to_uppercase().to_string())
-                    .unwrap_or_default()
-            } else {
-                return None;
+            // Slint names special keys with code points of its own (see
+            // i-slint-common/key_codes.rs); they are NOT the ASCII control
+            // bytes a terminal sends. This used to fold anything in 1..=26
+            // back into a letter, on the belief that Ctrl held turns P into
+            // 0x10 — it does not. 0x10 is how Slint spells the *Shift key*,
+            // so every Ctrl+Shift built "Ctrl+P" and opened Ajustes on its
+            // own; every other modifier had a bogus letter too (Ctrl alone
+            // became "Ctrl+Q", Alt "Ctrl+R", AltGr "Ctrl+S"). A letter key
+            // never comes through here at all: winit hands it over as
+            // `Key::Character`, so Ctrl+P arrives as a plain "p" below.
+            match c {
+                '\u{8}' => "Retroceso".to_string(),
+                '\u{9}' => "Tab".to_string(),
+                '\u{a}' => "Intro".to_string(),
+                // Backtab is what Shift+Tab arrives as; the shift flag below
+                // puts the prefix back on.
+                '\u{19}' => "Tab".to_string(),
+                // A modifier on its own is not a shortcut.
+                _ => return None,
             }
         }
         c => c.to_uppercase().to_string(),
