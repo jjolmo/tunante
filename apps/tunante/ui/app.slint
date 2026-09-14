@@ -990,6 +990,8 @@ export component AppWindow inherits Window {
                         update-status: root.update-status;
                         update-available: root.update-available;
                         check-update => { root.check-update(); }
+                        update-ready: root.update-ready;
+                        restart-now => { root.restart-now(); }
                         theme-label: root.theme-label;
                         cycle-theme => { root.cycle-theme(); }
                         show-log => { root.show-log(); }
@@ -1220,6 +1222,8 @@ export component AppWindow inherits Window {
                     update-status: root.update-status;
                     update-available: root.update-available;
                     check-update => { root.check-update(); }
+                    update-ready: root.update-ready;
+                    restart-now => { root.restart-now(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
                     show-log => { root.show-log(); }

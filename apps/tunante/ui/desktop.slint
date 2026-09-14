@@ -620,6 +620,8 @@ export component DesktopShell inherits Rectangle {
     // "Instalar vX" while it is set.
     in property <string> update-available;
     callback check-update();
+    in property <string> update-ready;
+    callback restart-now();
     in property <string> theme-label;
     callback cycle-theme();
     callback show-log();
@@ -1836,6 +1838,8 @@ export component DesktopShell inherits Rectangle {
                     update-status: root.update-status;
                     update-available: root.update-available;
                     check-update => { root.check-update(); }
+                    update-ready: root.update-ready;
+                    restart-now => { root.restart-now(); }
                     theme-label: root.theme-label;
                     cycle-theme => { root.cycle-theme(); }
                     show-log => { root.show-log(); }
