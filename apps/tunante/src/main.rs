@@ -74,8 +74,68 @@ use tunante_core::db::Database;
 
 slint::include_modules!();
 
+/// Where to re-launch this app from, taken once before anything can move it.
+///
+/// Asking `current_exe()` *after* an update is a trap, and it is the one the
+/// restart button fell into: the Linux swap renames the running binary aside
+/// and deletes it, so `/proc/self/exe` then reads "…/tunante.old (deleted)",
+/// the spawn fails with ENOENT, and the app exited anyway — closed, never
+/// reopened. Inside an AppImage it points into a squashfs that is unmounted
+/// when this process dies, and on macOS into the bundle the swap replaced.
+///
+/// A *path* survives all three, because the path is exactly what the updater
+/// writes the new version to. `$APPIMAGE` wins where it exists: that outer
+/// file, not anything under the mount, is what the AppImage arm replaces.
+static RELAUNCH_PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+
+fn capture_relaunch_path() {
+    let _ = RELAUNCH_PATH.set(
+        std::env::var_os("APPIMAGE")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .or_else(|| std::env::current_exe().ok()),
+    );
+}
+
+/// Start a fresh copy of the app, or say why not.
+///
+/// Returns an error instead of exiting: a caller that cannot restart has to be
+/// able to stay alive and report, rather than take the app down with it. The
+/// single-instance socket is only dropped once the path is known good, so the
+/// usual failure costs nothing.
+fn relaunch() -> Result<(), String> {
+    let exe = RELAUNCH_PATH
+        .get()
+        .cloned()
+        .flatten()
+        .ok_or_else(|| tunante_core::i18n::tr("no se sabe desde dónde relanzar la app"))?;
+    if !exe.is_file() {
+        return Err(tunante_core::i18n::tr("el ejecutable ya no está en {}")
+            .replace("{}", &exe.display().to_string()));
+    }
+    // Drop the socket first so the child becomes primary instead of handing
+    // straight back to a process on its way out.
+    single::release();
+    let mut cmd = std::process::Command::new(&exe);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    cmd.stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| {
+            tunante_core::i18n::tr("no se pudo relanzar: {}").replace("{}", &e.to_string())
+        })
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     debuglog::install();
+    // Before anything else: the updater must not be able to move the answer.
+    capture_relaunch_path();
 
     // The old desktop's crash courtesy: a panic writes crash.log next to the
     // database and says so out loud, instead of a window that just vanishes.
@@ -782,27 +842,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // run. The socket goes first so the child becomes primary instead of
         // handing off to this process while it is still on its way out.
         let dbfile = dbfile.clone();
+        let weak = ui.as_weak();
         ui.on_reset_app(move || {
             if let Some(base) = dbfile.parent().and_then(|d| d.parent()) {
                 for dir in ["tunante", "com.tunante.app"] {
                     let _ = std::fs::remove_dir_all(base.join(dir));
                 }
             }
-            single::release();
-            if let Ok(exe) = std::env::current_exe() {
-                let mut cmd = std::process::Command::new(exe);
-                #[cfg(unix)]
-                {
-                    use std::os::unix::process::CommandExt;
-                    cmd.process_group(0);
+            // Same reasoning as the restart button: go only once a
+            // replacement is actually up, and say so if it is not.
+            match relaunch() {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    if let Some(ui) = weak.upgrade() {
+                        ui.set_update_status(SharedString::from(e));
+                    }
                 }
-                let _ = cmd
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
             }
-            std::process::exit(0);
         });
     }
     {
@@ -5143,22 +5199,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // nothing extra — so this loses exactly as little as quitting by hand does,
     // and duplicating that write is a second copy to keep in step.
     {
+        let weak = ui.as_weak();
         ui.on_restart_now(move || {
-            single::release();
-            if let Ok(exe) = std::env::current_exe() {
-                let mut cmd = std::process::Command::new(exe);
-                #[cfg(unix)]
-                {
-                    use std::os::unix::process::CommandExt;
-                    cmd.process_group(0);
+            // Exit only once a replacement is actually running. Swallowing the
+            // spawn error and exiting regardless is what turned a failed
+            // restart into "Tunante closed and never came back".
+            match relaunch() {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    let Some(ui) = weak.upgrade() else { return };
+                    ui.set_update_status(SharedString::from(e.clone()));
+                    ui.set_update_note(SharedString::from(e));
                 }
-                let _ = cmd
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .spawn();
             }
-            std::process::exit(0);
         });
     }
     {
