@@ -695,7 +695,14 @@ export component AppWindow inherits Window {
         // depending on where you press it" was. Only claim Ctrl+P here; let
         // every other key fall through to normal focus dispatch.
         capture-key-pressed(ev) => {
-            if (ev.modifiers.control && (ev.text == "p" || ev.text == "\u{10}")) {
+            // Match "p" and nothing else. U+0010 used to be accepted here on the
+            // reasoning that ASCII makes Ctrl+P the DLE control byte — true of a
+            // terminal, false of Slint, which spends that same code point naming
+            // the *Shift key* (i-slint-common/key_codes.rs). So every Ctrl+Shift
+            // in the window — switching keyboard layout, Ctrl+Shift+Tab, any of
+            // them — opened Ajustes on its own. A letter key arrives through
+            // winit as `Key::Character`, so plain "p" is what Ctrl+P delivers.
+            if (ev.modifiers.control && ev.text == "p") {
                 ds.showing-settings = true;
                 return accept;
             }
@@ -703,9 +710,9 @@ export component AppWindow inherits Window {
         }
         key-pressed(ev) => {
             // Ctrl+P also handled here for completeness, but the capture handler
-            // above is what makes it global. With Ctrl held, winit/X11 delivers
-            // the control byte (Ctrl+P = U+0010), not "p", so match both.
-            if (ev.modifiers.control && (ev.text == "p" || ev.text == "\u{10}")) {
+            // above is what makes it global — and see its comment for why this
+            // tests "p" alone.
+            if (ev.modifiers.control && ev.text == "p") {
                 ds.showing-settings = true;
                 return accept;
             }
