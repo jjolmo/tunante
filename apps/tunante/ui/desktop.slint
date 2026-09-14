@@ -122,7 +122,9 @@ component SectionHeader inherits Rectangle {
     in property <bool> draggable;
     callback drag-started();
     callback drag-moved(length);
-    callback drag-ended();
+    /// True when the pointer was released on purpose, false when the grab was
+    /// torn away — either way the drag is over and the marker must go.
+    callback drag-ended(bool);
     property <bool> ctrl;
 
     height: Theme.compact ? 18px : 26px;
@@ -139,12 +141,26 @@ component SectionHeader inherits Rectangle {
         }
         pointer-event(ev) => {
             root.ctrl = ev.modifiers.control;
-            if (root.draggable && ev.button == PointerEventButton.left) {
-                if (ev.kind == PointerEventKind.down && ev.modifiers.control) {
+            if (root.draggable) {
+                if (ev.kind == PointerEventKind.down
+                    && ev.button == PointerEventButton.left
+                    && ev.modifiers.control) {
                     root.drag-started();
                 }
-                if (ev.kind == PointerEventKind.up || ev.kind == PointerEventKind.cancel) {
-                    root.drag-ended();
+                // The cancel arm must NOT be filtered by button. Slint reports
+                // a torn-off grab — the pointer leaving the window mid-drag —
+                // as kind `cancel` with `button: other` (i-slint-core
+                // items/input_items.rs), so the old `ev.button == left` guard
+                // wrapped around both arms swallowed every cancel. The drag
+                // then never ended: `sec-drag-active` stayed true with
+                // `sec-drop` frozen at its last value, and the accent drop
+                // marker stayed painted in the sidebar until the next drag.
+                if (ev.kind == PointerEventKind.up
+                    && ev.button == PointerEventButton.left) {
+                    root.drag-ended(true);
+                }
+                if (ev.kind == PointerEventKind.cancel) {
+                    root.drag-ended(false);
                 }
             }
         }
@@ -474,6 +490,9 @@ export component DesktopShell inherits Rectangle {
     property <int> sec-src: -1;
     property <int> sec-drop: -1;
     property <bool> sec-drag-active: false;
+    // Where a finished drag is headed, parked here because the reorder has to
+    // be the handler's last act — see the comment on `drag-ended` below.
+    property <int> sec-move-to: -1;
     property <length> sec-top-0; property <length> sec-top-1; property <length> sec-top-2; property <length> sec-top-3;
     property <length> sec-h-0; property <length> sec-h-1; property <length> sec-h-2; property <length> sec-h-3;
     pure function sec-top(i: int) -> length { i == 0 ? sec-top-0 : (i == 1 ? sec-top-1 : (i == 2 ? sec-top-2 : sec-top-3)) }
@@ -760,11 +779,21 @@ export component DesktopShell inherits Rectangle {
                             if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
                             root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
                         }
-                        drag-ended => {
-                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
-                                root.sidebar-section-moved(si, root.sec-drop);
-                            }
+                        drag-ended(dropped) => {
+                            // Clear FIRST, reorder LAST. `sidebar-section-moved`
+                            // rebuilds the model this `for` iterates, which tears
+                            // down the SectionHeader whose callback is still
+                            // running — and every statement after it writes to a
+                            // detached copy rather than the live shell. Resetting
+                            // afterwards therefore did nothing, and the accent drop
+                            // marker stayed painted where the drag had left it.
+                            root.sec-move-to = (dropped && root.sec-drag-active
+                                && root.sec-drop >= 0 && root.sec-drop != si)
+                                ? root.sec-drop : -1;
                             root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                            if (root.sec-move-to >= 0) {
+                                root.sidebar-section-moved(si, root.sec-move-to);
+                            }
                         }
                         collapsed <=> root.collapse-biblioteca;
                     }
@@ -854,11 +883,16 @@ export component DesktopShell inherits Rectangle {
                             if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
                             root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
                         }
-                        drag-ended => {
-                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
-                                root.sidebar-section-moved(si, root.sec-drop);
-                            }
+                        drag-ended(dropped) => {
+                            // Clear first, reorder last — see the Biblioteca
+                            // header above for why the order is load-bearing.
+                            root.sec-move-to = (dropped && root.sec-drag-active
+                                && root.sec-drop >= 0 && root.sec-drop != si)
+                                ? root.sec-drop : -1;
                             root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                            if (root.sec-move-to >= 0) {
+                                root.sidebar-section-moved(si, root.sec-move-to);
+                            }
                         }
                         collapsed <=> root.collapse-carpetas;
                     }
@@ -977,11 +1011,16 @@ export component DesktopShell inherits Rectangle {
                             if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
                             root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
                         }
-                        drag-ended => {
-                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
-                                root.sidebar-section-moved(si, root.sec-drop);
-                            }
+                        drag-ended(dropped) => {
+                            // Clear first, reorder last — see the Biblioteca
+                            // header above for why the order is load-bearing.
+                            root.sec-move-to = (dropped && root.sec-drag-active
+                                && root.sec-drop >= 0 && root.sec-drop != si)
+                                ? root.sec-drop : -1;
                             root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                            if (root.sec-move-to >= 0) {
+                                root.sidebar-section-moved(si, root.sec-move-to);
+                            }
                         }
                         collapsed <=> root.collapse-consolas;
                     }
@@ -1089,11 +1128,16 @@ export component DesktopShell inherits Rectangle {
                             if (dy > 8px || dy < -8px) { root.sec-drag-active = true; }
                             root.sec-drop = root.sec-drop-at(si, root.sec-top(si) + self.y + self.height / 2 + dy);
                         }
-                        drag-ended => {
-                            if (root.sec-drag-active && root.sec-drop >= 0 && root.sec-drop != si) {
-                                root.sidebar-section-moved(si, root.sec-drop);
-                            }
+                        drag-ended(dropped) => {
+                            // Clear first, reorder last — see the Biblioteca
+                            // header above for why the order is load-bearing.
+                            root.sec-move-to = (dropped && root.sec-drag-active
+                                && root.sec-drop >= 0 && root.sec-drop != si)
+                                ? root.sec-drop : -1;
                             root.sec-src = -1; root.sec-drop = -1; root.sec-drag-active = false;
+                            if (root.sec-move-to >= 0) {
+                                root.sidebar-section-moved(si, root.sec-move-to);
+                            }
                         }
                         collapsed <=> root.collapse-listas;
                         has-add: true;
@@ -1156,12 +1200,31 @@ export component DesktopShell inherits Rectangle {
                                             root.pl-drag-active = false;
                                             root.pl-drop = -1;
                                         }
-                                        if (ev.kind == PointerEventKind.up
-                                            && root.pl-drag-active
-                                            && root.pl-drop >= 0
-                                            && root.pl-drop != pli) {
-                                            root.playlist-reordered(pli, root.pl-drop);
+                                        // Both the reorder and the cleanup belong here, not in
+                                        // `clicked`: Slint only emits `clicked` when the release
+                                        // lands back inside this row's 34px, and a reorder drag
+                                        // ends a row or more away. So the clearing never ran and
+                                        // the accent outline stayed stuck on a row — while a drag
+                                        // short enough to stay inside got `clicked` first, which
+                                        // cleared the flag the reorder below was about to test,
+                                        // and the move was silently dropped.
+                                        if (ev.kind == PointerEventKind.up) {
+                                            if (root.pl-drag-active
+                                                && root.pl-drop >= 0
+                                                && root.pl-drop != pli) {
+                                                root.playlist-reordered(pli, root.pl-drop);
+                                            }
+                                            root.pl-src = -1;
+                                            root.pl-drop = -1;
+                                            root.pl-drag-active = false;
                                         }
+                                    }
+                                    // A torn-off grab arrives as `button: other`, so this cannot
+                                    // sit inside the test above.
+                                    if (ev.kind == PointerEventKind.cancel) {
+                                        root.pl-src = -1;
+                                        root.pl-drop = -1;
+                                        root.pl-drag-active = false;
                                     }
                                     if (ev.kind == PointerEventKind.down
                                         && ev.button == PointerEventButton.middle) {
@@ -1175,11 +1238,11 @@ export component DesktopShell inherits Rectangle {
                                     }
                                 }
                                 clicked => {
-                                    if (root.pl-drag-active) {
-                                        root.pl-drag-active = false;
-                                        root.pl-src = -1;
-                                        root.pl-drop = -1;
-                                    } else {
+                                    // `clicked` is emitted just before the Up pointer-event, so
+                                    // the drag flag is still standing here — reading it is how a
+                                    // drop is told from a plain click. The clearing is that Up
+                                    // arm's job.
+                                    if (!root.pl-drag-active) {
                                         root.centre = 0;
                                         root.playlist-opened-in-table(pl.id);
                                     }
