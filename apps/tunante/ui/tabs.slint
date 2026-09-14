@@ -53,6 +53,8 @@ export component SettingsTab inherits Rectangle {
     // "Instalar vX" while it is set.
     in property <string> update-available;
     callback check-update();
+    in property <string> update-ready;
+    callback restart-now();
     in property <string> theme-label;
     callback cycle-theme();
     callback show-log();
@@ -590,6 +592,14 @@ export component SettingsTab inherits Rectangle {
             label: @tr("Omitir esta versión");
             value: "×";
             clicked => { root.skip-update(); }
+        }
+        // The row above says "instalada — reinicia la app" once the swap is
+        // done; this is the press that does it.
+        if root.update-ready != "": SettingRow {
+            label: @tr("Reiniciar ahora");
+            value: @tr("v{}", root.update-ready);
+            highlighted: true;
+            clicked => { root.restart-now(); }
         }
         SettingRow {
             label: @tr("Integrar en el escritorio");

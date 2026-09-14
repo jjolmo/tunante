@@ -338,6 +338,10 @@ export component DesktopSettings inherits Rectangle {
     // "Instalar vX" while it is set.
     in property <string> update-available;
     callback check-update();
+    // The version already swapped in and waiting on a restart, "" when none.
+    // The status line used to say "reinicia la app" with nothing to press.
+    in property <string> update-ready;
+    callback restart-now();
     in property <string> theme-label;
     callback cycle-theme();
     callback show-log();
@@ -1106,6 +1110,11 @@ export component DesktopSettings inherits Rectangle {
                                         if root.update-skippable: Push {
                                             label: @tr("Omitir esta versión");
                                             clicked => { root.skip-update(); }
+                                        }
+                                        if root.update-ready != "": Push {
+                                            label: @tr("Reiniciar ahora");
+                                            primary: true;
+                                            clicked => { root.restart-now(); }
                                         }
                                         Note { text: root.update-status; }
                                     }

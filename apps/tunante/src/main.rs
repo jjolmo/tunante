@@ -5096,7 +5096,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let update_skipped: Option<String> = db.get_setting("update.skip_version").ok().flatten();
     // No query to GitHub when the user wants neither to be told nor to be
     // auto-updated: the check exists only to feed one of those two.
-    if cfg!(all(target_os = "linux", feature = "updater"))
+    if update::CAN_SELF_UPDATE
         && update::IS_RELEASE
         && (get_bool_setting(&db, "ask_updates_on_startup", true)
             || get_bool_setting(&db, "auto_update_on_startup", false))

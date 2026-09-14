@@ -1,4 +1,4 @@
-//! Self-update from GitHub releases (Linux, `updater` feature).
+//! Self-update from GitHub releases (Linux and macOS, `updater` feature).
 //!
 //! The release artifact for this app is a tarball with the player and the
 //! decoder side by side — the two travel together or the sibling lookup
@@ -7,6 +7,8 @@
 //! `current_exe`. Linux lets a running executable be renamed out from under
 //! itself, which is the whole trick: rename the old ones aside, rename the
 //! new ones in, and the swap is atomic per file on the same filesystem.
+//! macOS ships a .dmg instead and swaps the whole `Tunante.app` bundle, but
+//! the shape — check, download, rename into place, restart — is the same.
 //!
 //! Off by `--no-default-features` like the tray: the Alpine package updates
 //! through apk, and a package-managed binary must not overwrite itself.
@@ -44,6 +46,12 @@ mod imp {
     use std::sync::mpsc::Sender;
 
     const GITHUB_REPO: &str = "jjolmo/tunante";
+
+    /// This build can replace itself. Callers must key off this rather than
+    /// spelling the cfg again: macOS gained an installer here while the
+    /// startup check in main.rs kept a hand-copied `target_os = "linux"`, so
+    /// every Mac went a release cycle without ever asking GitHub anything.
+    pub const CAN_SELF_UPDATE: bool = true;
 
     fn parse_version(v: &str) -> Option<(u64, u64, u64)> {
         let mut it = v.trim().trim_start_matches('v').splitn(3, '.');
@@ -338,6 +346,10 @@ mod imp {
     use super::UpdateMsg;
     use std::sync::mpsc::Sender;
 
+    /// Nothing here replaces the running app, so the silent startup check
+    /// would only ever produce the error below.
+    pub const CAN_SELF_UPDATE: bool = false;
+
     // Windows, and the phone build (no ureq): nothing here replaces the
     // running app, and the row should say so rather than claim a package
     // manager that a Windows box does not have.
@@ -358,4 +370,4 @@ mod imp {
     }
 }
 
-pub use imp::{spawn_check, spawn_install};
+pub use imp::{spawn_check, spawn_install, CAN_SELF_UPDATE};
