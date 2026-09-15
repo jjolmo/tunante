@@ -50,6 +50,29 @@ mod imp {
     /// volume.
     static SCROLL: AtomicI32 = AtomicI32::new(0);
 
+    /// Where the icon is on screen, so the volume panel can appear beside it
+    /// rather than in a corner.
+    ///
+    /// StatusNotifierItem has no geometry — nothing in the protocol says where
+    /// the host drew the icon — but every click carries the point it happened
+    /// at, which is the icon. So the position is *learnt*: the first click of
+    /// the item's life teaches it, `main.rs` writes it to the database, and
+    /// later sessions start out knowing. Moving the panel or the icon teaches
+    /// it again at the next click.
+    static ICON_X: AtomicI32 = AtomicI32::new(i32::MIN);
+    static ICON_Y: AtomicI32 = AtomicI32::new(i32::MIN);
+
+    pub fn icon_pos() -> Option<(i32, i32)> {
+        let (x, y) = (ICON_X.load(Ordering::Relaxed), ICON_Y.load(Ordering::Relaxed));
+        (x != i32::MIN && y != i32::MIN).then_some((x, y))
+    }
+
+    /// Remember a position, from a click now or from the database at startup.
+    pub fn set_icon_pos(x: i32, y: i32) {
+        ICON_X.store(x, Ordering::Relaxed);
+        ICON_Y.store(y, Ordering::Relaxed);
+    }
+
     /// What the icon should say and wear, written by the UI thread and applied
     /// by a 1 Hz watcher on the tray thread through the ksni handle — ksni only
     /// re-reads the tray on `update()`, so a mailbox plus a poll is the bridge.
@@ -138,12 +161,14 @@ mod imp {
 
         // Left-click. The whole point of the rewrite: this used to be swallowed
         // by the menu.
-        fn activate(&mut self, _x: i32, _y: i32) {
+        fn activate(&mut self, x: i32, y: i32) {
+            super::imp::set_icon_pos(x, y);
             let _ = self.tx.send(TrayAction::ToggleWindow);
         }
 
         // Middle-click runs the configurable action, kept as it was.
-        fn secondary_activate(&mut self, _x: i32, _y: i32) {
+        fn secondary_activate(&mut self, x: i32, y: i32) {
+            super::imp::set_icon_pos(x, y);
             let _ = self.tx.send(TrayAction::MiddleClick);
         }
 
@@ -315,7 +340,7 @@ mod imp {
 }
 
 #[cfg(all(target_os = "linux", feature = "tray"))]
-pub use imp::{poll, set_style, set_tooltip, spawn, take_scroll};
+pub use imp::{icon_pos, poll, set_icon_pos, set_style, set_tooltip, spawn, take_scroll};
 
 /// macOS and Windows: the same five verbs through `tray-icon`, which on those
 /// two uses the native status item and the notification area — no GTK.
@@ -461,10 +486,25 @@ mod native {
     pub fn take_scroll() -> i32 {
         0
     }
+
+    /// Where the icon is: here the crate simply knows, so there is nothing to
+    /// learn and nothing to remember.
+    pub fn icon_pos() -> Option<(i32, i32)> {
+        LIVE.with(|l| {
+            let rect = l.borrow().as_ref()?.tray.rect()?;
+            Some((
+                (rect.position.x + rect.size.width / 2.0) as i32,
+                (rect.position.y + rect.size.height / 2.0) as i32,
+            ))
+        })
+    }
+
+    /// Nothing to restore: see [`icon_pos`].
+    pub fn set_icon_pos(_x: i32, _y: i32) {}
 }
 
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "tray"))]
-pub use native::{poll, set_style, set_tooltip, spawn, take_scroll};
+pub use native::{icon_pos, poll, set_icon_pos, set_style, set_tooltip, spawn, take_scroll};
 
 // Same shape as the mpris stubs: the event loop in main.rs never has to know
 // which platform it is on. The tray is Linux-only (SNI is freedesktop), and the
@@ -487,3 +527,11 @@ pub fn take_scroll() -> i32 {
 
 #[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
 pub fn set_tooltip(_text: &str) {}
+
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
+pub fn icon_pos() -> Option<(i32, i32)> {
+    None
+}
+
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
+pub fn set_icon_pos(_x: i32, _y: i32) {}

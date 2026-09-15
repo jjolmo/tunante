@@ -28,14 +28,13 @@ mod imp {
     /// popup hid itself after the same 1.5 s.
     const HOLD: std::time::Duration = std::time::Duration::from_millis(1500);
 
-    /// Distance from the screen's edge, in logical pixels. The old popup aimed
-    /// at the tray icon itself and fell back to this corner; the corner is all
-    /// that is left to aim at, because no tray API in the tree reports where
-    /// the icon is: SNI has no geometry at all.
+    /// Distance from the screen's edge — or from the tray icon, when the tray
+    /// knows where it is. The old popup aimed at the icon and fell back to the
+    /// corner; so does this.
     ///
-    /// Bottom right, clear of the taskbar — except on macOS, where the status
-    /// item lives in the menu bar at the top, so the panel goes under it, as
-    /// the old build's did.
+    /// The corner is the bottom right, clear of the taskbar — except on macOS,
+    /// where the status item lives in the menu bar at the top, so the panel
+    /// goes under it, as the old build's did.
     const MARGIN_X: f32 = 16.0;
     #[cfg(not(target_os = "macos"))]
     const MARGIN_Y: f32 = 60.0;
@@ -65,14 +64,14 @@ mod imp {
     /// `dark` is the palette the app is wearing: a second window gets its own
     /// copy of Slint's globals, so the theme has to be handed over rather than
     /// inherited.
-    pub fn show_volume(percent: u32, dark: bool) {
+    pub fn show_volume(percent: u32, dark: bool, icon: Option<(i32, i32)>) {
         // On Wayland the panel is not a window at all: a client there cannot
         // place one, so it goes up as a layer surface that anchors itself to
         // the tray's corner. When that path answers, there is nothing else to
         // do; when it does not — X11, a compositor without the layer shell,
         // Windows, macOS — the window below can place itself and does.
         #[cfg(target_os = "linux")]
-        if crate::osd_layer::try_show(percent.min(100), dark) {
+        if crate::osd_layer::try_show(percent.min(100), dark, icon) {
             return;
         }
 
@@ -121,7 +120,7 @@ mod imp {
                     log::warn!("osd: no pude mostrar el panel de volumen ({e})");
                     return;
                 }
-                place(osd);
+                place(osd, icon);
             }
 
             let weak = osd.window.as_weak();
@@ -133,21 +132,14 @@ mod imp {
         });
     }
 
-    /// Put the panel in the screen's bottom-right corner, where a window is
-    /// allowed to place itself.
+    /// Put the panel beside the tray icon, or in the corner when nobody knows
+    /// where that is.
     ///
-    /// Wayland is not such a place: a client there cannot position its own
+    /// Wayland never gets here: a client there cannot position its own
     /// toplevel, and asking anyway is worse than a no-op — the request before
-    /// the first frame leaves the surface unmapped, so the panel never appears
-    /// at all — an hour of "the window says it is visible and nothing is on
-    /// screen" before that came out. The compositor's own placement (centred,
-    /// which is where KDE puts its own volume OSD) is the answer there, so on
-    /// Wayland this returns and lets it decide.
-    ///
-    /// The old popup aimed at the tray icon itself and fell back to this
-    /// corner. The corner is all that is left to aim at: no tray API in the
-    /// tree reports where the icon is — SNI has no geometry at all.
-    fn place(osd: &Osd) {
+    /// the first frame leaves the surface unmapped and the panel never appears
+    /// at all. That side is `osd_layer.rs`, which anchors instead of asking.
+    fn place(osd: &Osd, icon: Option<(i32, i32)>) {
         use slint::winit_030::winit::dpi::PhysicalPosition;
         use slint::winit_030::WinitWindowAccessor;
 
@@ -166,12 +158,37 @@ mod imp {
             let screen = monitor.size();
             let origin = monitor.position();
             let size = win.outer_size();
-            let x = origin.x + screen.width as i32 - size.width as i32 - (MARGIN_X * scale) as i32;
-            #[cfg(not(target_os = "macos"))]
-            let y =
-                origin.y + screen.height as i32 - size.height as i32 - (MARGIN_Y * scale) as i32;
-            #[cfg(target_os = "macos")]
-            let y = origin.y + (MARGIN_TOP * scale) as i32;
+            let (x, y) = match icon {
+                // Centred on the icon, and above it or below it depending on
+                // which end of the screen the tray is at — a taskbar can be at
+                // the top as easily as the bottom.
+                Some((ix, iy)) => {
+                    let x = (ix - size.width as i32 / 2).clamp(
+                        origin.x + (MARGIN_X * scale) as i32,
+                        origin.x + screen.width as i32 - size.width as i32
+                            - (MARGIN_X * scale) as i32,
+                    );
+                    let gap = (8.0 * scale) as i32;
+                    let y = if (iy - origin.y) * 2 >= screen.height as i32 {
+                        iy - size.height as i32 - gap
+                    } else {
+                        iy + gap
+                    };
+                    (x, y)
+                }
+                None => {
+                    let x = origin.x + screen.width as i32
+                        - size.width as i32
+                        - (MARGIN_X * scale) as i32;
+                    #[cfg(not(target_os = "macos"))]
+                    let y = origin.y + screen.height as i32
+                        - size.height as i32
+                        - (MARGIN_Y * scale) as i32;
+                    #[cfg(target_os = "macos")]
+                    let y = origin.y + (MARGIN_TOP * scale) as i32;
+                    (x, y)
+                }
+            };
             win.set_outer_position(PhysicalPosition::new(x, y));
             // Remembered so the next show can ask for it before the window
             // exists, which is the only way to get there without a hop.
@@ -186,4 +203,4 @@ pub use imp::show_volume;
 /// No tray, no wheel to turn over it, no panel. Same shape as the tray's own
 /// stubs so the event loop never has to know which build it is in.
 #[cfg(not(feature = "tray"))]
-pub fn show_volume(_percent: u32, _dark: bool) {}
+pub fn show_volume(_percent: u32, _dark: bool, _icon: Option<(i32, i32)>) {}
