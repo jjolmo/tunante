@@ -28,6 +28,12 @@ const MARGIN: i32 = 16;
 const HOLD: std::time::Duration = std::time::Duration::from_millis(1500);
 
 enum Msg {
+    /// Build the surface now, empty, so the compositor's "a thing appeared"
+    /// animation happens at startup where nobody is looking. Without it the
+    /// first notch of every session arrives with a zoom.
+    Prime {
+        icon: Option<(i32, i32)>,
+    },
     Show {
         percent: u32,
         dark: bool,
@@ -50,6 +56,16 @@ pub fn try_show(percent: u32, dark: bool, icon: Option<(i32, i32)>) -> bool {
         return false;
     };
     tx.send(Msg::Show { percent, dark, icon }).is_ok()
+}
+
+/// Put the surface up, empty and silent, at startup.
+///
+/// Costs one transparent surface with no input region for the life of the
+/// session, and buys a panel that never animates in.
+pub fn prime(icon: Option<(i32, i32)>) {
+    if let Some(tx) = TX.get_or_init(spawn) {
+        let _ = tx.send(Msg::Prime { icon });
+    }
 }
 
 /// Start the thread, and wait just long enough to learn whether it has a layer
@@ -88,7 +104,7 @@ use inner::build;
 
 mod inner {
     use super::{Msg, HOLD, H, MARGIN, W};
-    use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState};
+    use smithay_client_toolkit::compositor::{CompositorHandler, CompositorState, Region};
     use smithay_client_toolkit::output::{OutputHandler, OutputState};
     use smithay_client_toolkit::reexports::calloop::channel::{channel, Event, Sender};
     use smithay_client_toolkit::reexports::calloop::timer::{TimeoutAction, Timer};
@@ -120,6 +136,12 @@ mod inner {
         layer: Option<LayerSurface>,
         /// Set by the configure event: nothing may be drawn before it.
         configured: bool,
+        /// Whether the panel is showing. Hiding does *not* take the surface
+        /// down: an unmapped surface is animated back in by the compositor
+        /// (KWin scales it up, which reads as a zoom on every notch) and
+        /// mapping costs a round trip. It stays mapped and draws nothing
+        /// instead, which is instant and silent.
+        visible: bool,
         scale: i32,
         percent: u32,
         dark: bool,
@@ -154,6 +176,7 @@ mod inner {
             pool,
             layer: None,
             configured: false,
+            visible: false,
             scale: 1,
             percent: 100,
             dark: true,
@@ -165,8 +188,10 @@ mod inner {
 
         let (tx, rx) = channel::<Msg>();
         loop_handle.insert_source(rx, |event, _, state: &mut State| {
-            if let Event::Msg(Msg::Show { percent, dark, icon }) = event {
-                state.show(percent, dark, icon);
+            match event {
+                Event::Msg(Msg::Show { percent, dark, icon }) => state.show(percent, dark, icon),
+                Event::Msg(Msg::Prime { icon }) => state.prime(icon),
+                _ => {}
             }
         })?;
 
@@ -235,6 +260,16 @@ mod inner {
                 .unwrap_or((1920, 1080))
         }
 
+        /// Build the surface without showing anything on it.
+        fn prime(&mut self, icon: Option<(i32, i32)>) {
+            if self.layer.is_none() {
+                self.visible = false;
+                // Where the panel will actually appear, when the database
+                // already remembers the icon: nothing to move on the way in.
+                self.build_surface(self.placement(icon));
+            }
+        }
+
         fn show(&mut self, percent: u32, dark: bool, icon: Option<(i32, i32)>) {
             self.percent = percent.min(100);
             self.dark = dark;
@@ -248,33 +283,43 @@ mod inner {
                     layer.commit();
                 }
             }
+            self.visible = true;
             if self.layer.is_none() {
-                let qh = self.qh.clone();
-                let surface = self.compositor.create_surface(&qh);
-                let layer = self.layer_shell.create_layer_surface(
-                    &qh,
-                    surface,
-                    // Overlay: above full-screen windows too, which is what an
-                    // OSD is for.
-                    Layer::Overlay,
-                    Some("tunante-volume"),
-                    None,
-                );
-                layer.set_size(W, H);
-                // An exclusive zone of 0 respects what the panels reserved, so
-                // the surface lands beside the taskbar rather than under it.
-                layer.set_exclusive_zone(0);
-                place.apply(&layer);
-                // It is a readout, not a control: it must never take the
-                // keyboard from whatever the user was typing in.
-                layer.set_keyboard_interactivity(KeyboardInteractivity::None);
-                layer.commit();
-                self.configured = false;
-                self.layer = Some(layer);
+                self.build_surface(place);
             } else {
                 self.draw();
             }
             self.arm_hide();
+        }
+
+        fn build_surface(&mut self, place: Placement) {
+            let qh = self.qh.clone();
+            let surface = self.compositor.create_surface(&qh);
+            // Nothing on this panel can be clicked, and it sits on the overlay
+            // layer: without an empty input region it would eat every click in
+            // its corner, including the tray icon's.
+            if let Ok(region) = Region::new(&self.compositor) {
+                surface.set_input_region(Some(region.wl_region()));
+            }
+            let layer = self.layer_shell.create_layer_surface(
+                &qh,
+                surface,
+                // Overlay: above full-screen windows too, which is what an OSD
+                // is for.
+                Layer::Overlay,
+                Some("tunante-volume"),
+                None,
+            );
+            layer.set_size(W, H);
+            // An exclusive zone of 0 respects what the panels reserved, so the
+            // surface lands beside the taskbar rather than under it.
+            layer.set_exclusive_zone(0);
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            place.apply(&layer);
+            layer.commit();
+            self.configured = false;
+            self.place = Some(place);
+            self.layer = Some(layer);
         }
 
         /// Restart the countdown. Each notch pushes it back, so a spun wheel
@@ -286,9 +331,9 @@ mod inner {
             self.hide = self
                 .loop_handle
                 .insert_source(Timer::from_duration(HOLD), |_, _, state: &mut State| {
-                    state.layer = None;
-                    state.configured = false;
+                    state.visible = false;
                     state.hide = None;
+                    state.draw();
                     TimeoutAction::Drop
                 })
                 .ok();
@@ -308,7 +353,12 @@ mod inner {
             else {
                 return;
             };
-            super::paint::render(canvas, w, h, scale, self.percent, self.dark);
+            if self.visible {
+                super::paint::render(canvas, w, h, scale, self.percent, self.dark);
+            } else {
+                // Gone, without going anywhere: a fully transparent frame.
+                canvas.fill(0);
+            }
             let surface = layer.wl_surface();
             surface.set_buffer_scale(self.scale.max(1));
             surface.damage_buffer(0, 0, w as i32, h as i32);

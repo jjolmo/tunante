@@ -176,6 +176,9 @@ mod imp {
             if matches!(orientation, ksni::Orientation::Vertical) && delta != 0 {
                 // ±1 per notch: volume wants clicks, not pixels. Up is louder.
                 SCROLL.fetch_add(if delta > 0 { 1 } else { -1 }, Ordering::Relaxed);
+                // And tell the UI thread now rather than at its next tick: half
+                // a second of lag turns a spun wheel into two or three jumps.
+                let _ = slint::invoke_from_event_loop(crate::run_tray_scroll);
             }
         }
 
