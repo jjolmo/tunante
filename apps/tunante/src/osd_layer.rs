@@ -148,6 +148,10 @@ mod inner {
         /// Where the panel is asking to be, so a second notch does not repeat
         /// the request.
         place: Option<Placement>,
+        /// A prime that is waiting for the icon's screen to be described. The
+        /// outputs' geometry arrives after the first round trip, and a surface
+        /// built before it lands on whichever screen the compositor picks.
+        pending_prime: Option<(i32, i32)>,
         qh: QueueHandle<State>,
         loop_handle: smithay_client_toolkit::reexports::calloop::LoopHandle<'static, State>,
         hide: Option<RegistrationToken>,
@@ -181,6 +185,7 @@ mod inner {
             percent: 100,
             dark: true,
             place: None,
+            pending_prime: None,
             qh: qh.clone(),
             loop_handle: loop_handle.clone(),
             hide: None,
@@ -198,10 +203,13 @@ mod inner {
         Ok((state, event_loop, tx))
     }
 
-    /// One edge pair and the two margins that go with it — everything the
-    /// compositor needs to put the panel where we want it.
+    /// The screen, the edge pair and the two margins that go with it —
+    /// everything the compositor needs to put the panel where we want it.
     #[derive(Clone, Copy, PartialEq, Eq)]
     pub struct Placement {
+        /// The output's global name, or `None` to let the compositor choose.
+        /// Margins are relative to that output, so the two cannot be separated.
+        output: Option<u32>,
         anchor: Anchor,
         top: i32,
         bottom: i32,
@@ -223,21 +231,34 @@ mod inner {
         /// The icon's own side of the screen decides which edge the panel hangs
         /// from, so a panel at the top of the screen gets the OSD under it
         /// rather than at the far end of the desktop.
-        fn placement(&self, icon: Option<(i32, i32)>) -> Placement {
-            let Some((ix, iy)) = icon else {
-                return Placement {
-                    anchor: Anchor::BOTTOM | Anchor::RIGHT,
-                    top: 0,
-                    right: MARGIN,
-                    bottom: MARGIN,
-                    left: 0,
-                };
+        ///
+        /// The icon's coordinates are global, and a layer surface's margins are
+        /// not: they count from the edges of the one output it lives on. So the
+        /// output is chosen here, as the one that holds the icon, and handed to
+        /// the compositor with the margins — left to itself it picks the screen
+        /// in focus, and on two monitors the panel went to the wrong one with
+        /// the other one's offsets.
+        fn placement(&self, icon: Option<(i32, i32)>) -> (Placement, Option<wl_output::WlOutput>) {
+            let corner = Placement {
+                output: None,
+                anchor: Anchor::BOTTOM | Anchor::RIGHT,
+                top: 0,
+                right: MARGIN,
+                bottom: MARGIN,
+                left: 0,
             };
-            let (ow, oh) = self.output_size();
+            let Some((ix, iy)) = icon else {
+                return (corner, None);
+            };
+            let Some((output, id, (ox, oy), (ow, oh))) = self.screen_at(ix, iy) else {
+                return (corner, None);
+            };
+            let (ix, iy) = (ix - ox, iy - oy);
             // Centred under the icon, and never hanging off the screen.
             let left = (ix - W as i32 / 2).clamp(MARGIN, (ow - W as i32 - MARGIN).max(MARGIN));
             let bottom_half = iy * 2 >= oh;
-            Placement {
+            let place = Placement {
+                output: Some(id),
                 anchor: if bottom_half {
                     Anchor::BOTTOM | Anchor::LEFT
                 } else {
@@ -247,52 +268,79 @@ mod inner {
                 right: 0,
                 bottom: if bottom_half { MARGIN } else { 0 },
                 left,
-            }
+            };
+            (place, Some(output))
         }
 
-        /// The screen the panel will live on, in logical pixels. One monitor's
-        /// worth: the icon's coordinates are global, and clamping to the first
-        /// output is closer than not clamping at all.
-        fn output_size(&self) -> (i32, i32) {
-            self.output
+        /// The output that holds a global point, with its name and logical
+        /// rectangle. A point off every screen (the monitor it was learnt on is
+        /// gone) gets the first described one, so the panel still shows.
+        #[allow(clippy::type_complexity)]
+        fn screen_at(&self, x: i32, y: i32) -> Option<(wl_output::WlOutput, u32, (i32, i32), (i32, i32))> {
+            let described: Vec<_> = self
+                .output
                 .outputs()
-                .find_map(|o| self.output.info(&o).and_then(|i| i.logical_size))
-                .unwrap_or((1920, 1080))
+                .filter_map(|o| {
+                    let info = self.output.info(&o)?;
+                    Some((o, info.id, info.logical_position?, info.logical_size?))
+                })
+                .collect();
+            described
+                .iter()
+                .find(|(_, _, (ox, oy), (w, h))| x >= *ox && x < ox + w && y >= *oy && y < oy + h)
+                .or(described.first())
+                .cloned()
         }
 
         /// Build the surface without showing anything on it.
         fn prime(&mut self, icon: Option<(i32, i32)>) {
-            if self.layer.is_none() {
-                self.visible = false;
+            if self.layer.is_some() {
+                return;
+            }
+            match icon {
                 // Where the panel will actually appear, when the database
                 // already remembers the icon: nothing to move on the way in.
-                self.build_surface(self.placement(icon));
+                // Unless the screens are not described yet — then wait for
+                // them rather than build on a screen chosen at random.
+                Some((x, y)) if self.screen_at(x, y).is_none() => self.pending_prime = Some((x, y)),
+                _ => {
+                    self.visible = false;
+                    let (place, output) = self.placement(icon);
+                    self.build_surface(place, output.as_ref());
+                }
             }
         }
 
         fn show(&mut self, percent: u32, dark: bool, icon: Option<(i32, i32)>) {
             self.percent = percent.min(100);
             self.dark = dark;
+            self.pending_prime = None;
             // A panel already up moves to the icon too: the tray may have
             // learnt where it is since the last time.
-            let place = self.placement(icon);
-            if self.place != Some(place) {
-                self.place = Some(place);
-                if let Some(layer) = self.layer.as_ref() {
-                    place.apply(layer);
-                    layer.commit();
-                }
+            let (place, output) = self.placement(icon);
+            // A surface cannot change screens: a different one means a new
+            // surface, and the one zoom that comes with it.
+            if self.place.is_some_and(|p| p.output != place.output) {
+                self.layer = None;
+                self.configured = false;
             }
             self.visible = true;
             if self.layer.is_none() {
-                self.build_surface(place);
+                self.build_surface(place, output.as_ref());
             } else {
+                if self.place != Some(place) {
+                    self.place = Some(place);
+                    if let Some(layer) = self.layer.as_ref() {
+                        place.apply(layer);
+                        layer.commit();
+                    }
+                }
                 self.draw();
             }
             self.arm_hide();
         }
 
-        fn build_surface(&mut self, place: Placement) {
+        fn build_surface(&mut self, place: Placement, output: Option<&wl_output::WlOutput>) {
             let qh = self.qh.clone();
             let surface = self.compositor.create_surface(&qh);
             // Nothing on this panel can be clicked, and it sits on the overlay
@@ -308,7 +356,7 @@ mod inner {
                 // is for.
                 Layer::Overlay,
                 Some("tunante-volume"),
-                None,
+                output,
             );
             layer.set_size(W, H);
             // An exclusive zone of 0 respects what the panels reserved, so the
@@ -446,6 +494,9 @@ mod inner {
             _qh: &QueueHandle<Self>,
             _output: wl_output::WlOutput,
         ) {
+            if let Some(icon) = self.pending_prime.take() {
+                self.prime(Some(icon));
+            }
         }
         fn update_output(
             &mut self,
@@ -453,6 +504,9 @@ mod inner {
             _qh: &QueueHandle<Self>,
             _output: wl_output::WlOutput,
         ) {
+            if let Some(icon) = self.pending_prime.take() {
+                self.prime(Some(icon));
+            }
         }
         fn output_destroyed(
             &mut self,

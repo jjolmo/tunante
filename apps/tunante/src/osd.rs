@@ -151,7 +151,17 @@ mod imp {
                     return;
                 }
             }
-            let Some(monitor) = win.current_monitor() else {
+            // The monitor that holds the icon, not the one the panel was last
+            // on: with the tray on a second screen, `current_monitor` clamped
+            // the panel into the first one.
+            let holds = |m: &slint::winit_030::winit::monitor::MonitorHandle| {
+                icon.is_some_and(|(ix, iy)| {
+                    let (o, s) = (m.position(), m.size());
+                    ix >= o.x && ix < o.x + s.width as i32 && iy >= o.y && iy < o.y + s.height as i32
+                })
+            };
+            let Some(monitor) = win.available_monitors().find(holds).or_else(|| win.current_monitor())
+            else {
                 return;
             };
             let scale = win.scale_factor() as f32;
