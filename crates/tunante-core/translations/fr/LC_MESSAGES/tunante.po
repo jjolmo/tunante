@@ -1423,3 +1423,15 @@ msgstr "Ignorer la v{}"
 
 msgid "v{} descargada."
 msgstr "v{} téléchargée."
+
+msgid "no se sabe desde dónde relanzar la app"
+msgstr "impossible de savoir d'où relancer l'application"
+
+msgid "el ejecutable ya no está en {}"
+msgstr "l'exécutable n'est plus dans {}"
+
+msgid "no se pudo relanzar: {}"
+msgstr "impossible de relancer : {}"
+
+msgid "v{}"
+msgstr "v{}"

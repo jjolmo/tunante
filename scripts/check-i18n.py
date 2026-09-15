@@ -112,6 +112,9 @@ IDENTICAL_OK = {
     "silenciar", "simbólico", "vinculando…", "{}/{} · {} encontradas", "Álbum", "Música", "{} encontradas", "v{} disponible", "Artistas", "Artista · {}",
     # Portuguese spells the word exactly as Spanish does, like "Álbum" above.
     "Álbum · {}", "Reiniciar",
+    # A version number with its "v": the same five characters everywhere, like
+    # "v{} disponible" above.
+    "v{}",
 }
 
 

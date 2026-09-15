@@ -1423,3 +1423,15 @@ msgstr "Skip v{}"
 
 msgid "v{} descargada."
 msgstr "v{} downloaded."
+
+msgid "no se sabe desde dónde relanzar la app"
+msgstr "there is no way to tell where to relaunch the app from"
+
+msgid "el ejecutable ya no está en {}"
+msgstr "the executable is no longer at {}"
+
+msgid "no se pudo relanzar: {}"
+msgstr "could not relaunch: {}"
+
+msgid "v{}"
+msgstr "v{}"

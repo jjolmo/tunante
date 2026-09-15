@@ -1423,3 +1423,15 @@ msgstr "v{} überspringen"
 
 msgid "v{} descargada."
 msgstr "v{} heruntergeladen."
+
+msgid "no se sabe desde dónde relanzar la app"
+msgstr "unbekannt, von wo die App neu gestartet werden soll"
+
+msgid "el ejecutable ya no está en {}"
+msgstr "die ausführbare Datei liegt nicht mehr unter {}"
+
+msgid "no se pudo relanzar: {}"
+msgstr "Neustart fehlgeschlagen: {}"
+
+msgid "v{}"
+msgstr "v{}"
