@@ -55,6 +55,10 @@ mod inhibit;
 mod library;
 mod mpris;
 mod osd;
+// The panel's Wayland half: a layer surface, because a Wayland client cannot
+// place a window of its own. Linux-only, and only with the tray.
+#[cfg(all(target_os = "linux", feature = "tray"))]
+mod osd_layer;
 mod output;
 mod filedialog;
 mod picker;
