@@ -495,9 +495,12 @@ mod native {
     pub fn icon_pos() -> Option<(i32, i32)> {
         LIVE.with(|l| {
             let rect = l.borrow().as_ref()?.tray.rect()?;
+            // The position is in floats and the size in whole pixels — two
+            // different types in the same struct, which is what caught this
+            // out when it only ever compiled on Linux.
             Some((
-                (rect.position.x + rect.size.width / 2.0) as i32,
-                (rect.position.y + rect.size.height / 2.0) as i32,
+                rect.position.x as i32 + (rect.size.width / 2) as i32,
+                rect.position.y as i32 + (rect.size.height / 2) as i32,
             ))
         })
     }
