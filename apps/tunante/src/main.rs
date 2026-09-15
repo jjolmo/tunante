@@ -54,6 +54,7 @@ mod shortcuts;
 mod inhibit;
 mod library;
 mod mpris;
+mod osd;
 mod output;
 mod filedialog;
 mod picker;
@@ -6250,9 +6251,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let v = (p.volume() + notches as f32 * 0.05).clamp(0.0, 1.0);
                     p.set_volume(v);
                     ui.set_volume(p.volume());
-                    // The pointer is on the icon (that is what scrolling is),
-                    // so the tooltip is the old volume popup, for free. Held
-                    // for ~1.5 s before the track tooltip takes it back.
+                    // The panel the wheel raises, as the old desktop had it.
+                    // The tooltip says the same thing for the same ~1.5 s:
+                    // the pointer is on the icon already (that is what
+                    // scrolling is), so it costs nothing and covers the case
+                    // where a compositor puts the panel somewhere odd.
+                    osd::show_volume((v * 100.0).round() as u32, ui.global::<Theme>().get_dark());
                     tray::set_tooltip(
                         &tunante_core::i18n::tr("Volumen {}%").replace("{}", &format!("{:.0}", v * 100.0)),
                     );

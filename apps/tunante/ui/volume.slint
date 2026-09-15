@@ -1,0 +1,88 @@
+import { Theme } from "theme.slint";
+
+// The volume OSD: the little panel that appears when the wheel turns over the
+// tray icon, and goes away on its own a second and a half later.
+//
+// Its own window, deliberately — not a desktop notification. A notification
+// belongs to the notification server: it is themed by the panel, filed in a
+// history, silenced by Do Not Disturb, and looks different on every desktop.
+// This is a control, so it looks like Tunante on all three of them and behaves
+// the same way. Same size and same parts as the popup the old desktop had: a
+// speaker, a bar, a number.
+//
+// Frameless and always on top; `Theme.dark`/`Theme.t` are written from Rust
+// when it is shown, because a second window gets its own copy of the globals.
+export component VolumeOsd inherits Window {
+    // 0..=100, already rounded by the caller: the number and the bar must not
+    // disagree at the edges (a bar at 99.6% over a "100%").
+    in property <int> percent;
+
+    // Its own title, and not just for show: on Wayland the only way to pin
+    // this panel by the tray is a compositor rule, and a rule needs something
+    // to tell it apart from the player's window. winit's per-window app id
+    // never reaches the compositor here; the title does.
+    title: "Tunante Volumen";
+    no-frame: true;
+    always-on-top: true;
+    width: 200px;
+    height: 48px;
+    background: Theme.bg-secondary;
+
+    Rectangle {
+        border-color: Theme.border;
+        border-width: 1px;
+        border-radius: Theme.radius;
+        background: transparent;
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 10px;
+
+        VerticalLayout {
+            alignment: center;
+            Image {
+                source: root.percent <= 0
+                    ? @image-url("icons/vol-mute.svg")
+                    : (root.percent < 50
+                        ? @image-url("icons/vol-low.svg")
+                        : @image-url("icons/vol-high.svg"));
+                width: 16px;
+                height: 16px;
+                colorize: Theme.text-primary;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Rectangle {
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.bg-tertiary;
+                Rectangle {
+                    x: 0;
+                    width: parent.width * clamp(root.percent / 100, 0.0, 1.0);
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+                    // The bar slides to the new value rather than jumping, so a
+                    // spun wheel reads as one movement.
+                    animate width { duration: 80ms; easing: ease-out; }
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            Text {
+                text: root.percent + "%";
+                color: Theme.text-primary;
+                font-size: 13px;
+                font-weight: 600;
+                horizontal-alignment: right;
+                width: 36px;
+            }
+        }
+    }
+}
