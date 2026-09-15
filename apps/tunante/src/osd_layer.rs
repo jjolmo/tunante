@@ -28,7 +28,14 @@ const MARGIN: i32 = 16;
 const HOLD: std::time::Duration = std::time::Duration::from_millis(1500);
 
 enum Msg {
-    Show { percent: u32, dark: bool },
+    Show {
+        percent: u32,
+        dark: bool,
+        /// Where the tray icon is, when the tray has been told (see
+        /// `tray::icon_pos`). The panel goes beside it; without it, the
+        /// corner.
+        icon: Option<(i32, i32)>,
+    },
 }
 
 static TX: OnceLock<Option<Sender<Msg>>> = OnceLock::new();
@@ -38,11 +45,11 @@ static TX: OnceLock<Option<Sender<Msg>>> = OnceLock::new();
 /// `false` means there is no Wayland session or no layer shell in it (X11,
 /// GNOME, Windows, macOS): the caller then falls back to its own window, which
 /// on those can place itself.
-pub fn try_show(percent: u32, dark: bool) -> bool {
+pub fn try_show(percent: u32, dark: bool, icon: Option<(i32, i32)>) -> bool {
     let Some(tx) = TX.get_or_init(spawn) else {
         return false;
     };
-    tx.send(Msg::Show { percent, dark }).is_ok()
+    tx.send(Msg::Show { percent, dark, icon }).is_ok()
 }
 
 /// Start the thread, and wait just long enough to learn whether it has a layer
@@ -116,6 +123,9 @@ mod inner {
         scale: i32,
         percent: u32,
         dark: bool,
+        /// Where the panel is asking to be, so a second notch does not repeat
+        /// the request.
+        place: Option<Placement>,
         qh: QueueHandle<State>,
         loop_handle: smithay_client_toolkit::reexports::calloop::LoopHandle<'static, State>,
         hide: Option<RegistrationToken>,
@@ -147,6 +157,7 @@ mod inner {
             scale: 1,
             percent: 100,
             dark: true,
+            place: None,
             qh: qh.clone(),
             loop_handle: loop_handle.clone(),
             hide: None,
@@ -154,18 +165,89 @@ mod inner {
 
         let (tx, rx) = channel::<Msg>();
         loop_handle.insert_source(rx, |event, _, state: &mut State| {
-            if let Event::Msg(Msg::Show { percent, dark }) = event {
-                state.show(percent, dark);
+            if let Event::Msg(Msg::Show { percent, dark, icon }) = event {
+                state.show(percent, dark, icon);
             }
         })?;
 
         Ok((state, event_loop, tx))
     }
 
+    /// One edge pair and the two margins that go with it — everything the
+    /// compositor needs to put the panel where we want it.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    pub struct Placement {
+        anchor: Anchor,
+        top: i32,
+        bottom: i32,
+        left: i32,
+        right: i32,
+    }
+
+    impl Placement {
+        fn apply(&self, layer: &LayerSurface) {
+            layer.set_anchor(self.anchor);
+            layer.set_margin(self.top, self.right, self.bottom, self.left);
+        }
+    }
+
     impl State {
-        fn show(&mut self, percent: u32, dark: bool) {
+        /// Beside the icon when the tray knows where it is; the corner it used
+        /// to fall back to when it does not.
+        ///
+        /// The icon's own side of the screen decides which edge the panel hangs
+        /// from, so a panel at the top of the screen gets the OSD under it
+        /// rather than at the far end of the desktop.
+        fn placement(&self, icon: Option<(i32, i32)>) -> Placement {
+            let Some((ix, iy)) = icon else {
+                return Placement {
+                    anchor: Anchor::BOTTOM | Anchor::RIGHT,
+                    top: 0,
+                    right: MARGIN,
+                    bottom: MARGIN,
+                    left: 0,
+                };
+            };
+            let (ow, oh) = self.output_size();
+            // Centred under the icon, and never hanging off the screen.
+            let left = (ix - W as i32 / 2).clamp(MARGIN, (ow - W as i32 - MARGIN).max(MARGIN));
+            let bottom_half = iy * 2 >= oh;
+            Placement {
+                anchor: if bottom_half {
+                    Anchor::BOTTOM | Anchor::LEFT
+                } else {
+                    Anchor::TOP | Anchor::LEFT
+                },
+                top: if bottom_half { 0 } else { MARGIN },
+                right: 0,
+                bottom: if bottom_half { MARGIN } else { 0 },
+                left,
+            }
+        }
+
+        /// The screen the panel will live on, in logical pixels. One monitor's
+        /// worth: the icon's coordinates are global, and clamping to the first
+        /// output is closer than not clamping at all.
+        fn output_size(&self) -> (i32, i32) {
+            self.output
+                .outputs()
+                .find_map(|o| self.output.info(&o).and_then(|i| i.logical_size))
+                .unwrap_or((1920, 1080))
+        }
+
+        fn show(&mut self, percent: u32, dark: bool, icon: Option<(i32, i32)>) {
             self.percent = percent.min(100);
             self.dark = dark;
+            // A panel already up moves to the icon too: the tray may have
+            // learnt where it is since the last time.
+            let place = self.placement(icon);
+            if self.place != Some(place) {
+                self.place = Some(place);
+                if let Some(layer) = self.layer.as_ref() {
+                    place.apply(layer);
+                    layer.commit();
+                }
+            }
             if self.layer.is_none() {
                 let qh = self.qh.clone();
                 let surface = self.compositor.create_surface(&qh);
@@ -179,13 +261,10 @@ mod inner {
                     None,
                 );
                 layer.set_size(W, H);
-                layer.set_anchor(Anchor::BOTTOM | Anchor::RIGHT);
-                // Bottom-right of what is left once the panels have taken
-                // theirs: an exclusive zone of 0 respects other surfaces'
-                // reservations, so this lands above the taskbar rather than
-                // under it.
+                // An exclusive zone of 0 respects what the panels reserved, so
+                // the surface lands beside the taskbar rather than under it.
                 layer.set_exclusive_zone(0);
-                layer.set_margin(0, MARGIN, MARGIN, 0);
+                place.apply(&layer);
                 // It is a readout, not a control: it must never take the
                 // keyboard from whatever the user was typing in.
                 layer.set_keyboard_interactivity(KeyboardInteractivity::None);

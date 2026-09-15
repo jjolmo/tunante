@@ -346,6 +346,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(|v| v != "false")
         .unwrap_or(true);
     if show_in_tray {
+        // Where the icon was the last time anyone clicked it, so the volume
+        // panel opens beside it from the first notch of this session rather
+        // than after the first click of it. See `tray::icon_pos`.
+        if let (Ok(Some(x)), Ok(Some(y))) = (db.get_setting("tray_icon_x"), db.get_setting("tray_icon_y")) {
+            if let (Ok(x), Ok(y)) = (x.parse::<i32>(), y.parse::<i32>()) {
+                tray::set_icon_pos(x, y);
+            }
+        }
         tray::spawn(tray_style);
     }
     ui.set_show_in_tray(show_in_tray);
@@ -5595,7 +5603,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let badge_fp = badge_fp.clone();
         let tray_click = tray_click.clone();
         let cover_gen = cover_gen.clone();
-        let vol_tooltip_hold = Rc::new(std::cell::Cell::new(0u8));
+        // What is already in the database, so a tick that changes nothing writes
+    // nothing.
+    let saved_icon_pos: std::rc::Rc<std::cell::Cell<Option<(i32, i32)>>> =
+        std::rc::Rc::new(std::cell::Cell::new(tray::icon_pos()));
+    let vol_tooltip_hold = Rc::new(std::cell::Cell::new(0u8));
         let pending_search = pending_search.clone();
         let (table_scroll, table_scroll_dirty, table_scroll_restored) = (
             table_scroll.clone(),
@@ -6248,6 +6260,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     sync_queue_marker(p, &queue_model);
                 }
 
+                // A click on the icon told the tray where it is; keep it, so
+                // the next session starts out knowing.
+                if let Some((x, y)) = tray::icon_pos() {
+                    if saved_icon_pos.get() != Some((x, y)) {
+                        saved_icon_pos.set(Some((x, y)));
+                        let _ = db.set_setting("tray_icon_x", &x.to_string());
+                        let _ = db.set_setting("tray_icon_y", &y.to_string());
+                    }
+                }
+
                 // Scroll over the tray icon: volume, five percent a notch,
                 // like every SNI player before this one.
                 let notches = tray::take_scroll();
@@ -6260,7 +6282,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // the pointer is on the icon already (that is what
                     // scrolling is), so it costs nothing and covers the case
                     // where a compositor puts the panel somewhere odd.
-                    osd::show_volume((v * 100.0).round() as u32, ui.global::<Theme>().get_dark());
+                    osd::show_volume(
+                        (v * 100.0).round() as u32,
+                        ui.global::<Theme>().get_dark(),
+                        tray::icon_pos(),
+                    );
                     tray::set_tooltip(
                         &tunante_core::i18n::tr("Volumen {}%").replace("{}", &format!("{:.0}", v * 100.0)),
                     );
