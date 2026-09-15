@@ -5205,6 +5205,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (weak, manual) = (ui.as_weak(), update_manual.clone());
         ui.on_check_update(move || {
             let Some(ui) = weak.upgrade() else { return };
+            // A dev build must not swap itself for a release: the binary under
+            // it is somebody's working tree, and the next `cargo build` would
+            // undo the install anyway. The startup check already skips these
+            // (see `update::IS_RELEASE`); the button used to go ahead and
+            // download over the build it was launched from.
+            if !update::IS_RELEASE {
+                ui.set_update_status(SharedString::from(tunante_core::i18n::tr(
+                    "build de desarrollo: no se actualiza sola",
+                )));
+                return;
+            }
             let offered = pending.borrow_mut().take();
             match offered {
                 Some((version, url)) => {

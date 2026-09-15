@@ -1268,6 +1268,9 @@ msgstr "il tarball non contiene {}"
 msgid "no se pudo escribir junto a {}: {}"
 msgstr "impossibile scrivere accanto a {}: {}"
 
+msgid "build de desarrollo: no se actualiza sola"
+msgstr "build di sviluppo: non si aggiorna da sola"
+
 msgid "esta build se actualiza con su gestor de paquetes"
 msgstr "questa build si aggiorna con il suo gestore di pacchetti"
 

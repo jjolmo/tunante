@@ -1268,6 +1268,9 @@ msgstr "l'archive ne contient pas {}"
 msgid "no se pudo escribir junto a {}: {}"
 msgstr "impossible d'écrire à côté de {} : {}"
 
+msgid "build de desarrollo: no se actualiza sola"
+msgstr "build de développement : elle ne se met pas à jour toute seule"
+
 msgid "esta build se actualiza con su gestor de paquetes"
 msgstr "cette version se met à jour via son gestionnaire de paquets"
 
