@@ -11,6 +11,13 @@
 //! It lives on the UI thread, which is where the wheel's notches are already
 //! folded into the volume (the 500 ms timer in `main.rs`), so there is no
 //! channel here and no second thread: show, restart the timer, hide.
+//!
+//! Two shapes, because the window systems differ on one point that matters:
+//! whether a window may say where it goes. X11, Windows and macOS let it, so
+//! there the panel is this window, placed in the corner the tray lives in.
+//! Wayland does not, at all — so there the same panel goes up as a layer
+//! surface, which anchors itself; that half is `osd_layer.rs`, and it answers
+//! first when it can.
 
 #[cfg(feature = "tray")]
 mod imp {
@@ -59,6 +66,16 @@ mod imp {
     /// copy of Slint's globals, so the theme has to be handed over rather than
     /// inherited.
     pub fn show_volume(percent: u32, dark: bool) {
+        // On Wayland the panel is not a window at all: a client there cannot
+        // place one, so it goes up as a layer surface that anchors itself to
+        // the tray's corner. When that path answers, there is nothing else to
+        // do; when it does not — X11, a compositor without the layer shell,
+        // Windows, macOS — the window below can place itself and does.
+        #[cfg(target_os = "linux")]
+        if crate::osd_layer::try_show(percent.min(100), dark) {
+            return;
+        }
+
         OSD.with(|slot| {
             let mut slot = slot.borrow_mut();
             // Built on the first notch, not at boot: a session that never

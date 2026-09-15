@@ -104,6 +104,15 @@ libc = "0.2"
 # left-click `Activate` instead of forcing the context menu open. async-io to
 # match the rest of the app's zbus; blocking for its spawn/handle API.
 ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"], optional = true }
+# The volume panel, on Wayland. A client there cannot place its own window —
+# the compositor does — so the panel is not a window: it is a layer surface,
+# the same thing every desktop's own OSD and panel is built on. It anchors
+# itself to the corner the tray lives in, stays above, never takes focus and
+# needs no rule from anybody. No xkbcommon (we read no keys) and no `system`
+# (the Rust wayland backend, so musl needs no libwayland), which keeps this to
+# Rust code. Behind `tray` for the same reason ksni is: the phone build has
+# neither a tray nor a wheel to turn over it.
+smithay-client-toolkit = { version = "0.21", default-features = false, features = ["calloop", "calloop-wayland-source"], optional = true }
 # Self-update from GitHub releases, behind the `updater` feature for the same
 # reason the tray hides behind its own: the Alpine package updates through
 # apk, and a package-managed binary must not overwrite itself. Same ureq the
@@ -131,7 +140,7 @@ rfd = { version = "0.16", default-features = false }
 
 [features]
 default = ["tray", "updater"]
-tray = ["dep:ksni", "dep:tray-icon"]
+tray = ["dep:ksni", "dep:tray-icon", "dep:smithay-client-toolkit"]
 updater = ["dep:ureq"]
 
 [build-dependencies]
