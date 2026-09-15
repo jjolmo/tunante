@@ -68,7 +68,14 @@ mod imp {
     }
 
     /// Remember a position, from a click now or from the database at startup.
+    ///
+    /// `(0, 0)` is not a position: hosts that do not know where they drew the
+    /// icon send it instead, and learning it would hang the panel off the
+    /// top-left corner of the first screen — worse than the fallback corner.
     pub fn set_icon_pos(x: i32, y: i32) {
+        if (x, y) == (0, 0) {
+            return;
+        }
         ICON_X.store(x, Ordering::Relaxed);
         ICON_Y.store(y, Ordering::Relaxed);
     }
