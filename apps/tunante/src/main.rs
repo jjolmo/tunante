@@ -137,6 +137,29 @@ fn relaunch() -> Result<(), String> {
         })
 }
 
+thread_local! {
+    /// What a notch of the tray's wheel should do, registered once the player
+    /// and the window exist.
+    ///
+    /// It lives here so the tray thread can ask for it the instant it happens:
+    /// waiting for the 500 ms tick to notice made the volume feel like it was
+    /// dragging its feet, and a wheel spun quickly arrived as two or three
+    /// jumps instead of a slide.
+    static TRAY_SCROLL: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+}
+
+/// Fold the notches the tray has collected into the volume. UI thread only —
+/// `tray.rs` posts it through Slint's event loop.
+pub fn run_tray_scroll() {
+    TRAY_SCROLL.with(|w| {
+        if let Ok(w) = w.try_borrow() {
+            if let Some(work) = w.as_ref() {
+                work();
+            }
+        }
+    });
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     debuglog::install();
     // Before anything else: the updater must not be able to move the answer.
@@ -355,6 +378,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         tray::spawn(tray_style);
+        // And put the volume panel's surface up now, empty: the compositor
+        // animates a surface into existence, and doing it here means the first
+        // notch of the session does not arrive with a zoom.
+        #[cfg(all(target_os = "linux", feature = "tray"))]
+        osd_layer::prime(tray::icon_pos());
     }
     ui.set_show_in_tray(show_in_tray);
     ui.set_tray_style_label(SharedString::from(tray_style_label(tray_style)));
@@ -5608,6 +5636,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let saved_icon_pos: std::rc::Rc<std::cell::Cell<Option<(i32, i32)>>> =
         std::rc::Rc::new(std::cell::Cell::new(tray::icon_pos()));
     let vol_tooltip_hold = Rc::new(std::cell::Cell::new(0u8));
+    {
+        // Five percent a notch, the panel beside the icon, and the tooltip
+        // saying the same for the same second and a half. Registered rather
+        // than inlined in the timer so the tray thread can run it the moment
+        // the wheel turns.
+        let player = player.clone();
+        let weak = ui.as_weak();
+        let hold = vol_tooltip_hold.clone();
+        TRAY_SCROLL.with(|w| {
+            *w.borrow_mut() = Some(Box::new(move || {
+                let notches = tray::take_scroll();
+                if notches == 0 {
+                    return;
+                }
+                let Some(ui) = weak.upgrade() else { return };
+                // The 500 ms tick may be holding the player; those notches
+                // stay in the tray's counter and the next call takes them.
+                let Ok(mut borrowed) = player.try_borrow_mut() else { return };
+                let Some(p) = borrowed.as_mut() else { return };
+                let v = (p.volume() + notches as f32 * 0.05).clamp(0.0, 1.0);
+                p.set_volume(v);
+                ui.set_volume(p.volume());
+                osd::show_volume(
+                    (v * 100.0).round() as u32,
+                    ui.global::<Theme>().get_dark(),
+                    tray::icon_pos(),
+                );
+                tray::set_tooltip(
+                    &tunante_core::i18n::tr("Volumen {}%")
+                        .replace("{}", &format!("{:.0}", v * 100.0)),
+                );
+                hold.set(3);
+            }));
+        });
+    }
         let pending_search = pending_search.clone();
         let (table_scroll, table_scroll_dirty, table_scroll_restored) = (
             table_scroll.clone(),
@@ -5629,6 +5692,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::time::Duration::from_millis(500),
             move || {
                 let Some(ui) = weak.upgrade() else { return };
+
+                // Anything the wheel left behind: the tray wakes the loop for
+                // every notch, so this normally finds nothing. It runs before
+                // the player is borrowed below, because it borrows it too.
+                run_tray_scroll();
 
                 // The folder dialog answered. During the onboarding the folders
                 // join its list; from Ajustes they join the library directly.
@@ -6268,29 +6336,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let _ = db.set_setting("tray_icon_x", &x.to_string());
                         let _ = db.set_setting("tray_icon_y", &y.to_string());
                     }
-                }
-
-                // Scroll over the tray icon: volume, five percent a notch,
-                // like every SNI player before this one.
-                let notches = tray::take_scroll();
-                if notches != 0 {
-                    let v = (p.volume() + notches as f32 * 0.05).clamp(0.0, 1.0);
-                    p.set_volume(v);
-                    ui.set_volume(p.volume());
-                    // The panel the wheel raises, as the old desktop had it.
-                    // The tooltip says the same thing for the same ~1.5 s:
-                    // the pointer is on the icon already (that is what
-                    // scrolling is), so it costs nothing and covers the case
-                    // where a compositor puts the panel somewhere odd.
-                    osd::show_volume(
-                        (v * 100.0).round() as u32,
-                        ui.global::<Theme>().get_dark(),
-                        tray::icon_pos(),
-                    );
-                    tray::set_tooltip(
-                        &tunante_core::i18n::tr("Volumen {}%").replace("{}", &format!("{:.0}", v * 100.0)),
-                    );
-                    vol_tooltip_hold.set(3);
                 }
 
                 // Anything the tray menu asked for. Same shapes as MPRIS,
