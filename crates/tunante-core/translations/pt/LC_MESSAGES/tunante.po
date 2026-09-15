@@ -1423,3 +1423,15 @@ msgstr "Pular a v{}"
 
 msgid "v{} descargada."
 msgstr "v{} baixada."
+
+msgid "no se sabe desde dónde relanzar la app"
+msgstr "não se sabe de onde reiniciar a aplicação"
+
+msgid "el ejecutable ya no está en {}"
+msgstr "o executável já não está em {}"
+
+msgid "no se pudo relanzar: {}"
+msgstr "não foi possível reiniciar: {}"
+
+msgid "v{}"
+msgstr "v{}"
