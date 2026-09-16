@@ -6504,7 +6504,7 @@ dependencies = [
 
 [[package]]
 name = "tunante"
-version = "0.15.2"
+version = "0.15.3"
 dependencies = [
  "async-io",
  "base64 0.22.1",
