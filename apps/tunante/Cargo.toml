@@ -126,6 +126,23 @@ futures-lite = "2"
 [target.'cfg(target_os = "macos")'.dependencies]
 # The in-app updater for the .dmg: same ureq as Linux's, same feature.
 ureq = { version = "3", default-features = false, features = ["rustls", "gzip", "json"], optional = true }
+# The wheel over the tray icon: tray-icon never reports a scroll, so
+# tray_wheel.rs reads it off AppKit's event stream itself. The same objc2 the
+# crate is built on, so the NSStatusItem it hands out is the type these speak.
+# Only the AppKit classes that path touches; the default set is all of AppKit.
+objc2 = { version = "0.6", optional = true }
+block2 = { version = "0.6", optional = true }
+objc2-app-kit = { version = "0.3", default-features = false, optional = true, features = [
+    "std", "objc2-core-foundation", "block2",
+    "NSButton", "NSControl", "NSEvent", "NSResponder", "NSStatusBar",
+    "NSStatusBarButton", "NSStatusItem", "NSView", "NSWindow",
+] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+# The wheel over the tray icon: the notification area never sends one, so
+# tray_wheel.rs hooks the mouse while the pointer is on the icon. The same
+# windows-sys tray-icon is built on.
+windows-sys = { version = "0.60", optional = true, features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
 # The tray on macOS (NSStatusItem) and Windows (notification area): the crate
@@ -140,7 +157,7 @@ rfd = { version = "0.16", default-features = false }
 
 [features]
 default = ["tray", "updater"]
-tray = ["dep:ksni", "dep:tray-icon", "dep:smithay-client-toolkit"]
+tray = ["dep:ksni", "dep:tray-icon", "dep:smithay-client-toolkit", "dep:objc2", "dep:block2", "dep:objc2-app-kit", "dep:windows-sys"]
 updater = ["dep:ureq"]
 
 [build-dependencies]

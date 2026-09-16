@@ -66,6 +66,8 @@ mod player;
 mod single;
 mod store;
 mod tray;
+#[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "tray"))]
+mod tray_wheel;
 mod update;
 use tunante_core::session;
 
