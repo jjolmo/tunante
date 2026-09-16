@@ -364,13 +364,69 @@ pub use imp::{icon_pos, poll, set_icon_pos, set_style, set_tooltip, spawn, take_
 mod native {
     use super::TrayAction;
     use std::cell::RefCell;
+    use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::Mutex;
+    #[cfg(target_os = "windows")]
+    use std::sync::{
+        mpsc::{Receiver, Sender},
+        OnceLock,
+    };
     use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
     use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
     struct Live {
         tray: TrayIcon,
         ids: [(MenuId, TrayAction); 5],
+        /// The wheel's event monitor (`tray_wheel.rs`), held so a rebuild
+        /// never installs a second one over the first.
+        #[cfg(target_os = "macos")]
+        _wheel: Option<objc2::rc::Retained<objc2::runtime::AnyObject>>,
+    }
+    /// Scroll notches over the icon, same contract as Linux's: positive is
+    /// up, swapped out by `take_scroll`, added to by `tray_wheel.rs`.
+    static SCROLL: AtomicI32 = AtomicI32::new(0);
+
+    /// A notch of the wheel, from `tray_wheel.rs` on the UI thread.
+    fn on_notch(notches: i32) {
+        SCROLL.fetch_add(notches, Ordering::Relaxed);
+        // Now, not at the next tick: the same reason as Linux.
+        let _ = slint::invoke_from_event_loop(crate::run_tray_scroll);
+    }
+
+    /// Windows: is this screen point on the icon? Asked by the mouse hook,
+    /// on this thread, for every wheel message while the pointer is near.
+    #[cfg(target_os = "windows")]
+    fn over_icon(x: i32, y: i32) -> bool {
+        LIVE.with(|l| {
+            let Ok(l) = l.try_borrow() else { return false };
+            let Some(r) = l.as_ref().and_then(|live| live.tray.rect()) else { return false };
+            let (x0, y0) = (r.position.x as i32, r.position.y as i32);
+            x >= x0 && x < x0 + r.size.width as i32 && y >= y0 && y < y0 + r.size.height as i32
+        })
+    }
+
+    /// Windows: the crate's events, re-routed. Its handler is how the tray's
+    /// `Enter`/`Leave` reach the hook the instant they happen rather than at
+    /// the UI timer's next tick — but a handler silences the crate's channel,
+    /// so the handler forwards everything here and `poll` reads this instead.
+    #[cfg(target_os = "windows")]
+    fn events() -> &'static (Sender<TrayIconEvent>, Mutex<Receiver<TrayIconEvent>>) {
+        static EVENTS: OnceLock<(Sender<TrayIconEvent>, Mutex<Receiver<TrayIconEvent>>)> = OnceLock::new();
+        EVENTS.get_or_init(|| {
+            let (tx, rx) = std::sync::mpsc::channel();
+            (tx, Mutex::new(rx))
+        })
+    }
+
+    fn next_event() -> Option<TrayIconEvent> {
+        #[cfg(target_os = "windows")]
+        {
+            events().1.lock().ok()?.try_recv().ok()
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            TrayIconEvent::receiver().try_recv().ok()
+        }
     }
     thread_local! {
         static LIVE: RefCell<Option<Live>> = const { RefCell::new(None) };
@@ -436,8 +492,33 @@ mod native {
         {
             builder = builder.with_icon_as_template(is_template(style));
         }
+        #[cfg(target_os = "windows")]
+        {
+            crate::tray_wheel::watch(on_notch, over_icon);
+            TrayIconEvent::set_event_handler(Some(|ev: TrayIconEvent| {
+                match ev {
+                    TrayIconEvent::Enter { .. } => crate::tray_wheel::hover(true),
+                    TrayIconEvent::Leave { .. } => crate::tray_wheel::hover(false),
+                    _ => {}
+                }
+                let _ = events().0.send(ev);
+            }));
+        }
         match builder.build() {
-            Ok(tray) => LIVE.with(|l| *l.borrow_mut() = Some(Live { tray, ids })),
+            Ok(tray) => {
+                #[cfg(target_os = "macos")]
+                let _wheel = tray
+                    .ns_status_item()
+                    .and_then(|item| crate::tray_wheel::watch(item, on_notch));
+                LIVE.with(|l| {
+                    *l.borrow_mut() = Some(Live {
+                        tray,
+                        ids,
+                        #[cfg(target_os = "macos")]
+                        _wheel,
+                    })
+                });
+            }
             Err(e) => eprintln!("sin icono de bandeja: {e}"),
         }
     }
@@ -456,7 +537,7 @@ mod native {
                     .and_then(|live| live.ids.iter().find(|(id, _)| *id == ev.id).map(|(_, a)| *a))
             });
         }
-        while let Ok(ev) = TrayIconEvent::receiver().try_recv() {
+        while let Some(ev) = next_event() {
             if let TrayIconEvent::Click { button, button_state: MouseButtonState::Up, .. } = ev {
                 return match button {
                     MouseButton::Left => Some(TrayAction::ToggleWindow),
@@ -494,7 +575,7 @@ mod native {
     }
 
     pub fn take_scroll() -> i32 {
-        0
+        SCROLL.swap(0, Ordering::Relaxed)
     }
 
     /// Where the icon is: here the crate simply knows, so there is nothing to

@@ -6508,12 +6508,15 @@ version = "0.15.2"
 dependencies = [
  "async-io",
  "base64 0.22.1",
+ "block2 0.6.2",
  "futures-lite",
  "image",
  "ksni",
  "libc",
  "log",
  "mpris-server",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
  "rfd",
  "serde_json",
  "slint",
@@ -6528,6 +6531,7 @@ dependencies = [
  "ureq",
  "uuid",
  "walkdir",
+ "windows-sys 0.60.2",
  "zbus",
 ]
 
