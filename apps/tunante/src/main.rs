@@ -1905,9 +1905,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let sugg_model = Rc::new(VecModel::from(Vec::<SharedString>::new()));
     ui.set_reclass_suggestions(ModelRc::from(sugg_model.clone()));
-    // (folder target, track target), captured when the sheet opens so a
-    // re-sorted table cannot change what Guardar means.
-    let reclass_target: Rc<RefCell<Option<(String, String)>>> = Rc::new(RefCell::new(None));
+    // What Guardar will correct, captured when the sheet opens so a re-sorted
+    // table cannot change what it means: every folder the rows sit in, and
+    // every row. One row gives one of each; a multi-selection that includes
+    // the clicked row gives the whole selection, which is how two games in
+    // two folders get their console in one go instead of one folder at a time.
+    struct ReclassTarget {
+        folders: Vec<String>,
+        tracks: Vec<String>,
+    }
+    let reclass_target: Rc<RefCell<Option<ReclassTarget>>> = Rc::new(RefCell::new(None));
 
     {
         let (st, target, sugg) = (
@@ -1919,23 +1926,68 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ui.on_table_reclassify_requested(move |index| {
             let Some(ui) = weak.upgrade() else { return };
             let st = st.borrow();
-            let Some(t) = st.tracks.get(index as usize) else { return };
-            let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
-            let folder = std::path::Path::new(real)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            *target.borrow_mut() = Some((folder.clone(), t.path.clone()));
-            let folder_name = std::path::Path::new(&folder)
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or(folder);
-            ui.set_reclass_heading(SharedString::from(folder_name));
+            let i = index as usize;
+            // The row, or the selection it is part of — the same rule the
+            // playlist picker and the rating follow.
+            let picked: Vec<&tunante_core::db::models::Track> =
+                if st.selected.len() > 1 && st.selected.contains(&i) {
+                    let mut idx: Vec<usize> = st.selected.iter().copied().collect();
+                    idx.sort_unstable();
+                    idx.iter().filter_map(|&j| st.tracks.get(j)).collect()
+                } else {
+                    let Some(t) = st.tracks.get(i) else { return };
+                    vec![t]
+                };
+            let Some(first) = picked.first() else { return };
+            let mut folders: Vec<String> = Vec::new();
+            for t in &picked {
+                let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
+                let folder = std::path::Path::new(real)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                if !folders.contains(&folder) {
+                    folders.push(folder);
+                }
+            }
+            let folder_name = |f: &str| {
+                std::path::Path::new(f)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| f.to_string())
+            };
+            let heading = if picked.len() == 1 {
+                folder_name(&folders[0])
+            } else if folders.len() == 1 {
+                tunante_core::i18n::tr("{} pistas de «{}»")
+                    .replacen("{}", &picked.len().to_string(), 1)
+                    .replacen("{}", &folder_name(&folders[0]), 1)
+            } else {
+                tunante_core::i18n::tr("{} pistas en {} carpetas")
+                    .replacen("{}", &picked.len().to_string(), 1)
+                    .replacen("{}", &folders.len().to_string(), 1)
+            };
+            // Prefill only what the whole selection agrees on. Two games
+            // selected together must not open with one game's name filled
+            // in, or Guardar would rename the other.
+            let common = |get: fn(&tunante_core::db::models::Track) -> &str| -> String {
+                let v = get(first);
+                if picked.iter().all(|t| get(t) == v) { v.to_string() } else { String::new() }
+            };
+            let console = common(|t| t.console_id.as_str());
+            let game = common(|t| t.game.as_str());
+            ui.set_reclass_selection_count(picked.len() as i32);
+            ui.set_reclass_selection_folders(folders.len() as i32);
+            *target.borrow_mut() = Some(ReclassTarget {
+                folders,
+                tracks: picked.iter().map(|t| t.path.clone()).collect(),
+            });
+            ui.set_reclass_heading(SharedString::from(heading));
             ui.set_reclass_scope_folder(true);
             ui.set_reclass_console_filter(SharedString::new());
             ui.set_consoles(ModelRc::new(VecModel::from(consoles_for_filter(""))));
-            ui.set_reclass_console(SharedString::from(t.console_id.as_str()));
-            ui.set_reclass_game(SharedString::from(t.game.as_str()));
+            ui.set_reclass_console(SharedString::from(console));
+            ui.set_reclass_game(SharedString::from(game));
             sugg.set_vec(Vec::new());
             ui.set_reclassifying(true);
         });
@@ -2004,30 +2056,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let weak = ui.as_weak();
         ui.on_reclass_accepted(move || {
             let Some(ui) = weak.upgrade() else { return };
-            let Some((folder, track)) = target.borrow_mut().take() else {
+            let Some(target) = target.borrow_mut().take() else {
                 ui.set_reclassifying(false);
                 return;
             };
-            let (scope, target_path) = if ui.get_reclass_scope_folder() {
-                ("folder", folder)
+            let (scope, paths) = if ui.get_reclass_scope_folder() {
+                ("folder", target.folders)
             } else {
-                ("track", track)
+                ("track", target.tracks)
             };
             let console = ui.get_reclass_console().to_string();
             let game = ui.get_reclass_game().to_string();
 
             // set_override re-derives every affected row itself, and an
             // all-empty correction becomes a clear — core's rules, reused.
-            if let Err(e) = db_r.set_override(
-                &uuid::Uuid::new_v4().to_string(),
-                scope,
-                &target_path,
-                Some(&console),
-                Some(&game),
-            ) {
-                eprintln!("no se pudo guardar la corrección: {e}");
-                ui.set_reclassifying(false);
-                return;
+            for path in &paths {
+                if let Err(e) = db_r.set_override(
+                    &uuid::Uuid::new_v4().to_string(),
+                    scope,
+                    path,
+                    Some(&console),
+                    Some(&game),
+                ) {
+                    eprintln!("no se pudo guardar la corrección: {e}");
+                    ui.set_reclassifying(false);
+                    return;
+                }
             }
 
             // Derived columns changed under the caches: re-read, re-cut.
@@ -3124,11 +3178,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             else {
                 return;
             };
-            *target.borrow_mut() = Some((path.to_string(), t.path.clone()));
+            *target.borrow_mut() = Some(ReclassTarget {
+                folders: vec![path.to_string()],
+                tracks: vec![t.path.clone()],
+            });
             let folder_name = std::path::Path::new(path.as_str())
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_else(|| path.to_string());
+            ui.set_reclass_selection_count(1);
+            ui.set_reclass_selection_folders(1);
             ui.set_reclass_heading(SharedString::from(folder_name));
             ui.set_reclass_scope_folder(true);
             ui.set_reclass_console_filter(SharedString::new());

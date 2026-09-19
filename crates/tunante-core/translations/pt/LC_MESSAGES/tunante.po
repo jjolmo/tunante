@@ -587,6 +587,18 @@ msgstr "A pasta inteira"
 msgid "Solo esta pista"
 msgstr "Só esta faixa"
 
+msgid "Las {} carpetas"
+msgstr "As {} pastas"
+
+msgid "Las {} pistas seleccionadas"
+msgstr "As {} faixas selecionadas"
+
+msgid "{} pistas de «{}»"
+msgstr "{} faixas de «{}»"
+
+msgid "{} pistas en {} carpetas"
+msgstr "{} faixas em {} pastas"
+
 msgid "Consola"
 msgstr "Console"
 

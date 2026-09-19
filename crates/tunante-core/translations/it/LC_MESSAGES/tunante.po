@@ -587,6 +587,18 @@ msgstr "Tutta la cartella"
 msgid "Solo esta pista"
 msgstr "Solo questa traccia"
 
+msgid "Las {} carpetas"
+msgstr "Le {} cartelle"
+
+msgid "Las {} pistas seleccionadas"
+msgstr "Le {} tracce selezionate"
+
+msgid "{} pistas de «{}»"
+msgstr "{} tracce di «{}»"
+
+msgid "{} pistas en {} carpetas"
+msgstr "{} tracce in {} cartelle"
+
 msgid "Consola"
 msgstr "Console"
 

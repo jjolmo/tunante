@@ -560,6 +560,8 @@ export component DesktopShell inherits Rectangle {
     in-out property <string> reclass-console;
     in-out property <string> reclass-game;
     in-out property <bool> reclass-scope-folder;
+    in property <int> reclass-selection-count;
+    in property <int> reclass-selection-folders;
     in property <[string]> reclass-suggestions;
     callback reclass-game-edited(string);
     callback reclass-accepted();
@@ -1788,6 +1790,8 @@ export component DesktopShell inherits Rectangle {
         console-filter-changed(t) => { root.reclass-console-filter-changed(t); }
         heading: root.reclass-heading;
         scope-folder <=> root.reclass-scope-folder;
+        selection-count: root.reclass-selection-count;
+        selection-folders: root.reclass-selection-folders;
         consoles: root.consoles;
         selected-console <=> root.reclass-console;
         game-text <=> root.reclass-game;

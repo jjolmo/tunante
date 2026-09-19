@@ -587,6 +587,18 @@ msgstr "Der ganze Ordner"
 msgid "Solo esta pista"
 msgstr "Nur dieser Titel"
 
+msgid "Las {} carpetas"
+msgstr "Die {} Ordner"
+
+msgid "Las {} pistas seleccionadas"
+msgstr "Die {} ausgewählten Titel"
+
+msgid "{} pistas de «{}»"
+msgstr "{} Titel aus „{}“"
+
+msgid "{} pistas en {} carpetas"
+msgstr "{} Titel in {} Ordnern"
+
 msgid "Consola"
 msgstr "Konsole"
 
