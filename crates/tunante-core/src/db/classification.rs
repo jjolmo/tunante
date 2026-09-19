@@ -27,7 +27,10 @@ use std::sync::Arc;
 //    stamped again for the fix to reach an existing database.
 // 3: the game named by the file's own header is a field of its own and outranks
 //    the album, which names a release rather than a game.
-pub const CLASSIFIER_VERSION: u32 = 3;
+// 4: an album tag that is only a disc label (`Disc 1`, `CD2`) no longer names
+//    the game; the folder above the disc does. Rips whose discs were filed as
+//    games called `Disc 1` and `Disc 2` need the stamp redone.
+pub const CLASSIFIER_VERSION: u32 = 4;
 
 const VERSION_KEY: &str = "classifier_version";
 

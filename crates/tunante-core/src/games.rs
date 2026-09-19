@@ -120,6 +120,8 @@ mod tests {
             has_artwork: false,
             rating: 0,
             modified_at: 0,
+            // `index` only counts tracks the classifier placed on a console.
+            console_id: "ps1".into(),
             ..Default::default()
         }
     }

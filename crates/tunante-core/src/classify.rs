@@ -162,28 +162,48 @@ pub fn normalize_path(path: &str) -> String {
 /// A multi-disc rip belongs under its game, and "Disc 1" as a game name would
 /// collide across every multi-disc rip in the collection.
 fn is_disc_folder(name: &str) -> bool {
+    disc_label(name).is_some()
+}
+
+/// Is this album tag nothing but a disc label?
+///
+/// The ripper who leaves `Disc 1` in the album field has answered a different
+/// question from "which game is this", and taking that answer literally filed
+/// one Shin Megami Tensei IV Final rip as two games called `Disc 1` and
+/// `Disc 2` — next to the folder that named it correctly. The same goes for
+/// `CD2` or `Bonus`.
+///
+/// Stricter than the folder test on purpose: a folder called `Disc 2 - Blazing
+/// Stars` is a disc with a title, but an album called `Vol. 3: The Subliminal
+/// Verses` is a real record, so anything after the number keeps the tag.
+fn is_bare_disc_label(album: &str) -> bool {
+    disc_label(album).is_some_and(|rest| rest.is_empty())
+}
+
+/// `Some(what follows the disc number)` when `name` starts as a disc or bonus
+/// subdivision, `None` when it does not. `Disc 2 - Blazing Stars` gives
+/// `Some("blazing stars")`, `Disc 1` gives `Some("")`, `Ape Escape` gives `None`.
+fn disc_label(name: &str) -> Option<String> {
     let n = console::normalize_segment(name);
     if matches!(n.as_str(), "bonus" | "extras" | "extra" | "bonus tracks" | "bonus disc") {
-        return true;
+        return Some(String::new());
     }
     let mut tokens = n.split(' ').filter(|t| !t.is_empty());
-    let Some(first) = tokens.next() else { return false };
+    let first = tokens.next()?;
 
     // `Disc1` normalises to one token, `Disc 1` to two. Split a fused one.
     let split = first.find(|c: char| c.is_ascii_digit()).unwrap_or(first.len());
     let (word, fused_number) = first.split_at(split);
     let word = if word.is_empty() { first } else { word };
     if !matches!(word, "disc" | "disk" | "cd" | "dvd" | "vol" | "volume") {
-        return false;
+        return None;
     }
 
     let number = if fused_number.is_empty() { tokens.next().unwrap_or("") } else { fused_number };
-    // A plausible disc number, and nothing else. The upper bound is what keeps
-    // a `CD32` folder — the Commodore machine — from being read as disc 32.
-    // Whatever follows the number is the disc's own title and is ignored.
-    number
-        .parse::<u32>()
-        .is_ok_and(|n| (1..=20).contains(&n))
+    // A plausible disc number. The upper bound is what keeps a `CD32` folder —
+    // the Commodore machine — from being read as disc 32.
+    let plausible = number.parse::<u32>().is_ok_and(|n| (1..=20).contains(&n));
+    plausible.then(|| tokens.collect::<Vec<_>>().join(" "))
 }
 
 /// Strip the noise commonly found in game folder and album names so downstream
@@ -405,7 +425,9 @@ impl Classifier {
             return (sanitize_or_raw(header_game), GameSource::HeaderGame);
         }
         // The ripper's own answer, and the reason abbreviated folders still work.
-        if !album.trim().is_empty() {
+        // Unless the answer is `Disc 1`: that names a slice of the rip, not the
+        // game, and the folder below knows better.
+        if !album.trim().is_empty() && !is_bare_disc_label(album) {
             return (sanitize_or_raw(album), GameSource::AlbumTag);
         }
 
@@ -760,6 +782,28 @@ mod tests {
         let c = classify(&format!("{ROOT}/PSX/Ape Escape/01.mp3"), "", "MP3");
         assert_eq!(c.game, "Ape Escape");
         assert_eq!(c.game_source, GameSource::Folder);
+    }
+
+    /// The real case: a Shin Megami Tensei IV Final rip whose MP3s carry
+    /// `Disc 1` and `Disc 2` as their album, and nothing else. Those are not
+    /// two games; the folder above the discs names the one game.
+    #[test]
+    fn an_album_tag_that_is_only_a_disc_label_yields_to_the_folder() {
+        for (album, dir) in [("Disc 1", "Disc 1"), ("Disc 2", "Disc 2"), ("CD2", "CD 2"), ("Bonus", "Bonus")] {
+            let path = format!("{ROOT}/Megaten/Shin Megami Tensei IV/{dir}/01.mp3");
+            let c = classify(&path, album, "MP3");
+            assert_eq!(c.game, "Shin Megami Tensei IV", "album {album:?}");
+            assert_eq!(c.game_source, GameSource::Folder, "album {album:?}");
+        }
+    }
+
+    /// A disc label with a title after it is a real album name and stays: the
+    /// folder rule ignores the tail, the album rule must not.
+    #[test]
+    fn a_titled_volume_is_still_an_album() {
+        let c = classify(&format!("{ROOT}/Rock/Slipknot/01.mp3"), "Vol. 3: The Subliminal Verses", "MP3");
+        assert_eq!(c.game, "Vol. 3: The Subliminal Verses");
+        assert_eq!(c.game_source, GameSource::AlbumTag);
     }
 
     #[test]
