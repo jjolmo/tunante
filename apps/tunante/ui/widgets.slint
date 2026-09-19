@@ -1605,6 +1605,17 @@ export component MetadataSheet inherits Rectangle {
 export component ReclassifySheet inherits Rectangle {
     in property <string> heading;
     in-out property <bool> scope-folder: true;
+    // How many tracks the correction reaches, and how many folders they
+    // sit in. Below two tracks the sheet is about one row and its folder;
+    // from two up it is about the selection, and the two scopes say so.
+    in property <int> selection-count;
+    in property <int> selection-folders;
+    property <string> folder-label: root.selection-count > 1 && root.selection-folders > 1
+        ? @tr("Las {} carpetas", root.selection-folders)
+        : @tr("Toda la carpeta");
+    property <string> track-label: root.selection-count > 1
+        ? @tr("Las {} pistas seleccionadas", root.selection-count)
+        : @tr("Solo esta pista");
     in property <[ConsoleOption]> consoles;
     in-out property <string> selected-console;
     in-out property <string> console-filter;
@@ -1643,7 +1654,7 @@ export component ReclassifySheet inherits Rectangle {
             // is still the case this dialog exists for, and the default.
             HorizontalLayout {
                 spacing: Theme.gap;
-                for opt[i] in [@tr("Toda la carpeta"), @tr("Solo esta pista")]: Rectangle {
+                for opt[i] in [root.folder-label, root.track-label]: Rectangle {
                     height: Theme.touch-target - 12px;
                     horizontal-stretch: 1;
                     border-radius: Theme.radius;

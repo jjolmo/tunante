@@ -513,6 +513,8 @@ export component AppWindow inherits Window {
     in-out property <string> reclass-console;
     in-out property <string> reclass-game;
     in-out property <bool> reclass-scope-folder;
+    in property <int> reclass-selection-count;
+    in property <int> reclass-selection-folders;
     in property <[string]> reclass-suggestions;
     callback reclass-game-edited(string);
     callback reclass-accepted();
@@ -885,6 +887,8 @@ export component AppWindow inherits Window {
             reclass-console <=> root.reclass-console;
             reclass-game <=> root.reclass-game;
             reclass-scope-folder <=> root.reclass-scope-folder;
+            reclass-selection-count: root.reclass-selection-count;
+            reclass-selection-folders: root.reclass-selection-folders;
             reclass-suggestions: root.reclass-suggestions;
             reclass-game-edited(t) => { root.reclass-game-edited(t); }
             reclass-accepted => { root.reclass-accepted(); }
