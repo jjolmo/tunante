@@ -13,6 +13,7 @@
 
 mod gme;
 mod gsf;
+mod kss;
 mod opus;
 mod psf;
 mod psf2;
@@ -44,6 +45,7 @@ pub fn vgmstream_accepts(filename: &str) -> bool {
 
 pub use gme::GmeSource;
 pub use gsf::GsfSource;
+pub use kss::KssSource;
 pub use opus::OggOpusSource;
 pub use psf::PsfSource;
 pub use psf2::Psf2Source;

@@ -15,7 +15,7 @@ use tunante_core::vgm_path::{
 };
 
 use crate::{
-    GmeSource, GsfSource, OggOpusSource, Psf2Source, PsfSource, TwoSfSource, UsfSource,
+    GmeSource, GsfSource, KssSource, OggOpusSource, Psf2Source, PsfSource, TwoSfSource, UsfSource,
     VgmstreamSource,
 };
 
@@ -115,7 +115,19 @@ pub fn open_source_with(
 
     let decoder_err = |e: String| OpenError::Decoder(e);
 
-    if is_gme_format(ext) {
+    if ext == "kss" {
+        // MSX. Ahead of the GME branch on purpose: GME claims `.kss`, compiles a
+        // backend for it and plays silence on a real rip, because it emulates
+        // almost none of an MSX. See `crates/tunante-codec/src/kss.rs`.
+        //
+        // Metadata still comes from GME — it reads the same `.m3u` and gets the
+        // names and lengths right — so the sub-track number here is a position
+        // in that playlist, which `KssSource` maps back to a song number.
+        let index = sub_track.unwrap_or(0);
+        Ok(Box::new(
+            KssSource::new(actual_path, index, duration_hint_ms).map_err(decoder_err)?,
+        ))
+    } else if is_gme_format(ext) {
         // GME chiptune formats (NSF, SPC, GBS, VGM, …)
         let track_index = sub_track.unwrap_or(0);
         Ok(Box::new(

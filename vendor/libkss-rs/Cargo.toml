@@ -1,0 +1,9 @@
+[package]
+name = "libkss-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Bindings for the vendored libkss: KSS (MSX) playback, the formats GME's KSS backend cannot actually play"
+license = "ISC"
+
+[build-dependencies]
+cc = "1"

@@ -165,6 +165,34 @@ fn is_disc_folder(name: &str) -> bool {
     disc_label(name).is_some()
 }
 
+/// The folder a folder-scoped correction should be filed on for this track:
+/// its directory, lifted above any disc folders.
+///
+/// A multi-disc rip keeps its tracks in `Game/Disc 1`, `Game/Disc 2`, and a
+/// track's directory is the disc. Filing "the whole folder is Switch" on
+/// `Disc 4` corrects one fifth of the game, and the user who did that five
+/// times — one disc per attempt, each looking like the previous one had been
+/// undone — is why this lifts to the game: the correction that is true of
+/// a disc is true of the rip it belongs to.
+///
+/// A subsong address (`file.nsf#3`) is stripped first; the directory is the
+/// same either way.
+pub fn correction_folder_of(path: &str) -> String {
+    let (real, _) = crate::vgm_path::parse_vgm_path(path);
+    let mut folder = match real.rfind('/') {
+        Some(i) => &real[..i],
+        None => return String::new(),
+    };
+    while let Some(i) = folder.rfind('/') {
+        if is_disc_folder(&folder[i + 1..]) {
+            folder = &folder[..i];
+        } else {
+            break;
+        }
+    }
+    folder.to_string()
+}
+
 /// Is this album tag nothing but a disc label?
 ///
 /// The ripper who leaves `Disc 1` in the album field has answered a different
@@ -804,6 +832,21 @@ mod tests {
         let c = classify(&format!("{ROOT}/Rock/Slipknot/01.mp3"), "Vol. 3: The Subliminal Verses", "MP3");
         assert_eq!(c.game, "Vol. 3: The Subliminal Verses");
         assert_eq!(c.game_source, GameSource::AlbumTag);
+    }
+
+    #[test]
+    fn a_correction_on_a_disc_folder_lands_on_the_game() {
+        assert_eq!(
+            correction_folder_of("/m/Megaten/Shin Megami Tensei V/Disc 4/01.mp3"),
+            "/m/Megaten/Shin Megami Tensei V"
+        );
+        assert_eq!(correction_folder_of("/m/PSX/Ape Escape/01.mp3"), "/m/PSX/Ape Escape");
+        // Titled discs and nested subdivisions lift the same way.
+        assert_eq!(
+            correction_folder_of("/m/Genshin/Disc 2 - Blazing Stars/CD1/03.flac"),
+            "/m/Genshin"
+        );
+        assert_eq!(correction_folder_of("/m/NES/game.nsf#3"), "/m/NES");
     }
 
     #[test]

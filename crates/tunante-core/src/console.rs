@@ -336,7 +336,11 @@ pub static CONSOLES: &[Console] = &[
         id: "msx",
         name: "MSX",
         name_es: "MSX",
-        aliases: &["msx"],
+        // "msx2" and "msx1" are spelled out because alias matching drops
+        // trailing *tokens*, and a glued-on digit is not one: "MSX2" normalises
+        // to the single token "msx2", which would otherwise match nothing.
+        // "MSX-2" and "MSX Turbo R" already land on "msx" that way.
+        aliases: &["msx", "msx1", "msx2", "msxturbor"],
         codecs: &["kss"],
         weak_codecs: &[],
         libretro: Some("Microsoft - MSX"),
@@ -550,6 +554,17 @@ pub fn extension_of(path: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Alias matching drops trailing *tokens*, and a digit glued to the name
+    /// is not one: "MSX2" normalises to a single token and used to match
+    /// nothing, so a folder named after the machine landed in "Otros".
+    #[test]
+    fn a_glued_on_generation_digit_still_names_the_machine() {
+        assert_eq!(by_folder_segment("MSX2").unwrap().id, "msx");
+        assert_eq!(by_folder_segment("MSX-2").unwrap().id, "msx");
+        assert_eq!(by_folder_segment("MSX Turbo R").unwrap().id, "msx");
+        assert_eq!(by_folder_segment("msx2 kss").unwrap().id, "msx");
+    }
 
     #[test]
     fn strong_extensions_name_their_machine() {

@@ -94,6 +94,8 @@ export component SettingsTab inherits Rectangle {
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
     callback toggle-slow-scan();
+    in-out property <bool> scan-on-startup;
+    callback toggle-scan-on-startup();
     in property <bool> dsp-mono-compensate;
     in property <bool> dsp-mono-phase;
     callback toggle-mono-compensate();
@@ -449,6 +451,15 @@ export component SettingsTab inherits Rectangle {
             value: root.slow-scan ? @tr("sí") : @tr("no");
             highlighted: root.slow-scan;
             clicked => { root.toggle-slow-scan(); }
+        }
+        // Music copied in while the player was closed is invisible until
+        // something looks: the watcher only sees what changes with the window
+        // open. This is that look, a few seconds after opening.
+        SettingRow {
+            label: @tr("Analizar al abrir");
+            value: root.scan-on-startup ? @tr("sí") : @tr("no");
+            highlighted: root.scan-on-startup;
+            clicked => { root.toggle-scan-on-startup(); }
         }
         // Where a star lands besides the database: the file's own tag, or the
         // folder's _ratings.m3u. The same order the desktop honoured.

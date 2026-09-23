@@ -756,6 +756,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Raised by the modal's "Cancelar"; every scan thread resets it as it starts
     // and polls it per file.
     let scan_cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Whether the scan now running is the quiet one. Read by the timer, which
+    // otherwise opens the modal the moment any progress arrives.
+    let scan_quiet = Rc::new(std::cell::Cell::new(false));
     {
         let cancel = scan_cancel.clone();
         ui.on_scan_cancelled(move || cancel.store(true, std::sync::atomic::Ordering::Relaxed));
@@ -1939,13 +1942,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     vec![t]
                 };
             let Some(first) = picked.first() else { return };
+            // The game's folder, not the disc's: five discs are one folder
+            // here, so "Toda la carpeta" on any of them corrects the rip.
             let mut folders: Vec<String> = Vec::new();
             for t in &picked {
-                let (real, _) = tunante_core::vgm_path::parse_vgm_path(&t.path);
-                let folder = std::path::Path::new(real)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_default();
+                let folder = tunante_core::classify::correction_folder_of(&t.path);
                 if !folders.contains(&folder) {
                     folders.push(folder);
                 }
@@ -3178,14 +3179,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             else {
                 return;
             };
+            // Right-clicking `Disc 2` in the tree corrects the game it is a
+            // disc of, and the heading names that game so Guardar is honest.
+            let folder = {
+                let lifted = tunante_core::classify::correction_folder_of(&t.path);
+                if lifted.len() < path.len() && path.starts_with(lifted.as_str()) {
+                    lifted
+                } else {
+                    path.to_string()
+                }
+            };
             *target.borrow_mut() = Some(ReclassTarget {
-                folders: vec![path.to_string()],
+                folders: vec![folder.clone()],
                 tracks: vec![t.path.clone()],
             });
-            let folder_name = std::path::Path::new(path.as_str())
+            let folder_name = std::path::Path::new(folder.as_str())
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.to_string());
+                .unwrap_or_else(|| folder.clone());
             ui.set_reclass_selection_count(1);
             ui.set_reclass_selection_folders(1);
             ui.set_reclass_heading(SharedString::from(folder_name));
@@ -3922,12 +3933,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_sleep_minutes(t.remaining_minutes() as i32);
         });
     }
-    {
+    // Starting a scan, from the button or from the one at startup.
+    //
+    // `quiet` is the whole difference between them. The button belongs to
+    // somebody who asked and is waiting: it opens the modal and lands on the
+    // library when it finishes. The startup scan belongs to nobody — it runs
+    // while the window is doing something else — so it takes over neither the
+    // screen nor the tab. What it finds still reaches the library the same way.
+    let start_scan: Rc<dyn Fn(&AppWindow, bool)> = {
         let (db, dbfile, scan_tx) = (db.clone(), dbfile.clone(), scan_tx.clone());
         let scan_cancel = scan_cancel.clone();
-        let weak = ui.as_weak();
-        ui.on_rescan(move || {
-            let Some(ui) = weak.upgrade() else { return };
+        let scan_quiet = scan_quiet.clone();
+        Rc::new(move |ui: &AppWindow, quiet: bool| {
             let folders: Vec<PathBuf> = db
                 .get_monitored_folders()
                 .unwrap_or_default()
@@ -3937,7 +3954,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if folders.is_empty() {
                 return;
             }
-            ui.set_scan_status(tunante_core::i18n::tr("Analizando…").into());
+            scan_quiet.set(quiet);
+            if !quiet {
+                ui.set_scan_status(tunante_core::i18n::tr("Analizando…").into());
+            }
             let (tx, dbfile) = (scan_tx.clone(), dbfile.clone());
             let cancel = scan_cancel.clone();
             cancel.store(false, std::sync::atomic::Ordering::Relaxed);
@@ -3963,6 +3983,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     });
                 }
             });
+        })
+    };
+    {
+        let start_scan = start_scan.clone();
+        let weak = ui.as_weak();
+        ui.on_rescan(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            start_scan(&ui, false);
         });
     }
     // --- Bulk cover download: preview first, apply second, undo forever ----
@@ -4713,6 +4741,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     // Cap the endless-track limit over declared lengths too.
+    // Off by default: it changes what opening the app does, and that is a
+    // decision to make on purpose rather than to inherit from an update.
+    ui.set_scan_on_startup(get_bool_setting(&db, "scan_on_startup", false));
+    {
+        let (db, weak) = (db.clone(), ui.as_weak());
+        ui.on_toggle_scan_on_startup(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let next = !ui.get_scan_on_startup();
+            ui.set_scan_on_startup(next);
+            let _ = db.set_setting("scan_on_startup", if next { "true" } else { "false" });
+        });
+    }
     ui.set_caps_all(get_bool_setting(&db, "loop_max_caps_all", false));
     {
         let (db, weak) = (db.clone(), ui.as_weak());
@@ -5757,6 +5797,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
         let played_scope_t = played_scope.clone();
+        let scan_quiet_t = scan_quiet.clone();
+        let start_scan_t = start_scan.clone();
+        /// How long after the window opens the startup scan begins, in 500 ms
+        /// ticks. The first seconds belong to the window — models, covers, the
+        /// session being resumed — and a walk of a large folder competing with
+        /// that is felt on screen.
+        const STARTUP_SCAN_TICKS: u64 = 10;
+        let mut startup_scan_done = false;
         let mut ticks: u64 = 0;
         let weak = ui.as_weak();
         timer.start(
@@ -5797,6 +5845,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ui.set_scan_done(scanned as i32);
                             ui.set_scan_total(total as i32);
                             ui.set_scan_found(added as i32);
+                            // The status string is what puts the modal on
+                            // screen, so the quiet scan never sets it.
+                            if scan_quiet_t.get() {
+                                continue;
+                            }
                             ui.set_scan_status(SharedString::from(
                                 tunante_core::i18n::tr("Analizando {}/{}\n{} pistas encontradas")
                                     .replacen("{}", &scanned.to_string(), 1)
@@ -6118,6 +6171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if scan_done {
+                    let was_quiet = scan_quiet_t.replace(false);
                     ui.set_scan_status(SharedString::new());
                     ui.set_scan_done(0);
                     ui.set_scan_total(0);
@@ -6134,7 +6188,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let rows = tree.borrow().rows(&db);
                     ui.set_library_total(rows.len() as i32);
                     rows_model.set_vec(to_ui_rows(&rows));
-                    ui.set_tab(2);
+                    // Landing on the library is the answer to "I pressed
+                    // rescan". Nobody pressed anything for the quiet one, and
+                    // yanking the view out from under whatever they were doing
+                    // would be the bug, not the feature.
+                    if !was_quiet {
+                        ui.set_tab(2);
+                    }
                     // The folder list can have just grown; watch the newcomers.
                     sync_watches();
                     // And everything on screen re-reads the database: the
@@ -6521,6 +6581,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // killed by the system far more often than it is closed, and a
                 // resume that only survives a clean exit rarely fires.
                 ticks += 1;
+
+                // The library check at startup: once, a few seconds in, and
+                // only if Ajustes asks for it.
+                //
+                // Incremental like any other scan, so on a library nothing has
+                // happened to it this is a walk of stat() calls and no probing
+                // at all — and quiet, so it never takes the screen.
+                if !startup_scan_done && ticks >= STARTUP_SCAN_TICKS {
+                    startup_scan_done = true;
+                    if get_bool_setting(&db, "scan_on_startup", false) {
+                        start_scan_t(&ui, true);
+                    }
+                }
                 if ticks % 10 == 0 {
                     // Same cadence as the desktop's output supervisor: rebuild
                     // the stream if the device died under us or the system
