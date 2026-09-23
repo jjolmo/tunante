@@ -1,4 +1,4 @@
-mod gme_reader;
+pub(crate) mod gme_reader;
 mod gsf_reader;
 mod psf_reader;
 mod psf2_reader;

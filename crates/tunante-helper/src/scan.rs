@@ -117,8 +117,10 @@ pub fn scan_folder_cancellable(
     // last scan stamped is not probed again. New and changed files are; so is
     // everything when the scan options change (the flavor), because slow scan
     // versus fast changes what a probe reports.
-    let flavor = flavor_of(opts);
-    let mut stamps: std::collections::HashMap<PathBuf, (i64, i64)> = std::collections::HashMap::new();
+    // The flavor is per file, not per scan: one that has a companion playlist
+    // also depends on the reader that parses it. See `flavor_for`.
+    let mut stamps: std::collections::HashMap<PathBuf, (i64, i64, i64)> =
+        std::collections::HashMap::new();
     let mut files: Vec<PathBuf> = Vec::with_capacity(all.len());
     let mut skipped = 0usize;
     for p in all {
@@ -126,6 +128,7 @@ pub fn scan_folder_cancellable(
             files.push(p);
             continue;
         };
+        let flavor = flavor_for(opts, &p);
         let known = db
             .scan_stamp(&p.to_string_lossy())
             .ok()
@@ -134,7 +137,7 @@ pub fn scan_folder_cancellable(
         if known {
             skipped += 1;
         } else {
-            stamps.insert(p.clone(), (size, mtime));
+            stamps.insert(p.clone(), (size, mtime, flavor));
             files.push(p);
         }
     }
@@ -228,8 +231,10 @@ pub fn scan_folder_cancellable(
                 }
                 // Stamp only what went in whole, so a partial file is retried.
                 if all_in {
-                    if let Some((size, mtime)) = stamps.get(&path) {
-                        let _ = db.set_scan_stamp(&path.to_string_lossy(), *size, *mtime, flavor);
+                    // Stamped with the flavor this file was *checked* against,
+                    // so the next scan compares like with like.
+                    if let Some((size, mtime, flavor)) = stamps.get(&path) {
+                        let _ = db.set_scan_stamp(&path.to_string_lossy(), *size, *mtime, *flavor);
                     }
                 }
             }
@@ -274,12 +279,7 @@ fn file_stamp(path: &Path) -> Option<(i64, i64)> {
     }
     let meta = std::fs::metadata(path).ok()?;
     let mut newest = mtime_of(path)?;
-    let mut sidecars: Vec<PathBuf> = vec![path.with_extension("m3u")];
-    if let Some(name) = path.file_name() {
-        let mut n = name.to_os_string();
-        n.push(".m3u");
-        sidecars.push(path.with_file_name(n));
-    }
+    let mut sidecars = sidecar_playlists(path);
     if let Some(dir) = path.parent() {
         sidecars.push(dir.join("_ratings.m3u"));
     }
@@ -289,6 +289,50 @@ fn file_stamp(path: &Path) -> Option<(i64, i64)> {
         }
     }
     Some((meta.len() as i64, newest))
+}
+
+/// The companion playlist a GME set takes its track names and lengths from:
+/// `<stem>.m3u` beside the file, or `<file>.m3u`. Both spellings are in the
+/// wild; neither is the folder's `_ratings.m3u`, which is a different file
+/// read by a different reader.
+fn sidecar_playlists(path: &Path) -> Vec<PathBuf> {
+    let mut out = vec![path.with_extension("m3u")];
+    if let Some(name) = path.file_name() {
+        let mut n = name.to_os_string();
+        n.push(".m3u");
+        out.push(path.with_file_name(n));
+    }
+    out
+}
+
+/// How many times the sidecar-playlist reader has changed what it reports.
+///
+/// A stamp answers "has this file changed since we read it", and that is the
+/// wrong question after the *reader* changes: the file is untouched and the
+/// metadata it would now produce is different. Bumping this makes every
+/// stamped file that has a companion playlist stale, and nothing else — a
+/// library of 26k tracks carries a few dozen of them, so the repair costs
+/// seconds, while folding it into every stamp would re-probe the whole
+/// collection to fix a handful of chiptune rips.
+///
+/// 1 → 2: the reader stopped throwing away playlists that are not UTF-8 (these
+/// files are Shift-JIS as a rule) and learned the hex song numbers KSS rips
+/// use (`$99`). Sets stamped before it hold titles like "Track 7" that their
+/// own playlist can name.
+const M3U_READER_REVISION: i64 = 2;
+
+/// The flavor to stamp this particular file with.
+///
+/// [`flavor_of`] answers for the probe options, which are the same for every
+/// file in a scan. A file with a companion playlist also depends on the reader
+/// that parses it, so it carries that revision too.
+fn flavor_for(opts: &crate::ProbeOpts, path: &Path) -> i64 {
+    let base = flavor_of(opts);
+    if sidecar_playlists(path).iter().any(|p| p.exists()) {
+        base ^ M3U_READER_REVISION.wrapping_mul(0x5f3a_1c7b)
+    } else {
+        base
+    }
 }
 
 /// The probe options folded into one number: the same options give the same
@@ -502,6 +546,55 @@ mod tests {
 #[cfg(test)]
 mod incremental_tests {
     use super::*;
+
+    #[test]
+    /// A fix to the playlist reader has to reach files already stamped, and
+    /// only those: the stamp says "unchanged since we read it", which stops
+    /// being the question once the reader itself changes.
+    #[test]
+    fn only_a_file_with_a_playlist_is_restamped_by_the_reader_revision() {
+        // Unique per run, not just per process: a fixed name is a directory
+        // another test run can still be deleting while this one writes into it.
+        let dir = std::env::temp_dir().join(format!(
+            "tunante-flavor-sidecar-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let opts = crate::ProbeOpts { fast: true, ..Default::default() };
+
+        let plain = dir.join("alone.kss");
+        std::fs::write(&plain, b"x").unwrap();
+        assert_eq!(
+            flavor_for(&opts, &plain),
+            flavor_of(&opts),
+            "a file with no playlist carries the options and nothing else"
+        );
+
+        let with_list = dir.join("set.kss");
+        std::fs::write(&with_list, b"x").unwrap();
+        std::fs::write(dir.join("set.m3u"), b"set.kss::KSS,$99,A title,1,,0\n").unwrap();
+        assert_ne!(
+            flavor_for(&opts, &with_list),
+            flavor_of(&opts),
+            "a file with one is stale whenever the reader moves on"
+        );
+
+        // `<file>.m3u`, the other spelling, counts the same.
+        let suffixed = dir.join("other.kss");
+        std::fs::write(&suffixed, b"x").unwrap();
+        std::fs::write(dir.join("other.kss.m3u"), b"other.kss::KSS,1,A title,1,,0\n").unwrap();
+        assert_ne!(flavor_for(&opts, &suffixed), flavor_of(&opts));
+
+        // The options still matter on top of it.
+        let slow = crate::ProbeOpts { fast: false, ..opts.clone() };
+        assert_ne!(flavor_for(&opts, &with_list), flavor_for(&slow, &with_list));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn flavor_changes_with_every_option() {

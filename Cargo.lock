@@ -3348,6 +3348,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "libkss-rs"
+version = "0.1.0"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "libloading"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6581,9 +6588,11 @@ name = "tunante-codec"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "encoding_rs",
  "game-music-emu",
  "hepsf-rs",
  "lazyusf2-rs",
+ "libkss-rs",
  "lofty",
  "log",
  "ogg",

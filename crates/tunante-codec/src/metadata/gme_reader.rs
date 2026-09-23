@@ -19,24 +19,74 @@ const MAX_DETECT_DURATION_MS: i32 = 300_000;
 const DETECT_CHUNK_SAMPLES: usize = 2048;
 
 /// Parsed entry from a GME-style .m3u playlist.
-struct M3uEntry {
-    track: i32,        // 1-based track number
-    title: String,
-    length_ms: i64,    // -1 if not specified
-    fade_ms: i64,      // -1 if not specified
+pub(crate) struct M3uEntry {
+    /// The song number exactly as the line names it — decimal, or the value of
+    /// a `$99`. For a KSS rip this is the driver's song id and not a position,
+    /// which is why nothing here indexes on it.
+    pub(crate) track: i32,
+    pub(crate) title: String,
+    pub(crate) length_ms: i64, // -1 if not specified
+    pub(crate) fade_ms: i64,   // -1 if not specified
 }
 
-/// Parsed data from a GME-style .m3u file: track entries.
-struct M3uData {
-    entries: HashMap<i32, M3uEntry>,
+/// Parsed data from a GME-style .m3u file: its entries, in file order.
+///
+/// Order is the payload here, not a convenience. `GameMusicEmu::from_file`
+/// hands the same file to GME (`gme_load_m3u_data`), and when GME accepts it
+/// the emulator's track list *becomes* these entries, in this order — so entry
+/// *n* describes GME's track *n* whatever song number the line spells.
+pub(crate) struct M3uData {
+    pub(crate) entries: Vec<M3uEntry>,
 }
 
-/// Parse a GME-style .m3u file and return entries keyed by 1-based track number.
+/// Read an `.m3u` as text, whatever it was written in.
+///
+/// These are decades-old rips and hardly any of them are UTF-8: the titles in
+/// a KSS or SPC playlist carry Japanese in Shift-JIS, and a European one is
+/// usually Windows-1252. `read_to_string` refuses every one of them, and it
+/// refuses the *whole file* over a single byte — which is how a Metal Gear rip
+/// came to show 47 tracks named "Track 1" while its playlist sat next to it
+/// with every real title in it.
+fn read_m3u_text(path: &Path) -> Option<String> {
+    let bytes = std::fs::read(path).ok()?;
+    match String::from_utf8(bytes) {
+        Ok(text) => Some(text),
+        Err(e) => {
+            let bytes = e.into_bytes();
+            // Shift-JIS first, and only when it fits: it is the encoding that
+            // carries real meaning for these files, and `had_errors` says when
+            // it is the wrong guess. Windows-1252 maps every possible byte, so
+            // it can never report a problem — asking it first would silently
+            // turn every Japanese title into mojibake.
+            let (text, _, had_errors) = encoding_rs::SHIFT_JIS.decode(&bytes);
+            if !had_errors {
+                return Some(text.into_owned());
+            }
+            let (text, _, _) = encoding_rs::WINDOWS_1252.decode(&bytes);
+            Some(text.into_owned())
+        }
+    }
+}
+
+/// The song number a track field names: `71`, or `$99` written in hex.
+///
+/// KSS rips number their songs the way the sound driver does — hex, with a
+/// `$`. Most other formats use a plain 1-based index. Both turn up in the
+/// wild, sometimes in the same folder.
+fn parse_track_number(field: &str) -> Option<i32> {
+    let s = field.trim();
+    match s.strip_prefix('$') {
+        Some(hex) => i32::from_str_radix(hex, 16).ok(),
+        None => s.parse().ok(),
+    }
+}
+
+/// Parse a GME-style .m3u file, keeping its entries in file order.
 /// Format: `filename::TYPE,track,title,length,,fade`
 /// or:     `filename,track,title,length,,fade`
-fn parse_gme_m3u(path: &Path) -> Option<M3uData> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let mut entries = HashMap::new();
+pub(crate) fn parse_gme_m3u(path: &Path) -> Option<M3uData> {
+    let content = read_m3u_text(path)?;
+    let mut entries = Vec::new();
 
     for line in content.lines() {
         let line = line.trim_end_matches('\r').trim();
@@ -72,9 +122,9 @@ fn parse_gme_m3u(path: &Path) -> Option<M3uData> {
             continue;
         }
 
-        let track: i32 = match fields[0].trim().parse() {
-            Ok(t) => t,
-            Err(_) => continue,
+        let track = match parse_track_number(fields[0]) {
+            Some(t) => t,
+            None => continue,
         };
 
         let title = if fields.len() > 1 {
@@ -97,7 +147,7 @@ fn parse_gme_m3u(path: &Path) -> Option<M3uData> {
             -1
         };
 
-        entries.insert(track, M3uEntry {
+        entries.push(M3uEntry {
             track,
             title,
             length_ms,
@@ -110,6 +160,40 @@ fn parse_gme_m3u(path: &Path) -> Option<M3uData> {
     } else {
         Some(M3uData { entries })
     }
+}
+
+/// Whether a playlist's entries line up with GME's tracks by *order* rather
+/// than by the number each line names.
+///
+/// An ordinary NSF or GBS playlist numbers its lines 1..N and the number is an
+/// index into the file's songs, written in whatever order the ripper felt
+/// like: Batman's starts 10, 11, 1, 2…, so only the number puts its eleven
+/// titles on the right eleven songs.
+///
+/// A KSS playlist numbers them the way the sound driver does — `$99`, `71`,
+/// `$6A` — ids rather than positions, every one past the end of a ten-song
+/// file. What aligns there is the order itself.
+///
+/// Both halves of the evidence are needed, because a number out of range has a
+/// second explanation: a playlist that does not describe this file well (Mega
+/// Man 4 ships 27 lines for a file GME reads as one song). So the order is
+/// only trusted when GME's track list *is* this playlist — same count, because
+/// `GameMusicEmu::from_file` handed GME the same file and a playlist it loads
+/// becomes the track list. Otherwise the number is all there is, and a number
+/// beats a guess.
+fn entries_align_by_order(entries: &[M3uEntry], track_count: usize, is_kss: bool) -> bool {
+    // KSS never numbers by position: the field is the sound driver's song id,
+    // even on the rips whose ids happen to be small enough to look like
+    // indices. Playback depends on this agreeing with `kss::song_number_for`,
+    // which reads entry N for track N — so the answer here is not a guess.
+    if is_kss {
+        return true;
+    }
+    let numbers_are_indices = entries
+        .iter()
+        .all(|e| e.track >= 1 && (e.track as usize) <= track_count);
+    let gme_loaded_this_playlist = entries.len() == track_count;
+    !numbers_are_indices && gme_loaded_this_playlist
 }
 
 /// Split m3u fields by comma, respecting `\,` escapes.
@@ -264,24 +348,55 @@ fn read_gme_metadata_inner(
         HashMap::new()
     };
 
+    // Order or number? See `entries_align_by_order`.
+    let match_by_position = m3u_entries
+        .as_ref()
+        .is_some_and(|m| entries_align_by_order(&m.entries, track_count, codec == "KSS"));
+
+    // For KSS the playlist *is* the track list, and this reader stops asking
+    // GME how many songs the file holds.
+    //
+    // Correctness, not tidiness. Playback no longer goes through GME for this
+    // format (see `crate::kss`) and resolves `file.kss#N` by taking entry N of
+    // this same playlist — so if the track list came from GME's own m3u parser
+    // the two would have to agree line for line, and they do not: measured over
+    // eleven real rips, GME drops one line in Knightmare 2 and one in Snatcher,
+    // which slides every title and every song after it by one. One parser, no
+    // drift.
+    let kss_from_playlist = codec == "KSS"
+        && m3u_entries.as_ref().is_some_and(|m| !m.entries.is_empty());
+
     // If m3u defines track order, use it; otherwise iterate 0..track_count
-    let track_indices: Vec<usize> = if let Some(ref m3u) = m3u_entries {
-        // Use m3u track order (1-based → 0-based index for GME)
-        let mut indices: Vec<i32> = m3u.entries.keys().copied().collect();
-        indices.sort();
-        indices.iter().map(|&t| (t - 1).max(0) as usize).collect()
-    } else {
-        (0..track_count).collect()
+    let track_indices: Vec<usize> = match m3u_entries {
+        Some(ref m3u) if kss_from_playlist => (0..m3u.entries.len()).collect(),
+        // GME's list is already the playlist, in the playlist's order.
+        Some(_) if match_by_position => (0..track_count).collect(),
+        Some(ref m3u) => {
+            // Use m3u track order (1-based → 0-based index for GME)
+            let mut numbers: Vec<i32> = m3u.entries.iter().map(|e| e.track).collect();
+            numbers.sort();
+            numbers.iter().map(|&t| (t - 1).max(0) as usize).collect()
+        }
+        None => (0..track_count).collect(),
     };
 
     let mut tracks = Vec::with_capacity(track_indices.len());
 
     for (seq, &i) in track_indices.iter().enumerate() {
-        if i >= track_count {
+        if i >= track_count && !kss_from_playlist {
             continue;
         }
 
-        let info = match emu.track_info(i) {
+        // With a KSS playlist, `i` is a position and can run past what GME
+        // thinks the file holds. GME is only asked for the header fields —
+        // game, author — which are the same whichever song is named, so any
+        // valid index answers them.
+        let info_index = if kss_from_playlist {
+            i.min(track_count.saturating_sub(1))
+        } else {
+            i
+        };
+        let info = match emu.track_info(info_index) {
             Ok(info) => info,
             Err(e) => {
                 log::warn!("GME track info error for track {}: {}", i, e);
@@ -289,8 +404,14 @@ fn read_gme_metadata_inner(
             }
         };
 
-        // M3u entry for this track (1-based key)
-        let m3u_entry = m3u_entries.as_ref().and_then(|m| m.entries.get(&((i + 1) as i32)));
+        // The entry describing this track, matched the way the order was.
+        let m3u_entry = m3u_entries.as_ref().and_then(|m| {
+            if match_by_position {
+                m.entries.get(seq)
+            } else {
+                m.entries.iter().find(|e| e.track == (i + 1) as i32)
+            }
+        });
 
         // Title: prefer m3u title, then GME song name, then filename
         let title = if let Some(entry) = m3u_entry {
@@ -424,16 +545,22 @@ fn read_gme_metadata_inner(
 mod tests {
     use std::io::Write;
 
-    fn parse_line(line: &str) -> Option<(i32, String)> {
-        let dir = std::env::temp_dir().join(format!("m3u-{}", line.len()));
+    /// A playlist of raw bytes on disk, parsed. Bytes rather than `&str`
+    /// because half of what this parser meets in the wild is not UTF-8.
+    fn parse_bytes(tag: &str, body: &[u8]) -> Option<super::M3uData> {
+        let dir = std::env::temp_dir().join(format!("m3u-{tag}"));
         std::fs::create_dir_all(&dir).ok()?;
         let f = dir.join("t.m3u");
         let mut fh = std::fs::File::create(&f).ok()?;
-        writeln!(fh, "{line}").ok()?;
+        fh.write_all(body).ok()?;
         drop(fh);
-        let d = parse_gme_m3u(&f)?;
-        let (k, v) = d.entries.iter().next()?;
-        Some((*k, v.title.clone()))
+        parse_gme_m3u(&f)
+    }
+
+    fn parse_line(line: &str) -> Option<(i32, String)> {
+        let d = parse_bytes(&format!("line-{}", line.len()), format!("{line}\n").as_bytes())?;
+        let e = d.entries.first()?;
+        Some((e.track, e.title.clone()))
     }
 
     /// What Tunante writes has to come back out of the parser Tunante reads
@@ -450,6 +577,110 @@ mod tests {
     fn an_empty_type_field_does_not_yield_the_title() {
         let got = parse_line("Metroid.nsf::,1,,Intro");
         assert_ne!(got, Some((1, "Intro".into())), "this is what went wrong");
+    }
+
+    /// KSS rips number their songs in hex, the way the sound driver does.
+    /// `"$99".parse::<i32>()` fails, and the line used to be dropped with it —
+    /// so every Metal Gear 2 track came out named "Track N".
+    #[test]
+    fn a_hex_song_number_is_a_song_number() {
+        assert_eq!(
+            parse_line("mg2.kss::KSS,$99,THEME OF SOLID SNAKE,3:18,,5"),
+            Some((0x99, "THEME OF SOLID SNAKE".into()))
+        );
+    }
+
+    /// Decimal keeps working, and keeps meaning decimal: `$21` is 33, but a
+    /// bare `21` must stay 21.
+    #[test]
+    fn a_decimal_song_number_is_not_read_as_hex() {
+        assert_eq!(parse_line("mg.kss::KSS,21,TITLE,2,,0"), Some((21, "TITLE".into())));
+    }
+
+    /// One byte of Shift-JIS used to cost the whole file: `read_to_string`
+    /// refuses it, and the parser dropped every entry including the ASCII ones.
+    #[test]
+    fn a_shift_jis_playlist_is_read_rather_than_dropped() {
+        // "mg.kss::KSS,41,OPERATION INTRUDE N313 (オープニングBGM),10,,0"
+        let mut body = b"mg.kss::KSS,41,OPERATION INTRUDE N313 (".to_vec();
+        body.extend_from_slice(&[
+            0x83, 0x49, 0x81, 0x5b, 0x83, 0x76, 0x83, 0x6a, 0x83, 0x93, 0x83, 0x4f,
+        ]);
+        body.extend_from_slice(b"BGM),10,,0\n");
+
+        let d = parse_bytes("sjis", &body).expect("playlist survives non-UTF-8 bytes");
+        let e = d.entries.first().expect("its one entry");
+        assert_eq!(e.track, 41);
+        assert!(
+            e.title.starts_with("OPERATION INTRUDE N313"),
+            "got {:?}",
+            e.title
+        );
+        assert!(
+            e.title.contains("オープニング"),
+            "Shift-JIS decoded, not mojibake: {:?}",
+            e.title
+        );
+    }
+
+    /// Order is what pairs an entry with a GME track, so the parser has to
+    /// keep it — a HashMap keyed on the song number did not, and for KSS the
+    /// numbers are not positions at all.
+    #[test]
+    fn entries_keep_the_order_they_were_written_in() {
+        let body = b"g.kss::KSS,$99,first,1,,0\ng.kss::KSS,$41,second,1,,0\ng.kss::KSS,$9A,third,1,,0\n";
+        let d = parse_bytes("order", body).expect("parsed");
+        let titles: Vec<&str> = d.entries.iter().map(|e| e.title.as_str()).collect();
+        assert_eq!(titles, ["first", "second", "third"]);
+    }
+
+    fn numbered(tracks: &[i32]) -> Vec<super::M3uEntry> {
+        tracks
+            .iter()
+            .map(|&track| super::M3uEntry {
+                track,
+                title: String::new(),
+                length_ms: -1,
+                fade_ms: -1,
+            })
+            .collect()
+    }
+
+    /// Batman's playlist: eleven lines numbered 1..11 and written 10, 11, 1,
+    /// 2… Reading those in order shifts every title two songs along, which is
+    /// exactly what it did until this was pinned down.
+    #[test]
+    fn indices_written_out_of_order_are_still_indices() {
+        let e = numbered(&[10, 11, 1, 2, 3, 4, 6, 5, 7, 8, 9]);
+        assert!(!entries_align_by_order(&e, 11, false));
+    }
+
+    /// Metal Gear on MSX: ten lines carrying the driver's song numbers, none of
+    /// which is a position in a ten-song file. GME loaded the same playlist, so
+    /// its track list is these entries in this order.
+    #[test]
+    fn song_ids_past_the_end_align_by_order() {
+        let e = numbered(&[71, 41, 44, 47, 53, 62, 56, 59, 65, 68]);
+        assert!(entries_align_by_order(&e, 10, false));
+    }
+
+    /// Solstice: numbered 1..19 for a ten-song file, so three lines fell off
+    /// the end and the library held seven tracks of the ten GME reports — with
+    /// the seven misnamed, "Title" playing under the name and length of
+    /// "Begin".
+    #[test]
+    fn numbers_that_overshoot_align_by_order() {
+        let e = numbered(&[6, 1, 2, 5, 4, 3, 7, 17, 18, 19]);
+        assert!(entries_align_by_order(&e, 10, false));
+    }
+
+    /// Mega Man 4: 27 lines for a file GME reads as a single song. The numbers
+    /// are out of range, but the playlist plainly does not describe this file,
+    /// so its order is worth nothing and the number is all there is.
+    #[test]
+    fn a_playlist_that_is_not_gmes_track_list_is_matched_by_number() {
+        let e = numbered(&[11, 68, 19, 14, 17, 16, 8, 7, 6, 4, 2, 1]);
+        assert!(!entries_align_by_order(&e, 1, false));
     }
 
     use super::*;

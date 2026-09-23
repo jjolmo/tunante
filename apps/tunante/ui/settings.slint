@@ -384,6 +384,8 @@ export component DesktopSettings inherits Rectangle {
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
     callback toggle-slow-scan();
+    in-out property <bool> scan-on-startup;
+    callback toggle-scan-on-startup();
     in property <bool> dsp-mono-compensate;
     in property <bool> dsp-mono-phase;
     callback toggle-mono-compensate();
@@ -744,6 +746,12 @@ export component DesktopSettings inherits Rectangle {
                                         checked: root.slow-scan;
                                         toggled => { root.toggle-slow-scan(); }
                                     }
+                                    Check {
+                                        label: @tr("Analizar al abrir");
+                                        checked: root.scan-on-startup;
+                                        toggled => { root.toggle-scan-on-startup(); }
+                                    }
+                                    Note { text: @tr("Busca lo añadido fuera del programa, unos segundos después de abrir."); }
                                     FormRow {
                                         label: @tr("Bucles de formatos streamed");
                                         Combo {

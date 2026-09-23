@@ -692,6 +692,8 @@ export component DesktopShell inherits Rectangle {
     callback cycle-loop-max();
     in-out property <bool> slow-scan;
     callback toggle-slow-scan();
+    in-out property <bool> scan-on-startup;
+    callback toggle-scan-on-startup();
     in property <bool> dsp-mono-compensate;
     in property <bool> dsp-mono-phase;
     callback toggle-mono-compensate();
@@ -1956,6 +1958,8 @@ export component DesktopShell inherits Rectangle {
                     cycle-loop-max => { root.cycle-loop-max(); }
                     slow-scan <=> root.slow-scan;
                     toggle-slow-scan => { root.toggle-slow-scan(); }
+                    scan-on-startup <=> root.scan-on-startup;
+                    toggle-scan-on-startup => { root.toggle-scan-on-startup(); }
                     dsp-mono-compensate: root.dsp-mono-compensate;
                     dsp-mono-phase: root.dsp-mono-phase;
                     toggle-mono-compensate => { root.toggle-mono-compensate(); }

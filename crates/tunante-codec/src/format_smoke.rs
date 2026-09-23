@@ -23,6 +23,7 @@ use std::time::{Duration, Instant};
 
 use crate::gme::GmeSource;
 use crate::gsf::GsfSource;
+use crate::kss::KssSource;
 use crate::opus::OggOpusSource;
 use crate::psf::PsfSource;
 use crate::psf2::Psf2Source;
@@ -147,11 +148,28 @@ fn all_supported_formats_decode() {
     }
     settle();
 
-    // --- GME chiptune backend (NSF/SPC/VGM/GBS/HES/KSS/AY/SAP/GYM) ---------------
+    // --- GME chiptune backend (NSF/SPC/VGM/GBS/HES/AY/SAP/GYM) -------------------
     {
         let src = GmeSource::new(&fx.join("sample.nsf"), 0, 30_000).expect("GME: open/decode failed");
         let (n, p) = drain(src);
         assert_ok("gme/nsf", n, p);
+    }
+    settle();
+
+    // --- KSS backend (MSX), via libkss rather than GME ---------------------------
+    //
+    // Its own case because it is its own backend, and because the line above
+    // used to claim KSS without ever opening one. It did not work: GME's KSS
+    // emulation produced silence on every real rip, and nothing here noticed
+    // for as long as the list was a comment.
+    //
+    // The fixture is 50 bytes written for this test — a KSCC header and the Z80
+    // that gives the PSG a period and a volume — so it asserts the whole path
+    // (header, CPU, chip, mixing) without carrying anyone's music.
+    {
+        let src = KssSource::new(&fx.join("sine.kss"), 0, 30_000).expect("KSS: open/decode failed");
+        let (n, p) = drain(src);
+        assert_ok("kss", n, p);
     }
     settle();
 
