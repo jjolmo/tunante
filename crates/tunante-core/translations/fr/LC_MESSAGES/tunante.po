@@ -1450,3 +1450,9 @@ msgstr "impossible de relancer : {}"
 
 msgid "v{}"
 msgstr "v{}"
+
+msgid "Analizar al abrir"
+msgstr "Analyser à l'ouverture"
+
+msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
+msgstr "Cherche ce qui a été ajouté en dehors du programme, quelques secondes après l'ouverture."

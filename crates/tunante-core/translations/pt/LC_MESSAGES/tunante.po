@@ -1450,3 +1450,9 @@ msgstr "não foi possível reiniciar: {}"
 
 msgid "v{}"
 msgstr "v{}"
+
+msgid "Analizar al abrir"
+msgstr "Analisar ao abrir"
+
+msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
+msgstr "Procura o que foi adicionado fora do programa, alguns segundos depois de abrir."
