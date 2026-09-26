@@ -277,6 +277,16 @@ impl Player {
     }
 
     pub fn next(&mut self) -> Result<(), String> {
+        // Repeat-one on a track the list no longer shows (a filter hid it):
+        // the queue has no current to repeat, but the track is still the one.
+        if self.queue.repeat() == RepeatMode::One
+            && self.queue.current().is_none()
+            && self.queue.get_user_queue().is_empty()
+        {
+            if let Some(t) = self.now.clone() {
+                return self.start_track(t);
+            }
+        }
         match self.queue.next() {
             Some(t) => self.start_track(t),
             None => {
@@ -371,15 +381,10 @@ impl Player {
             return;
         }
         let mut tracks = self.queue.tracks().to_vec();
-        let current = self.queue.current().map(|t| t.id.clone());
         tracks.extend(more);
-        match current {
-            Some(id) => self.queue.update_context(tracks, &id),
-            // Nothing playing, so there is no current track to keep hold of. This
-            // leaves `current_index` at None: a full queue and silence, which is
-            // exactly what "add to the queue" should do on its own.
-            None => self.queue.set_tracks(tracks),
-        }
+        // Nothing playing leaves `current_index` at None: a full queue and
+        // silence, which is exactly what "add to the queue" should do alone.
+        self.queue.replace_keeping_place(tracks);
     }
 
     /// Empty the queue and stop.
@@ -407,15 +412,25 @@ impl Player {
         if index >= tracks.len() {
             return;
         }
-        let current = self.queue.current().map(|t| t.id.clone());
         tracks.remove(index);
+        // The playing row removed: it plays on, and the list resumes at the
+        // row that took its place.
+        self.queue.replace_keeping_place(tracks);
+    }
 
-        match current {
-            Some(id) if tracks.iter().any(|t| t.id == id) => {
-                self.queue.update_context(tracks, &id)
-            }
-            _ => self.queue.set_tracks(tracks),
-        }
+    /// The list changed and no longer holds the playing track: it keeps
+    /// playing, and the list resumes at `next`. See
+    /// `PlayQueue::update_context_resuming_at`.
+    pub fn replace_context_resuming_at(&mut self, tracks: Vec<Track>, next: usize) {
+        self.queue.update_context_resuming_at(tracks, next);
+    }
+
+    /// Play `track` with `tracks` as the list, which does not hold it: the
+    /// list resumes at `next` when it ends. The session coming back to a
+    /// track a filter had hidden.
+    pub fn play_outside(&mut self, track: Track, tracks: Vec<Track>, next: usize) -> Result<(), String> {
+        self.queue.update_context_resuming_at(tracks, next);
+        self.start_track(track)
     }
 
     /// Move a track to another position in the queue.
@@ -430,11 +445,7 @@ impl Player {
         let to = to.min(tracks.len().saturating_sub(1));
         let track = tracks.remove(from);
         tracks.insert(to, track);
-
-        match self.queue.current().map(|t| t.id.clone()) {
-            Some(id) => self.queue.update_context(tracks, &id),
-            None => self.queue.set_tracks(tracks),
-        }
+        self.queue.replace_keeping_place(tracks);
     }
 
     /// Index of the current track in the queue, for marking it in the UI.
