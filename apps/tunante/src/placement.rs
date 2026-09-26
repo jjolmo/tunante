@@ -84,7 +84,8 @@ async fn load() -> zbus::Result<()> {
         .body()
         .deserialize()?;
     if id < 0 {
-        return Err(zbus::Error::Failure("KWin rechazó el script".into()));
+        eprintln!("placement: KWin rechazó el script");
+        return Ok(());
     }
     conn.call_method(
         Some("org.kde.KWin"),

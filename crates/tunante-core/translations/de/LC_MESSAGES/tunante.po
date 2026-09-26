@@ -1450,3 +1450,9 @@ msgstr "Neustart fehlgeschlagen: {}"
 
 msgid "v{}"
 msgstr "v{}"
+
+msgid "Analizar al abrir"
+msgstr "Beim Öffnen scannen"
+
+msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
+msgstr "Sucht wenige Sekunden nach dem Öffnen nach dem, was außerhalb des Programms hinzugefügt wurde."

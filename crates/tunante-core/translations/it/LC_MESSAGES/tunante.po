@@ -1450,3 +1450,9 @@ msgstr "impossibile riavviare: {}"
 
 msgid "v{}"
 msgstr "v{}"
+
+msgid "Analizar al abrir"
+msgstr "Analizza all'apertura"
+
+msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
+msgstr "Cerca ciò che è stato aggiunto fuori dal programma, pochi secondi dopo l'apertura."

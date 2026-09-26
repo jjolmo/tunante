@@ -1450,3 +1450,9 @@ msgstr "could not relaunch: {}"
 
 msgid "v{}"
 msgstr "v{}"
+
+msgid "Analizar al abrir"
+msgstr "Scan on open"
+
+msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
+msgstr "Looks for what was added outside the app, a few seconds after opening."
