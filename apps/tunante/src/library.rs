@@ -7,7 +7,7 @@
 //! wraps its in-process reads in a timeout that cannot actually interrupt a loop
 //! running in C — it can only abandon the thread and leak it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -182,7 +182,7 @@ impl Tree {
     /// Every track under the roots, loaded once and kept. Callers that group
     /// the whole library (Discos/Juegos/Consolas) share this instead of each
     /// re-reading SQLite. Invalidated by [`Tree::invalidate`] on a rescan.
-    fn all_tracks(&self, db: &Database) -> Rc<Vec<Track>> {
+    pub fn all_tracks(&self, db: &Database) -> Rc<Vec<Track>> {
         if let Some(a) = self.all_cache.borrow().as_ref() {
             return a.clone();
         }
@@ -594,6 +594,119 @@ impl Tree {
             }
         }
     }
+}
+
+/// Where the playing track sits in the list the queue is about to become.
+#[derive(Debug, PartialEq)]
+pub enum Place {
+    /// In it, with this id.
+    At(String),
+    /// Hidden by a filter; the list resumes at this row.
+    ResumeAt(usize),
+    /// Nothing of this list is playing.
+    Fresh,
+}
+
+/// Where `playing` lands when the list changes from `old` to `new`, for a
+/// list whose unfiltered order nobody keeps (a search, a filtered grid).
+///
+/// In the new list: there. Not in it: it keeps playing, and next comes the
+/// first track of the new list that followed it in the old one — or, if the
+/// old one was already resuming past a hidden track, that followed the row it
+/// was resuming at. Nothing after it at all: the list ends with it.
+pub fn place_in(new: &[Track], old: &[Track], playing: Option<&Track>, old_resume: Option<usize>) -> Place {
+    let Some(playing) = playing else { return Place::Fresh };
+    if new.iter().any(|t| t.path == playing.path) {
+        return Place::At(playing.id.clone());
+    }
+    let after = match old.iter().position(|t| t.path == playing.path) {
+        Some(i) => &old[i + 1..],
+        None => &old[old_resume.unwrap_or(old.len()).min(old.len())..],
+    };
+    Place::ResumeAt(
+        after
+            .iter()
+            .find_map(|a| new.iter().position(|n| n.path == a.path))
+            .unwrap_or(new.len()),
+    )
+}
+
+/// What a click on the track at `path` queues: the list it was drawn in,
+/// top to bottom, exactly as drawn.
+///
+/// Built from the rows on screen rather than asked of the database again,
+/// because asking again is how the two drifted apart: the tree draws a
+/// folder's own files by name, and the query sorted them by tag and swept in
+/// every subfolder too, so the "next" song was often one nobody could see. A
+/// file whose subsongs are folded under one row queues all of them, in their
+/// order, where that row sits.
+///
+/// In the plain tree several folders can be open at once, and the list is the
+/// one the track belongs to: the rows of its own folder, not its neighbours'.
+/// Everywhere else — a search, a game, an artist, a folder in a grid view —
+/// the rows on screen are one list already, filter included.
+pub fn context_for(rows: &[Row], all: &[Track], path: &str, only_its_folder: bool) -> Vec<Track> {
+    let by_path: HashMap<&str, &Track> = all.iter().map(|t| (t.path.as_str(), t)).collect();
+    let mut subsongs: HashMap<&str, Vec<&Track>> = HashMap::new();
+    for t in all {
+        let (real, sub) = vgm_path::parse_vgm_path(&t.path);
+        if sub.is_some() {
+            subsongs.entry(real).or_default().push(t);
+        }
+    }
+    for subs in subsongs.values_mut() {
+        subs.sort_by_key(|t| vgm_path::parse_vgm_path(&t.path).1.unwrap_or(0));
+    }
+
+    let dir_of = |p: &str| {
+        Path::new(vgm_path::parse_vgm_path(p).0)
+            .parent()
+            .map(|d| d.to_path_buf())
+    };
+    let home = dir_of(path);
+
+    let mut out = Vec::new();
+    for row in rows {
+        if only_its_folder && dir_of(&row.path) != home {
+            continue;
+        }
+        if !row.is_folder {
+            if let Some(t) = by_path.get(row.path.as_str()) {
+                out.push((*t).clone());
+            }
+        } else if !row.expanded {
+            // A folded file: its subsongs are not rows, but they are the list.
+            if let Some(subs) = subsongs.get(row.path.as_str()) {
+                out.extend(subs.iter().map(|t| (*t).clone()));
+            }
+        }
+    }
+    out
+}
+
+/// A folder's own tracks in the order the tree draws them: by file, and a
+/// file's subsongs by number. What the queue is when a track arrives without
+/// a list on screen to take one from — a file opened from outside, a
+/// play-next track from another folder, the session coming back.
+pub fn folder_context(db: &Database, folder: &str) -> Vec<Track> {
+    let prefix = format!("{}/", folder.trim_end_matches('/'));
+    let mut tracks: Vec<Track> = db
+        .get_tracks_by_folder(folder)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|t| {
+            vgm_path::parse_vgm_path(&t.path)
+                .0
+                .strip_prefix(prefix.as_str())
+                .is_some_and(|rest| !rest.contains('/'))
+        })
+        .collect();
+    tracks.sort_by(|a, b| {
+        let (ra, sa) = vgm_path::parse_vgm_path(&a.path);
+        let (rb, sb) = vgm_path::parse_vgm_path(&b.path);
+        ra.cmp(rb).then(sa.unwrap_or(0).cmp(&sb.unwrap_or(0)))
+    });
+    tracks
 }
 
 /// Directories directly under `dir`, sorted, ignoring anything unreadable.

@@ -8,8 +8,8 @@
 //! (right-click) separate, the way the old Tauri desktop behaved.
 //!
 //! ksni runs the item on its own thread. Its callbacks (activate, menu clicks,
-//! scroll) hand work back to the UI thread through the same thin channel/atomic
-//! the rest of main.rs drains twice a second.
+//! scroll) hand work back to the UI thread through a thin channel/atomic, and
+//! wake the event loop to drain it at once rather than at the next 500 ms tick.
 
 /// What a tray interaction asks for, in the UI thread's terms.
 #[derive(Clone, Copy, Debug)]
@@ -108,6 +108,20 @@ mod imp {
         actions().1.lock().ok()?.try_recv().ok()
     }
 
+    /// The XDG activation token Plasma handed over before its last `Activate`.
+    /// Taken once: a token is good for one activation.
+    static TOKEN: Mutex<Option<String>> = Mutex::new(None);
+
+    pub fn take_activation_token() -> Option<String> {
+        TOKEN.lock().ok()?.take()
+    }
+
+    /// Queue an action and have the UI thread see to it now.
+    fn send(tx: &std::sync::mpsc::Sender<TrayAction>, action: TrayAction) {
+        let _ = tx.send(action);
+        let _ = slint::invoke_from_event_loop(crate::run_tray_actions);
+    }
+
     struct Tray {
         /// 0 sistema (mono glyph pixmap), 1 simbólico (icon name + theme path,
         /// so the panel recolours it), 2 logo (the pixel-art cartridge).
@@ -170,13 +184,21 @@ mod imp {
         // by the menu.
         fn activate(&mut self, x: i32, y: i32) {
             super::imp::set_icon_pos(x, y);
-            let _ = self.tx.send(TrayAction::ToggleWindow);
+            send(&self.tx, TrayAction::ToggleWindow);
+        }
+
+        // Plasma calls this right before `activate`, with the token that lets
+        // the window it brings up come to the front. See `activation.rs`.
+        fn provide_xdg_activation_token(&mut self, token: String) {
+            if let Ok(mut t) = TOKEN.lock() {
+                *t = Some(token);
+            }
         }
 
         // Middle-click runs the configurable action, kept as it was.
         fn secondary_activate(&mut self, x: i32, y: i32) {
             super::imp::set_icon_pos(x, y);
-            let _ = self.tx.send(TrayAction::MiddleClick);
+            send(&self.tx, TrayAction::MiddleClick);
         }
 
         fn scroll(&mut self, delta: i32, orientation: ksni::Orientation) {
@@ -195,7 +217,7 @@ mod imp {
                 StandardItem {
                     label: tunante_core::i18n::tr("Mostrar/Ocultar"),
                     activate: Box::new(|t: &mut Self| {
-                        let _ = t.tx.send(TrayAction::ToggleWindow);
+                        send(&t.tx, TrayAction::ToggleWindow);
                     }),
                     ..Default::default()
                 }
@@ -204,7 +226,7 @@ mod imp {
                 StandardItem {
                     label: tunante_core::i18n::tr("Reproducir/Pausa"),
                     activate: Box::new(|t: &mut Self| {
-                        let _ = t.tx.send(TrayAction::PlayPause);
+                        send(&t.tx, TrayAction::PlayPause);
                     }),
                     ..Default::default()
                 }
@@ -212,7 +234,7 @@ mod imp {
                 StandardItem {
                     label: tunante_core::i18n::tr("Siguiente"),
                     activate: Box::new(|t: &mut Self| {
-                        let _ = t.tx.send(TrayAction::Next);
+                        send(&t.tx, TrayAction::Next);
                     }),
                     ..Default::default()
                 }
@@ -220,7 +242,7 @@ mod imp {
                 StandardItem {
                     label: tunante_core::i18n::tr("Anterior"),
                     activate: Box::new(|t: &mut Self| {
-                        let _ = t.tx.send(TrayAction::Prev);
+                        send(&t.tx, TrayAction::Prev);
                     }),
                     ..Default::default()
                 }
@@ -229,7 +251,7 @@ mod imp {
                 StandardItem {
                     label: tunante_core::i18n::tr("Salir"),
                     activate: Box::new(|t: &mut Self| {
-                        let _ = t.tx.send(TrayAction::Quit);
+                        send(&t.tx, TrayAction::Quit);
                     }),
                     ..Default::default()
                 }
@@ -350,7 +372,9 @@ mod imp {
 }
 
 #[cfg(all(target_os = "linux", feature = "tray"))]
-pub use imp::{icon_pos, poll, set_icon_pos, set_style, set_tooltip, spawn, take_scroll};
+pub use imp::{
+    icon_pos, poll, set_icon_pos, set_style, set_tooltip, spawn, take_activation_token, take_scroll,
+};
 
 /// macOS and Windows: the same five verbs through `tray-icon`, which on those
 /// two uses the native status item and the notification area — no GTK.
@@ -595,10 +619,17 @@ mod native {
 
     /// Nothing to restore: see [`icon_pos`].
     pub fn set_icon_pos(_x: i32, _y: i32) {}
+
+    /// These windows raise themselves; there is no token to hand over.
+    pub fn take_activation_token() -> Option<String> {
+        None
+    }
 }
 
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "tray"))]
-pub use native::{icon_pos, poll, set_icon_pos, set_style, set_tooltip, spawn, take_scroll};
+pub use native::{
+    icon_pos, poll, set_icon_pos, set_style, set_tooltip, spawn, take_activation_token, take_scroll,
+};
 
 // Same shape as the mpris stubs: the event loop in main.rs never has to know
 // which platform it is on. The tray is Linux-only (SNI is freedesktop), and the
@@ -629,3 +660,8 @@ pub fn icon_pos() -> Option<(i32, i32)> {
 
 #[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
 pub fn set_icon_pos(_x: i32, _y: i32) {}
+
+#[cfg(not(all(any(target_os = "linux", target_os = "macos", target_os = "windows"), feature = "tray")))]
+pub fn take_activation_token() -> Option<String> {
+    None
+}

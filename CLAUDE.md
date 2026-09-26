@@ -55,7 +55,8 @@ vendor/                 # Third-party C and the crates that wrap it
   viogsf/, vgmstream/   #   Vendored C. vgmstream is a submodule; viogsf is not —
                         #   see vendor/viogsf/README.upstream.md for why.
   *-rs/, *-patch/       #   viogsf-rs, vio2sf-rs, hepsf-rs, lazyusf2-rs,
-                        #   vgmstream-rs, game-music-emu-patch, opus-decoder-patch
+                        #   vgmstream-rs, game-music-emu-patch, opus-decoder-patch,
+                        #   ksni-patch (Plasma's tray activation token)
 ```
 
 Keep `vendor/` flat. `viogsf-rs/CMakeLists.txt` reaches for `../viogsf/vbam` and

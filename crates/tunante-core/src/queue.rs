@@ -21,6 +21,14 @@ pub struct PlayQueue {
     /// Minimum duration in ms — context tracks shorter than this are skipped.
     /// User-queued tracks are never filtered.
     short_filter_threshold_ms: i64,
+    /// Bumped every time the context list is replaced, so a caller keeping a
+    /// copy of it (the saved session) knows when that copy went stale.
+    generation: u64,
+    /// Where the list resumes when what is playing is not in it: a filter
+    /// hid the current track, and the next one is the first still in the list
+    /// that came after it. `next()` plays index `k`, `prev()` plays `k - 1`.
+    /// Only meaningful while `current_index` is `None`.
+    resume_at: Option<usize>,
 }
 
 impl PlayQueue {
@@ -35,11 +43,15 @@ impl PlayQueue {
             continue_from_queue: true,
             pending_context_update: None,
             short_filter_threshold_ms: 0,
+            generation: 0,
+            resume_at: None,
         }
     }
 
     pub fn set_tracks(&mut self, tracks: Vec<Track>) {
         self.tracks = tracks;
+        self.generation += 1;
+        self.resume_at = None;
         self.current_index = None;
         self.regenerate_shuffle();
     }
@@ -47,6 +59,7 @@ impl PlayQueue {
     pub fn play_index(&mut self, index: usize) -> Option<&Track> {
         if index < self.tracks.len() {
             self.current_index = Some(index);
+            self.resume_at = None;
             Some(&self.tracks[index])
         } else {
             None
@@ -56,6 +69,7 @@ impl PlayQueue {
     pub fn play_track_by_id(&mut self, id: &str) -> Option<&Track> {
         if let Some(idx) = self.tracks.iter().position(|t| t.id == id) {
             self.current_index = Some(idx);
+            self.resume_at = None;
             Some(&self.tracks[idx])
         } else {
             None
@@ -74,6 +88,11 @@ impl PlayQueue {
     /// order regardless of how the next track gets chosen.
     pub fn current_index(&self) -> Option<usize> {
         self.current_index
+    }
+
+    /// Changes whenever the context list does. See the field.
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Whether shuffle is on.
@@ -114,13 +133,15 @@ impl PlayQueue {
         }
 
         let len = self.tracks.len();
+        let mut cursor = self.cursor();
+        self.resume_at = None;
         // Try up to `len` candidates to avoid infinite loops when all tracks are short
         for _ in 0..len {
             let candidate_idx = match self.repeat {
                 RepeatMode::One => {
                     return self.current_index.map(|i| self.tracks[i].clone());
                 }
-                RepeatMode::All => match self.current_index {
+                RepeatMode::All => match cursor {
                     Some(i) => {
                         if self.shuffle {
                             self.next_shuffle_index(i).0
@@ -130,7 +151,7 @@ impl PlayQueue {
                     }
                     None => 0,
                 },
-                RepeatMode::Off => match self.current_index {
+                RepeatMode::Off => match cursor {
                     Some(i) => {
                         if self.shuffle {
                             let (ni, wrapped) = self.next_shuffle_index(i);
@@ -151,6 +172,7 @@ impl PlayQueue {
             }
 
             self.current_index = Some(candidate_idx);
+            cursor = Some(candidate_idx);
             let track = &self.tracks[candidate_idx];
             if self.short_filter_threshold_ms <= 0
                 || track.duration_ms >= self.short_filter_threshold_ms
@@ -176,10 +198,10 @@ impl PlayQueue {
             return None;
         }
         let len = self.tracks.len();
-        let mut current = self.current_index;
+        let mut current = self.cursor();
         for _ in 0..len {
             let candidate_idx = match self.repeat {
-                RepeatMode::One => return current.map(|i| &self.tracks[i]),
+                RepeatMode::One => return self.current_index.map(|i| &self.tracks[i]),
                 RepeatMode::All => match current {
                     Some(i) => {
                         if self.shuffle {
@@ -226,7 +248,8 @@ impl PlayQueue {
             return None;
         }
         let len = self.tracks.len();
-        let mut current = self.current_index;
+        // Resuming at `k`, the one before is `k - 1`: step back from `k`.
+        let mut current = self.current_index.or(self.resume_at);
         for _ in 0..len {
             let prev_idx = match current {
                 Some(i) if i > 0 => i - 1,
@@ -256,6 +279,14 @@ impl PlayQueue {
         }
 
         let len = self.tracks.len();
+        // Resuming at `k`, the one before is `k - 1`: step back from `k`.
+        if let (None, Some(k)) = (self.current_index, self.resume_at) {
+            if k == 0 && self.repeat != RepeatMode::All {
+                return None;
+            }
+            self.resume_at = None;
+            self.current_index = Some(k);
+        }
         for _ in 0..len {
             let prev_idx = match self.current_index {
                 Some(i) if i > 0 => i - 1,
@@ -369,9 +400,73 @@ impl PlayQueue {
     /// Replace context tracks and set current index to the given track, preserving user queue.
     pub fn update_context(&mut self, tracks: Vec<Track>, current_id: &str) {
         self.tracks = tracks;
+        self.generation += 1;
+        self.resume_at = None;
         self.current_index = self.tracks.iter().position(|t| t.id == current_id);
         self.regenerate_shuffle();
         self.pending_context_update = None;
+    }
+
+    /// Replace the list with one that does not hold the playing track: it
+    /// keeps playing, and the list resumes at `next` — `next()` plays that
+    /// index, `prev()` the one before it. `next == len` means nothing in the
+    /// list came after it.
+    pub fn update_context_resuming_at(&mut self, tracks: Vec<Track>, next: usize) {
+        self.tracks = tracks;
+        self.generation += 1;
+        self.current_index = None;
+        self.resume_at = Some(next.min(self.tracks.len()));
+        self.regenerate_shuffle();
+        self.pending_context_update = None;
+    }
+
+    /// Where the list resumes while the playing track is not in it. See the
+    /// field.
+    pub fn resume_at(&self) -> Option<usize> {
+        if self.current_index.is_none() { self.resume_at } else { None }
+    }
+
+    /// Replace the list without losing the place in it: the current track
+    /// stays current; if it is gone, the list resumes where it was; and a
+    /// list that was already resuming resumes at the same track, or — that
+    /// one gone too — at the same row.
+    ///
+    /// What adding to, removing from or reordering the list needs. Before,
+    /// they only knew how to hold on to a current track, and with none (the
+    /// filter had hidden it) they dropped the place and started over.
+    pub fn replace_keeping_place(&mut self, tracks: Vec<Track>) {
+        let (target, row) = match (self.current_index, self.resume_at) {
+            (Some(i), _) => {
+                let id = self.tracks[i].id.clone();
+                if tracks.iter().any(|t| t.id == id) {
+                    self.update_context(tracks, &id);
+                    return;
+                }
+                // The playing track left the list: resume at the row it
+                // held, which is now the one after it.
+                (None, i)
+            }
+            (None, Some(k)) => (self.tracks.get(k).map(|t| t.id.clone()), k),
+            (None, None) => {
+                self.set_tracks(tracks);
+                return;
+            }
+        };
+        let next = target
+            .and_then(|id| tracks.iter().position(|t| t.id == id))
+            .unwrap_or_else(|| row.min(tracks.len()));
+        self.update_context_resuming_at(tracks, next);
+    }
+
+    /// Where `next()` and `peek_next()` start counting from: the current
+    /// track, or — when it is not in the list — the one just before where the
+    /// list resumes, so that the step after it lands on `resume_at`.
+    fn cursor(&self) -> Option<usize> {
+        match (self.current_index, self.resume_at) {
+            (Some(i), _) => Some(i),
+            (None, Some(k)) => k.checked_sub(1),
+            (None, None) => None,
+        }
     }
 
     /// Returns (next_real_index, wrapped) where `wrapped` is true when
@@ -468,5 +563,83 @@ mod user_queue_tests {
         q.move_in_user_queue(0, 1);
         assert_eq!(q.tracks().len(), 2);
         assert_eq!(ids(&q), ["b", "a"]);
+    }
+
+    /// The saved session rewrites the list only when it changed; moving
+    /// through it must not count as a change, replacing it must.
+    #[test]
+    fn the_generation_moves_with_the_list_not_with_playback() {
+        let mut q = PlayQueue::new();
+        let g0 = q.generation();
+        q.set_tracks(vec![t("a"), t("b")]);
+        let g1 = q.generation();
+        assert_ne!(g0, g1);
+        q.play_index(0);
+        q.next();
+        q.prev();
+        assert_eq!(q.generation(), g1);
+        q.update_context(vec![t("b"), t("a")], "a");
+        assert_ne!(q.generation(), g1);
+        assert_eq!(q.current().map(|t| t.id.as_str()), Some("a"));
+    }
+
+    /// A list that no longer holds the playing track resumes where it says:
+    /// next plays that row, previous the one before, and resuming past the
+    /// end is the end of the list.
+    #[test]
+    fn resuming_at_a_row_steps_from_there() {
+        let mut q = PlayQueue::new();
+        q.update_context_resuming_at(vec![t("a"), t("b"), t("c")], 1);
+        assert!(q.current().is_none());
+        assert_eq!(q.peek_next().map(|t| t.id.as_str()), Some("b"));
+        assert_eq!(q.peek_prev().map(|t| t.id.as_str()), Some("a"));
+        assert_eq!(q.next().map(|t| t.id), Some("b".into()));
+        assert_eq!(q.next().map(|t| t.id), Some("c".into()));
+
+        q.update_context_resuming_at(vec![t("a"), t("b")], 1);
+        assert_eq!(q.prev().map(|t| t.id), Some("a".into()));
+
+        q.update_context_resuming_at(vec![t("a"), t("b")], 0);
+        assert!(q.prev().is_none(), "nothing before the first row");
+        assert!(q.current().is_none(), "and no row claimed while refusing");
+        assert_eq!(q.next().map(|t| t.id), Some("a".into()));
+
+        q.update_context_resuming_at(vec![t("a"), t("b")], 2);
+        assert!(q.next().is_none(), "nothing shown came after it");
+    }
+
+    /// Adding to, removing from or reordering a list whose playing track a
+    /// filter hid keeps the place instead of starting over.
+    #[test]
+    fn changing_a_resuming_list_keeps_the_place() {
+        let mut q = PlayQueue::new();
+        // Playing a hidden track; next is b (row 1).
+        q.update_context_resuming_at(vec![t("a"), t("b"), t("c")], 1);
+
+        q.replace_keeping_place(vec![t("a"), t("b"), t("c"), t("z")]);
+        assert_eq!(q.peek_next().map(|t| t.id.as_str()), Some("b"), "adding");
+
+        q.replace_keeping_place(vec![t("c"), t("a"), t("b"), t("z")]);
+        assert_eq!(q.peek_next().map(|t| t.id.as_str()), Some("b"), "reordering follows the track");
+
+        q.replace_keeping_place(vec![t("c"), t("a"), t("z")]);
+        assert_eq!(q.peek_next().map(|t| t.id.as_str()), Some("z"), "removing it resumes at its row");
+
+        // Resuming past the end, and more arrives: that is what comes next.
+        q.update_context_resuming_at(vec![t("a")], 1);
+        q.replace_keeping_place(vec![t("a"), t("n")]);
+        assert_eq!(q.peek_next().map(|t| t.id.as_str()), Some("n"));
+    }
+
+    /// Removing the playing row itself: it plays on, the list resumes at the
+    /// row that took its place.
+    #[test]
+    fn removing_the_playing_row_resumes_where_it_was() {
+        let mut q = PlayQueue::new();
+        q.set_tracks(vec![t("a"), t("b"), t("c")]);
+        q.play_index(1);
+        q.replace_keeping_place(vec![t("a"), t("c")]);
+        assert!(q.current().is_none());
+        assert_eq!(q.peek_next().map(|t| t.id.as_str()), Some("c"));
     }
 }

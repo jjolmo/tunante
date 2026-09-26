@@ -19,6 +19,8 @@ const KEY_LOOPS: &str = "mini.loop_count";
 const KEY_FADE: &str = "mini.fade_seconds";
 const KEY_SCOPE: &str = "session.scope";
 const KEY_SAVED_AT: &str = "session.saved_at";
+const KEY_CONTEXT: &str = "session.context";
+const KEY_CONTEXT_RESUME: &str = "session.context_resume";
 
 pub struct Session {
     pub track_path: Option<String>,
@@ -116,6 +118,37 @@ impl Session {
         let _ = db.set_setting(KEY_SCOPE, scope.unwrap_or(""));
         let _ = db.set_setting(KEY_SAVED_AT, &now_secs().to_string());
     }
+}
+
+/// The list the queue was playing through, by path, in its order.
+///
+/// Separate from [`Session::save`] because it is written only when the list
+/// changes, not on the heartbeat: it can run to thousands of paths. Without it
+/// a restart rebuilt the queue from the track's folder, and a list played from
+/// a search, a game or a sorted table came back as some other list.
+///
+/// `resume_at` is for a playing track the list does not hold (a filter hid
+/// it): the row the list resumes at after it. See `PlayQueue::resume_at`.
+pub fn save_context<'a>(
+    db: &Database,
+    paths: impl IntoIterator<Item = &'a str>,
+    resume_at: Option<usize>,
+) {
+    let joined = paths.into_iter().collect::<Vec<_>>().join("\n");
+    let _ = db.set_setting(KEY_CONTEXT, &joined);
+    let _ = db.set_setting(
+        KEY_CONTEXT_RESUME,
+        &resume_at.map(|k| k.to_string()).unwrap_or_default(),
+    );
+}
+
+/// What [`save_context`] stored; an empty list when nothing was.
+pub fn load_context(db: &Database) -> (Vec<String>, Option<usize>) {
+    let get = |k: &str| db.get_setting(k).ok().flatten();
+    let paths = get(KEY_CONTEXT)
+        .map(|s| s.lines().filter(|l| !l.is_empty()).map(str::to_string).collect())
+        .unwrap_or_default();
+    (paths, get(KEY_CONTEXT_RESUME).and_then(|s| s.parse().ok()))
 }
 
 /// Counts down to silence.
@@ -234,5 +267,20 @@ mod tests {
         for _ in 0..(10 * 60 * 1000 / TICK) {
             assert!(!t.tick(TICK));
         }
+    }
+
+    /// The list and where it resumes come back as they went in.
+    #[test]
+    fn the_saved_list_round_trips() {
+        let mut file = std::env::temp_dir();
+        file.push(format!("tunante-session-ctx-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&file);
+        let db = crate::db::Database::new(&file).expect("open");
+        assert_eq!(super::load_context(&db), (Vec::<String>::new(), None));
+        super::save_context(&db, ["/m/a", "/m/b"], Some(1));
+        assert_eq!(super::load_context(&db), (vec!["/m/a".to_string(), "/m/b".to_string()], Some(1)));
+        super::save_context(&db, ["/m/a"], None);
+        assert_eq!(super::load_context(&db), (vec!["/m/a".to_string()], None));
+        let _ = std::fs::remove_file(&file);
     }
 }

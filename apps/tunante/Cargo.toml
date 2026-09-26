@@ -103,7 +103,11 @@ libc = "0.2"
 # needs no GTK and no libdbus — and, unlike libayatana, it hands us the
 # left-click `Activate` instead of forcing the context menu open. async-io to
 # match the rest of the app's zbus; blocking for its spawn/handle API.
-ksni = { version = "0.3", default-features = false, features = ["async-io", "blocking"], optional = true }
+#
+# Patched (vendor/ksni-patch) for one D-Bus method: Plasma's
+# ProvideXdgActivationToken, without which the window a click brings up opens
+# behind the others. See vendor/ksni-patch/README.tunante.md.
+ksni = { path = "../../vendor/ksni-patch", default-features = false, features = ["async-io", "blocking"], optional = true }
 # The volume panel, on Wayland. A client there cannot place its own window —
 # the compositor does — so the panel is not a window: it is a layer surface,
 # the same thing every desktop's own OSD and panel is built on. It anchors

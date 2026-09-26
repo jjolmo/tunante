@@ -66,6 +66,8 @@ mod player;
 mod single;
 mod store;
 mod tray;
+mod activation;
+mod placement;
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "tray"))]
 mod tray_wheel;
 mod update;
@@ -148,6 +150,22 @@ thread_local! {
     /// dragging its feet, and a wheel spun quickly arrived as two or three
     /// jumps instead of a slide.
     static TRAY_SCROLL: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+
+    /// What the tray's clicks and menu ask for, registered the same way and
+    /// for the same reason as [`TRAY_SCROLL`].
+    static TRAY_ACTIONS: RefCell<Option<Box<dyn Fn()>>> = const { RefCell::new(None) };
+}
+
+/// Carry out whatever the tray has queued. UI thread only — `tray.rs` posts it
+/// through Slint's event loop, and the 500 ms tick calls it as a backstop.
+pub fn run_tray_actions() {
+    TRAY_ACTIONS.with(|w| {
+        if let Ok(w) = w.try_borrow() {
+            if let Some(work) = w.as_ref() {
+                work();
+            }
+        }
+    });
 }
 
 /// Fold the notches the tray has collected into the volume. UI thread only —
@@ -380,6 +398,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         tray::spawn(tray_style);
+        // Hiding to the tray destroys the window on Wayland; KWin needs
+        // telling where the new one goes, or it comes back centred.
+        placement::spawn();
         // And put the volume panel's surface up now, empty: the compositor
         // animates a surface into existence, and doing it here means the first
         // notch of the session does not arrive with a zoom.
@@ -1132,12 +1153,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // phone suddenly making noise in a pocket, which is never what was meant.
     if open_target.is_none() {
         if let Some(path) = saved.track_path.clone() {
-            let folder = std::path::Path::new(&path)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
-            if let Some(start) = tracks.iter().position(|t| t.path == path) {
+            // The list it was playing through, as it was — the track in it,
+            // or, when a filter had hidden it, playing outside it with the
+            // list resuming where it would have. The track's folder only when
+            // there is no such list saved or it lost track of the song.
+            let (saved_list, saved_resume) = session::load_context(&db);
+            let mut outside = None;
+            let mut tracks = Vec::new();
+            if !saved_list.is_empty() {
+                let all = db.get_all_tracks().unwrap_or_default();
+                let by_path: std::collections::HashMap<&str, &tunante_core::db::models::Track> =
+                    all.iter().map(|t| (t.path.as_str(), t)).collect();
+                tracks = saved_list
+                    .iter()
+                    .filter_map(|p| by_path.get(p.as_str()).map(|t| (*t).clone()))
+                    .collect();
+                if !tracks.iter().any(|t| t.path == path) {
+                    outside = saved_resume
+                        .zip(by_path.get(path.as_str()))
+                        .map(|(k, t)| ((*t).clone(), k));
+                }
+            }
+            if !tracks.iter().any(|t| t.path == path) && outside.is_none() {
+                let folder = std::path::Path::new(tunante_core::vgm_path::parse_vgm_path(&path).0)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                tracks = library::folder_context(&db, &folder);
+            }
+            let start = tracks.iter().position(|t| t.path == path);
+            if start.is_some() || outside.is_some() {
                 // Opt-in resume: only if the user asked, the app was playing
                 // when it went away, and that was less than five minutes ago.
                 let resume = db
@@ -1152,8 +1197,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // 0 = always) — a mid-song resume a day later is noise.
                     && saved.resume_allowed(&db);
                 if let Some(p) = player.borrow_mut().as_mut() {
-                    p.set_tracks(tracks.clone());
-                    if p.play_index(start).is_ok() {
+                    let played = match (start, outside) {
+                        (Some(i), _) => {
+                            p.set_tracks(tracks);
+                            p.play_index(i)
+                        }
+                        (None, Some((t, k))) => p.play_outside(t, tracks, k),
+                        (None, None) => unreachable!("checked above"),
+                    };
+                    if played.is_ok() {
                         if !resume {
                             p.toggle_play();           // straight to paused
                         }
@@ -1177,6 +1229,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // back to that exact list — Favoritos to Favoritos, a console to its console
     // — and not to a generic "what's playing" view.
     let played_scope: Rc<RefCell<Scope>> = Rc::new(RefCell::new(Scope::Library));
+    // Which library list the queue was played from, and the version of the
+    // queue that list made — so a search typed afterwards knows whether the
+    // queue is still that list's to follow. See `follow_library`.
+    let lib_ctx: Rc<RefCell<Option<(String, u64)>>> = Rc::new(RefCell::new(None));
 
     // --- Library: open a folder, or play a track -----------------------------
     {
@@ -1189,6 +1245,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             views.clone(),
         );
         let played_scope_l = played_scope.clone();
+        let lib_ctx_l = lib_ctx.clone();
         let weak = ui.as_weak();
 
         ui.on_library_activated(move |index| {
@@ -1234,10 +1291,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let tracks = match &open_playlist {
                 Some(id) => db.get_playlist_tracks(id).unwrap_or_default(),
-                // Playing a track makes its folder the queue, which is what
-                // anyone expects: tapping one song from an album queues the
-                // album.
-                None => db.get_tracks_by_folder(&folder).unwrap_or_default(),
+                // Anywhere else the queue is the list on screen, top to
+                // bottom as drawn: the folder's own files in a tree, the
+                // results of a search, a game, an artist. See
+                // `library::context_for` for why it is not asked of the
+                // database again.
+                None => {
+                    let t = tree.borrow();
+                    // The rows actually drawn — a search in the tree draws
+                    // its hits straight into the model, bypassing the tree.
+                    let only_its_folder =
+                        t.mode == library::Mode::Tree && ui.get_search().trim().is_empty();
+                    library::context_for(
+                        &from_ui_rows(&rows_model),
+                        &t.all_tracks(&db),
+                        &path,
+                        only_its_folder,
+                    )
+                }
             };
 
             // Where this was played FROM. Every other way into the player sets
@@ -1258,6 +1329,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             if let Some(p) = player.borrow_mut().as_mut() {
                 p.set_tracks(tracks.clone());
+                *lib_ctx_l.borrow_mut() = open_playlist
+                    .is_none()
+                    .then(|| library_key(&tree.borrow()))
+                    .map(|k| (k, p.queue().generation()));
                 if let Err(e) = p.play_index(start) {
                     show_play_error(&ui, &e);
                     return;
@@ -1413,6 +1488,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (st, model) = (table_state.clone(), table_model.clone());
         let weak = ui.as_weak();
         let db_s = db.clone();
+        let (player_s, played_scope_s) = (player.clone(), played_scope.clone());
         ui.on_table_sorted(move |col| {
             let mut st = st.borrow_mut();
             let Some(key) = st.visible.get(col as usize).cloned() else {
@@ -1426,6 +1502,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if st.asc { "asc" } else { "desc" },
             );
             rebuild_table(&mut st, &model);
+            follow_table(&st, &played_scope_s, &player_s);
             if let Some(ui) = weak.upgrade() {
                 ui.set_table_sort_col(col);
                 ui.set_table_sort_asc(st.asc);
@@ -1581,11 +1658,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (st, model) = (table_state.clone(), table_model.clone());
         let pending = pending_search.clone();
+        let (player_f, played_scope_f) = (player.clone(), played_scope.clone());
         ui.on_table_filter_changed(move |s| {
             *pending.borrow_mut() = Some(s.to_string());
             let mut st = st.borrow_mut();
             st.filter = s.to_string();
             rebuild_table(&mut st, &model);
+            follow_table(&st, &played_scope_f, &player_f);
         });
     }
     {
@@ -1620,6 +1699,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     {
         let (db_t, st, model) = (db.clone(), table_state.clone(), table_model.clone());
+        let (player_r, played_scope_r) = (player.clone(), played_scope.clone());
         let weak = ui.as_weak();
         ui.on_table_rated(move |index, stars| {
             let Some(ui) = weak.upgrade() else { return };
@@ -1664,6 +1744,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 t.rating = new;
             }
             rebuild_table(&mut st, &model);
+            // Sorted by stars, a rating moves the row — and the queue with it.
+            follow_table(&st, &played_scope_r, &player_r);
             // The transport's stars follow when the rated row is the one
             // playing, and Favoritos' number moves either way.
             if ui.get_now_path() == path.as_str() {
@@ -5555,7 +5637,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let (db, rows_model, tree, views) =
             (db.clone(), rows_model.clone(), tree.clone(), views.clone());
+        let (player_q, lib_ctx_q) = (player.clone(), lib_ctx.clone());
+        let (tree_f, db_f, rows_model_f) = (tree.clone(), db.clone(), rows_model.clone());
         let weak = ui.as_weak();
+        // The queue follows the list it was played from as the search
+        // narrows or widens it, the way the table's does.
+        let follow = move |ui: &AppWindow| {
+            follow_library(ui, &tree_f, &db_f, &rows_model_f, &player_q, &lib_ctx_q)
+        };
         ui.on_search_changed(move |text| {
             let Some(ui) = weak.upgrade() else { return };
             let q = text.trim().to_string();
@@ -5574,6 +5663,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if tree.borrow().mode != library::Mode::Tree {
                 tree.borrow_mut().filter = q;
                 refresh_library(&ui, &tree, &db, &views);
+                follow(&ui);
                 return;
             }
 
@@ -5581,6 +5671,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // the whole point of not materialising the library is not to do that.
             if q.is_empty() {
                 refresh_library(&ui, &tree, &db, &views);
+                follow(&ui);
                 return;
             }
 
@@ -5624,6 +5715,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_library_grid(false);
             grid_model.set_vec(Vec::new());
             rows_model.set_vec(to_ui_rows(&rows));
+            follow(&ui);
         });
     }
 
@@ -5783,6 +5875,85 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }));
         });
     }
+    {
+        // Anything the tray asked for. Same shapes as MPRIS, plus the two only
+        // a tray can mean: the window and the app. Registered, like the wheel,
+        // so a click is answered the moment it happens — waiting for the next
+        // 500 ms tick made the icon feel like it had not heard.
+        let player = player.clone();
+        let db = db.clone();
+        let queue_model = queue_model.clone();
+        let tray_click = tray_click.clone();
+        let weak = ui.as_weak();
+        TRAY_ACTIONS.with(|w| {
+            *w.borrow_mut() = Some(Box::new(move || {
+                let Some(ui) = weak.upgrade() else { return };
+                // The tick may be holding the player; the actions stay queued
+                // and its own call to this takes them.
+                let Ok(mut borrowed) = player.try_borrow_mut() else { return };
+                let Some(p) = borrowed.as_mut() else { return };
+                while let Some(action) = tray::poll() {
+                    match action {
+                        tray::TrayAction::PlayPause => p.toggle_play(),
+                        tray::TrayAction::Next => {
+                            let _ = p.next();
+                            adopt_pending_context(p, &db);
+                        }
+                        tray::TrayAction::Prev => {
+                            let _ = p.prev();
+                        }
+                        tray::TrayAction::ToggleWindow => {
+                            // Left-click and the menu's Mostrar/Ocultar: always
+                            // show or hide the window. A tray icon exists to
+                            // bring the window back — that is not a preference.
+                            toggle_window(&ui);
+                            continue;
+                        }
+                        tray::TrayAction::MiddleClick => {
+                            // Middle-click runs the configurable action; its
+                            // default ("toggle") is the same show/hide.
+                            match tray_click.borrow().as_str() {
+                                "play_pause" => p.toggle_play(),
+                                "stop" => p.stop(),
+                                "next_track" => {
+                                    let _ = p.next();
+                                    adopt_pending_context(p, &db);
+                                }
+                                "next_track_with_fade" => {
+                                    // Force the fade even when the setting is
+                                    // off: flip it for this one change — the
+                                    // machine reads it at play time.
+                                    let was = ui.get_crossfade_secs();
+                                    if was == 0 {
+                                        let engine = p.engine_mut();
+                                        engine.set_fade_on_track_change(true);
+                                        engine.set_fade_seconds(4.0);
+                                    }
+                                    let _ = p.next();
+                                    adopt_pending_context(p, &db);
+                                    if was == 0 {
+                                        p.engine_mut().set_fade_on_track_change(false);
+                                    }
+                                }
+                                _ => {
+                                    toggle_window(&ui);
+                                    continue;
+                                }
+                            }
+                        }
+                        tray::TrayAction::Quit => {
+                            let _ = slint::quit_event_loop();
+                        }
+                    }
+                    // Only for what touched playback: the window's show/hide
+                    // `continue`s past it, because redoing the cover and the
+                    // queue marker costs the first frame a noticeable wait.
+                    push_now_playing(&ui, p);
+                    sync_queue_marker(p, &queue_model);
+                }
+            }));
+        });
+    }
         let pending_search = pending_search.clone();
         let (table_scroll, table_scroll_dirty, table_scroll_restored) = (
             table_scroll.clone(),
@@ -5793,6 +5964,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // The last track path written to the session, so a change can be saved
         // the instant it happens rather than waiting for the 5 s heartbeat.
         let last_saved_path: RefCell<Option<String>> = RefCell::new(None);
+        // Which version of the queue's list the session holds.
+        let saved_context = std::cell::Cell::new(u64::MAX);
         let theme_mode = theme_mode.clone();
         let update_pending = update_pending.clone();
         let sleep = sleep.clone();
@@ -5813,10 +5986,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             move || {
                 let Some(ui) = weak.upgrade() else { return };
 
-                // Anything the wheel left behind: the tray wakes the loop for
-                // every notch, so this normally finds nothing. It runs before
-                // the player is borrowed below, because it borrows it too.
+                // Anything the wheel or a click left behind: the tray wakes
+                // the loop for each, so these normally find nothing. They run
+                // before the player is borrowed below, because they borrow it
+                // too.
                 run_tray_scroll();
+                run_tray_actions();
 
                 // The folder dialog answered. During the onboarding the folders
                 // join its list; from Ajustes they join the library directly.
@@ -6470,61 +6645,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                // Anything the tray menu asked for. Same shapes as MPRIS,
-                // plus the two only a tray can mean: the window and the app.
-                while let Some(action) = tray::poll() {
-                    match action {
-                        tray::TrayAction::PlayPause => p.toggle_play(),
-                        tray::TrayAction::Next => {
-                            let _ = p.next();
-                            adopt_pending_context(p, &db);
-                        }
-                        tray::TrayAction::Prev => {
-                            let _ = p.prev();
-                        }
-                        tray::TrayAction::ToggleWindow => {
-                            // Left-click and the menu's Mostrar/Ocultar: always
-                            // show or hide the window. A tray icon exists to
-                            // bring the window back — that is not a preference.
-                            toggle_window(&ui);
-                        }
-                        tray::TrayAction::MiddleClick => {
-                            // Middle-click runs the configurable action; its
-                            // default ("toggle") is the same show/hide.
-                            match tray_click.borrow().as_str() {
-                                "play_pause" => p.toggle_play(),
-                                "stop" => p.stop(),
-                                "next_track" => {
-                                    let _ = p.next();
-                                    adopt_pending_context(p, &db);
-                                }
-                                "next_track_with_fade" => {
-                                    // Force the fade even when the setting is
-                                    // off: flip it for this one change — the
-                                    // machine reads it at play time.
-                                    let was = ui.get_crossfade_secs();
-                                    if was == 0 {
-                                        let engine = p.engine_mut();
-                                        engine.set_fade_on_track_change(true);
-                                        engine.set_fade_seconds(4.0);
-                                    }
-                                    let _ = p.next();
-                                    adopt_pending_context(p, &db);
-                                    if was == 0 {
-                                        p.engine_mut().set_fade_on_track_change(false);
-                                    }
-                                }
-                                _ => toggle_window(&ui),
-                            }
-                        }
-                        tray::TrayAction::Quit => {
-                            let _ = slint::quit_event_loop();
-                        }
-                    }
-                    push_now_playing(&ui, p);
-                    sync_queue_marker(p, &queue_model);
-                }
-
                 if p.poll_track_end() {
                     adopt_pending_context(p, &db);
                     push_now_playing(&ui, p);
@@ -6607,6 +6727,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // The session heartbeat every 5 s, but also the very moment the
                 // track changes: a song played and closed inside the 5 s window
                 // would otherwise reopen as the previous one.
+                // The list itself, only when it changed: it can be thousands
+                // of paths, far too many for the heartbeat.
+                let generation = p.queue().generation();
+                if saved_context.get() != generation {
+                    saved_context.set(generation);
+                    session::save_context(
+                        &db,
+                        p.queue().tracks().iter().map(|t| t.path.as_str()),
+                        p.queue().resume_at(),
+                    );
+                }
                 let cur_path = p.current().map(|t| t.path.to_string());
                 let track_changed = *last_saved_path.borrow() != cur_path;
                 if ticks % 10 == 0 || track_changed {
@@ -6716,6 +6847,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mods = std::rc::Rc::new(std::cell::Cell::new(ModifiersState::empty()));
             ui.window().on_winit_window_event(move |_win, event| {
                 match event {
+                    WindowEvent::Focused(has) => note_focus(*has),
                     WindowEvent::ModifiersChanged(m) => {
                         mods.set(m.state());
                     }
@@ -7302,6 +7434,79 @@ fn enqueue_all(
         }
         refresh_queue(p, &queue_model);
     }
+}
+
+/// The rows the library list is drawing right now, back in library terms.
+fn from_ui_rows(model: &VecModel<LibraryRow>) -> Vec<library::Row> {
+    model
+        .iter()
+        .map(|r| library::Row {
+            label: r.title.to_string(),
+            detail: r.subtitle.to_string(),
+            depth: r.depth.max(0) as usize,
+            is_folder: r.is_folder,
+            expanded: r.expanded,
+            path: r.path.to_string(),
+        })
+        .collect()
+}
+
+/// Which list the library is showing, as far as the queue cares: the tree is
+/// one list whatever its search says (a search in it is that list narrowed,
+/// clearing it returns to the folder), and each grid level is its own.
+/// Playlists never get this far: their queue is the whole playlist, never the
+/// filtered rows, so there is nothing for a search to change.
+fn library_key(t: &library::Tree) -> String {
+    match t.mode {
+        library::Mode::Tree => "tree".to_string(),
+        m => format!("{}|{}", m as u8, t.nav.join("\u{1f}")),
+    }
+}
+
+/// Keep the queue what the library list it was played from shows, as the
+/// search above it changes. The library's side of `follow_table`.
+///
+/// Only while the queue is still that list's: same view, and not replaced
+/// since by anything else (the generation says so).
+fn follow_library(
+    ui: &AppWindow,
+    tree: &RefCell<library::Tree>,
+    db: &Database,
+    rows_model: &VecModel<LibraryRow>,
+    player: &RefCell<Option<player::Player>>,
+    lib_ctx: &RefCell<Option<(String, u64)>>,
+) {
+    let t = tree.borrow();
+    if t.mode == library::Mode::Playlists {
+        return;
+    }
+    let key = library_key(&t);
+    let mut ctx = lib_ctx.borrow_mut();
+    let Some((k, generation)) = ctx.as_ref() else { return };
+    let mut guard = player.borrow_mut();
+    let Some(p) = guard.as_mut() else { return };
+    if *k != key || p.queue().generation() != *generation {
+        return;
+    }
+    let reference = p.queue().current().or(p.current()).cloned();
+    let new = if t.mode == library::Mode::Tree && ui.get_search().trim().is_empty() {
+        // Back to the tree: the list is the playing track's folder, as the
+        // tree draws it.
+        let Some(r) = &reference else { return };
+        let folder = std::path::Path::new(tunante_core::vgm_path::parse_vgm_path(&r.path).0)
+            .parent()
+            .map(|d| d.to_string_lossy().to_string())
+            .unwrap_or_default();
+        library::folder_context(db, &folder)
+    } else {
+        library::context_for(&from_ui_rows(rows_model), &t.all_tracks(db), "", false)
+    };
+    match library::place_in(&new, p.queue().tracks(), reference.as_ref(), p.queue().resume_at()) {
+        library::Place::At(id) => p.adopt_context(new, &id),
+        library::Place::ResumeAt(k) => p.replace_context_resuming_at(new, k),
+        library::Place::Fresh => p.set_tracks(new),
+    }
+    *ctx = Some((key, p.queue().generation()));
 }
 
 fn to_ui_rows(rows: &[library::Row]) -> Vec<LibraryRow> {
@@ -8036,7 +8241,7 @@ fn adopt_pending_context(p: &mut player::Player, db: &Database) {
         .parent()
         .map(|d| d.to_string_lossy().to_string())
         .unwrap_or_default();
-        let tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
+        let tracks = library::folder_context(db, &folder);
         if !tracks.is_empty() {
             p.adopt_context(tracks, &t.id);
         }
@@ -8452,12 +8657,12 @@ fn refresh_counts(db: &Database, ui: &AppWindow) {
 }
 
 /// Apply the filter and the sort, and hand the result to the UI model.
-fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
-    st.selected.clear();
-    let needle = library::plegar(&st.filter);
+/// The tracks the table's scope holds, before its filter and its sort, in the
+/// order both start from.
+fn table_base(st: &TableState) -> Vec<tunante_core::db::models::Track> {
     // The scope decides the base set; a playlist keeps its own order, so it
     // is built by id rather than filtered out of `all`.
-    let base: Vec<tunante_core::db::models::Track> = match &st.scope {
+    match &st.scope {
         Scope::Queue { paths } => {
             let by_path: std::collections::HashMap<&str, &tunante_core::db::models::Track> =
                 st.all.iter().map(|t| (t.path.as_str(), t)).collect();
@@ -8498,21 +8703,20 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
             })
             .cloned()
             .collect(),
-    };
-    let mut tracks: Vec<_> = base
-        .into_iter()
-        .filter(|t| {
-            needle.is_empty()
-                || library::plegar(&t.title).contains(&needle)
-                || library::plegar(&t.artist).contains(&needle)
-                || library::plegar(&t.game).contains(&needle)
-        })
-        .collect();
-    // A playlist with the sentinel sort keeps its stored order untouched.
-    let keep_order = matches!(st.scope, Scope::Playlist { .. } | Scope::Queue { .. })
-        && st.sort_key == "__scope__";
-    if !keep_order {
+    }
+}
 
+/// Put `tracks` in the table's order: its sort column and direction, or the
+/// stored order where a playlist or the queue keeps it.
+///
+/// Sorts are stable, so equal keys keep the order they came in — which is why
+/// the queue, re-sorted to follow the table, is first put in `table_base`'s
+/// order: from any other start, ties would land differently than on screen.
+fn sort_table_tracks(st: &TableState, tracks: &mut Vec<tunante_core::db::models::Track>) {
+    // A playlist with the sentinel sort keeps its stored order untouched.
+    if matches!(st.scope, Scope::Playlist { .. } | Scope::Queue { .. }) && st.sort_key == "__scope__" {
+        return;
+    }
     match st.sort_key.as_str() {
         "n" => tracks.sort_by_key(|t| t.track_number.unwrap_or(0)),
         "artist" => tracks.sort_by(|a, b| library::plegar(&a.artist).cmp(&library::plegar(&b.artist))),
@@ -8546,7 +8750,90 @@ fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
     if !st.asc {
         tracks.reverse();
     }
+}
+
+/// Keep the queue what the table it was played from shows, as it shows it.
+///
+/// The list plays top to bottom, and the list is what is on screen: sorting
+/// it re-sorts what comes next, a filter narrows it, and clearing the filter
+/// widens it again from where playback is. A track the filter hides keeps
+/// playing, and after it comes the first row still visible that followed it
+/// in the unfiltered list.
+fn follow_table(
+    st: &TableState,
+    played_scope: &RefCell<Scope>,
+    player: &RefCell<Option<player::Player>>,
+) {
+    if *played_scope.borrow() != st.scope {
+        return;
     }
+    let mut guard = player.borrow_mut();
+    let Some(p) = guard.as_mut() else { return };
+    let reference = p.queue().current().or(p.current()).cloned();
+    let Some((rows, place)) = table_queue(st, p.queue().tracks(), reference.as_ref()) else {
+        return;
+    };
+    let unchanged = p.queue().tracks().iter().map(|t| &t.path).eq(rows.iter().map(|t| &t.path))
+        && matches!(&place, library::Place::At(id) if p.queue().current().is_some_and(|c| &c.id == id));
+    if unchanged {
+        return;
+    }
+    match place {
+        library::Place::At(id) => p.adopt_context(rows, &id),
+        library::Place::ResumeAt(k) => p.replace_context_resuming_at(rows, k),
+        library::Place::Fresh => p.set_tracks(rows),
+    }
+}
+
+/// The queue the table's rows make, and where `playing` sits in it. `None`
+/// when the current queue is not this table's list at all — a play-next track
+/// from elsewhere brought its own folder in — and there is nothing to follow.
+fn table_queue(
+    st: &TableState,
+    queue: &[tunante_core::db::models::Track],
+    playing: Option<&tunante_core::db::models::Track>,
+) -> Option<(Vec<tunante_core::db::models::Track>, library::Place)> {
+    let mut full = table_base(st);
+    let in_scope: std::collections::HashSet<&str> = full.iter().map(|t| t.path.as_str()).collect();
+    if queue.iter().any(|t| !in_scope.contains(t.path.as_str())) {
+        return None;
+    }
+    let rows = st.tracks.clone();
+    let place = match playing {
+        Some(t) if rows.iter().any(|r| r.path == t.path) => library::Place::At(t.id.clone()),
+        Some(t) if in_scope.contains(t.path.as_str()) => {
+            sort_table_tracks(st, &mut full);
+            let shown: std::collections::HashSet<&str> = rows.iter().map(|r| r.path.as_str()).collect();
+            let after = full
+                .iter()
+                .skip_while(|r| r.path != t.path)
+                .skip(1)
+                .find(|r| shown.contains(r.path.as_str()));
+            library::Place::ResumeAt(
+                after
+                    .and_then(|a| rows.iter().position(|r| r.path == a.path))
+                    .unwrap_or(rows.len()),
+            )
+        }
+        _ => library::Place::Fresh,
+    };
+    Some((rows, place))
+}
+
+fn rebuild_table(st: &mut TableState, model: &VecModel<TableRow>) {
+    st.selected.clear();
+    let needle = library::plegar(&st.filter);
+    let base = table_base(st);
+    let mut tracks: Vec<_> = base
+        .into_iter()
+        .filter(|t| {
+            needle.is_empty()
+                || library::plegar(&t.title).contains(&needle)
+                || library::plegar(&t.artist).contains(&needle)
+                || library::plegar(&t.game).contains(&needle)
+        })
+        .collect();
+    sort_table_tracks(st, &mut tracks);
 
     model.set_vec(
         tracks
@@ -8853,7 +9140,7 @@ fn play_from_path(
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let mut tracks = db.get_tracks_by_folder(&folder).unwrap_or_default();
+    let mut tracks = library::folder_context(db, &folder);
     // Not in the library yet — ask the decoder about it directly, so the
     // app can play a file it has never scanned.
     if tracks.is_empty() {
@@ -8986,14 +9273,69 @@ fn ui_language_from_env() -> String {
     sys_locale::get_locale().as_deref().and_then(primary).unwrap_or_default()
 }
 
-/// Show the window if it is hidden, hide it if it is shown — the tray's
-/// left-click and Mostrar/Ocultar. On the way back it re-centres on what is
-/// playing, the way reopening always has.
+/// Whether the window had the keyboard, as winit last reported, and when it
+/// last lost it. Kept from `WindowEvent::Focused` in the hook `main` installs.
+#[derive(Clone, Copy, Default)]
+struct Focus {
+    has: bool,
+    lost_at: Option<std::time::Instant>,
+}
+
+thread_local! {
+    static FOCUS: std::cell::Cell<Focus> = std::cell::Cell::new(Focus::default());
+}
+
+fn note_focus(has: bool) {
+    FOCUS.with(|f| {
+        let mut cur = f.get();
+        if cur.has && !has {
+            cur.lost_at = Some(std::time::Instant::now());
+        }
+        cur.has = has;
+        f.set(cur);
+    });
+}
+
+/// Was the window the one in front when the click began? Clicking the tray
+/// can hand the keyboard to the panel (Windows' taskbar always takes it) a
+/// moment before the click arrives here, so a window that lost focus that
+/// recently still counts as having had it.
+fn had_focus() -> bool {
+    FOCUS.with(|f| {
+        let cur = f.get();
+        cur.has || cur.lost_at.is_some_and(|t| t.elapsed() < std::time::Duration::from_secs(1))
+    })
+}
+
+/// The tray's left-click and Mostrar/Ocultar. The window in front goes away;
+/// a hidden one comes back, re-centred on what is playing, the way reopening
+/// always has; and one that is up but buried or minimized is brought to the
+/// front rather than hidden — hiding it made the click look like it did
+/// nothing, and the next one brought it back behind the browser.
 fn toggle_window(ui: &AppWindow) {
-    if ui.window().is_visible() {
-        let _ = ui.window().hide();
+    use slint::winit_030::WinitWindowAccessor;
+
+    let token = tray::take_activation_token();
+    let window = ui.window();
+    // Wayland will not let a window raise itself: without the host's token a
+    // buried window can only be hidden, as before.
+    let wayland = window
+        .with_winit_window(|w| {
+            use slint::winit_030::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            w.window_handle().is_ok_and(|h| matches!(h.as_raw(), RawWindowHandle::Wayland(_)))
+        })
+        .unwrap_or(false);
+    let can_raise = token.is_some() || !wayland;
+    if window.is_visible() && !window.is_minimized() && (had_focus() || !can_raise) {
+        let _ = window.hide();
+        note_focus(false);
+        return;
+    }
+
+    if window.is_visible() {
+        window.set_minimized(false);
     } else {
-        let _ = ui.window().show();
+        let _ = window.show();
         if !ui.get_now_path().is_empty() {
             // Re-centre on the playing track — but on the next event-loop turn,
             // not now: this runs from the tray poll inside `player.borrow_mut()`,
@@ -9007,6 +9349,24 @@ fn toggle_window(ui: &AppWindow) {
             });
         }
     }
+
+    // To the front. After a show the winit window may not exist until the
+    // loop turns, hence the wait for it; for a window already up it is there.
+    let weak = ui.as_weak();
+    let _ = slint::spawn_local(async move {
+        let Some(ui) = weak.upgrade() else { return };
+        if ui.window().winit_window().await.is_err() {
+            return;
+        }
+        match token {
+            Some(token) => {
+                activation::activate(ui.window(), &token);
+            }
+            None => {
+                ui.window().with_winit_window(|w| w.focus_window());
+            }
+        }
+    });
 }
 
 fn push_now_playing(ui: &AppWindow, p: &player::Player) {
@@ -9607,5 +9967,200 @@ mod tests {
             ["/one/a.mp3", "/two/b.mp3"],
             "an album split across two folders is still one album"
         );
+    }
+
+    // --- The queue is the list on screen, top to bottom ---------------------
+
+    fn track(path: &str, artist: &str, number: Option<i32>) -> Track {
+        Track {
+            id: path.to_string(),
+            path: path.to_string(),
+            title: tunante_core::vgm_path::parse_vgm_path(path)
+                .0
+                .rsplit('/')
+                .next()
+                .unwrap_or_default()
+                .to_string(),
+            artist: artist.to_string(),
+            track_number: number,
+            duration_ms: 1000,
+            codec: "test".into(),
+            ..Default::default()
+        }
+    }
+
+    fn row(path: &str, is_folder: bool, expanded: bool) -> library::Row {
+        library::Row {
+            label: path.to_string(),
+            detail: String::new(),
+            depth: 0,
+            is_folder,
+            expanded,
+            path: path.to_string(),
+        }
+    }
+
+    fn paths(tracks: &[Track]) -> Vec<&str> {
+        tracks.iter().map(|t| t.path.as_str()).collect()
+    }
+
+    /// The bug this whole thing is about: the tree draws a folder's own files
+    /// by name, and the queue used to be the folder by tag number, subfolders
+    /// swept in. The next song was often one nobody could see.
+    #[test]
+    fn a_folder_queues_as_the_tree_draws_it() {
+        let mut file = std::env::temp_dir();
+        file.push(format!("tunante-test-ctx-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&file);
+        let db = Database::new(&file).expect("open");
+        for t in [
+            track("/m/a/02.mp3", "", Some(1)),
+            track("/m/a/01.mp3", "", Some(2)),
+            track("/m/a/sub/00.mp3", "", Some(1)),
+            track("/m/a/x.nsf#2", "", Some(1)),
+            track("/m/a/x.nsf#1", "", Some(9)),
+        ] {
+            db.insert_track(&t).expect("insert");
+        }
+        let got = library::folder_context(&db, "/m/a");
+        let _ = std::fs::remove_file(&file);
+        assert_eq!(
+            paths(&got),
+            ["/m/a/01.mp3", "/m/a/02.mp3", "/m/a/x.nsf#1", "/m/a/x.nsf#2"],
+            "by file, subsongs by number, and nothing from the subfolder"
+        );
+    }
+
+    /// A click in the tree queues the rows of its own folder, in row order —
+    /// not the rows of an open subfolder drawn in between — and a file folded
+    /// under one row brings all its subsongs, in order, where that row is.
+    #[test]
+    fn a_tree_click_queues_its_own_folder() {
+        let all = [
+            track("/m/a/01.mp3", "", None),
+            track("/m/a/x.nsf#2", "", None),
+            track("/m/a/x.nsf#1", "", None),
+            track("/m/a/sub/00.mp3", "", None),
+            track("/m/a/zz.mp3", "", None),
+        ];
+        let rows = [
+            row("/m/a", true, true),
+            row("/m/a/sub", true, true),
+            row("/m/a/sub/00.mp3", false, false),
+            row("/m/a/01.mp3", false, false),
+            row("/m/a/x.nsf", true, false),
+            row("/m/a/zz.mp3", false, false),
+        ];
+        let got = library::context_for(&rows, &all, "/m/a/01.mp3", true);
+        assert_eq!(paths(&got), ["/m/a/01.mp3", "/m/a/x.nsf#1", "/m/a/x.nsf#2", "/m/a/zz.mp3"]);
+    }
+
+    /// Search results come from many folders and are one list all the same.
+    #[test]
+    fn a_search_queues_its_results() {
+        let all = [track("/m/a/01.mp3", "", None), track("/m/b/02.mp3", "", None)];
+        let rows = [row("/m/b/02.mp3", false, false), row("/m/a/01.mp3", false, false)];
+        let got = library::context_for(&rows, &all, "/m/a/01.mp3", false);
+        assert_eq!(paths(&got), ["/m/b/02.mp3", "/m/a/01.mp3"]);
+    }
+
+    /// A table of five, two artists tied, for the queue to follow.
+    fn five() -> TableState {
+        let mut st = TableState::default();
+        st.all = vec![
+            track("/m/d.mp3", "Bea", None),
+            track("/m/a.mp3", "Ana", None),
+            track("/m/c.mp3", "Bea", None),
+            track("/m/b.mp3", "Ana", None),
+            track("/m/e.mp3", "Cid", None),
+        ];
+        st
+    }
+
+    fn rebuilt(st: &mut TableState) {
+        rebuild_table(st, &VecModel::from(Vec::<TableRow>::new()));
+    }
+
+    /// Sorting after pressing play: the queue is the rows in their new order,
+    /// ties landing exactly where they landed on screen.
+    #[test]
+    fn the_queue_follows_a_sort() {
+        let mut st = five();
+        rebuilt(&mut st);
+        let queue = st.tracks.clone();
+        st.sort_key = "artist".into();
+        st.asc = false;
+        rebuilt(&mut st);
+        let (rows, place) = table_queue(&st, &queue, Some(&track("/m/c.mp3", "Bea", None))).unwrap();
+        assert_eq!(paths(&rows), paths(&st.tracks));
+        assert_eq!(place, library::Place::At("/m/c.mp3".into()));
+    }
+
+    /// A filter narrows the queue to what it shows; one that hides the playing
+    /// track leaves it playing, and what comes next is the first visible row
+    /// that followed it in the whole list.
+    #[test]
+    fn a_filter_that_hides_the_playing_track_resumes_after_it() {
+        let mut st = five();
+        rebuilt(&mut st); // by title: a b c d e
+        let queue = st.tracks.clone();
+        st.filter = "Bea".into(); // leaves c d
+        rebuilt(&mut st);
+        let (rows, place) = table_queue(&st, &queue, Some(&track("/m/b.mp3", "Ana", None))).unwrap();
+        assert_eq!(paths(&rows), ["/m/c.mp3", "/m/d.mp3"]);
+        assert_eq!(place, library::Place::ResumeAt(0), "after b comes c, the first shown");
+
+        let (_, place) = table_queue(&st, &rows, Some(&track("/m/e.mp3", "Cid", None))).unwrap();
+        assert_eq!(place, library::Place::ResumeAt(2), "nothing shown comes after e");
+    }
+
+    /// Clearing the filter puts the whole list back, from where playback is.
+    #[test]
+    fn clearing_the_filter_widens_the_queue_again() {
+        let mut st = five();
+        st.filter = "Bea".into();
+        rebuilt(&mut st);
+        let queue = st.tracks.clone();
+        st.filter.clear();
+        rebuilt(&mut st);
+        let (rows, place) = table_queue(&st, &queue, Some(&track("/m/c.mp3", "Bea", None))).unwrap();
+        assert_eq!(paths(&rows), ["/m/a.mp3", "/m/b.mp3", "/m/c.mp3", "/m/d.mp3", "/m/e.mp3"]);
+        assert_eq!(place, library::Place::At("/m/c.mp3".into()));
+    }
+
+    /// A queue that is not this table's list any more is left alone.
+    #[test]
+    fn a_queue_from_elsewhere_does_not_follow_the_table() {
+        let mut st = TableState::default();
+        st.all = vec![track("/m/a.mp3", "", None)];
+        st.scope = Scope::Tree("/m".into());
+        rebuilt(&mut st);
+        let queue = vec![track("/m/a.mp3", "", None), track("/other/b.mp3", "", None)];
+        assert!(table_queue(&st, &queue, None).is_none());
+    }
+
+    /// The library's search narrowing the list keeps what plays next among
+    /// what is shown, in the order it was.
+    #[test]
+    fn a_search_that_hides_the_playing_track_resumes_after_it() {
+        let old = [track("/m/a", "", None), track("/m/b", "", None), track("/m/c", "", None), track("/m/d", "", None)];
+        let new = [track("/m/a", "", None), track("/m/d", "", None)];
+        let b = track("/m/b", "", None);
+        assert_eq!(library::place_in(&new, &old, Some(&b), None), library::Place::ResumeAt(1));
+        assert_eq!(library::place_in(&new, &old, Some(&old[3]), None), library::Place::At("/m/d".into()));
+        assert_eq!(library::place_in(&new, &old, None, None), library::Place::Fresh);
+    }
+
+    /// Narrowed twice with the playing track hidden both times: the second
+    /// search resumes from where the first was resuming.
+    #[test]
+    fn narrowing_again_keeps_resuming_from_the_same_place() {
+        let old = [track("/m/a", "", None), track("/m/c", "", None), track("/m/d", "", None)];
+        let new = [track("/m/d", "", None)];
+        let hidden = track("/m/b", "", None);
+        // `old` was resuming at c (row 1); c is gone too, d follows.
+        assert_eq!(library::place_in(&new, &old, Some(&hidden), Some(1)), library::Place::ResumeAt(0));
+        // Nothing after the resume point survives: the list ends there.
+        assert_eq!(library::place_in(&[track("/m/a", "", None)], &old, Some(&hidden), Some(1)), library::Place::ResumeAt(1));
     }
 }
