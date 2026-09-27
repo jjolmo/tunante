@@ -20,7 +20,13 @@ pub use reader::{
 pub use twosf_reader::read_twosf_metadata;
 pub use usf_reader::read_usf_metadata;
 pub use vgmstream_reader::read_vgmstream_metadata;
-pub use writer::write_rating_to_file;
+pub use writer::{real_path_of, write_export_tags, write_rating_to_file, ExportTags};
+
+/// Standard base64, for the `data:` URIs the artwork reader hands out.
+pub fn decode_base64(b64: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(b64.trim()).ok()
+}
 
 /// Built-in fallback play time for tracks with no determinable length, used
 /// when the user has not set one in Settings.

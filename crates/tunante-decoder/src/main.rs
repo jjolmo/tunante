@@ -39,6 +39,15 @@
 //!     stdin:  newline-separated commands
 //!             seek <ms>     jump, then keep streaming from there
 //!
+//! tunante-decoder export <path> <out.mp3> [hint_ms] [--loops N] [--fade MS] [--vgm-loops F]
+//!                        [--title T] [--artist A] [--album-artist A] [--album B]
+//!                        [--track N] [--disc N]
+//!     stdout: {"progress":0.42} lines while encoding (only when the length is
+//!             known), then {"ok":true} — or {"ok":false,"error":"…"}
+//!     Encodes what `play` would stream, same loops and fade, as a V0 MP3.
+//!     Written to <out>.part and renamed when complete; killing the process
+//!     is how a caller cancels, and leaves only the .part to delete.
+//!
 //! tunante-decoder art <path>
 //!     stdout: one line of JSON — {"ok":true,"art":"data:image/jpeg;base64,…"}
 //!             or {"ok":true,"art":null} when the file carries none
@@ -73,12 +82,15 @@ use std::time::Duration;
 
 use rodio::Source;
 
+mod export;
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
 
     let usage = || {
         eprintln!("usage: tunante-decoder probe <path> [--fast] [--loop-max-ms N] [--vgm-loops F] [--caps-all]");
         eprintln!("       tunante-decoder play  <path> [hint_ms] [--loops N] [--fade MS] [--vgm-loops F]");
+        eprintln!("       tunante-decoder export <path> <out.mp3> [hint_ms] [--loops N] [--fade MS] [--vgm-loops F] [--title T] [--artist A] [--album-artist A] [--album B] [--track N] [--disc N]");
         eprintln!("       tunante-decoder art   <path>");
         eprintln!("       tunante-decoder rate  <path> <rating> [--order db,file,folder]");
     };
@@ -167,6 +179,43 @@ fn main() -> ExitCode {
             }
 
             play(path, hint, opts)
+        }
+        "export" => {
+            let Some(out) = args.get(3) else {
+                usage();
+                return ExitCode::FAILURE;
+            };
+            let hint = args
+                .get(4)
+                .filter(|a| !a.starts_with('-'))
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(0);
+            let text = |name: &str| -> Option<String> {
+                args.iter().skip_while(|a| *a != name).nth(1).cloned()
+            };
+            let mut opts = tunante_codec::PlaybackOptions::default();
+            if let Some(n) = text("--loops").and_then(|v| v.parse().ok()) {
+                opts.loop_count = n;
+            }
+            if let Some(ms) = text("--fade").and_then(|v| v.parse().ok()) {
+                opts.fade_ms = ms;
+            }
+            if let Some(v) = text("--vgm-loops").and_then(|v| v.parse().ok()) {
+                opts.vgm_loop_count = v;
+            }
+            let tags = export::Tags {
+                title: text("--title").unwrap_or_default(),
+                artist: text("--artist").unwrap_or_default(),
+                album_artist: text("--album-artist").unwrap_or_default(),
+                album: text("--album").unwrap_or_default(),
+                track: text("--track").and_then(|v| v.parse().ok()),
+                disc: text("--disc").and_then(|v| v.parse().ok()),
+            };
+            let result = export::export(path, Path::new(out), hint, opts, tags);
+            if let Err(e) = &result {
+                println!("{}", serde_json::json!({ "ok": false, "error": e }));
+            }
+            result
         }
         other => Err(format!("unknown mode '{other}'")),
     };

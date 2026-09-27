@@ -44,9 +44,9 @@ crates/                 # Shared by every app
   tunante-codec/        #   Every decoder + metadata reader/writer. Linked ONLY
                         #   by tunante-decoder — that is the point of the pipe.
   tunante-decoder/      #   The out-of-process helper binary: probe, play (PCM
-                        #   out), art, rate
+                        #   out), export (MP3 via LAME), art, rate
   tunante-helper/       #   Client for that helper: probe, artwork, rate, scan,
-                        #   watch (folder watching), PipeSource
+                        #   watch (folder watching), export, PipeSource
   tunante-art/          #   Cover art: matching, download, validation, storage
 assets/
   logo.png              # The only drawing anyone edits. Every icon in the tree

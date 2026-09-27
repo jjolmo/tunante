@@ -1456,3 +1456,30 @@ msgstr "Analisar ao abrir"
 
 msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
 msgstr "Procura o que foi adicionado fora do programa, alguns segundos depois de abrir."
+
+msgid "Convertir a MP3…"
+msgstr "Converter para MP3…"
+
+msgid "Convertir a MP3"
+msgstr "Converter para MP3"
+
+msgid "Convirtiendo a MP3…"
+msgstr "Convertendo para MP3…"
+
+msgid "Convertido a MP3"
+msgstr "Convertido para MP3"
+
+msgid "No se pudo convertir"
+msgstr "Não foi possível converter"
+
+msgid "Mostrar en la carpeta"
+msgstr "Mostrar na pasta"
+
+msgid "Carpeta para las pistas en MP3"
+msgstr "Pasta para as faixas em MP3"
+
+msgid "Convertir {} pistas a MP3…"
+msgstr "Converter {} faixas para MP3…"
+
+msgid "No se pudieron convertir {} de {}:"
+msgstr "Não foi possível converter {} de {}:"

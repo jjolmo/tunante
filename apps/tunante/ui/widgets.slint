@@ -1600,6 +1600,131 @@ export component MetadataSheet inherits Rectangle {
 }
 
 
+// Converting a track to MP3: a bar while it runs, with the way out; when it is
+// done, the file shown in its folder or the window closed. The work is in
+// `tunante-decoder export`; this only watches it.
+export component ConvertSheet inherits Rectangle {
+    in property <string> heading;
+    /// The track being converted, and — once done — where it went.
+    in property <string> detail;
+    /// 0–1, or below 0 while the length is unknown (the bar then sweeps).
+    in property <float> progress;
+    /// 0 converting, 1 done, 2 failed.
+    in property <int> state;
+    /// What went wrong: the error when it failed, or — converting several —
+    /// the tracks that did not make it while the rest did.
+    in property <string> message;
+    callback cancel();
+    callback close();
+    callback reveal();
+
+    background: #000000bb;
+
+    // The backdrop only closes a finished window: a stray click must not
+    // throw away a conversion halfway through.
+    TouchArea { clicked => { if (root.state != 0) { root.close(); } } }
+
+    Rectangle {
+        width: min(460px, root.width - Theme.gap * 4);
+        height: card.preferred-height;
+        background: Theme.bg-secondary;
+        border-radius: Theme.radius * 2;
+
+        TouchArea { }
+
+        card := VerticalLayout {
+            padding: Theme.gap * 2;
+            spacing: Theme.gap;
+
+            Text {
+                text: root.heading;
+                color: Theme.text-primary;
+                font-size: Theme.font-title;
+                overflow: elide;
+            }
+            Text {
+                text: root.detail;
+                color: Theme.text-muted;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+
+            track := Rectangle {
+                height: 8px;
+                border-radius: 4px;
+                background: Theme.bg-tertiary;
+                clip: true;
+                if root.state != 2 && root.progress >= 0: Rectangle {
+                    x: 0;
+                    width: parent.width * (root.state == 1 ? 1 : max(0, min(1, root.progress)));
+                    height: parent.height;
+                    border-radius: 4px;
+                    background: Theme.accent;
+                    animate width { duration: 150ms; }
+                }
+                // Unknown length: a segment sweeping across, so it is plainly
+                // alive rather than stuck at nothing.
+                if root.state == 0 && root.progress < 0: Rectangle {
+                    width: parent.width * 0.3;
+                    height: parent.height;
+                    border-radius: 4px;
+                    background: Theme.accent;
+                    x: (parent.width * 1.3) * mod(animation-tick() / 1500ms, 1) - parent.width * 0.3;
+                }
+            }
+
+            if root.message != "": Text {
+                text: root.message;
+                color: Theme.text-primary;
+                font-size: Theme.font-small;
+                wrap: word-wrap;
+            }
+
+            HorizontalLayout {
+                spacing: Theme.gap;
+                alignment: end;
+
+                if root.state == 1: Rectangle {
+                    min-width: 150px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: rv.has-hover ? Theme.bg-hover : Theme.bg-tertiary;
+                    HorizontalLayout {
+                        padding-left: Theme.gap;
+                        padding-right: Theme.gap;
+                        Text {
+                            text: @tr("Mostrar en la carpeta");
+                            color: Theme.text-primary;
+                            font-size: Theme.font-body;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+                    }
+                    rv := TouchArea { clicked => { root.reveal(); } }
+                }
+                Rectangle {
+                    width: 110px;
+                    height: Theme.touch-target - 8px;
+                    border-radius: Theme.radius;
+                    background: root.state == 0
+                        ? (cc.has-hover ? Theme.bg-hover : Theme.bg-tertiary)
+                        : Theme.accent;
+                    Text {
+                        text: root.state == 0 ? @tr("Cancelar") : @tr("Cerrar");
+                        color: root.state == 0 ? Theme.text-primary : #ffffff;
+                        font-size: Theme.font-body;
+                    }
+                    cc := TouchArea {
+                        clicked => {
+                            if (root.state == 0) { root.cancel(); } else { root.close(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 // Correcting what the classification rules got wrong: pick the machine, name
 // the game, choose whether the whole folder or just this track is meant.
 export component ReclassifySheet inherits Rectangle {

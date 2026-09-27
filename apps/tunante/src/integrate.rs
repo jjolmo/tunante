@@ -45,7 +45,12 @@ pub fn reveal(path: &Path) {
                 .arg(format!("/select,{}", path.display()))
                 .spawn();
         }
-        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+        #[cfg(target_os = "macos")]
+        {
+            // Finder's reveal: the folder, with the file selected.
+            let _ = std::process::Command::new("open").arg("-R").arg(&path).spawn();
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
         {
             if let Some(folder) = path.parent() {
                 let _ = std::process::Command::new("open").arg(folder).spawn();

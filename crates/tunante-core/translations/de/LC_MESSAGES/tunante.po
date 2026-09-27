@@ -1456,3 +1456,30 @@ msgstr "Beim Öffnen scannen"
 
 msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
 msgstr "Sucht wenige Sekunden nach dem Öffnen nach dem, was außerhalb des Programms hinzugefügt wurde."
+
+msgid "Convertir a MP3…"
+msgstr "In MP3 umwandeln…"
+
+msgid "Convertir a MP3"
+msgstr "In MP3 umwandeln"
+
+msgid "Convirtiendo a MP3…"
+msgstr "Wird in MP3 umgewandelt…"
+
+msgid "Convertido a MP3"
+msgstr "In MP3 umgewandelt"
+
+msgid "No se pudo convertir"
+msgstr "Umwandlung fehlgeschlagen"
+
+msgid "Mostrar en la carpeta"
+msgstr "Im Ordner anzeigen"
+
+msgid "Carpeta para las pistas en MP3"
+msgstr "Ordner für die MP3-Titel"
+
+msgid "Convertir {} pistas a MP3…"
+msgstr "{} Titel in MP3 umwandeln…"
+
+msgid "No se pudieron convertir {} de {}:"
+msgstr "{} von {} konnten nicht umgewandelt werden:"

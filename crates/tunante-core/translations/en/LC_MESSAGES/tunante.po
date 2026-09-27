@@ -1456,3 +1456,30 @@ msgstr "Scan on open"
 
 msgid "Busca lo añadido fuera del programa, unos segundos después de abrir."
 msgstr "Looks for what was added outside the app, a few seconds after opening."
+
+msgid "Convertir a MP3…"
+msgstr "Convert to MP3…"
+
+msgid "Convertir a MP3"
+msgstr "Convert to MP3"
+
+msgid "Convirtiendo a MP3…"
+msgstr "Converting to MP3…"
+
+msgid "Convertido a MP3"
+msgstr "Converted to MP3"
+
+msgid "No se pudo convertir"
+msgstr "Could not convert"
+
+msgid "Mostrar en la carpeta"
+msgstr "Show in folder"
+
+msgid "Carpeta para las pistas en MP3"
+msgstr "Folder for the MP3 tracks"
+
+msgid "Convertir {} pistas a MP3…"
+msgstr "Convert {} tracks to MP3…"
+
+msgid "No se pudieron convertir {} de {}:"
+msgstr "{} of {} could not be converted:"

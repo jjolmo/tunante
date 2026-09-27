@@ -77,11 +77,20 @@ impl UsfSource {
         })
     }
 
-    /// Non-blocking buffer fill — NEVER blocks rodio's mixer thread.
-    /// Returns true if buffer was filled, false otherwise.
+    /// Wait for the emulator thread's next chunk. Returns false once the
+    /// track is over.
+    ///
+    /// This used to be non-blocking and hand out silence while the thread
+    /// caught up, because it ran inside rodio's mixer, which must never wait.
+    /// It no longer does: it runs in `tunante-decoder`, a process of its own,
+    /// where waiting costs nothing. And the silence was not harmless. The N64
+    /// core is the slowest one, so it falls behind whenever it is read faster
+    /// than real time — which a conversion to MP3 always does — and each time
+    /// it fell behind, a gap was written into the file: a track full of
+    /// stops.
     fn try_fill_buffer(&mut self) -> bool {
         loop {
-            match self.rx.try_recv() {
+            match self.rx.recv() {
                 Ok(DecodeResult::Samples(samples)) => {
                     self.buffer = samples;
                     self.buf_pos = 0;
@@ -95,10 +104,7 @@ impl UsfSource {
                     // Discard any stale samples after a seek, then try again
                     continue;
                 }
-                Err(mpsc::TryRecvError::Empty) => {
-                    return false; // No data yet — caller returns silence
-                }
-                Err(mpsc::TryRecvError::Disconnected) => {
+                Err(mpsc::RecvError) => {
                     self.finished = true;
                     return false;
                 }
@@ -122,13 +128,8 @@ impl Iterator for UsfSource {
         if self.finished && self.buf_pos >= self.buffer.len() {
             return None;
         }
-        if self.buf_pos >= self.buffer.len() {
-            if !self.try_fill_buffer() {
-                if self.finished {
-                    return None;
-                }
-                return Some(0.0);
-            }
+        if self.buf_pos >= self.buffer.len() && !self.try_fill_buffer() {
+            return None;
         }
         let sample = self.buffer[self.buf_pos];
         self.buf_pos += 1;

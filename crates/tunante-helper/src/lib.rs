@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use rodio::Source;
 
+pub mod export;
 pub mod scan;
 pub mod watch;
 

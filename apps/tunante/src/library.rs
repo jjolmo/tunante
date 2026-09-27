@@ -722,7 +722,7 @@ fn child_dirs(dir: &Path) -> Vec<PathBuf> {
     v.into_values().collect()
 }
 
-fn file_label(path: &str) -> String {
+pub fn file_label(path: &str) -> String {
     let (real, sub) = vgm_path::parse_vgm_path(path);
     let name = Path::new(real)
         .file_name()

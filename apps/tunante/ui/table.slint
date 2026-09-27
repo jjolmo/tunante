@@ -185,6 +185,9 @@ export component TrackTable inherits Rectangle {
     /// drawn. Filled by `row-menu-opened` just before the popup shows, so one
     /// set of strings serves every row.
     in property <string> menu-game;
+    /// How many rows the menu acts on: the selection when the clicked row is
+    /// in it, else just that row.
+    in property <int> menu-count: 1;
     in property <string> menu-artist;
     in property <string> menu-console;
     in property <string> menu-album;
@@ -193,6 +196,7 @@ export component TrackTable inherits Rectangle {
     /// "Show me everything of this row's game / artist / console / album."
     callback scope-from-row(int, string);
     callback open-folder(int);
+    callback convert-requested(int);
     /// Pin the row's folder to the sidebar.
     callback pin-folder(int);
     /// Open the metadata editor on this row.
@@ -707,6 +711,12 @@ export component TrackTable inherits Rectangle {
                             MenuRow {
                                 label: @tr("Buscar carátula…");
                                 chosen => { root.cover-requested(i); menu.close(); }
+                            }
+                            MenuRow {
+                                label: root.menu-count > 1
+                                    ? @tr("Convertir {} pistas a MP3…", root.menu-count)
+                                    : @tr("Convertir a MP3…");
+                                chosen => { root.convert-requested(i); menu.close(); }
                             }
                             MenuRow {
                                 label: @tr("Abrir carpeta");

@@ -226,6 +226,62 @@ fn write_psf_tag_rating(path: &Path, rating: i32) -> Result<(), String> {
     Ok(())
 }
 
+/// What an exported MP3's tag says. Empty fields are left out, not written
+/// blank.
+#[derive(Default)]
+pub struct ExportTags<'a> {
+    pub title: &'a str,
+    pub artist: &'a str,
+    pub album_artist: &'a str,
+    pub album: &'a str,
+    pub track: Option<u32>,
+    pub disc: Option<u32>,
+    /// Image bytes and their MIME type.
+    pub cover: Option<(&'a [u8], &'a str)>,
+}
+
+/// Tag an MP3 that `tunante-decoder export` just wrote, as ID3v2.4 (UTF-8, so
+/// a Japanese title survives).
+pub fn write_export_tags(mp3: &Path, tags: &ExportTags) -> Result<(), String> {
+    use lofty::config::WriteOptions;
+    use lofty::picture::{MimeType, Picture, PictureType};
+    use lofty::tag::{ItemKey, Tag, TagExt, TagType};
+
+    let mut tag = Tag::new(TagType::Id3v2);
+    for (key, value) in [
+        (ItemKey::TrackTitle, tags.title),
+        (ItemKey::TrackArtist, tags.artist),
+        (ItemKey::AlbumArtist, tags.album_artist),
+        (ItemKey::AlbumTitle, tags.album),
+    ] {
+        if !value.trim().is_empty() {
+            tag.insert_text(key, value.to_string());
+        }
+    }
+    if let Some(n) = tags.track.filter(|&n| n > 0) {
+        tag.insert_text(ItemKey::TrackNumber, n.to_string());
+    }
+    if let Some(n) = tags.disc.filter(|&n| n > 0) {
+        tag.insert_text(ItemKey::DiscNumber, n.to_string());
+    }
+    if let Some((bytes, mime)) = tags.cover {
+        let mime = match mime {
+            "image/png" => MimeType::Png,
+            "image/gif" => MimeType::Gif,
+            "image/bmp" => MimeType::Bmp,
+            _ => MimeType::Jpeg,
+        };
+        tag.push_picture(Picture::new_unchecked(
+            PictureType::CoverFront,
+            Some(mime),
+            None,
+            bytes.to_vec(),
+        ));
+    }
+    tag.save_to_path(mp3, WriteOptions::default())
+        .map_err(|e| format!("lofty write error: {e}"))
+}
+
 /// Write rating to a standard audio file using lofty.
 ///
 /// For Vorbis/FLAC/OGG: writes "RATING" comment (0-5 direct scale)

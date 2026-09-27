@@ -657,6 +657,12 @@ impl AudioEngine {
         self.player.set_volume(volume.clamp(0.0, 1.0));
     }
 
+    /// The loop count, fade and vgmstream loop count the next track will be
+    /// decoded with — what a conversion needs to last as long as playback.
+    pub fn loop_settings(&self) -> (u32, u64, Option<f64>) {
+        (self.loop_count, self.loop_fade_ms, self.vgm_loop_count)
+    }
+
     pub fn set_vgm_loop_count(&mut self, count: f64) {
         self.vgm_loop_count = Some(count.clamp(0.0, 20.0));
     }

@@ -1937,6 +1937,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ui.set_table_menu_artist(label("artist"));
             ui.set_table_menu_console(label("console"));
             ui.set_table_menu_album(label("album"));
+            let i = index as usize;
+            ui.set_table_menu_count(if st.selected.len() > 1 && st.selected.contains(&i) {
+                st.selected.len() as i32
+            } else {
+                1
+            });
         });
     }
     {
@@ -1969,6 +1975,135 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             integrate::reveal(std::path::Path::new(real));
         });
     }
+    // --- Convert to MP3 ------------------------------------------------------
+    //
+    // Right-click → "Convertir a MP3…" → the system's save dialog → a sheet
+    // with a bar and Cancelar, then "Mostrar en la carpeta" and Cerrar. The
+    // encoding is `tunante-decoder export`'s (tunante_helper::export), on a
+    // worker thread; this 100 ms timer runs only while a job exists and drains
+    // its channels, the same shape as every other worker here.
+    {
+        let job: Rc<RefCell<Option<ConvertJob>>> = Rc::new(RefCell::new(None));
+        let tick = Rc::new(slint::Timer::default());
+        let db_c = db.clone();
+        {
+            let (st, player_c, job, tick) = (table_state.clone(), player.clone(), job.clone(), tick.clone());
+            let db_c = db_c.clone();
+            let weak = ui.as_weak();
+            ui.on_table_convert(move |index| {
+                if job.borrow().is_some() {
+                    return; // one at a time; the sheet is already up
+                }
+                // The selection when the clicked row is in it, in the order it
+                // is drawn — the same rule as Encolar — else that row alone.
+                let tracks: Vec<_> = {
+                    let st = st.borrow();
+                    let i = index as usize;
+                    if st.selected.len() > 1 && st.selected.contains(&i) {
+                        let mut idx: Vec<usize> = st.selected.iter().copied().collect();
+                        idx.sort_unstable();
+                        idx.iter().filter_map(|&j| st.tracks.get(j).cloned()).collect()
+                    } else {
+                        st.tracks.get(i).cloned().into_iter().collect()
+                    }
+                };
+                if tracks.is_empty() {
+                    return;
+                }
+                // The player's own loop count, fade and vgmstream loops: each
+                // file lasts exactly what the track lasts in the app.
+                let (loops, fade_ms, vgm_loop_count) = player_c
+                    .borrow_mut()
+                    .as_mut()
+                    .map(|p| p.engine_mut().loop_settings())
+                    .unwrap_or((2, 8_000, None));
+                let requests: Vec<_> = tracks
+                    .iter()
+                    .map(|t| export_request(t, loops, fade_ms, vgm_loop_count))
+                    .collect();
+
+                let folder = db_c
+                    .get_setting("convert_last_dir")
+                    .ok()
+                    .flatten()
+                    .map(std::path::PathBuf::from)
+                    .filter(|d| d.is_dir());
+                let (tx, rx) = std::sync::mpsc::channel();
+                if requests.len() == 1 {
+                    filedialog::save_as(
+                        tunante_core::i18n::tr("Convertir a MP3"),
+                        format!("{}.mp3", safe_file_name(&requests[0].title)),
+                        folder,
+                        filedialog::SaveKind::Mp3,
+                        tx,
+                    );
+                } else {
+                    // Several go into a folder of their own, which the user
+                    // names and places: the album they share, if they share one.
+                    filedialog::save_as(
+                        tunante_core::i18n::tr("Carpeta para las pistas en MP3"),
+                        safe_file_name(&batch_folder_name(&requests)),
+                        folder,
+                        filedialog::SaveKind::NewFolder,
+                        tx,
+                    );
+                }
+                *job.borrow_mut() = Some(ConvertJob {
+                    requests,
+                    target: std::path::PathBuf::new(),
+                    saving: Some(rx),
+                    events: None,
+                    cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    current: 0,
+                    failures: Vec::new(),
+                });
+                let (job, db_c, weak) = (job.clone(), db_c.clone(), weak.clone());
+                let tick_w = Rc::downgrade(&tick);
+                tick.start(slint::TimerMode::Repeated, std::time::Duration::from_millis(100), move || {
+                    let Some(ui) = weak.upgrade() else { return };
+                    if !drain_convert(&ui, &job, &db_c) {
+                        if let Some(t) = tick_w.upgrade() {
+                            t.stop();
+                        }
+                    }
+                });
+            });
+        }
+        {
+            let job = job.clone();
+            let weak = ui.as_weak();
+            ui.on_convert_cancel(move || {
+                if let Some(j) = job.borrow().as_ref() {
+                    j.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                // The sheet goes now; the worker deletes the half file and its
+                // "cancelled" ends the job on the next tick.
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_converting(false);
+                }
+            });
+        }
+        {
+            let (job, tick) = (job.clone(), tick.clone());
+            let weak = ui.as_weak();
+            ui.on_convert_close(move || {
+                if let Some(ui) = weak.upgrade() {
+                    ui.set_converting(false);
+                }
+                *job.borrow_mut() = None;
+                tick.stop();
+            });
+        }
+        {
+            let job = job.clone();
+            ui.on_convert_reveal(move || {
+                if let Some(j) = job.borrow().as_ref() {
+                    integrate::reveal(&j.target);
+                }
+            });
+        }
+    }
+
     // The one channel every art/metadata worker reports through; the timer
     // drains it. Created here because reclassification's suggestions worker
     // is the earliest sender.
@@ -7436,6 +7571,218 @@ fn enqueue_all(
     }
 }
 
+/// One "Convertir a MP3" from menu to closed sheet: a single track, or the
+/// selection into a folder of its own.
+struct ConvertJob {
+    /// One per track; each `out` is filled in when the save dialog answers.
+    requests: Vec<tunante_helper::export::ExportRequest>,
+    /// What "Mostrar en la carpeta" selects: the file, or the new folder.
+    target: std::path::PathBuf,
+    /// The save dialog, while it is open.
+    saving: Option<std::sync::mpsc::Receiver<Option<std::path::PathBuf>>>,
+    /// The worker, once it runs.
+    events: Option<std::sync::mpsc::Receiver<ConvertEvent>>,
+    cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Which track the worker is on.
+    current: usize,
+    /// Tracks that failed, with why; the rest carry on.
+    failures: Vec<(String, String)>,
+}
+
+enum ConvertEvent {
+    Started(usize),
+    Progress(f32),
+    Failed(usize, String),
+    Finished { cancelled: bool },
+}
+
+/// What converting one track needs: where it is, how long it plays, and every
+/// tag the library has for it.
+fn export_request(
+    t: &tunante_core::db::models::Track,
+    loops: u32,
+    fade_ms: u64,
+    vgm_loop_count: Option<f64>,
+) -> tunante_helper::export::ExportRequest {
+    let title = if t.title.trim().is_empty() { library::file_label(&t.path) } else { t.title.clone() };
+    tunante_helper::export::ExportRequest {
+        path: t.path.clone(),
+        duration_hint_ms: t.duration_ms,
+        loops,
+        fade_ms,
+        vgm_loop_count,
+        title,
+        artist: t.artist.clone(),
+        album_artist: t.album_artist.clone(),
+        // A rip's album tag is often empty where the library knows the game.
+        album: if t.album.trim().is_empty() { t.game.clone() } else { t.album.clone() },
+        track: t.track_number.filter(|&n| n > 0).map(|n| n as u32),
+        disc: t.disc_number.filter(|&n| n > 0).map(|n| n as u32),
+        ..Default::default()
+    }
+}
+
+/// The folder several tracks are offered to go into: the album they all
+/// share, or a plain count when they do not share one.
+fn batch_folder_name(requests: &[tunante_helper::export::ExportRequest]) -> String {
+    let album = &requests[0].album;
+    if !album.trim().is_empty() && requests.iter().all(|r| &r.album == album) {
+        album.clone()
+    } else {
+        format!("Tunante - {}", library::pistas(requests.len()))
+    }
+}
+
+/// Each track's file inside the batch folder: its place in the selection
+/// first, so the folder sorts the way the list did.
+fn batch_file_name(position: usize, total: usize, title: &str) -> String {
+    let width = total.to_string().len().max(2);
+    format!("{:0width$} - {}.mp3", position + 1, safe_file_name(title))
+}
+
+/// One tick of a conversion: the save dialog's answer, then the worker's
+/// progress and ending. `false` once there is nothing left to watch.
+fn drain_convert(ui: &AppWindow, job: &RefCell<Option<ConvertJob>>, db: &Database) -> bool {
+    let mut slot = job.borrow_mut();
+    let Some(j) = slot.as_mut() else { return false };
+    let total = j.requests.len();
+
+    if let Some(rx) = &j.saving {
+        match rx.try_recv() {
+            Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            // Cancelled dialog, or it died: nothing happens.
+            Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                *slot = None;
+                return false;
+            }
+            Ok(Some(chosen)) => {
+                j.saving = None;
+                if let Some(dir) = chosen.parent() {
+                    let _ = db.set_setting("convert_last_dir", &dir.to_string_lossy());
+                }
+                if total == 1 {
+                    j.requests[0].out = chosen.clone();
+                } else {
+                    if let Err(e) = std::fs::create_dir_all(&chosen) {
+                        ui.set_convert_heading(tunante_core::i18n::tr("No se pudo convertir").into());
+                        ui.set_convert_detail(chosen.to_string_lossy().to_string().into());
+                        ui.set_convert_message(e.to_string().into());
+                        ui.set_convert_progress(0.0);
+                        ui.set_convert_state(2);
+                        ui.set_converting(true);
+                        return false;
+                    }
+                    for (i, r) in j.requests.iter_mut().enumerate() {
+                        r.out = chosen.join(batch_file_name(i, total, &r.title));
+                    }
+                }
+                j.target = chosen;
+
+                let (tx, rx) = std::sync::mpsc::channel();
+                let (requests, cancel) = (j.requests.clone(), j.cancel.clone());
+                std::thread::spawn(move || {
+                    use tunante_helper::export::{export_mp3, ExportError};
+                    for (i, request) in requests.iter().enumerate() {
+                        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                            break;
+                        }
+                        let _ = tx.send(ConvertEvent::Started(i));
+                        let progress = tx.clone();
+                        match export_mp3(request, &cancel, |p| {
+                            let _ = progress.send(ConvertEvent::Progress(p));
+                        }) {
+                            Ok(()) => {}
+                            Err(ExportError::Cancelled) => break,
+                            Err(ExportError::Failed(e)) => {
+                                let _ = tx.send(ConvertEvent::Failed(i, e));
+                            }
+                        }
+                    }
+                    let cancelled = cancel.load(std::sync::atomic::Ordering::Relaxed);
+                    let _ = tx.send(ConvertEvent::Finished { cancelled });
+                });
+                j.events = Some(rx);
+                ui.set_convert_heading(tunante_core::i18n::tr("Convirtiendo a MP3…").into());
+                ui.set_convert_message(SharedString::new());
+                ui.set_convert_state(0);
+                ui.set_converting(true);
+            }
+        }
+    }
+
+    let Some(rx) = &j.events else { return true };
+    loop {
+        match rx.try_recv() {
+            Ok(ConvertEvent::Started(i)) => {
+                j.current = i;
+                let title = &j.requests[i].title;
+                if total == 1 {
+                    ui.set_convert_detail(title.as_str().into());
+                    // Unknown until the encoder's first line says otherwise.
+                    ui.set_convert_progress(-1.0);
+                } else {
+                    ui.set_convert_detail(format!("{} / {} · {title}", i + 1, total).into());
+                    ui.set_convert_progress(i as f32 / total as f32);
+                }
+            }
+            Ok(ConvertEvent::Progress(p)) => {
+                ui.set_convert_progress((j.current as f32 + p) / total as f32);
+            }
+            Ok(ConvertEvent::Failed(i, e)) => j.failures.push((j.requests[i].title.clone(), e)),
+            Ok(ConvertEvent::Finished { cancelled: true }) => {
+                ui.set_converting(false);
+                *slot = None;
+                return false;
+            }
+            Ok(ConvertEvent::Finished { cancelled: false }) => {
+                j.events = None;
+                let all_failed = j.failures.len() == total;
+                ui.set_convert_heading(
+                    tunante_core::i18n::tr(if all_failed { "No se pudo convertir" } else { "Convertido a MP3" })
+                        .into(),
+                );
+                ui.set_convert_detail(j.target.to_string_lossy().to_string().into());
+                ui.set_convert_progress(1.0);
+                ui.set_convert_state(if all_failed { 2 } else { 1 });
+                let message = match j.failures.as_slice() {
+                    [] => String::new(),
+                    [(_, e)] if total == 1 => e.clone(),
+                    failures => {
+                        let mut m = tunante_core::i18n::tr("No se pudieron convertir {} de {}:")
+                            .replacen("{}", &failures.len().to_string(), 1)
+                            .replacen("{}", &total.to_string(), 1);
+                        for (title, e) in failures {
+                            m.push_str(&format!("\n{title}: {e}"));
+                        }
+                        m
+                    }
+                };
+                ui.set_convert_message(message.into());
+                // Kept for "Mostrar en la carpeta"; the sheet's Cerrar ends it.
+                return false;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => return true,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                ui.set_converting(false);
+                *slot = None;
+                return false;
+            }
+        }
+    }
+}
+
+/// A title as a file name on any of the three systems: their forbidden
+/// characters become `_`, and trailing dots and spaces go (Windows drops
+/// them silently, which would change the name under the user's feet).
+fn safe_file_name(title: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|c| if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() { '_' } else { c })
+        .collect();
+    let cleaned = cleaned.trim().trim_end_matches(['.', ' ']).to_string();
+    if cleaned.is_empty() { "track".to_string() } else { cleaned }
+}
+
 /// The rows the library list is drawing right now, back in library terms.
 fn from_ui_rows(model: &VecModel<LibraryRow>) -> Vec<library::Row> {
     model
@@ -10162,5 +10509,40 @@ mod tests {
         assert_eq!(library::place_in(&new, &old, Some(&hidden), Some(1)), library::Place::ResumeAt(0));
         // Nothing after the resume point survives: the list ends there.
         assert_eq!(library::place_in(&[track("/m/a", "", None)], &old, Some(&hidden), Some(1)), library::Place::ResumeAt(1));
+    }
+
+    /// A title becomes a file name every system accepts.
+    #[test]
+    fn a_title_becomes_a_safe_file_name() {
+        assert_eq!(safe_file_name("AC/DC: Back?"), "AC_DC_ Back_");
+        assert_eq!(safe_file_name("Ending. "), "Ending");
+        assert_eq!(safe_file_name("  "), "track");
+        assert_eq!(safe_file_name("テーマ"), "テーマ");
+    }
+
+    /// The batch folder's files sort the way the selection was drawn, the
+    /// number widening only past 99.
+    #[test]
+    fn batch_files_are_numbered_in_order() {
+        assert_eq!(batch_file_name(0, 3, "Intro"), "01 - Intro.mp3");
+        assert_eq!(batch_file_name(11, 150, "Boss"), "012 - Boss.mp3");
+    }
+
+    /// The folder is named after the album the tracks share, and after
+    /// nothing in particular when they share none. A rip with no album tag
+    /// is filed under its game.
+    #[test]
+    fn the_batch_folder_takes_the_shared_album() {
+        let mut a = track("/m/a.spc", "", None);
+        a.game = "Chrono Trigger".into();
+        let b = Track { path: "/m/b.spc".into(), ..a.clone() };
+        let same = [export_request(&a, 2, 8000, None), export_request(&b, 2, 8000, None)];
+        assert_eq!(same[0].album, "Chrono Trigger");
+        assert_eq!(batch_folder_name(&same), "Chrono Trigger");
+
+        let mut c = b.clone();
+        c.album = "Otro".into();
+        let mixed = [export_request(&a, 2, 8000, None), export_request(&c, 2, 8000, None)];
+        assert!(batch_folder_name(&mixed).starts_with("Tunante - "));
     }
 }

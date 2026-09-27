@@ -1,4 +1,5 @@
-//! The native "choose your music folders" dialog, for the desktop shell.
+//! The native "choose your music folders" dialog, for the desktop shell — and
+//! its "save as" sibling, for converting a track.
 //!
 //! The phone shell keeps its own browser (`picker.rs`): a portal dialog on a
 //! phone is a desktop window squeezed into a phone-sized hole. The desktop is
@@ -60,6 +61,22 @@ pub fn pick_folders(title: String, tx: Sender<Vec<PathBuf>>) {
 
 #[cfg(target_os = "linux")]
 fn pick(title: &str) -> Result<Vec<PathBuf>, String> {
+    use zbus::zvariant::Value;
+    portal("OpenFile", title, |opts| {
+        opts.insert("directory", Value::from(true));
+        opts.insert("multiple", Value::from(true));
+    })
+}
+
+/// One FileChooser portal call: `OpenFile` or `SaveFile`, with the options
+/// `fill` adds to the handle token every call carries. The chosen paths, none
+/// when the user cancelled.
+#[cfg(target_os = "linux")]
+fn portal(
+    method: &str,
+    title: &str,
+    fill: impl FnOnce(&mut std::collections::HashMap<&'static str, zbus::zvariant::Value<'static>>),
+) -> Result<Vec<PathBuf>, String> {
     use futures_lite::StreamExt;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -98,13 +115,12 @@ fn pick(title: &str) -> Result<Vec<PathBuf>, String> {
         .await
         .map_err(|e| e.to_string())?;
         let mut opts: HashMap<&str, Value> = HashMap::new();
-        opts.insert("handle_token", Value::from(token.as_str()));
-        opts.insert("directory", Value::from(true));
-        opts.insert("multiple", Value::from(true));
+        opts.insert("handle_token", Value::from(token.clone()));
+        fill(&mut opts);
         // No parent window handle: Slint does not hand one out portably, and
         // the portal then centres the dialog on the screen, which is fine.
         chooser
-            .call_method("OpenFile", &("", title, opts))
+            .call_method(method, &("", title, opts))
             .await
             .map_err(|e| e.to_string())?;
 
@@ -125,6 +141,127 @@ fn pick(title: &str) -> Result<Vec<PathBuf>, String> {
             .unwrap_or_default();
         Ok(uris.iter().filter_map(|u| path_from_file_uri(u)).collect())
     })
+}
+
+/// What a "save as" dialog is asking for.
+#[derive(Clone, Copy, PartialEq)]
+pub enum SaveKind {
+    /// One MP3: the dialog filters to `.mp3`, and a name typed without the
+    /// extension gets it added.
+    Mp3,
+    /// A folder to be created, named and placed by the user — where several
+    /// converted tracks go together. No filter, no extension.
+    NewFolder,
+}
+
+/// Ask where to save, offering `name` in `folder`; the chosen path (`None`
+/// when cancelled) arrives on `tx`.
+#[cfg(not(target_os = "macos"))]
+pub fn save_as(
+    title: String,
+    name: String,
+    folder: Option<PathBuf>,
+    kind: SaveKind,
+    tx: Sender<Option<PathBuf>>,
+) {
+    std::thread::Builder::new()
+        .name("save-dialog".into())
+        .stack_size(1024 * 1024)
+        .spawn(move || {
+            let picked = save(&title, &name, folder.as_deref(), kind).unwrap_or_else(|e| {
+                log::warn!("save dialog: {e}");
+                None
+            });
+            let _ = tx.send(picked.map(|p| finish(p, kind)));
+        })
+        .ok();
+}
+
+/// See the other `save_as`; on the main thread for the same reason as
+/// `pick_folders`.
+#[cfg(target_os = "macos")]
+pub fn save_as(
+    title: String,
+    name: String,
+    folder: Option<PathBuf>,
+    kind: SaveKind,
+    tx: Sender<Option<PathBuf>>,
+) {
+    let sent = slint::invoke_from_event_loop(move || {
+        let mut dialog = rfd::FileDialog::new().set_title(title).set_file_name(name);
+        if kind == SaveKind::Mp3 {
+            dialog = dialog.add_filter("MP3", &["mp3"]);
+        }
+        if let Some(folder) = folder {
+            dialog = dialog.set_directory(folder);
+        }
+        let _ = tx.send(dialog.save_file().map(|p| finish(p, kind)));
+    });
+    if sent.is_err() {
+        log::warn!("save dialog: no event loop to open it on");
+    }
+}
+
+fn finish(path: PathBuf, kind: SaveKind) -> PathBuf {
+    match kind {
+        SaveKind::Mp3 => with_mp3_extension(path),
+        SaveKind::NewFolder => path,
+    }
+}
+
+fn with_mp3_extension(path: PathBuf) -> PathBuf {
+    let is_mp3 = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("mp3"));
+    if is_mp3 {
+        path
+    } else {
+        let mut name = path.file_name().unwrap_or_default().to_os_string();
+        name.push(".mp3");
+        path.with_file_name(name)
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn save(title: &str, name: &str, folder: Option<&std::path::Path>, kind: SaveKind) -> Result<Option<PathBuf>, String> {
+    use std::os::unix::ffi::OsStrExt;
+    use zbus::zvariant::Value;
+    let name = name.to_string();
+    // `current_folder` is a byte string with its NUL: a path, not text.
+    let folder: Option<Vec<u8>> = folder.map(|f| {
+        let mut bytes = f.as_os_str().as_bytes().to_vec();
+        bytes.push(0);
+        bytes
+    });
+    let picked = portal("SaveFile", title, move |opts| {
+        opts.insert("current_name", Value::from(name));
+        if let Some(folder) = folder {
+            opts.insert("current_folder", Value::from(folder));
+        }
+        if kind == SaveKind::Mp3 {
+            let filters: Vec<(String, Vec<(u32, String)>)> =
+                vec![("MP3".to_string(), vec![(0, "*.mp3".to_string())])];
+            opts.insert("filters", Value::from(filters));
+        }
+    })?;
+    Ok(picked.into_iter().next())
+}
+
+#[cfg(target_os = "windows")]
+fn save(title: &str, name: &str, folder: Option<&std::path::Path>, kind: SaveKind) -> Result<Option<PathBuf>, String> {
+    let mut dialog = rfd::FileDialog::new().set_title(title).set_file_name(name);
+    if kind == SaveKind::Mp3 {
+        dialog = dialog.add_filter("MP3", &["mp3"]);
+    }
+    if let Some(folder) = folder {
+        dialog = dialog.set_directory(folder);
+    }
+    Ok(dialog.save_file())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
+fn save(_title: &str, _name: &str, _folder: Option<&std::path::Path>, _kind: SaveKind) -> Result<Option<PathBuf>, String> {
+    Err(tunante_core::i18n::tr("no disponible aquí"))
 }
 
 #[cfg(target_os = "windows")]

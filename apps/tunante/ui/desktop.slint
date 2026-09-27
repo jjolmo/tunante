@@ -9,7 +9,7 @@
 import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
 import { ColumnChoice, ConsoleOption, CoverCandidate, GridLine, LibraryRow, QueueRow, PlaylistRow, TableColumn, TableRow, PinnedRow, FolderRow, ShortcutRow } from "types.slint";
-import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet, ConsoleArt, MenuRow, MenuDivider } from "widgets.slint";
+import { Artwork, TrackInfo, RoundButton, SeekBar, MetadataSheet, ConvertSheet, ReclassifySheet, CoverSheet, PlaylistPickSheet, TrackNamesSheet, ConsoleArt, MenuRow, MenuDivider } from "widgets.slint";
 import { LibraryTab, QueueTab, SettingsTab } from "tabs.slint";
 import { TrackTable } from "table.slint";
 import { DesktopSettings } from "settings.slint";
@@ -452,12 +452,23 @@ export component DesktopShell inherits Rectangle {
     callback playlist-picked(string);
     callback playlist-created-for-add(string);
     in property <string> table-menu-game;
+    in property <int> table-menu-count;
     in property <string> table-menu-artist;
     in property <string> table-menu-console;
     in property <string> table-menu-album;
     callback table-row-menu-opened(int);
     callback table-scope-from-row(int, string);
     callback table-open-folder(int);
+    callback table-convert(int);
+    in property <bool> converting;
+    in property <string> convert-heading;
+    in property <string> convert-detail;
+    in property <float> convert-progress;
+    in property <int> convert-state;
+    in property <string> convert-message;
+    callback convert-cancel();
+    callback convert-close();
+    callback convert-reveal();
     callback table-pin-folder(int);
     callback table-column-moved(int, int);
     callback table-row-middle-clicked(int);
@@ -1375,12 +1386,14 @@ export component DesktopShell inherits Rectangle {
                     play-next(i) => { root.table-play-next(i); }
                     add-to-playlist(i) => { root.table-add-to-playlist(i); }
                     menu-game: root.table-menu-game;
+                    menu-count: root.table-menu-count;
                     menu-artist: root.table-menu-artist;
                     menu-console: root.table-menu-console;
                     menu-album: root.table-menu-album;
                     row-menu-opened(i) => { root.table-row-menu-opened(i); }
                     scope-from-row(i, kind) => { root.table-scope-from-row(i, kind); }
                     open-folder(i) => { root.table-open-folder(i); }
+                    convert-requested(i) => { root.table-convert(i); }
                     pin-folder(i) => { root.table-pin-folder(i); }
                     column-moved(de, a) => { root.table-column-moved(de, a); }
                     row-middle-clicked(i) => { root.table-row-middle-clicked(i); }
@@ -1814,6 +1827,17 @@ export component DesktopShell inherits Rectangle {
         track-text <=> root.meta-track;
         accepted => { root.metadata-accepted(); }
         cancelled => { root.metadata-cancelled(); }
+    }
+
+    if root.converting: ConvertSheet {
+        heading: root.convert-heading;
+        detail: root.convert-detail;
+        progress: root.convert-progress;
+        state: root.convert-state;
+        message: root.convert-message;
+        cancel => { root.convert-cancel(); }
+        close => { root.convert-close(); }
+        reveal => { root.convert-reveal(); }
     }
 
     // Settings live in a standalone modal over the whole shell (the old
