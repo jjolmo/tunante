@@ -142,7 +142,7 @@ pub fn scan_folder_cancellable(
         }
     }
 
-    let mut progress = ScanProgress {
+    let progress = ScanProgress {
         scanned: skipped,
         total: skipped + files.len(),
         added: 0,
@@ -152,6 +152,69 @@ pub fn scan_folder_cancellable(
     if skipped > 0 {
         on_progress(&progress);
     }
+    probe_into(db, files, &stamps, opts, cancel, progress, on_progress).map(|added| added.len())
+}
+
+/// Add loose files to the library: the ones dropped on the window.
+///
+/// No monitored folder owns them, so no scan prunes them and no watcher follows
+/// them; they live in `tracks` like any other row, which is all the table view,
+/// playlists and the queue read. A directory among `paths` contributes the
+/// audio files under it, loose as well. Every file is probed even if a stamp
+/// says it was seen: the user asked for this one, and a stamp outlives the
+/// rows of a folder that was removed. Being under no monitored folder is
+/// also what spares them the short-track filter (`Database::loose_track_paths`).
+///
+/// Returns the paths of the tracks that went in, subsongs as `file#n`, so the
+/// caller can show the user what the drop became.
+pub fn add_files(
+    db: &Database,
+    paths: &[PathBuf],
+    opts: &crate::ProbeOpts,
+    on_progress: impl FnMut(&ScanProgress),
+) -> Result<Vec<String>, String> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    for p in paths {
+        if p.is_dir() {
+            files.extend(
+                WalkDir::new(p)
+                    .follow_links(false)
+                    .into_iter()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.file_type().is_file())
+                    .map(|e| e.into_path())
+                    .filter(|f| vgm_path::is_audio_file(f)),
+            );
+        } else if vgm_path::is_audio_file(p) {
+            files.push(p.clone());
+        }
+    }
+    files.sort();
+    files.dedup();
+    let progress = ScanProgress {
+        scanned: 0,
+        total: files.len(),
+        added: 0,
+        failed: 0,
+        current: String::new(),
+    };
+    static NEVER: AtomicBool = AtomicBool::new(false);
+    probe_into(db, files, &Default::default(), opts, &NEVER, progress, on_progress)
+}
+
+/// Probe `files` on a pool of helper processes and insert what comes back,
+/// stamping the files whose stamp is in `stamps`. Returns the track paths
+/// inserted.
+fn probe_into(
+    db: &Database,
+    files: Vec<PathBuf>,
+    stamps: &std::collections::HashMap<PathBuf, (i64, i64, i64)>,
+    opts: &crate::ProbeOpts,
+    cancel: &AtomicBool,
+    mut progress: ScanProgress,
+    mut on_progress: impl FnMut(&ScanProgress),
+) -> Result<Vec<String>, String> {
+    let mut added = Vec::new();
 
     // Leave a core or two for the session — this runs on a phone the user is
     // holding, and a scan that makes the interface stutter is worse than a slow
@@ -218,6 +281,7 @@ pub fn scan_folder_cancellable(
                         Ok(track) => {
                             if db.insert_track(&track).is_ok() {
                                 progress.added += 1;
+                                added.push(track.path);
                                 batch_rows += 1;
                             } else {
                                 all_in = false;
@@ -258,7 +322,7 @@ pub fn scan_folder_cancellable(
         let _ = h.join();
     }
 
-    Ok(progress.added)
+    Ok(added)
 }
 
 /// Size and mtime of a file, as the stamp remembers them.
@@ -547,7 +611,6 @@ mod tests {
 mod incremental_tests {
     use super::*;
 
-    #[test]
     /// A fix to the playlist reader has to reach files already stamped, and
     /// only those: the stamp says "unchanged since we read it", which stops
     /// being the question once the reader itself changes.
@@ -629,6 +692,47 @@ mod incremental_tests {
         std::thread::sleep(std::time::Duration::from_millis(1100));
         std::fs::write(dir.join("_ratings.m3u"), b"# ratings").unwrap();
         assert!(file_stamp(&audio).unwrap().1 > after.1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Removing a folder from the library and adding it back must rescan it.
+    /// A stamp left behind by the removal says "already read" about a file
+    /// with no rows left, and the folder comes back empty.
+    #[test]
+    fn a_removed_folder_is_probed_again_when_re_added() {
+        let dir = std::env::temp_dir().join(format!(
+            "tunante-readd-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let music = dir.join("music");
+        std::fs::create_dir_all(&music).unwrap();
+        let song = music.join("song.mp3");
+        std::fs::write(&song, b"not really audio").unwrap();
+        let db = Database::new(&dir.join("t.db")).unwrap();
+        let opts = crate::ProbeOpts { fast: true, ..Default::default() };
+
+        // What a successful scan leaves behind: the track and its stamp.
+        let song_path = song.to_string_lossy().to_string();
+        db.insert_track(&Track { id: "1".into(), path: song_path.clone(), ..Default::default() })
+            .unwrap();
+        let (size, mtime) = file_stamp(&song).unwrap();
+        db.set_scan_stamp(&song_path, size, mtime, flavor_for(&opts, &song)).unwrap();
+
+        db.remove_tracks_by_folder_path(&music.to_string_lossy()).unwrap();
+
+        // The first progress report, when there is one before any probe,
+        // counts the files the stamps let the scan skip.
+        let mut first: Option<ScanProgress> = None;
+        let _ = scan_folder_cancellable(&db, &music, &opts, &AtomicBool::new(false), |p| {
+            first.get_or_insert_with(|| p.clone());
+        });
+        let skipped = first.filter(|p| p.current.is_empty()).map_or(0, |p| p.scanned);
+        assert_eq!(skipped, 0, "a file with no tracks left was skipped as already read");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -8,9 +8,9 @@
 // Every value is applied the moment it changes, so the dialog has no OK/Apply:
 // "Cerrar" only closes it.
 
-import { ScrollView } from "std-widgets.slint";
+import { ListView, ScrollView } from "std-widgets.slint";
 import { Theme, Fmt } from "theme.slint";
-import { FolderRow, ShortcutRow } from "types.slint";
+import { FolderRow, LooseRow, ShortcutRow } from "types.slint";
 import { DbSliderRow } from "widgets.slint";
 
 // Left navigation entry.
@@ -44,6 +44,9 @@ component Group inherits Rectangle {
     border-radius: 4px;
     body := VerticalLayout {
         y: 14px;
+        // Pinned, or the layout fills the Group and runs 22px past its frame:
+        // a stretchy row (a Note) then pushes the last one onto the border.
+        height: root.height - 22px;
         padding-left: 14px;
         padding-right: 14px;
         padding-bottom: 8px;
@@ -368,6 +371,11 @@ export component DesktopSettings inherits Rectangle {
     callback make-desktop-entry();
     in property <string> add-files-label;
     callback add-files();
+    /// The files in the library that no scanned folder covers, one per file.
+    in property <[LooseRow]> loose-files;
+    callback loose-removed(string);
+    callback loose-cleared();
+    property <bool> loose-open;
     in property <string> cover-fit-label;
     callback cycle-cover-fit();
     in property <string> clear-cache-label;
@@ -737,6 +745,66 @@ export component DesktopSettings inherits Rectangle {
                                             clicked => { root.add-files(); }
                                         }
                                         Note { text: root.add-files-label; }
+                                    }
+                                    // The loose files, so the ones dropped by
+                                    // mistake can go again: no rescan ever will.
+                                    if root.loose-files.length > 0: HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+                                        Push {
+                                            label: root.loose-open
+                                                ? @tr("Ocultar ficheros sueltos")
+                                                : @tr("Ficheros sueltos ({})", root.loose-files.length);
+                                            clicked => { root.loose-open = !root.loose-open; }
+                                        }
+                                        if root.loose-open: ArmedPush {
+                                            label: @tr("Quitar todos");
+                                            armed-label: @tr("¿Quitarlos todos?");
+                                            fired => { root.loose-cleared(); }
+                                        }
+                                    }
+                                    if root.loose-open && root.loose-files.length > 0: Rectangle {
+                                        height: min(root.loose-files.length * 30px, 240px) + 2px;
+                                        border-width: 1px;
+                                        border-color: Theme.border;
+                                        border-radius: 3px;
+                                        background: Theme.bg-secondary;
+                                        ListView {
+                                            x: 1px;
+                                            y: 1px;
+                                            width: parent.width - 2px;
+                                            height: parent.height - 2px;
+                                            for lp in root.loose-files: Rectangle {
+                                                height: 30px;
+                                                HorizontalLayout {
+                                                    padding-left: 8px;
+                                                    // Clear of the ListView's scrollbar.
+                                                    padding-right: 16px;
+                                                    spacing: 10px;
+                                                    Text {
+                                                        text: lp.name;
+                                                        color: Theme.text-primary;
+                                                        font-size: Theme.font-body;
+                                                        vertical-alignment: center;
+                                                        overflow: elide;
+                                                        max-width: self.preferred-width;
+                                                    }
+                                                    Text {
+                                                        text: lp.dir;
+                                                        color: Theme.text-muted;
+                                                        font-size: Theme.font-small;
+                                                        vertical-alignment: center;
+                                                        overflow: elide;
+                                                        horizontal-stretch: 1;
+                                                    }
+                                                    Push {
+                                                        y: 2px;
+                                                        label: @tr("Quitar");
+                                                        clicked => { root.loose-removed(lp.path); }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                                 Group {

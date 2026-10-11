@@ -1483,3 +1483,24 @@ msgstr "Convertir {} pistes en MP3…"
 
 msgid "No se pudieron convertir {} de {}:"
 msgstr "{} sur {} n'ont pas pu être converties :"
+
+msgid "Suelta para añadir a la colección"
+msgstr "Déposez pour ajouter à la collection"
+
+msgid "Añadiendo a la colección…"
+msgstr "Ajout à la collection…"
+
+msgid "Nada de lo soltado se pudo añadir: no es audio que Tunante sepa leer"
+msgstr "Rien de ce que vous avez déposé n'a pu être ajouté : ce n'est pas de l'audio que Tunante sait lire"
+
+msgid "Ficheros sueltos ({})"
+msgstr "Fichiers isolés ({})"
+
+msgid "Ocultar ficheros sueltos"
+msgstr "Masquer les fichiers isolés"
+
+msgid "Quitar todos"
+msgstr "Tout retirer"
+
+msgid "¿Quitarlos todos?"
+msgstr "Tout retirer ?"

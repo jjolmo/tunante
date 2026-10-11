@@ -59,6 +59,11 @@ fn like_prefix(path: &str) -> String {
         .replace('_', "\\_")
 }
 
+/// A `WHERE` clause over `tracks`: the row lies under no monitored folder.
+/// `substr` rather than `LIKE`, whose `_` would match any character.
+const LOOSE: &str = "NOT EXISTS (SELECT 1 FROM monitored_folders f \
+     WHERE substr(tracks.path, 1, length(rtrim(f.path, '/')) + 1) = rtrim(f.path, '/') || '/')";
+
 impl Database {
     pub fn new(path: &Path) -> Result<Self, DbError> {
         let conn = Connection::open(path)?;
@@ -145,7 +150,9 @@ impl Database {
         self.hide_shorter_than_ms.get()
     }
 
-    /// Drop what the setting hides. A duration of zero survives: that is an
+    /// Drop what the setting hides, except loose tracks: a sound effect
+    /// dropped on the window on purpose is not the noise the filter is for.
+    /// A duration of zero survives: that is an
     /// unprobed file, not a short one, and dropping those would empty the
     /// library of everything the scanner has not measured yet.
     /// The same rule as `hide_short`, written for a query that counts rather
@@ -154,7 +161,7 @@ impl Database {
     fn short_sql(&self) -> String {
         let min = self.hide_shorter_than_ms.get();
         if min > 0 {
-            format!(" AND (duration_ms <= 0 OR duration_ms >= {min})")
+            format!(" AND (duration_ms <= 0 OR duration_ms >= {min} OR {LOOSE})")
         } else {
             String::new()
         }
@@ -163,8 +170,21 @@ impl Database {
     fn hide_short(&self, tracks: &mut Vec<Track>) {
         let min = self.hide_shorter_than_ms.get();
         if min > 0 {
-            tracks.retain(|t| t.duration_ms <= 0 || t.duration_ms >= min);
+            let loose = self.loose_paths();
+            tracks.retain(|t| t.duration_ms <= 0 || t.duration_ms >= min || loose.contains(&t.path));
         }
+    }
+
+    fn loose_paths(&self) -> std::collections::HashSet<String> {
+        self.loose_track_paths().unwrap_or_default().into_iter().collect()
+    }
+
+    /// Every track no monitored folder covers: the files dropped on the window
+    /// or picked by hand, wherever they live. Subsongs as `file#n`.
+    pub fn loose_track_paths(&self) -> Result<Vec<String>, DbError> {
+        let mut stmt = self.conn.prepare(&format!("SELECT path FROM tracks WHERE {LOOSE} ORDER BY path"))?;
+        let paths = stmt.query_map([], |r| r.get(0))?.collect::<Result<Vec<String>, _>>()?;
+        Ok(paths)
     }
 
 
@@ -823,6 +843,12 @@ impl Database {
             params![format!("{}%", like_prefix(&prefix)), folder_path],
         )?;
 
+        // A stamp outliving its tracks makes the next scan skip the file.
+        self.conn.execute(
+            "DELETE FROM scan_stamps WHERE path LIKE ?1 ESCAPE '\\' OR path = ?2",
+            params![format!("{}%", like_prefix(&prefix)), folder_path],
+        )?;
+
         Ok(deleted)
     }
 
@@ -884,6 +910,12 @@ impl Database {
         // The tracks themselves
         let deleted = self.conn.execute(
             &format!("DELETE FROM tracks WHERE {}", sel),
+            refs.as_slice(),
+        )?;
+
+        // Their stamps, or re-adding the folder skips every file in it.
+        self.conn.execute(
+            &format!("DELETE FROM scan_stamps WHERE {}", sel),
             refs.as_slice(),
         )?;
 
@@ -1110,7 +1142,7 @@ impl Database {
 
     pub fn clear_all_tracks(&self) -> Result<(), DbError> {
         self.conn.execute_batch(
-            "DELETE FROM tracks; DELETE FROM tracks_fts;"
+            "DELETE FROM tracks; DELETE FROM tracks_fts; DELETE FROM scan_stamps;"
         )?;
         Ok(())
     }
@@ -1118,6 +1150,7 @@ impl Database {
     pub fn remove_track_by_path(&self, path: &str) -> Result<(), DbError> {
         self.conn
             .execute("DELETE FROM tracks WHERE path = ?1", params![path])?;
+        self.forget_scan_stamps(std::iter::once(path))?;
         Ok(())
     }
 
@@ -1194,6 +1227,7 @@ impl Database {
             "DELETE FROM tracks WHERE path = ?1 OR path LIKE ?2 ESCAPE '\\'",
             params![base_path, format!("{}#%", like_prefix(base_path))],
         )?;
+        self.forget_scan_stamps(std::iter::once(base_path))?;
         Ok(())
     }
 
@@ -1253,7 +1287,21 @@ impl Database {
             )?;
         }
 
+        self.forget_scan_stamps(paths.iter().map(String::as_str))?;
         Ok(deleted)
+    }
+
+    /// Drop the scan stamps behind these track paths. Stamps are keyed by the
+    /// file, so a `file#N` subsong path forgets its file's stamp; the next
+    /// scan then probes the file again instead of trusting rows that are gone.
+    fn forget_scan_stamps<'a>(&self, paths: impl Iterator<Item = &'a str>) -> Result<(), DbError> {
+        let files: std::collections::BTreeSet<&str> =
+            paths.map(|p| crate::vgm_path::parse_vgm_path(p).0).collect();
+        let mut stmt = self.conn.prepare_cached("DELETE FROM scan_stamps WHERE path = ?1")?;
+        for f in files {
+            stmt.execute(params![f])?;
+        }
+        Ok(())
     }
 }
 
@@ -1300,6 +1348,40 @@ pub(crate) mod tests {
                 let _ = std::fs::remove_file(&p);
             }
         }
+    }
+
+    /// A sound effect dropped on the window on purpose is not the noise the
+    /// short-track filter is for: loose tracks stay, in lists and in counts.
+    #[test]
+    fn the_short_filter_spares_loose_tracks() {
+        let tmp = TempDb::new("loose-short");
+        let db = tmp.open();
+        let mut short = track("1", "/m/scan/blip.wav");
+        short.duration_ms = 500;
+        let mut dropped = track("2", "/desk/step.wav");
+        dropped.duration_ms = 81;
+        db.insert_track(&short).unwrap();
+        db.insert_track(&dropped).unwrap();
+        db.add_monitored_folder("f", "/m/scan").unwrap();
+        db.set_hide_shorter_than_ms(30_000);
+
+        let paths: Vec<String> = db.get_all_tracks().unwrap().into_iter().map(|t| t.path).collect();
+        assert_eq!(paths, ["/desk/step.wav"]);
+        assert_eq!(db.count_tracks().unwrap().0, 1);
+        assert_eq!(db.loose_track_paths().unwrap(), ["/desk/step.wav"]);
+    }
+
+    /// A folder whose name is another's plus more is not that folder:
+    /// /m/scan does not cover /m/scanner, and `_` is not a wildcard.
+    #[test]
+    fn loose_means_under_no_monitored_folder() {
+        let tmp = TempDb::new("loose-roots");
+        let db = tmp.open();
+        db.add_monitored_folder("f", "/m/sky_temple/").unwrap();
+        for (id, p) in [("1", "/m/sky_temple/a.mp3"), ("2", "/m/skyXtemple/b.mp3"), ("3", "/m/sky_temple2/c.mp3")] {
+            db.insert_track(&track(id, p)).unwrap();
+        }
+        assert_eq!(db.loose_track_paths().unwrap(), ["/m/skyXtemple/b.mp3", "/m/sky_temple2/c.mp3"]);
     }
 
     /// SQLite's LIKE treats `_` as "any one character", and folder names are
@@ -1354,6 +1436,58 @@ pub(crate) mod tests {
             db.get_track_paths_under("/m/100%").unwrap(),
             ["/m/100%/a.mp3"],
         );
+    }
+
+    /// Every way of removing tracks forgets their scan stamps too: a stamp
+    /// left behind tells the next scan the file was already read, and a
+    /// folder removed and added back comes up empty.
+    #[test]
+    fn removing_tracks_forgets_their_scan_stamps() {
+        let tmp = TempDb::new("stamps");
+        let db = tmp.open();
+        let stamped = |db: &Database, p: &str| db.scan_stamp(p).unwrap().is_some();
+        let add = |db: &Database, id: &str, track_path: &str| {
+            db.insert_track(&track(id, track_path)).unwrap();
+            let file = crate::vgm_path::parse_vgm_path(track_path).0;
+            db.set_scan_stamp(file, 1, 2, 3).unwrap();
+        };
+
+        // A whole folder, sparing a lookalike sibling.
+        add(&db, "1", "/m/a/x.mp3");
+        add(&db, "2", "/m/a/sub/y.nsf#2");
+        add(&db, "3", "/m/ab/z.mp3");
+        db.remove_tracks_by_folder_path("/m/a").unwrap();
+        assert!(!stamped(&db, "/m/a/x.mp3"));
+        assert!(!stamped(&db, "/m/a/sub/y.nsf"));
+        assert!(stamped(&db, "/m/ab/z.mp3"), "a sibling folder lost its stamp");
+
+        // A folder, except what another monitored folder still covers.
+        add(&db, "4", "/n/a.mp3");
+        add(&db, "5", "/n/keep/b.mp3");
+        db.remove_tracks_by_folder_path_excluding("/n", &["/n/keep".into()]).unwrap();
+        assert!(!stamped(&db, "/n/a.mp3"));
+        assert!(stamped(&db, "/n/keep/b.mp3"), "a kept folder lost its stamp");
+
+        // One multi-track file by its base path.
+        add(&db, "6", "/o/game.nsf#1");
+        add(&db, "7", "/o/game.nsf#2");
+        db.remove_tracks_by_base_path("/o/game.nsf").unwrap();
+        assert!(!stamped(&db, "/o/game.nsf"));
+
+        // Exact paths: a subsong path forgets its file's stamp.
+        add(&db, "8", "/p/song.mp3");
+        add(&db, "9", "/p/game.gbs#3");
+        db.remove_tracks_by_paths(&["/p/song.mp3".into(), "/p/game.gbs#3".into()]).unwrap();
+        assert!(!stamped(&db, "/p/song.mp3"));
+        assert!(!stamped(&db, "/p/game.gbs"));
+
+        db.remove_track_by_path("/m/ab/z.mp3").unwrap();
+        assert!(!stamped(&db, "/m/ab/z.mp3"));
+
+        add(&db, "10", "/q/c.mp3");
+        db.clear_all_tracks().unwrap();
+        assert!(!stamped(&db, "/q/c.mp3"));
+        assert!(!stamped(&db, "/n/keep/b.mp3"));
     }
 
     fn track(id: &str, path: &str) -> Track {

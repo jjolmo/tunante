@@ -1483,3 +1483,24 @@ msgstr "Converti {} tracce in MP3…"
 
 msgid "No se pudieron convertir {} de {}:"
 msgstr "{} su {} non sono state convertite:"
+
+msgid "Suelta para añadir a la colección"
+msgstr "Rilascia per aggiungere alla raccolta"
+
+msgid "Añadiendo a la colección…"
+msgstr "Aggiunta alla raccolta…"
+
+msgid "Nada de lo soltado se pudo añadir: no es audio que Tunante sepa leer"
+msgstr "Non è stato possibile aggiungere nulla: non è audio che Tunante sappia leggere"
+
+msgid "Ficheros sueltos ({})"
+msgstr "File singoli ({})"
+
+msgid "Ocultar ficheros sueltos"
+msgstr "Nascondi i file singoli"
+
+msgid "Quitar todos"
+msgstr "Rimuovi tutti"
+
+msgid "¿Quitarlos todos?"
+msgstr "Rimuoverli tutti?"

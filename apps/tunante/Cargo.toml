@@ -96,6 +96,10 @@ slint = { version = "1.17", default-features = false, features = [
 # loop in main.rs does not have to know.
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
+# Files dropped from a file manager, on Wayland: winit 0.30 reports none there.
+# The same crate Slint's clipboard already is, patched in the workspace root
+# (vendor/smithay-clipboard-patch) to hear drops on the data device it owns.
+smithay-clipboard = "0.7"
 # The system tray, behind the `tray` feature: a desktop nicety, and the phone
 # builds (Alpine/musl, the APKBUILD) switch it off with --no-default-features,
 # which keeps D-Bus and ksni out of that image. ksni is a native

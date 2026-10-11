@@ -45,6 +45,7 @@
 
 mod boost;
 mod debuglog;
+mod dnd;
 mod theme_watch;
 mod integrate;
 mod buttons;
@@ -622,6 +623,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // runs on the watcher's thread with its own connection (WAL lets the two
     // coexist); the UI hears about it through a flag the timer drains.
     let library_dirty = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // Track paths a drop on the window just added, for the timer to show.
+    let dropped_tracks: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
     let watcher = {
         let dirty = library_dirty.clone();
         let dbfile_w = dbfile.clone();
@@ -4523,14 +4526,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // track; the row's label is the whole report.
     let (loose_tx, loose_rx) = std::sync::mpsc::channel::<String>();
     ui.set_add_files_label(SharedString::from("＋"));
+    let loose_model = Rc::new(VecModel::from(Vec::<LooseRow>::new()));
+    ui.set_loose_files(ModelRc::from(loose_model.clone()));
+    refresh_loose(&db, &loose_model);
     {
-        let (dbfile, dirty) = (dbfile.clone(), library_dirty.clone());
+        let (db, dirty) = (db.clone(), library_dirty.clone());
+        ui.on_loose_removed(move |file| {
+            remove_loose(&db, Some(file.as_str()));
+            dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+    {
+        let (db, dirty) = (db.clone(), library_dirty.clone());
+        ui.on_loose_cleared(move || {
+            remove_loose(&db, None);
+            dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+        });
+    }
+    {
+        let (dbfile, dirty, shown) = (dbfile.clone(), library_dirty.clone(), dropped_tracks.clone());
         let tx = loose_tx.clone();
         let weak = ui.as_weak();
         ui.on_add_files(move || {
             let Some(ui) = weak.upgrade() else { return };
             ui.set_add_files_label(SharedString::from(tunante_core::i18n::tr("eligiendo…")));
-            let (dbfile, dirty, tx) = (dbfile.clone(), dirty.clone(), tx.clone());
+            let (dbfile, dirty, tx, shown) = (dbfile.clone(), dirty.clone(), tx.clone(), shown.clone());
             std::thread::spawn(move || {
                 let picked = pick_files();
                 let paths: Vec<_> = picked
@@ -4549,27 +4569,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = tx.send(tunante_core::i18n::tr("sin base de datos"));
                     return;
                 };
-                let opts = probe_opts(&db);
-                let mut n = 0usize;
-                for path in paths {
-                    let Ok(values) = tunante_helper::probe_with(
-                        std::path::Path::new(path),
-                        tunante_helper::scan::PROBE_TIMEOUT,
-                        &opts,
-                    ) else {
-                        continue;
-                    };
-                    for v in values {
-                        if let Ok(track) =
-                            serde_json::from_value::<tunante_core::db::models::Track>(v)
-                        {
-                            if db.insert_track(&track).is_ok() {
-                                n += 1;
-                            }
-                        }
-                    }
-                }
+                let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
+                let added = tunante_helper::scan::add_files(&db, &files, &probe_opts(&db), |_| {})
+                    .unwrap_or_default();
+                let n = added.len();
+                // Dirty first, as for a drop: the reveal must find the rows.
                 dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                if let Ok(mut a) = shown.lock() {
+                    a.extend(added);
+                }
                 let _ = tx.send(tunante_core::i18n::tr("{} añadidas").replace("{}", &n.to_string()));
             });
         });
@@ -5955,6 +5963,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (db, tree, rows_model) = (db.clone(), tree.clone(), rows_model.clone());
         let (views, library_dirty, sync_watches) =
             (views.clone(), library_dirty.clone(), sync_watches.clone());
+        let dropped_tracks_t = dropped_tracks.clone();
         let (table_state, table_model) = (table_state.clone(), table_model.clone());
         let (cover_model, cover_urls) = (cover_model.clone(), cover_urls.clone());
         let bulk_plans_model = bulk_plans_model.clone();
@@ -6522,6 +6531,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     refresh_counts(&db, &ui);
                     refresh_pinned(&db, &pinned_model);
                     refresh_library_folders(&db, &folders_model);
+                    refresh_loose(&db, &loose_model);
                     refresh_sidebar_consoles(&db, &tree, &consoles_side);
                     refresh_library(&ui, &tree, &db, &views);
                     let mut st = table_state.borrow_mut();
@@ -6529,6 +6539,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         st.all = db.get_all_tracks().unwrap_or_default();
                         rebuild_table(&mut st, &table_model);
                     }
+                }
+                let dropped = std::mem::take(&mut *dropped_tracks_t.lock().unwrap());
+                if !dropped.is_empty() {
+                    reveal_dropped(&ui, &db, &table_state, &table_model, &dropped);
                 }
 
 
@@ -6969,6 +6983,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // to create it. winit_window().await resolves when it exists, so we
         // register the hook from there.
         let weak = ui.as_weak();
+        let deliver_drop = drop_handler(&ui, dbfile.clone(), library_dirty.clone(), dropped_tracks.clone());
         let spawned = slint::spawn_local(async move {
             use slint::winit_030::{winit, WinitWindowAccessor};
             use winit::event::{ElementState, WindowEvent};
@@ -6979,9 +6994,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return;
             }
             let weak = ui.as_weak();
+            // Wayland drops come through the clipboard's data device (dnd.rs);
+            // winit reports none there, so the arms below only fire elsewhere.
+            #[cfg(target_os = "linux")]
+            {
+                let deliver = deliver_drop.clone();
+                smithay_clipboard::set_drop_handler(move |ev| {
+                    deliver(match ev {
+                        smithay_clipboard::DropEvent::Hover(on) => dnd::Msg::Hover(on),
+                        smithay_clipboard::DropEvent::Dropped(body) => {
+                            dnd::Msg::Files(dnd::parse_uri_list(&body))
+                        }
+                    })
+                });
+            }
+            // winit sends one DroppedFile per file; they are gathered and
+            // handed over together once the burst has been processed.
+            let dropped: std::rc::Rc<RefCell<Vec<PathBuf>>> = Default::default();
             let mods = std::rc::Rc::new(std::cell::Cell::new(ModifiersState::empty()));
             ui.window().on_winit_window_event(move |_win, event| {
                 match event {
+                    WindowEvent::HoveredFile(_) => deliver_drop(dnd::Msg::Hover(true)),
+                    WindowEvent::HoveredFileCancelled => deliver_drop(dnd::Msg::Hover(false)),
+                    WindowEvent::DroppedFile(path) => {
+                        if dropped.borrow().is_empty() {
+                            let (dropped, deliver) = (dropped.clone(), deliver_drop.clone());
+                            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                                deliver(dnd::Msg::Files(std::mem::take(&mut *dropped.borrow_mut())));
+                            });
+                        }
+                        dropped.borrow_mut().push(path.clone());
+                    }
                     WindowEvent::Focused(has) => note_focus(*has),
                     WindowEvent::ModifiersChanged(m) => {
                         mods.set(m.state());
@@ -8981,6 +9024,44 @@ fn refresh_sidebar_consoles(
 }
 
 /// The library's roots as Ajustes shows them: removable, watchable.
+/// The loose files for Ajustes: one row per file, a subsong set once.
+fn refresh_loose(db: &Database, model: &VecModel<LooseRow>) {
+    let mut files: Vec<String> = db
+        .loose_track_paths()
+        .unwrap_or_default()
+        .iter()
+        .map(|p| tunante_core::vgm_path::parse_vgm_path(p).0.to_string())
+        .collect();
+    files.dedup();
+    model.set_vec(
+        files
+            .into_iter()
+            .map(|f| {
+                let p = std::path::Path::new(&f);
+                LooseRow {
+                    name: p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default().into(),
+                    dir: p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default().into(),
+                    path: f.into(),
+                }
+            })
+            .collect::<Vec<_>>(),
+    );
+}
+
+/// Forget loose tracks: every one, or those of one file (`file#n` included).
+fn remove_loose(db: &Database, file: Option<&str>) {
+    let paths: Vec<String> = db
+        .loose_track_paths()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| file.is_none_or(|f| tunante_core::vgm_path::parse_vgm_path(p).0 == f))
+        .collect();
+    match db.remove_tracks_by_paths(&paths) {
+        Ok(n) => eprintln!("[loose] {n} pistas sueltas fuera"),
+        Err(e) => eprintln!("[loose] no se pudieron quitar: {e}"),
+    }
+}
+
 fn refresh_library_folders(db: &Database, model: &VecModel<FolderRow>) {
     model.set_vec(
         db.get_monitored_folders()
@@ -9249,6 +9330,92 @@ fn run_action_by_id(
         _ => return false,
     }
     true
+}
+
+/// What a drop on the window does, from whichever thread reports it: the
+/// overlay follows the drag, and dropped files join the library as loose
+/// tracks (see `tunante_helper::scan::add_files`), probed on a worker.
+///
+/// The paths that went in land in `added`, which the UI timer drains after the
+/// library re-read and shows them in the table (see `reveal_dropped`).
+fn drop_handler(
+    ui: &AppWindow,
+    dbfile: PathBuf,
+    dirty: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    added: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) -> impl Fn(dnd::Msg) + Clone + Send + Sync + 'static {
+    let weak = ui.as_weak();
+    move |msg| {
+        let (weak, dbfile, dirty, added) = (weak.clone(), dbfile.clone(), dirty.clone(), added.clone());
+        let _ = slint::invoke_from_event_loop(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            let files = match msg {
+                dnd::Msg::Hover(on) => return ui.set_drop_hover(on),
+                dnd::Msg::Files(files) => files,
+            };
+            ui.set_drop_hover(false);
+            if files.is_empty() {
+                return;
+            }
+            ui.set_drop_busy(ui.get_drop_busy() + 1);
+            std::thread::spawn(move || {
+                let paths = Database::new(&dbfile)
+                    .map_err(|e| e.to_string())
+                    .and_then(|db| tunante_helper::scan::add_files(&db, &files, &probe_opts(&db), |_| {}))
+                    .unwrap_or_else(|e| {
+                        eprintln!("[drop] {e}");
+                        Vec::new()
+                    });
+                eprintln!("[drop] {} ficheros soltados, {} pistas", files.len(), paths.len());
+                let any = !paths.is_empty();
+                // Dirty first: the reveal must find the rows already re-read.
+                dirty.store(true, std::sync::atomic::Ordering::Relaxed);
+                if let Ok(mut a) = added.lock() {
+                    a.extend(paths);
+                }
+                let _ = weak.upgrade_in_event_loop(move |ui| {
+                    ui.set_drop_busy((ui.get_drop_busy() - 1).max(0));
+                    if !any {
+                        ui.set_error_toast(SharedString::from(tunante_core::i18n::tr(
+                            "Nada de lo soltado se pudo añadir: no es audio que Tunante sepa leer",
+                        )));
+                        ui.set_error_toast_age(0);
+                    }
+                });
+            });
+        });
+    }
+}
+
+/// Show what a drop added: Tracks, no search and no scope, the new rows
+/// selected and the first one centred — the answer to "did it take them?".
+fn reveal_dropped(
+    ui: &AppWindow,
+    db: &Database,
+    state: &RefCell<TableState>,
+    model: &VecModel<TableRow>,
+    paths: &[String],
+) {
+    state.borrow_mut().filter.clear();
+    ui.set_table_filter(SharedString::new());
+    open_scope_in_table(ui, db, state, model, Scope::Library);
+    let mut st = state.borrow_mut();
+    let wanted: std::collections::HashSet<&str> = paths.iter().map(String::as_str).collect();
+    let hits: Vec<usize> = st
+        .tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| wanted.contains(t.path.as_str()))
+        .map(|(i, _)| i)
+        .collect();
+    let Some(&first) = hits.first() else { return };
+    st.selected = hits.into_iter().collect();
+    st.anchor = first;
+    repaint_selection(&st, model);
+    ui.set_table_cursor(-1);
+    ui.set_table_cursor(first as i32);
+    ui.set_table_center_row(first as i32);
+    ui.set_table_center_tick(ui.get_table_center_tick() + 1);
 }
 
 /// A playback failure the user can see, not just stderr: the toast in the

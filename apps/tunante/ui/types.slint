@@ -84,6 +84,14 @@ export struct FolderRow {
     watching: bool,
 }
 
+/// A loose file in Ajustes: the name first, since a long folder would
+/// otherwise elide it away.
+export struct LooseRow {
+    path: string,
+    name: string,
+    dir: string,
+}
+
 export struct PinnedRow {
     id: string,
     name: string,

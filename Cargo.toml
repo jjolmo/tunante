@@ -34,3 +34,9 @@ members = [
 # line breaking turned up at all.
 strip = "symbols"
 
+
+[patch.crates-io]
+# Wayland file drops: the clipboard owns the client's first wl_data_device,
+# and KWin hands a drag to that one only. See
+# vendor/smithay-clipboard-patch/README.tunante.md.
+smithay-clipboard = { path = "vendor/smithay-clipboard-patch" }

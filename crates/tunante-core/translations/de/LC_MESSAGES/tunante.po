@@ -1483,3 +1483,24 @@ msgstr "{} Titel in MP3 umwandeln…"
 
 msgid "No se pudieron convertir {} de {}:"
 msgstr "{} von {} konnten nicht umgewandelt werden:"
+
+msgid "Suelta para añadir a la colección"
+msgstr "Ablegen, um zur Sammlung hinzuzufügen"
+
+msgid "Añadiendo a la colección…"
+msgstr "Wird zur Sammlung hinzugefügt …"
+
+msgid "Nada de lo soltado se pudo añadir: no es audio que Tunante sepa leer"
+msgstr "Nichts davon konnte hinzugefügt werden: Tunante kann diese Dateien nicht als Audio lesen"
+
+msgid "Ficheros sueltos ({})"
+msgstr "Einzelne Dateien ({})"
+
+msgid "Ocultar ficheros sueltos"
+msgstr "Einzelne Dateien ausblenden"
+
+msgid "Quitar todos"
+msgstr "Alle entfernen"
+
+msgid "¿Quitarlos todos?"
+msgstr "Wirklich alle entfernen?"
